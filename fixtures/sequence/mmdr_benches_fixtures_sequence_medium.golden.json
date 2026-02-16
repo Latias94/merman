@@ -1,0 +1,251 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Carol",
+      "Dave",
+      "Eve"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Carol": {
+        "name": "Carol",
+        "description": "Carol",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Dave": {
+        "name": "Dave",
+        "description": "Dave",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Eve": {
+        "name": "Eve",
+        "description": "Eve",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello 0",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "Carol",
+        "message": "Forward 1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Carol",
+        "to": "Dave",
+        "message": "Process 2",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Dave",
+        "to": "Eve",
+        "message": "Notify 3",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Eve",
+        "to": "Alice",
+        "message": "Ack 4",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello 5",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Bob",
+        "to": "Carol",
+        "message": "Forward 6",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Carol",
+        "to": "Dave",
+        "message": "Process 7",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "Dave",
+        "to": "Eve",
+        "message": "Notify 8",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Eve",
+        "to": "Alice",
+        "message": "Ack 9",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello 10",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "Bob",
+        "to": "Carol",
+        "message": "Forward 11",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "Carol",
+        "to": "Dave",
+        "message": "Process 12",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "Dave",
+        "to": "Eve",
+        "message": "Notify 13",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "Eve",
+        "to": "Alice",
+        "message": "Ack 14",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello 15",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "Bob",
+        "to": "Carol",
+        "message": "Forward 16",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": "Carol",
+        "to": "Dave",
+        "message": "Process 17",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "Dave",
+        "to": "Eve",
+        "message": "Notify 18",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": "Eve",
+        "to": "Alice",
+        "message": "Ack 19",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

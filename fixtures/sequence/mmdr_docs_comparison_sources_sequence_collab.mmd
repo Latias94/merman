@@ -1,0 +1,9 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_collab.mmd
+  participant User
+  participant Web
+  participant API
+  User->>Web: Open app
+  Web->>API: Fetch profile
+  API-->>Web: Profile data
+  Web-->>User: Render screen

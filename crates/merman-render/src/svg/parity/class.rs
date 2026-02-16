@@ -714,6 +714,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
+    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
 
@@ -1358,17 +1359,12 @@ pub(super) fn render_class_diagram_v2_svg_model(
         };
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
-            let note_text = decode_entities_minimal(note.text.trim());
-            let (fo_w_raw, fo_h_raw) = match (n.label_width, n.label_height) {
-                (Some(w), Some(h)) => (w, h),
-                _ => {
-                    let metrics =
-                        measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
-                    (metrics.width, metrics.height)
-                }
-            };
-            let fo_w = fo_w_raw.max(1.0);
-            let fo_h = fo_h_raw.max(line_height).max(1.0);
+            let note_src = note.text.trim();
+            let note_text = decode_entities_minimal(note_src);
+            let metrics =
+                measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
+            let fo_w = metrics.width.max(1.0);
+            let fo_h = metrics.height.max(line_height).max(1.0);
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
             let left = -w / 2.0;
@@ -1431,12 +1427,12 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 fmt(fo_w),
                 fmt(fo_h),
             );
-            for (idx, line) in note_text.split('\n').enumerate() {
-                if idx > 0 {
-                    out.push_str("<br />");
-                }
-                escape_xml_into(&mut out, line);
-            }
+            // Mermaid stores sanitized note label fragments (entities + limited tags). Mirror the
+            // browser pipeline by running a DOMPurify-like sanitizer and injecting the resulting
+            // HTML nodes into the XHTML foreignObject.
+            let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
+            let note_html = merman_core::sanitize::sanitize_text(&note_html, &sanitize_config);
+            out.push_str(&note_html);
             out.push_str("</p></span></div></foreignObject></g></g>");
             continue;
         }

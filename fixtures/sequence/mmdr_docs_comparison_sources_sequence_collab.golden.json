@@ -1,0 +1,89 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "Web",
+      "API"
+    ],
+    "actors": {
+      "User": {
+        "name": "User",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Web": {
+        "name": "Web",
+        "description": "Web",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "Web",
+        "message": "Open app",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Web",
+        "to": "API",
+        "message": "Fetch profile",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "API",
+        "to": "Web",
+        "message": "Profile data",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Web",
+        "to": "User",
+        "message": "Render screen",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

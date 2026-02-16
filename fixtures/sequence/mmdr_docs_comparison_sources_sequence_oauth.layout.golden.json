@@ -1,0 +1,482 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-U",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-App",
+          "x": 275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Auth",
+          "x": 546.28,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-API",
+          "x": 746.28,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-U",
+          "x": 75.0,
+          "y": 557.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-App",
+          "x": 275.0,
+          "y": 557.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Auth",
+          "x": 546.28,
+          "y": 557.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-API",
+          "x": 746.28,
+          "y": 557.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "U",
+          "to": "App",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 271.0,
+              "y": 109.0
+            }
+          ],
+          "label": {
+            "x": 174.0,
+            "y": 80.0,
+            "width": 74.24,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-1",
+          "from": "App",
+          "to": "Auth",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 153.0
+            },
+            {
+              "x": 542.28,
+              "y": 153.0
+            }
+          ],
+          "label": {
+            "x": 409.0,
+            "y": 124.0,
+            "width": 143.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-2",
+          "from": "Auth",
+          "to": "U",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 545.28,
+              "y": 197.0
+            },
+            {
+              "x": 79.0,
+              "y": 197.0
+            }
+          ],
+          "label": {
+            "x": 312.0,
+            "y": 168.0,
+            "width": 70.24,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-3",
+          "from": "U",
+          "to": "Auth",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 241.0
+            },
+            {
+              "x": 542.28,
+              "y": 241.0
+            }
+          ],
+          "label": {
+            "x": 309.0,
+            "y": 212.0,
+            "width": 116.0,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-4",
+          "from": "Auth",
+          "to": "App",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 545.28,
+              "y": 285.0
+            },
+            {
+              "x": 279.0,
+              "y": 285.0
+            }
+          ],
+          "label": {
+            "x": 412.0,
+            "y": 256.0,
+            "width": 122.88,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "App",
+          "to": "Auth",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 329.0
+            },
+            {
+              "x": 542.28,
+              "y": 329.0
+            }
+          ],
+          "label": {
+            "x": 409.0,
+            "y": 300.0,
+            "width": 163.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-6",
+          "from": "Auth",
+          "to": "App",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 545.28,
+              "y": 373.0
+            },
+            {
+              "x": 279.0,
+              "y": 373.0
+            }
+          ],
+          "label": {
+            "x": 412.0,
+            "y": 344.0,
+            "width": 201.28,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-7",
+          "from": "App",
+          "to": "API",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 417.0
+            },
+            {
+              "x": 742.28,
+              "y": 417.0
+            }
+          ],
+          "label": {
+            "x": 509.0,
+            "y": 388.0,
+            "width": 186.24,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-8",
+          "from": "API",
+          "to": "App",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 745.28,
+              "y": 461.0
+            },
+            {
+              "x": 279.0,
+              "y": 461.0
+            }
+          ],
+          "label": {
+            "x": 512.0,
+            "y": 432.0,
+            "width": 127.68,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-9",
+          "from": "App",
+          "to": "U",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 274.0,
+              "y": 505.0
+            },
+            {
+              "x": 79.0,
+              "y": 505.0
+            }
+          ],
+          "label": {
+            "x": 177.0,
+            "y": 476.0,
+            "width": 83.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-U",
+          "from": "actor-top-U",
+          "to": "actor-bottom-U",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 525.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-App",
+          "from": "actor-top-App",
+          "to": "actor-bottom-App",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 275.0,
+              "y": 65.0
+            },
+            {
+              "x": 275.0,
+              "y": 525.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Auth",
+          "from": "actor-top-Auth",
+          "to": "actor-bottom-Auth",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 546.28,
+              "y": 65.0
+            },
+            {
+              "x": 546.28,
+              "y": 525.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-API",
+          "from": "actor-top-API",
+          "to": "actor-bottom-API",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 746.28,
+              "y": 65.0
+            },
+            {
+              "x": 746.28,
+              "y": 525.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 871.28,
+        "max_y": 601.0
+      }
+    }
+  }
+}

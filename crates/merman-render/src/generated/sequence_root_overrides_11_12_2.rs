@@ -19,6 +19,18 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_semicolons_022" => Some(("-50 -10 523 308", "523")),
         "stress_unicode_longish_messages_027" => Some(("-50 -10 710.5 333", "710.5")),
         "stress_quoted_participants_and_types_023" => Some(("-50 -10 878 484", "878")),
+        "mmdr_benches_fixtures_expanded_sequence_frames_notes" => {
+            Some(("-50 -10 1250 948", "1250"))
+        }
+        "mmdr_benches_fixtures_expanded_sequence_long_labels" => Some(("-50 -10 1355 435", "1355")),
+        "mmdr_benches_fixtures_sequence" => Some(("-50 -10 650 523", "650")),
+        "mmdr_benches_fixtures_sequence_medium" => Some(("-50 -10 1050 1051", "1050")),
+        "mmdr_docs_comparison_sources_sequence_autonumber" => Some(("-50 -10 852 435", "852")),
+        "mmdr_docs_comparison_sources_sequence_collab" => Some(("-50 -10 650 347", "650")),
+        "mmdr_docs_comparison_sources_sequence_loops" => Some(("-50 -10 650 733", "650")),
+        "mmdr_docs_comparison_sources_sequence_microservice" => Some(("-50 -10 1250 671", "1250")),
+        "mmdr_docs_comparison_sources_sequence_notes" => Some(("-50 -10 750 499", "750")),
+        "mmdr_docs_comparison_sources_sequence_oauth" => Some(("-50 -10 921 611", "921")),
         "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
             Some(("-50 -10 513 435", "513"))
         }

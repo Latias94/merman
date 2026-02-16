@@ -299,37 +299,70 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             out.push_str("px; text-align: center;");
         }
         out.push_str(r#""><span class="nodeLabel">"#);
+        fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
+            let mut html_out = String::new();
+            let parser = pulldown_cmark::Parser::new_ext(
+                text,
+                pulldown_cmark::Options::ENABLE_TABLES
+                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
+            )
+            .map(|ev| match ev {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                other => other,
+            });
+            pulldown_cmark::html::push_html(&mut html_out, parser);
+            let html_out = html_out.trim().to_string();
+            let html_out = crate::text::replace_fontawesome_icons(&html_out);
+            let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
+            html_out
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />")
+                .trim()
+                .to_string()
+        }
+
+        fn is_single_img_fragment(html: &str) -> bool {
+            // Mermaid does not wrap a single <img> label inside a <p> node for mindmap labels.
+            let t = html.trim();
+            let lower = t.to_ascii_lowercase();
+            if lower.starts_with("<p>") && lower.ends_with("</p>") {
+                let inner = t.strip_prefix("<p>").unwrap_or(t);
+                let inner = inner.strip_suffix("</p>").unwrap_or(inner);
+                return is_single_img_fragment(inner);
+            }
+            if !lower.starts_with("<img") {
+                return false;
+            }
+            let Some(end) = t.find('>') else {
+                return false;
+            };
+            t[end + 1..].trim().is_empty()
+        }
+
+        fn unwrap_single_img_p(html: &str) -> String {
+            let t = html.trim();
+            if !t.to_ascii_lowercase().starts_with("<p>")
+                || !t.to_ascii_lowercase().ends_with("</p>")
+            {
+                return t.to_string();
+            }
+            let inner = t.strip_prefix("<p>").unwrap_or(t);
+            let inner = inner.strip_suffix("</p>").unwrap_or(inner);
+            inner.trim().to_string()
+        }
 
         if label_type == "markdown" {
             if is_simple_markdown(text) {
                 let mut html_out = String::with_capacity(text.len() + 7);
                 html_out.push_str("<p>");
-                push_br_normalized_text_into(&mut html_out, text.trim());
+                html_out.push_str(text);
                 html_out.push_str("</p>");
                 let html_out = crate::text::replace_fontawesome_icons(&html_out);
                 out.push_str(&html_out);
             } else {
-                let mut html_out = String::new();
-                let parser = pulldown_cmark::Parser::new_ext(
-                    text,
-                    pulldown_cmark::Options::ENABLE_TABLES
-                        | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                        | pulldown_cmark::Options::ENABLE_TASKLISTS,
-                )
-                .map(|ev| match ev {
-                    pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-                    other => other,
-                });
-                pulldown_cmark::html::push_html(&mut html_out, parser);
-                let html_out = html_out.trim().to_string();
-                let html_out = crate::text::replace_fontawesome_icons(&html_out);
-                let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-                let html_out = html_out
-                    .replace("<br>", "<br />")
-                    .replace("<br/>", "<br />")
-                    .trim()
-                    .to_string();
-                out.push_str(&html_out);
+                let html = markdown_to_sanitized_xhtml(text, config);
+                out.push_str(&html);
             }
         } else if text.contains('\n') || text.contains('\r') {
             // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
@@ -337,17 +370,54 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             // a text node (no `<p>...</p>` wrapper) unless the label intentionally includes a
             // backtick snippet (which upstream keeps inside a `<p>` node).
             if text.contains('`') {
-                let text = text.replace("<br>", "<br />").replace("<br/>", "<br />");
+                let mut normalized;
+                let normalized = if text.contains("<br>") || text.contains("<br/>") {
+                    normalized = String::with_capacity(text.len() + 8);
+                    push_br_normalized_text_into(&mut normalized, text);
+                    normalized.as_str()
+                } else {
+                    text
+                };
                 out.push_str("<p>");
-                out.push_str(&escape_xml(&text));
+                out.push_str(&escape_xml(normalized));
                 out.push_str("</p>");
             } else {
                 out.push_str(&escape_xml(text));
             }
         } else {
-            out.push_str("<p>");
-            push_br_normalized_text_into(out, text.trim());
-            out.push_str("</p>");
+            // Mermaid applies Markdown parsing semantics even for regular, single-line mindmap
+            // labels. This matters for emphasis markers like `__proto__` (renders as `<strong>`).
+            // Keep output XHTML-compatible and sanitizer-aligned.
+            let mut normalized;
+            let text = if text.contains("<br>") || text.contains("<br/>") {
+                normalized = String::with_capacity(text.len() + 8);
+                push_br_normalized_text_into(&mut normalized, text);
+                normalized.as_str()
+            } else {
+                text
+            };
+            // Mindmap fixtures use backticks to denote "verbatim" markdown-string labels. Mermaid
+            // keeps the backticks as literal text (no Markdown evaluation) in that mode.
+            if text.contains('`') {
+                out.push_str("<p>");
+                out.push_str(&escape_xml(text));
+                out.push_str("</p>");
+            } else if is_simple_markdown(text) {
+                let mut html_out = String::with_capacity(text.len() + 7);
+                html_out.push_str("<p>");
+                html_out.push_str(text);
+                html_out.push_str("</p>");
+                let html_out = crate::text::replace_fontawesome_icons(&html_out);
+                out.push_str(&html_out);
+            } else {
+                let html = markdown_to_sanitized_xhtml(&text, config);
+                if is_single_img_fragment(&html) {
+                    let html = unwrap_single_img_p(&html);
+                    out.push_str(&html);
+                } else {
+                    out.push_str(&html);
+                }
+            }
         }
 
         out.push_str("</span></div></foreignObject></g>");

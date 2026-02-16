@@ -1,0 +1,242 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "The root",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 2
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "String containing [] ( ) and :::decorators",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0 m-4 p-8",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "bomb",
+        "level": 2,
+        "nodeId": "quoted1",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "String containing () and [] and <br/> tags",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "quoted2",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "Plain (Round) Node",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "plain",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "[brackets] and (parens) together",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "child",
+        "type": 2,
+        "section": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_0_3",
+        "start": "0",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_3_4",
+        "start": "3",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "The root",
+      "type": 2,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "quoted1",
+          "level": 2,
+          "descr": "String containing [] ( ) and :::decorators",
+          "type": 2,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "quoted2",
+              "level": 4,
+              "descr": "String containing () and [] and <br/> tags",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0,
+          "class": "m-4 p-8",
+          "icon": "bomb"
+        },
+        {
+          "id": 3,
+          "nodeId": "plain",
+          "level": 2,
+          "descr": "Plain (Round) Node",
+          "type": 2,
+          "children": [
+            {
+              "id": 4,
+              "nodeId": "child",
+              "level": 4,
+              "descr": "[brackets] and (parens) together",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 1
+        }
+      ],
+      "width": 200,
+      "padding": 20,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "3": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "4": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

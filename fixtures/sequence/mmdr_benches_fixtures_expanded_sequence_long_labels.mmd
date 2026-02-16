@@ -1,0 +1,13 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/benches/fixtures/expanded/sequence_long_labels.mmd
+  participant Client
+  participant Gateway
+  participant Service
+  participant DB
+
+  Client->>Gateway: POST /v1/orders with idempotency-key and metadata
+  Gateway->>Service: forward order payload with trace headers
+  Service->>DB: INSERT order, line items, and audit rows
+  DB-->>Service: commit success
+  Service-->>Gateway: return created response with order summary
+  Gateway-->>Client: 201 Created + location header

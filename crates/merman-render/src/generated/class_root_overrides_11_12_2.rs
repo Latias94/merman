@@ -95,8 +95,20 @@ pub fn lookup_class_root_viewport_override(
         "upstream_cypress_classdiagram_elk_v3_spec_elk_4_should_render_a_simple_class_diagram_with_comments_009" => {
             Some(("0 0 786.484375 742", "786.484"))
         }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_5_1_should_render_a_simple_class_diagram_with_abstract_metho_011" => {
+            Some(("0 0 170.375 300", "170.375"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_6_1_should_render_a_simple_class_diagram_with_static_method_013" => {
+            Some(("0 0 169.265625 300", "169.266"))
+        }
         "upstream_cypress_classdiagram_elk_v3_spec_elk_9_should_render_a_simple_class_diagram_with_clickable_link_017" => {
             Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_class_with_text_label_033" => {
+            Some(("0 0 205.796875 234", "205.797"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_no_members_040" => {
+            Some(("0 0 95.5625 100", "95.5625"))
         }
         "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_full_class_diagram_using_elk_057" => {
             Some(("0 0 1408.9765625 838", "1408.98"))
@@ -104,8 +116,17 @@ pub fn lookup_class_root_viewport_override(
         "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055" => {
             Some(("0 0 1162.390625 814", "1162.39"))
         }
+        "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033" => {
+            Some(("0 0 205.796875 234", "205.797"))
+        }
+        "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classlabel_if_class_has_already_been_defined_ea_038" => {
+            Some(("0 0 191.46875 234", "191.469"))
+        }
         "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_full_class_diagram_using_elk_057" => {
             Some(("4 4 1330.953125 797.5", "1330.95"))
+        }
+        "upstream_cypress_classdiagram_spec_should_handle_an_empty_class_body_with_empty_braces_029" => {
+            Some(("0 0 200.828125 187", "200.828"))
         }
         "upstream_cypress_classdiagram_spec_should_handle_newline_title_in_namespace_021" => {
             Some(("-8 0 245.28125 422", "245.281"))
@@ -127,6 +148,9 @@ pub fn lookup_class_root_viewport_override(
         }
         "upstream_cypress_classdiagram_v2_spec_4_should_render_a_simple_class_diagram_with_comments_006" => {
             Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_should_render_a_simple_class_diagram_with_no_members_032" => {
+            Some(("0 0 95.5625 100", "95.5625"))
         }
         "upstream_cypress_classdiagram_v2_spec_9_should_render_a_simple_class_diagram_with_clickable_link_011" => {
             Some(("0 0 600.828125 342", "600.828"))

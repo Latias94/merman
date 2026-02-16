@@ -14,7 +14,20 @@ Scope: Mermaid tag `@11.12.2`.
 These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
 are parity-gated against upstream SVG baselines:
 
+- mmdr test fixture (basic): `fixtures/sequence/mmdr_tests_sequence_sequence_basic.mmd`
 - mmdr test fixture (frames): `fixtures/sequence/mmdr_tests_sequence_sequence_frames.mmd`
+- mmdr docs comparison sources:
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_collab.mmd`
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_loops.mmd`
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_notes.mmd`
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_autonumber.mmd`
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_oauth.mmd`
+  - `fixtures/sequence/mmdr_docs_comparison_sources_sequence_microservice.mmd`
+- mmdr bench fixtures:
+  - `fixtures/sequence/mmdr_benches_fixtures_sequence.mmd`
+  - `fixtures/sequence/mmdr_benches_fixtures_sequence_medium.mmd`
+  - `fixtures/sequence/mmdr_benches_fixtures_expanded_sequence_long_labels.mmd`
+  - `fixtures/sequence/mmdr_benches_fixtures_expanded_sequence_frames_notes.mmd`
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 

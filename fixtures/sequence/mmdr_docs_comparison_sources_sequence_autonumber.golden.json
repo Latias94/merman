@@ -1,0 +1,127 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "FE",
+      "BE",
+      "DB"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "FE": {
+        "name": "FE",
+        "description": "Frontend",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "BE": {
+        "name": "BE",
+        "description": "Backend",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "Database",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "U",
+        "to": "FE",
+        "message": "Click Submit",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "FE",
+        "to": "BE",
+        "message": "POST /api/data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "BE",
+        "to": "DB",
+        "message": "INSERT INTO table",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "DB",
+        "to": "BE",
+        "message": "OK",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "BE",
+        "to": "FE",
+        "message": "201 Created",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "FE",
+        "to": "U",
+        "message": "Show success",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

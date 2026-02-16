@@ -1,0 +1,30 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/benches/fixtures/expanded/sequence_frames_notes.mmd
+  autonumber
+  participant UI
+  participant API
+  participant Auth
+  participant DB
+  participant Queue
+  participant Worker
+
+  Note over UI,API: user opens dashboard
+  UI->>API: GET /v1/items
+  API->>Auth: validate token
+  alt Auth ok
+    Auth-->>API: ok
+    API->>DB: SELECT items
+    DB-->>API: rows
+    API-->>UI: 200 payload
+  else Auth fail
+    Auth-->>API: denied
+    API-->>UI: 401 unauthorized
+  end
+
+  par Async write
+    API->>Queue: enqueue audit job
+    Worker-->>Queue: dequeue job
+    Worker->>DB: INSERT audit
+  and Cache
+    API->>DB: update cache summary
+  end

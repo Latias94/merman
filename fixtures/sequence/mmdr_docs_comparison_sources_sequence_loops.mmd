@@ -1,0 +1,21 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_loops.mmd
+  participant C as Client
+  participant S as Server
+  participant DB
+
+  C->>S: Connect
+  loop Health Check
+    S->>DB: Ping
+    DB-->>S: Pong
+  end
+  opt Has Cache
+    S->>C: Cached Response
+  end
+  par Task A
+    S->>DB: Query A
+  and Task B
+    S->>DB: Query B
+  end
+  DB-->>S: Results
+  S-->>C: Response
