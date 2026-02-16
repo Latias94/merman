@@ -638,6 +638,7 @@ pub fn layout_requirement_diagram(
             is_cluster: false,
             label_width: None,
             label_height: None,
+            class_row_metrics: None,
         });
     }
 

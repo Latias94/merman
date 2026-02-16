@@ -1,6 +1,7 @@
 use crate::entities::decode_entities_minimal;
 use crate::model::{
-    Bounds, ClassDiagramV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
+    LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -9,6 +10,7 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
@@ -509,7 +511,11 @@ fn terminal_path_for_edge(
     out
 }
 
-fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
+fn layout_prepared(
+    prepared: &mut PreparedGraph,
+    class_row_metrics_by_id: &HashMap<String, Arc<ClassNodeRowMetrics>>,
+    node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
+) -> Result<(LayoutFragments, Rect)> {
     let mut fragments = LayoutFragments {
         nodes: IndexMap::new(),
         edges: Vec::new(),
@@ -519,7 +525,8 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
     let mut extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)> = BTreeMap::new();
     for id in extracted_ids {
         let sub = prepared.extracted.get_mut(&id).expect("exists");
-        let (sub_frag, sub_bounds) = layout_prepared(sub)?;
+        let (sub_frag, sub_bounds) =
+            layout_prepared(sub, class_row_metrics_by_id, node_label_metrics_by_id)?;
 
         // Mermaid sizes extracted cluster placeholders using the rendered SVG bbox of the
         // recursively rendered cluster (`updateNodeBounds`). That bbox includes Dagre's implicit
@@ -569,6 +576,11 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         }
         let is_cluster =
             !prepared.graph.children(&id).is_empty() || prepared.extracted.contains_key(&id);
+        let (label_width, label_height) = node_label_metrics_by_id
+            .get(id.as_str())
+            .copied()
+            .map(|(w, h)| (Some(w), Some(h)))
+            .unwrap_or((None, None));
         fragments.nodes.insert(
             id.clone(),
             LayoutNode {
@@ -578,8 +590,9 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
                 width: n.width,
                 height: n.height,
                 is_cluster,
-                label_width: None,
-                label_height: None,
+                label_width,
+                label_height,
+                class_row_metrics: class_row_metrics_by_id.get(id.as_str()).cloned(),
             },
         );
     }
@@ -729,7 +742,8 @@ fn class_box_dimensions(
     wrap_mode: WrapMode,
     padding: f64,
     hide_empty_members_box: bool,
-) -> (f64, f64) {
+    capture_row_metrics: bool,
+) -> (f64, f64, Option<ClassNodeRowMetrics>) {
     // Mermaid class nodes are sized by rendering the label groups (`textHelper(...)`) and taking
     // the resulting SVG bbox (`getBBox()`), then expanding by class padding (see upstream:
     // `rendering-elements/shapes/classBox.ts` + `diagrams/class/shapeUtil.ts`).
@@ -789,6 +803,8 @@ fn class_box_dimensions(
 
     // Members group.
     let mut members_rect: Option<Rect> = None;
+    let mut members_metrics_out: Option<Vec<crate::text::TextMetrics>> =
+        capture_row_metrics.then(|| Vec::with_capacity(node.members.len()));
     {
         let mut y_offset = 0.0;
         for m in &node.members {
@@ -797,6 +813,9 @@ fn class_box_dimensions(
                 t = t.trim_start_matches('\\').to_string();
             }
             let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            if let Some(out) = members_metrics_out.as_mut() {
+                out.push(metrics);
+            }
             if let Some(r) = label_rect(metrics, y_offset) {
                 if let Some(ref mut cur) = members_rect {
                     cur.union(r);
@@ -815,6 +834,8 @@ fn class_box_dimensions(
 
     // Methods group.
     let mut methods_rect: Option<Rect> = None;
+    let mut methods_metrics_out: Option<Vec<crate::text::TextMetrics>> =
+        capture_row_metrics.then(|| Vec::with_capacity(node.methods.len()));
     {
         let mut y_offset = 0.0;
         for m in &node.methods {
@@ -823,6 +844,9 @@ fn class_box_dimensions(
                 t = t.trim_start_matches('\\').to_string();
             }
             let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            if let Some(out) = methods_metrics_out.as_mut() {
+                out.push(metrics);
+            }
             if let Some(r) = label_rect(metrics, y_offset) {
                 if let Some(ref mut cur) = methods_rect {
                     cur.union(r);
@@ -912,7 +936,12 @@ fn class_box_dimensions(
         rect_w = rect_w.max(500.0);
     }
 
-    (rect_w.max(1.0), rect_h.max(1.0))
+    let row_metrics = capture_row_metrics.then(|| ClassNodeRowMetrics {
+        members: members_metrics_out.unwrap_or_default(),
+        methods: methods_metrics_out.unwrap_or_default(),
+    });
+
+    (rect_w.max(1.0), rect_h.max(1.0), row_metrics)
 }
 
 fn note_dimensions(
@@ -921,11 +950,11 @@ fn note_dimensions(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     padding: f64,
-) -> (f64, f64) {
+) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
     let label = decode_entities_minimal(text);
     let m = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
-    (m.width + p, m.height + p)
+    (m.width + p, m.height + p, m)
 }
 
 fn label_metrics(
@@ -997,6 +1026,10 @@ pub fn layout_class_diagram_v2_typed(
         config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
 
     let text_style = class_text_style(effective_config);
+    let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
+    let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
+    let mut class_row_metrics_by_id: HashMap<String, Arc<ClassNodeRowMetrics>> = HashMap::new();
+    let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -1034,14 +1067,18 @@ pub fn layout_class_diagram_v2_typed(
     }
 
     for c in model.classes.values() {
-        let (w, h) = class_box_dimensions(
+        let (w, h, row_metrics) = class_box_dimensions(
             c,
             measurer,
             &text_style,
             wrap_mode_node,
             class_padding,
             hide_empty_members_box,
+            capture_row_metrics,
         );
+        if let Some(rm) = row_metrics {
+            class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
+        }
         g.set_node(
             c.id.clone(),
             NodeLabel {
@@ -1056,6 +1093,9 @@ pub fn layout_class_diagram_v2_typed(
     for iface in &model.interfaces {
         let label = decode_entities_minimal(iface.label.trim());
         let (tw, th) = label_metrics(&label, measurer, &text_style, wrap_mode_label);
+        if capture_label_metrics {
+            node_label_metrics_by_id.insert(iface.id.clone(), (tw, th));
+        }
         g.set_node(
             iface.id.clone(),
             NodeLabel {
@@ -1067,13 +1107,19 @@ pub fn layout_class_diagram_v2_typed(
     }
 
     for n in &model.notes {
-        let (w, h) = note_dimensions(
+        let (w, h, metrics) = note_dimensions(
             &n.text,
             measurer,
             &text_style,
             wrap_mode_label,
             namespace_padding,
         );
+        if capture_label_metrics {
+            node_label_metrics_by_id.insert(
+                n.id.clone(),
+                (metrics.width.max(0.0), metrics.height.max(0.0)),
+            );
+        }
         g.set_node(
             n.id.clone(),
             NodeLabel {
@@ -1189,7 +1235,11 @@ pub fn layout_class_diagram_v2_typed(
 
     let prefer_dagreish_disconnected = !model.interfaces.is_empty();
     let mut prepared = prepare_graph(g, 0, prefer_dagreish_disconnected)?;
-    let (mut fragments, _bounds) = layout_prepared(&mut prepared)?;
+    let (mut fragments, _bounds) = layout_prepared(
+        &mut prepared,
+        &class_row_metrics_by_id,
+        &node_label_metrics_by_id,
+    )?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in fragments.nodes.values() {

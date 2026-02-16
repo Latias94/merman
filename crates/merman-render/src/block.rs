@@ -356,6 +356,7 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
             is_cluster: false,
             label_width: None,
             label_height: None,
+            class_row_metrics: None,
         });
     }
     for child in &block.children {

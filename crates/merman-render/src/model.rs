@@ -63,6 +63,12 @@ pub struct LayoutLabel {
     pub height: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClassNodeRowMetrics {
+    pub members: Vec<crate::text::TextMetrics>,
+    pub methods: Vec<crate::text::TextMetrics>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutNode {
     pub id: String,
@@ -75,6 +81,8 @@ pub struct LayoutNode {
     pub label_width: Option<f64>,
     #[serde(skip)]
     pub label_height: Option<f64>,
+    #[serde(skip)]
+    pub class_row_metrics: Option<std::sync::Arc<ClassNodeRowMetrics>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

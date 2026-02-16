@@ -1359,10 +1359,16 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
             let note_text = decode_entities_minimal(note.text.trim());
-            let metrics =
-                measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
-            let fo_w = metrics.width.max(1.0);
-            let fo_h = metrics.height.max(line_height).max(1.0);
+            let (fo_w_raw, fo_h_raw) = match (n.label_width, n.label_height) {
+                (Some(w), Some(h)) => (w, h),
+                _ => {
+                    let metrics =
+                        measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
+                    (metrics.width, metrics.height)
+                }
+            };
+            let fo_w = fo_w_raw.max(1.0);
+            let fo_h = fo_h_raw.max(line_height).max(1.0);
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
             let left = -w / 2.0;
@@ -1437,10 +1443,20 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
         if let Some(iface) = iface_by_id.get(n.id.as_str()).copied() {
             let label_text = decode_entities_minimal(iface.label.trim());
-            let metrics =
-                measurer.measure_wrapped(&label_text, &text_style, None, WrapMode::HtmlLike);
-            let fo_w = metrics.width.max(1.0);
-            let fo_h = metrics.height.max(line_height).max(1.0);
+            let (fo_w_raw, fo_h_raw) = match (n.label_width, n.label_height) {
+                (Some(w), Some(h)) => (w, h),
+                _ => {
+                    let metrics = measurer.measure_wrapped(
+                        &label_text,
+                        &text_style,
+                        None,
+                        WrapMode::HtmlLike,
+                    );
+                    (metrics.width, metrics.height)
+                }
+            };
+            let fo_w = fo_w_raw.max(1.0);
+            let fo_h = fo_h_raw.max(line_height).max(1.0);
 
             let w = fo_w;
             let h = fo_h;
@@ -1716,7 +1732,13 @@ pub(super) fn render_class_diagram_v2_svg_model(
             );
             for (idx, m) in node.members.iter().enumerate() {
                 let t = decode_entities_minimal(m.display_text.trim());
-                let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+                let mm = n
+                    .class_row_metrics
+                    .as_ref()
+                    .and_then(|m| m.members.get(idx).copied())
+                    .unwrap_or_else(|| {
+                        measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)
+                    });
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
@@ -1754,7 +1776,13 @@ pub(super) fn render_class_diagram_v2_svg_model(
             );
             for (idx, m) in node.methods.iter().enumerate() {
                 let t = decode_entities_minimal(m.display_text.trim());
-                let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+                let mm = n
+                    .class_row_metrics
+                    .as_ref()
+                    .and_then(|m| m.methods.get(idx).copied())
+                    .unwrap_or_else(|| {
+                        measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)
+                    });
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,

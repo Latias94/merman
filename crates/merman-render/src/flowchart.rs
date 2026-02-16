@@ -2611,6 +2611,7 @@ fn layout_flowchart_v2_with_model(
             is_cluster: false,
             label_width: leaf_label_metrics_by_id.get(&n.id).map(|v| v.0),
             label_height: leaf_label_metrics_by_id.get(&n.id).map(|v| v.1),
+            class_row_metrics: None,
         });
     }
     for id in &empty_subgraph_ids {
@@ -2635,6 +2636,7 @@ fn layout_flowchart_v2_with_model(
             is_cluster: false,
             label_width: leaf_label_metrics_by_id.get(id).map(|v| v.0),
             label_height: leaf_label_metrics_by_id.get(id).map(|v| v.1),
+            class_row_metrics: None,
         });
     }
     for id in &self_loop_label_node_ids {
@@ -2659,6 +2661,7 @@ fn layout_flowchart_v2_with_model(
             is_cluster: false,
             label_width: None,
             label_height: None,
+            class_row_metrics: None,
         });
     }
 
@@ -3000,6 +3003,7 @@ fn layout_flowchart_v2_with_model(
             is_cluster: true,
             label_width: None,
             label_height: None,
+            class_row_metrics: None,
         });
     }
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
