@@ -171,6 +171,10 @@ pub fn layout_sequence_diagram(
     let wrap_padding = config_f64(seq_cfg, &["wrapPadding"]).unwrap_or(10.0);
     let box_text_margin = config_f64(seq_cfg, &["boxTextMargin"]).unwrap_or(5.0);
     let label_box_height = config_f64(seq_cfg, &["labelBoxHeight"]).unwrap_or(20.0);
+    let mirror_actors = seq_cfg
+        .get("mirrorActors")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     // Mermaid's `sequenceRenderer.setConf(...)` overrides per-sequence font settings whenever the
     // global `fontFamily` / `fontSize` / `fontWeight` are present (defaults are always present).
@@ -1655,12 +1659,13 @@ pub fn layout_sequence_diagram(
             .get(id)
             .copied()
             .unwrap_or(bottom_box_top_y);
+        let bottom_visual_h = if mirror_actors { visual_h } else { 0.0 };
         nodes.push(LayoutNode {
             id: format!("actor-bottom-{id}"),
             x: cx,
-            y: bottom_top_y + visual_h / 2.0,
+            y: bottom_top_y + bottom_visual_h / 2.0,
             width: w,
-            height: visual_h,
+            height: bottom_visual_h,
             is_cluster: false,
         });
 
