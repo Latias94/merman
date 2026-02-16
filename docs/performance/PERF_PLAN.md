@@ -39,6 +39,12 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
       repulsion loop.
     - Local A/B (`layout/mindmap_medium`, `cargo bench` exact, 50 samples / 2s warmup / 3s measurement):
       - `118.43µs` → `112.76µs` (~`-4.8%`)
+  - `perf(mindmap): avoid HashMap in edge build` (`17a18aa`)
+    - Builds mindmap `LayoutEdge` endpoints via `id -> index -> nodes[idx].(x,y)` instead of
+      allocating a `HashMap<&str, (f64,f64)>` each layout call.
+    - Spotcheck (`mindmap_medium`):
+      - Report: `target/bench/stage_spotcheck.mindmap_medium.after_edge_build_ix_2026-02-16.md` (local, not committed)
+      - Ratio (`merman / mmdr`): `layout 1.66x` (from `2.23x` in the prior rerun)
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`

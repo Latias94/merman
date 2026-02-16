@@ -56,6 +56,12 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
   - Local A/B (`layout/mindmap_medium`, `cargo bench` exact, 50 samples / 2s warmup / 3s measurement):
     - `118.43µs` → `112.76µs` (~`-4.8%`)
 
+- `17a18aa` — `perf(mindmap): avoid HashMap in edge build`
+  - Builds mindmap `LayoutEdge` endpoints via `id -> index -> nodes[idx].(x,y)` instead of allocating
+    a `HashMap<&str, (f64,f64)>` each layout call.
+  - Spotcheck (`mindmap_medium`): `target/bench/stage_spotcheck.mindmap_medium.after_edge_build_ix_2026-02-16.md`
+    shows `layout` ratio improved to `~1.66x`.
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
