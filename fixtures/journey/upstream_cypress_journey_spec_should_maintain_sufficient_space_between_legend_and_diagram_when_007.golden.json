@@ -1,0 +1,95 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": " Web hook life cycle",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Darkoob",
+      "External Service",
+      "Darkoob"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          "Darkoob user"
+        ],
+        "section": "Darkoob",
+        "type": "Darkoob",
+        "task": "        Make preBuilt"
+      },
+      {
+        "score": 5,
+        "people": [
+          "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained"
+        ],
+        "section": "Darkoob",
+        "type": "Darkoob",
+        "task": "        register slug "
+      },
+      {
+        "score": 5,
+        "people": [
+          "Darkoob user"
+        ],
+        "section": "Darkoob",
+        "type": "Darkoob",
+        "task": "        Map slug to a Prebuilt Job"
+      },
+      {
+        "score": 5,
+        "people": [
+          "admin Exjjjnjjjj qwerty"
+        ],
+        "section": "External Service",
+        "type": "External Service",
+        "task": "        set Darkoob slug as hook for an Event "
+      },
+      {
+        "score": 5,
+        "people": [
+          "External Service"
+        ],
+        "section": "External Service",
+        "type": "External Service",
+        "task": "        listen to the events "
+      },
+      {
+        "score": 5,
+        "people": [
+          "External Service"
+        ],
+        "section": "External Service",
+        "type": "External Service",
+        "task": "        call darkoob endpoint "
+      },
+      {
+        "score": 5,
+        "people": [
+          "DarkoobAPI"
+        ],
+        "section": "Darkoob",
+        "type": "Darkoob",
+        "task": "        check for inputs "
+      },
+      {
+        "score": 5,
+        "people": [
+          "DarkoobAPI"
+        ],
+        "section": "Darkoob",
+        "type": "Darkoob",
+        "task": "        run the prebuilt job "
+      }
+    ],
+    "actors": [
+      "Darkoob user",
+      "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained",
+      "DarkoobAPI",
+      "External Service",
+      "admin Exjjjnjjjj qwerty"
+    ]
+  }
+}

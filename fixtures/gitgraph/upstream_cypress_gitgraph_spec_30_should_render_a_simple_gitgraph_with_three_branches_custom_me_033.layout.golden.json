@@ -1,0 +1,278 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -18.0,
+        "min_y": 22.0,
+        "max_x": 252.641,
+        "max_y": 538.0
+      },
+      "direction": "TB",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 530.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "nice_feature",
+          "index": 1.0,
+          "pos": 105.359,
+          "bbox_width": 78.563,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "very_nice_feature",
+          "index": 2.0,
+          "pos": 234.641,
+          "bbox_width": 113.281,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "1",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 30.0,
+          "pos_with_offset": 40.0,
+          "x": 0.0,
+          "y": 40.0
+        },
+        {
+          "id": "2",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "1"
+          ],
+          "branch": "main",
+          "pos": 80.0,
+          "pos_with_offset": 90.0,
+          "x": 0.0,
+          "y": 90.0
+        },
+        {
+          "id": "3",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "2"
+          ],
+          "branch": "nice_feature",
+          "pos": 130.0,
+          "pos_with_offset": 140.0,
+          "x": 105.359,
+          "y": 140.0
+        },
+        {
+          "id": "4",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "2"
+          ],
+          "branch": "main",
+          "pos": 180.0,
+          "pos_with_offset": 190.0,
+          "x": 0.0,
+          "y": 190.0
+        },
+        {
+          "id": "5",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "3"
+          ],
+          "branch": "very_nice_feature",
+          "pos": 230.0,
+          "pos_with_offset": 240.0,
+          "x": 234.641,
+          "y": 240.0
+        },
+        {
+          "id": "6",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "4"
+          ],
+          "branch": "main",
+          "pos": 280.0,
+          "pos_with_offset": 290.0,
+          "x": 0.0,
+          "y": 290.0
+        },
+        {
+          "id": "7",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "3"
+          ],
+          "branch": "nice_feature",
+          "pos": 330.0,
+          "pos_with_offset": 340.0,
+          "x": 105.359,
+          "y": 340.0
+        },
+        {
+          "id": "customID",
+          "message": "merged branch nice_feature into main",
+          "seq": 7.0,
+          "commit_type": 3.0,
+          "custom_type": 1.0,
+          "custom_id": true,
+          "tags": [
+            "customTag"
+          ],
+          "parents": [
+            "6",
+            "7"
+          ],
+          "branch": "main",
+          "pos": 380.0,
+          "pos_with_offset": 390.0,
+          "x": 0.0,
+          "y": 390.0
+        },
+        {
+          "id": "8",
+          "message": "",
+          "seq": 8.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "5"
+          ],
+          "branch": "very_nice_feature",
+          "pos": 430.0,
+          "pos_with_offset": 440.0,
+          "x": 234.641,
+          "y": 440.0
+        },
+        {
+          "id": "9",
+          "message": "",
+          "seq": 9.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "customID"
+          ],
+          "branch": "main",
+          "pos": 480.0,
+          "pos_with_offset": 490.0,
+          "x": 0.0,
+          "y": 490.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "1",
+          "to": "2",
+          "class_index": 0.0,
+          "d": "M 0 40 L 0 90"
+        },
+        {
+          "from": "2",
+          "to": "3",
+          "class_index": 1.0,
+          "d": "M 0 90 L 85.359375 90 A 20 20, 0, 0, 1, 105.359375 110 L 105.359375 140"
+        },
+        {
+          "from": "2",
+          "to": "4",
+          "class_index": 0.0,
+          "d": "M 0 90 L 0 190"
+        },
+        {
+          "from": "3",
+          "to": "5",
+          "class_index": 2.0,
+          "d": "M 105.359375 140 L 214.640625 140 A 20 20, 0, 0, 1, 234.640625 160 L 234.640625 240"
+        },
+        {
+          "from": "4",
+          "to": "6",
+          "class_index": 0.0,
+          "d": "M 0 190 L 0 290"
+        },
+        {
+          "from": "3",
+          "to": "7",
+          "class_index": 1.0,
+          "d": "M 105.359375 140 L 105.359375 340"
+        },
+        {
+          "from": "6",
+          "to": "customID",
+          "class_index": 0.0,
+          "d": "M 0 290 L 0 390"
+        },
+        {
+          "from": "7",
+          "to": "customID",
+          "class_index": 1.0,
+          "d": "M 105.359375 340 L 105.359375 370 A 20 20, 0, 0, 1, 85.359375 390 L 0 390"
+        },
+        {
+          "from": "5",
+          "to": "8",
+          "class_index": 2.0,
+          "d": "M 234.640625 240 L 234.640625 440"
+        },
+        {
+          "from": "customID",
+          "to": "9",
+          "class_index": 0.0,
+          "d": "M 0 390 L 0 490"
+        }
+      ]
+    }
+  }
+}

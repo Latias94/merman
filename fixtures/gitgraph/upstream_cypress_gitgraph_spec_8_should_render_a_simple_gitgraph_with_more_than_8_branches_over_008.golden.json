@@ -1,0 +1,54 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "1",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "branch1"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "branch1"
+      },
+      {
+        "name": "branch2"
+      },
+      {
+        "name": "branch3"
+      },
+      {
+        "name": "branch4"
+      },
+      {
+        "name": "branch5"
+      },
+      {
+        "name": "branch6"
+      },
+      {
+        "name": "branch7"
+      },
+      {
+        "name": "branch8"
+      },
+      {
+        "name": "branch9"
+      }
+    ],
+    "currentBranch": "branch1",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

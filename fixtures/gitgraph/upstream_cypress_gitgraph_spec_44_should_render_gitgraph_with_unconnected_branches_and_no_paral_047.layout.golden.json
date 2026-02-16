@@ -1,0 +1,160 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -91.719,
+        "min_y": -18.0,
+        "max_x": 308.0,
+        "max_y": 288.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 300.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "dev",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 20.641,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "v2",
+          "index": 2.0,
+          "pos": 180.0,
+          "bbox_width": 15.844,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "feat",
+          "index": 3.0,
+          "pos": 270.0,
+          "bbox_width": 27.516,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "1-abcdefg",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "feat",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 270.0
+        },
+        {
+          "id": "2-abcdefg",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "1-abcdefg"
+          ],
+          "branch": "feat",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 270.0
+        },
+        {
+          "id": "3-abcdefg",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        },
+        {
+          "id": "4-abcdefg",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "dev",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 90.0
+        },
+        {
+          "id": "5-abcdefg",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "v2",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 180.0
+        },
+        {
+          "id": "6-abcdefg",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "3-abcdefg"
+          ],
+          "branch": "main",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "1-abcdefg",
+          "to": "2-abcdefg",
+          "class_index": 3.0,
+          "d": "M 10 270 L 60 270"
+        },
+        {
+          "from": "3-abcdefg",
+          "to": "6-abcdefg",
+          "class_index": 0.0,
+          "d": "M 110 0 L 260 0"
+        }
+      ]
+    }
+  }
+}

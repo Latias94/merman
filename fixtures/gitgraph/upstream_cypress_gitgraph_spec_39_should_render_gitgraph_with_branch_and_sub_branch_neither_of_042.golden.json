@@ -1,0 +1,103 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "1-abcdefg",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "2-abcdefg",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-abcdefg"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "3-abcdefg",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-abcdefg"
+        ],
+        "branch": "x"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "merged branch x into main",
+        "seq": 3,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "2-abcdefg",
+          "3-abcdefg"
+        ],
+        "branch": "main",
+        "customId": false
+      },
+      {
+        "id": "4-abcdefg",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-abcdefg"
+        ],
+        "branch": "x"
+      },
+      {
+        "id": "5-abcdefg",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-abcdefg"
+        ],
+        "branch": "y"
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "merged branch y into x",
+        "seq": 6,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "4-abcdefg",
+          "5-abcdefg"
+        ],
+        "branch": "x",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "x"
+      },
+      {
+        "name": "y"
+      }
+    ],
+    "currentBranch": "x",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

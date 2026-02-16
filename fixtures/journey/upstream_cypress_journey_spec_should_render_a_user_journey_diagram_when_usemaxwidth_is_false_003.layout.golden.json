@@ -1,0 +1,136 @@
+{
+  "diagramType": "journey",
+  "layout": {
+    "JourneyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -25.0,
+        "max_x": 700.0,
+        "max_y": 515.0
+      },
+      "left_margin": 150.0,
+      "max_actor_label_width": 0.0,
+      "width": 700.0,
+      "height": 470.0,
+      "svg_height": 565.0,
+      "title": "E-Commerce",
+      "title_x": 150.0,
+      "title_y": 25.0,
+      "actor_legend": [
+        {
+          "actor": "Me",
+          "pos": 0.0,
+          "color": "#8FBC8F",
+          "circle_cx": 20.0,
+          "circle_cy": 60.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "Me",
+              "x": 40.0,
+              "y": 67.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        }
+      ],
+      "sections": [
+        {
+          "section": "Order from website",
+          "num": 0.0,
+          "x": 150.0,
+          "y": 50.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "task_count": 1.0
+        },
+        {
+          "section": "Checkout from website",
+          "num": 1.0,
+          "x": 350.0,
+          "y": 50.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "task_count": 1.0
+        }
+      ],
+      "tasks": [
+        {
+          "index": 0.0,
+          "section": "Order from website",
+          "task": "  Add to cart",
+          "score": 5.0,
+          "x": 150.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            "Me"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Me",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 164.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task0",
+          "line_x1": 225.0,
+          "line_y1": 110.0,
+          "line_x2": 225.0,
+          "line_y2": 450.0,
+          "face_cx": 225.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 1.0,
+          "section": "Checkout from website",
+          "task": "  Add payment details",
+          "score": 5.0,
+          "x": 350.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "num": 1.0,
+          "people": [
+            "Me"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Me",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 364.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task1",
+          "line_x1": 425.0,
+          "line_y1": 110.0,
+          "line_x2": 425.0,
+          "line_y2": 450.0,
+          "face_cx": 425.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        }
+      ],
+      "activity_line": {
+        "x1": 150.0,
+        "y1": 200.0,
+        "x2": 546.0,
+        "y2": 200.0
+      }
+    }
+  }
+}
