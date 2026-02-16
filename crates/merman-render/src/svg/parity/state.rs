@@ -4517,6 +4517,7 @@ fn roughjs_paths_for_svg_path(
     };
 
     let path_segments: Vec<PathSegment> = PathParser::from(svg_path_data).flatten().collect();
+    let normalized_segments = roughr::points_on_path::normalized_segments(&path_segments);
 
     // Use a single mutable `Options` to match Rough.js behavior: the PRNG state (`randomizer`)
     // lives on the options object and advances across drawing phases.
@@ -4537,14 +4538,13 @@ fn roughjs_paths_for_svg_path(
         .ok()?;
 
     let base_roughness = options.roughness.unwrap_or(1.0);
-    let distance = (1.0 + base_roughness as f64) / 2.0;
-    let sets = roughr::points_on_path::points_on_segments::<f64>(
-        path_segments.clone(),
-        Some(1.0),
-        Some(distance),
-    );
+    let move_to_count = normalized_segments
+        .iter()
+        .filter(|seg| matches!(seg, PathSegment::MoveTo { abs: true, .. }))
+        .count();
+    let single_set = move_to_count <= 1;
 
-    let fill_opset = if sets.len() == 1 {
+    let fill_opset = if single_set {
         // Rough.js uses a different setting profile for solid fill on paths.
         options.disable_multi_stroke = Some(true);
         options.disable_multi_stroke_fill = Some(true);
@@ -4554,7 +4554,8 @@ fn roughjs_paths_for_svg_path(
             0.0
         });
 
-        let mut opset = roughr::renderer::svg_segments::<f64>(path_segments.clone(), &mut options);
+        let mut opset =
+            roughr::renderer::svg_normalized_segments::<f64>(&normalized_segments, &mut options);
         let mut idx = 0usize;
         opset.ops.retain(|op| {
             let keep = idx == 0 || op.op != roughr::core::OpType::Move;
@@ -4563,6 +4564,12 @@ fn roughjs_paths_for_svg_path(
         });
         opset
     } else {
+        let distance = (1.0 + base_roughness as f64) / 2.0;
+        let sets = roughr::points_on_path::points_on_normalized_segments::<f64>(
+            &normalized_segments,
+            Some(1.0),
+            Some(distance),
+        );
         options.disable_multi_stroke = Some(true);
         options.disable_multi_stroke_fill = Some(true);
         roughr::renderer::solid_fill_polygon(&sets, &mut options)
@@ -4572,7 +4579,8 @@ fn roughjs_paths_for_svg_path(
     options.disable_multi_stroke = Some(false);
     options.disable_multi_stroke_fill = Some(false);
     options.roughness = Some(base_roughness);
-    let stroke_opset = roughr::renderer::svg_segments::<f64>(path_segments, &mut options);
+    let stroke_opset =
+        roughr::renderer::svg_normalized_segments::<f64>(&normalized_segments, &mut options);
 
     Some((
         roughjs_ops_to_svg_path_d(&fill_opset),

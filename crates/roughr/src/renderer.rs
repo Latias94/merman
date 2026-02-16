@@ -1066,6 +1066,17 @@ where
     opset_from_path(o, ops, first, current, normalized_segments)
 }
 
+pub fn svg_normalized_segments<F>(normalized_segments: &[PathSegment], o: &mut Options) -> OpSet<F>
+where
+    F: Float + FromPrimitive + Trig,
+{
+    let ops = vec![];
+    let first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+
+    opset_from_path(o, ops, first, current, normalized_segments.iter().cloned())
+}
+
 fn opset_from_path<F>(
     o: &mut Options,
     mut ops: Vec<Op<F>>,

@@ -37,6 +37,21 @@ where
     generate_points(tolerance, distance, normalized_segments)
 }
 
+pub fn normalized_segments(path_segments: &[PathSegment]) -> Vec<PathSegment> {
+    normalize(absolutize(path_segments.iter())).collect()
+}
+
+pub fn points_on_normalized_segments<F>(
+    normalized_segments: &[PathSegment],
+    tolerance: Option<F>,
+    distance: Option<F>,
+) -> Vec<Vec<Point2D<F>>>
+where
+    F: FromPrimitive + Trig + Float + MulAssign + Display,
+{
+    generate_points(tolerance, distance, normalized_segments.iter().cloned())
+}
+
 fn generate_points<F>(
     tolerance: Option<F>,
     distance: Option<F>,
