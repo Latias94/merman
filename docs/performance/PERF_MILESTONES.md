@@ -3,37 +3,37 @@
 This document tracks the performance plan for `merman` with concrete, measurable milestones.
 It is intentionally fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
-## Current Status (2026-02-15)
+## Current Status (2026-02-16)
 
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
 
 - `render` is still behind on several diagram types (flowchart/class/mindmap/architecture),
-- `layout` is the dominant gap for `mindmap` and `architecture`,
-- `sequence_tiny` still pays a large parse fixed-cost.
+- `parse` fixed-cost dominates `*_tiny` canaries (state/sequence),
+- `layout` is still a dominant ratio gap for `architecture` and `mindmap` (absolute times are small).
 
-Latest local spotcheck (post-merge local `main`, 2026-02-15):
+Latest local spotcheck (2026-02-16):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_tiny,mindmap_medium,architecture_medium,class_tiny --sample-size 20 --warm-up 2 --measurement 3`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,architecture_medium,mindmap_medium,flowchart_tiny,state_tiny,sequence_tiny --sample-size 20 --warm-up 1 --measurement 1`
+- Report:
+  - `docs/performance/spotcheck_2026-02-16.md`
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.45x`
-  - `layout`: `1.41x`
-  - `render`: `1.76x`
-  - `end_to_end`: `1.38x`
+  - `parse`: `1.81x`
+  - `layout`: `1.15x`
+  - `render`: `2.10x`
+  - `end_to_end`: `1.21x`
 - Notable outliers (ratios):
-  - `layout/architecture_medium`: `5.42x` (fixed-cost + string-key maps dominate)
-  - `layout/mindmap_medium`: `2.59x` (COSE port still expensive)
-  - `parse/sequence_tiny`: `3.69x` → `~2.18x` (tiny parse fixed overhead; improved after consuming model build + cheaper wrap parsing)
-  - `render/class_medium`: `2.38x` and `render/class_tiny`: `2.78x` (SVG emission fixed overhead)
-  - `render/flowchart_medium`: `1.21x` (still behind, but no longer the dominant overall outlier)
+  - `render/class_medium`: `3.57x` (SVG emission fixed overhead)
+  - `render/flowchart_medium`: `2.20x` (SVG emission fixed overhead)
+  - `parse/state_tiny`: `4.04x` (tiny parse fixed overhead)
+  - `parse/sequence_tiny`: `3.79x` (tiny parse fixed overhead)
+  - `layout/architecture_medium`: `2.91x` (fixed-cost; absolute time is µs-scale)
+  - `layout/mindmap_medium`: `2.42x` (COSE still expensive)
 - Notes:
-  - Recent class render win: switch hot-path `escape_attr(...)` / `escape_xml(...)` allocations to
-    `*_display(...)` wrappers.
-  - Recent sequence parse win (2026-02-15): `sequence_tiny` standalone spotcheck now reports
-    `parse ~5.2µs` vs `mmdr ~2.4µs` (ratio `~2.18x`). See
-    `target/bench/stage_spotcheck.2026-02-15-sequence_tiny_after_into_model.md`.
+  - Mindmap layout: we now use an indexed COSE entrypoint (avoid building `BTreeMap<String, Point>`).
+  - Architecture render: we avoid cloning `effective_config` when only the sanitize config is needed.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
@@ -82,16 +82,15 @@ Local re-run notes (same date, after merging local `main` + small renderer refac
 
 Near-term priorities (updated plan):
 
-1. **Architecture layout fixed cost**: cut `layout/architecture_*` without changing output.
-   - Target: `layout/architecture_medium <= 3.0x` and `end_to_end <= 2.0x` in spotchecks.
-2. **Mindmap COSE cost reduction**: bring `layout/mindmap_medium` down with deterministic behavior.
-   - Target: `layout/mindmap_medium <= 2.0x` and proportional `end_to_end` improvement.
-3. **Sequence tiny parse**: reduce `parse/sequence_tiny` fixed overhead.
-   - Target: `parse/sequence_tiny <= 2.5x`, `end_to_end/sequence_tiny <= 1.1x`.
-4. **SVG emission fixed costs**: continue reducing class/flowchart render overhead (allocations + fmt).
-   - Target: `render/class_medium <= 2.0x`, `render/class_tiny <= 2.0x`, `render/flowchart_medium <= 1.3x`.
-5. **Flowchart medium canary (guardrail)**: keep `end_to_end/flowchart_medium` at `~parity` while we
-   optimize other diagram types.
+1. **SVG emission fixed costs**: reduce class/flowchart/architecture render overhead (allocations + fmt).
+   - Target: `render/class_medium <= 2.0x`, `render/flowchart_medium <= 1.5x`, `render/architecture_medium <= 2.0x`.
+2. **Tiny parse fixed cost**: reduce `parse/state_tiny` and `parse/sequence_tiny`.
+   - Target: `parse/state_tiny <= 2.5x`, `parse/sequence_tiny <= 2.5x`.
+3. **Architecture layout fixed cost**: continue cutting `layout/architecture_*` without changing output.
+   - Target: `layout/architecture_medium <= 2.5x` and `end_to_end <= 2.0x` in spotchecks.
+4. **Mindmap layout**: continue reducing COSE cost with deterministic behavior.
+   - Target: `layout/mindmap_medium <= 2.0x`.
+5. **Flowchart medium canary (guardrail)**: keep `end_to_end/flowchart_medium` at `~parity` while we optimize other stages.
 
 Root-cause direction:
 
@@ -211,7 +210,7 @@ Work items:
 
 Acceptance criteria:
 
-- Spotcheck: `render/class_tiny <= 2.0x`, `render/class_medium <= 2.0x`, `render/flowchart_medium <= 1.3x`.
+- Spotcheck: `render/class_tiny <= 2.0x`, `render/class_medium <= 2.0x`, `render/flowchart_medium <= 1.5x`.
 
 ### M7 — Mindmap layout: COSE cost reduction (Planned)
 
@@ -219,6 +218,7 @@ Goal: reduce `layout/mindmap_medium` while keeping deterministic output.
 
 Work items:
 
+- (Done) Use an indexed COSE entrypoint to avoid string-key graph build and `BTreeMap<String, Point>` output.
 - Keep pushing COSE repulsion costs down (grid-based neighbor filtering, stable iteration order).
 - Reduce per-iteration allocations in the spring embedder; reuse scratch buffers.
 
@@ -349,8 +349,8 @@ Work items (expected ROI order):
   (avoid rescanning `label_style` strings per node/edge label).
 - (Done) Reuse flowchart node label metrics computed during layout (avoid re-measuring HTML/markdown
   labels during render).
-- (Planned) Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig`
-  (Arc-backed) through the render API so diagram renderers can read config without deep-cloning.
+- (Done) Avoid cloning `effective_config` JSON in hot render paths where the sanitize config is needed
+  (pass `MermaidConfig` through the render API so diagram renderers can read config without deep-cloning).
 - (Planned) Cache per-diagram derived values that are reused many times (e.g. sanitized labels /
   class names), scoped to the render call to avoid cross-diagram leaks.
 
