@@ -5,6 +5,25 @@
     "nodes": [
       {
         "labelStyle": "",
+        "shape": "choice",
+        "label": "C",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "C",
+        "dir": null,
+        "domId": "state-C-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
         "shape": "stateStart",
         "label": "root_start",
         "cssClasses": "statediagram-state",
@@ -25,13 +44,33 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Start",
+        "label": "Long Name State",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Start",
+        "id": "Long",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-Long-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Reject",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Reject",
+        "dir": null,
+        "domId": "state-Reject-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -43,33 +82,14 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "Review",
+        "shape": "join",
+        "label": "J",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Review",
+        "id": "J",
         "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
+        "domId": "state-J-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -88,7 +108,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -103,7 +123,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "C",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -118,13 +138,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "C",
+        "end": "Long",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "yes",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,13 +154,13 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
+        "start": "C",
+        "end": "Reject",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "approve",
+        "label": "no",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -150,24 +170,8 @@
       },
       {
         "id": "edge3",
-        "start": "Review",
-        "end": "Start",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "revise",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge4",
-        "start": "Done",
-        "end": "root_end",
+        "start": "Long",
+        "end": "J",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -179,27 +183,57 @@
         "thickness": "normal",
         "classes": "transition",
         "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "Reject",
+        "end": "J",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "J",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "done",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "C": {
+        "id": "C",
+        "type": "choice",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "root_start": {
         "id": "root_start",
         "type": "default",
@@ -211,8 +245,21 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "Long": {
+        "id": "Long",
+        "type": "default",
+        "descriptions": [
+          "Long Name State"
+        ],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Reject": {
+        "id": "Reject",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -222,20 +269,9 @@
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Done": {
-        "id": "Done",
-        "type": "default",
+      "J": {
+        "id": "J",
+        "type": "join",
         "descriptions": [],
         "doc": null,
         "note": null,
@@ -259,28 +295,33 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
+        "id2": "C",
         "relationTitle": null
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "C",
+        "id2": "Long",
+        "relationTitle": "yes"
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
+        "id1": "C",
+        "id2": "Reject",
+        "relationTitle": "no"
       },
       {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
+        "id1": "Long",
+        "id2": "J",
+        "relationTitle": null
       },
       {
-        "id1": "Done",
+        "id1": "Reject",
+        "id2": "J",
+        "relationTitle": null
+      },
+      {
+        "id1": "J",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "done"
       }
     ],
     "styleClasses": {}

@@ -1,0 +1,17 @@
+%% source: repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.spec.js (choice/join) + authored stress
+stateDiagram-v2
+state C <<choice>>
+[*] --> C
+
+state "Long Name State" as Long
+state Reject
+
+C --> Long : yes
+C --> Reject : no
+
+state J <<join>>
+Long --> J
+Reject --> J
+
+J --> [*] : done
+

@@ -45,13 +45,13 @@
     "edges": [],
     "other": {},
     "links": {
-      "S1": {
-        "url": "https://example.com",
-        "tooltip": "Go to Example"
-      },
       "S2": {
         "url": "https://example.com",
         "tooltip": ""
+      },
+      "S1": {
+        "url": "https://example.com",
+        "tooltip": "Go to Example"
       }
     },
     "direction": "TB",

@@ -81,6 +81,26 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_unicode_quotes_and_br_in_notes_048" => {
             Some(("0 0 401.328125 596", "401.328"))
         }
+        "stress_state_accdescr_block_and_markdown_labels_049" => {
+            Some(("0 0 659.6762084960938 71", "659.676"))
+        }
+        "stress_state_nested_composite_cross_edges_and_notes_050" => {
+            Some(("0 0 302.2181701660156 805", "302.218"))
+        }
+        "stress_state_multiple_parallel_edges_and_styles_052" => Some((
+            "27.930328369140625 0 261.0259094238281 308.1499938964844",
+            "261.026",
+        )),
+        "stress_state_choice_join_mixed_labels_053" => Some(("0 0 265.5 374", "265.5")),
+        "stress_state_direction_rl_scale_and_long_ids_054" => {
+            Some(("0.006646156311035156 0 1006.5691528320312 64", "1006.57"))
+        }
+        "stress_state_floating_notes_and_br_normalization_055" => {
+            Some(("0 0 284.0931701660156 550", "284.093"))
+        }
+        "stress_state_deep_nested_blocks_and_aliases_056" => {
+            Some(("0 0 251.21875 750.2000122070312", "251.219"))
+        }
         "basic" => Some(("0 0 100.125 298", "100.125")),
         "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "mmdr_tests_state_state_note" => Some(("0 0 221.4418182373047 364", "221.442")),

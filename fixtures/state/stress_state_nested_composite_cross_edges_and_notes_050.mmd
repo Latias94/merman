@@ -1,0 +1,16 @@
+%% source: repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.spec.js (composite link semantics) + authored stress
+stateDiagram-v2
+[*] --> Outside
+Outside --> Inactive
+
+state "Active State" as Active {
+  state "Idle mode" as Idle
+  state "Configuring mode" as Config
+  [*] --> Idle
+  Idle --> Config : cfg
+  Config --> Idle : done
+}
+
+Inactive --> Active : enter
+note right of Active : Composite note<br/>line2
+Active --> [*]

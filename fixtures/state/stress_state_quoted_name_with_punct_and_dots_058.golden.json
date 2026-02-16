@@ -5,6 +5,26 @@
     "nodes": [
       {
         "labelStyle": "",
+        "shape": "rect",
+        "label": "Title with / and (paren) and .dot",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "S",
+        "dir": null,
+        "domId": "state-S-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
         "shape": "stateStart",
         "label": "root_start",
         "cssClasses": "statediagram-state",
@@ -24,44 +44,6 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "A",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "A",
-        "dir": null,
-        "domId": "state-A-1",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "B",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "B",
-        "dir": null,
-        "domId": "state-B-2",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
         "shape": "stateEnd",
         "label": "root_end",
         "cssClasses": "statediagram-state",
@@ -69,7 +51,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-1",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -84,7 +66,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "S",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -99,23 +81,7 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge2",
-        "start": "B",
+        "start": "S",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -131,20 +97,24 @@
       }
     ],
     "other": {},
-    "links": {
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      },
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "S": {
+        "id": "S",
+        "type": "default",
+        "descriptions": [
+          "Title with / and (paren) and .dot"
+        ],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "root_start": {
         "id": "root_start",
         "type": "default",
@@ -155,28 +125,6 @@
         "styles": [],
         "textStyles": [],
         "start": true
-      },
-      "A": {
-        "id": "A",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "B": {
-        "id": "B",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
       },
       "root_end": {
         "id": "root_end",
@@ -193,16 +141,11 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
+        "id2": "S",
         "relationTitle": null
       },
       {
-        "id1": "A",
-        "id2": "B",
-        "relationTitle": null
-      },
-      {
-        "id1": "B",
+        "id1": "S",
         "id2": "root_end",
         "relationTitle": null
       }

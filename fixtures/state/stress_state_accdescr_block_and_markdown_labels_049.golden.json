@@ -24,14 +24,14 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "Start",
+        "shape": "rectWithTitle",
+        "label": "Description line 1",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Start",
+        "id": "S1",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-S1-1",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -39,37 +39,21 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "description": [
+          "Description line 2"
+        ]
       },
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Review",
+        "label": "S2",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Review",
+        "id": "S2",
         "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
+        "domId": "state-S2-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -88,7 +72,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -103,12 +87,12 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "S1",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "Start **bold** _em_",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -118,13 +102,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "S1",
+        "end": "S2",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "Label with & &lt; > and \"quotes\"",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,39 +118,7 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "approve",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge3",
-        "start": "Review",
-        "end": "Start",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "revise",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge4",
-        "start": "Done",
+        "start": "S2",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -182,23 +134,10 @@
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "links": {},
+    "direction": "LR",
+    "accTitle": "v1 accTitle",
+    "accDescr": "First line of description\nSecond line with *emphasis* and `code`",
     "states": {
       "root_start": {
         "id": "root_start",
@@ -211,10 +150,13 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "S1": {
+        "id": "S1",
         "type": "default",
-        "descriptions": [],
+        "descriptions": [
+          "Description line 1",
+          "Description line 2"
+        ],
         "doc": null,
         "note": null,
         "classes": [],
@@ -222,19 +164,8 @@
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Done": {
-        "id": "Done",
+      "S2": {
+        "id": "S2",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -259,26 +190,16 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
-        "relationTitle": null
+        "id2": "S1",
+        "relationTitle": "Start **bold** _em_"
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "S1",
+        "id2": "S2",
+        "relationTitle": "Label with & < > and \"quotes\""
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
-      },
-      {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
-      },
-      {
-        "id1": "Done",
+        "id1": "S2",
         "id2": "root_end",
         "relationTitle": null
       }
