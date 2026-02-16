@@ -1,0 +1,162 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "ONE",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "B",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "A"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "FIX",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "B"
+        ],
+        "branch": "featureA"
+      },
+      {
+        "id": "FIX-2",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "FIX"
+        ],
+        "branch": "featureA"
+      },
+      {
+        "id": "TWO",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ONE"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "cherry-picked  into main",
+        "seq": 7,
+        "type": 4,
+        "tags": [
+          "cherry-pick:A"
+        ],
+        "parents": [
+          "TWO",
+          "A"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "THREE",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "7-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "9-<dynamic>",
+        "message": "cherry-picked  into main",
+        "seq": 9,
+        "type": 4,
+        "tags": [
+          "cherry-pick:FIX"
+        ],
+        "parents": [
+          "THREE",
+          "FIX"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "C",
+        "message": "",
+        "seq": 10,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "B"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "11-<dynamic>",
+        "message": "merged branch featureA into develop",
+        "seq": 11,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "C",
+          "FIX-2"
+        ],
+        "branch": "develop",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      },
+      {
+        "name": "featureA"
+      }
+    ],
+    "currentBranch": "develop",
+    "direction": "BT",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

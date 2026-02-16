@@ -1,0 +1,85 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "1-abcdefg",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "feat"
+      },
+      {
+        "id": "2-abcdefg",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-abcdefg"
+        ],
+        "branch": "feat"
+      },
+      {
+        "id": "3-abcdefg",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "4-abcdefg",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "dev"
+      },
+      {
+        "id": "5-abcdefg",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "v2"
+      },
+      {
+        "id": "6-abcdefg",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-abcdefg"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "dev"
+      },
+      {
+        "name": "v2"
+      },
+      {
+        "name": "feat"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "BT",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

@@ -86,3 +86,15 @@ Source: `repo-ref/mermaid/docs/syntax/gitgraph.md`
   - `fixtures/gitgraph/upstream_docs_gitgraph_forest_theme_048.mmd`
   - `fixtures/gitgraph/upstream_docs_gitgraph_default_theme_050.mmd`
   - `fixtures/gitgraph/upstream_docs_gitgraph_neutral_theme_054.mmd`
+
+## Cypress rendering specs
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/gitGraph.spec.js`
+
+These fixtures are extracted from Cypress browser rendering specs (`renderGraph`) and are
+parity-gated against upstream SVG baselines:
+
+- Imported fixtures: `fixtures/gitgraph/upstream_cypress_*.mmd` (30 fixtures)
+- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram gitgraph --with-baselines --complex --limit 30`
+- Baselines: `fixtures/upstream-svgs/gitgraph/upstream_cypress_*.svg`
+- SVG DOM compare: `cargo run --release -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

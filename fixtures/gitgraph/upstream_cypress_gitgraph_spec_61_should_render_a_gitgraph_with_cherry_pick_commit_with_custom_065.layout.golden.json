@@ -1,0 +1,225 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -18.0,
+        "min_y": 22.0,
+        "max_x": 123.359,
+        "max_y": 438.0
+      },
+      "direction": "BT",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 430.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "develop",
+          "index": 1.0,
+          "pos": 105.359,
+          "bbox_width": 45.773,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "C",
+          "message": "",
+          "seq": 7.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "B"
+          ],
+          "branch": "develop",
+          "pos": 30.0,
+          "pos_with_offset": 40.0,
+          "x": 105.359,
+          "y": 40.0
+        },
+        {
+          "id": "THREE",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "5-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 80.0,
+          "pos_with_offset": 90.0,
+          "x": 0.0,
+          "y": 90.0
+        },
+        {
+          "id": "5-<dynamic>",
+          "message": "cherry-picked  into main",
+          "seq": 5.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [
+            "snapshot"
+          ],
+          "parents": [
+            "TWO",
+            "A"
+          ],
+          "branch": "main",
+          "pos": 130.0,
+          "pos_with_offset": 140.0,
+          "x": 0.0,
+          "y": 140.0
+        },
+        {
+          "id": "TWO",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ONE"
+          ],
+          "branch": "main",
+          "pos": 180.0,
+          "pos_with_offset": 190.0,
+          "x": 0.0,
+          "y": 190.0
+        },
+        {
+          "id": "B",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "A"
+          ],
+          "branch": "develop",
+          "pos": 230.0,
+          "pos_with_offset": 240.0,
+          "x": 105.359,
+          "y": 240.0
+        },
+        {
+          "id": "ONE",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "main",
+          "pos": 280.0,
+          "pos_with_offset": 290.0,
+          "x": 0.0,
+          "y": 290.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "develop",
+          "pos": 330.0,
+          "pos_with_offset": 340.0,
+          "x": 105.359,
+          "y": 340.0
+        },
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 380.0,
+          "pos_with_offset": 390.0,
+          "x": 0.0,
+          "y": 390.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "A",
+          "class_index": 1.0,
+          "d": "M 0 390 L 85.359375 390 A 20 20, 0, 0, 0, 105.359375 370 L 105.359375 340"
+        },
+        {
+          "from": "ZERO",
+          "to": "ONE",
+          "class_index": 0.0,
+          "d": "M 0 390 L 0 290"
+        },
+        {
+          "from": "A",
+          "to": "B",
+          "class_index": 1.0,
+          "d": "M 105.359375 340 L 105.359375 240"
+        },
+        {
+          "from": "ONE",
+          "to": "TWO",
+          "class_index": 0.0,
+          "d": "M 0 290 L 0 190"
+        },
+        {
+          "from": "TWO",
+          "to": "5-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 0 190 L 0 140"
+        },
+        {
+          "from": "A",
+          "to": "5-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 105.359375 340 L 62.6796875 340 A 10 10, 0, 0, 1, 52.6796875 330 L 52.6796875 150 A 10 10, 0, 0, 0, 42.6796875 140 L 0 140"
+        },
+        {
+          "from": "5-<dynamic>",
+          "to": "THREE",
+          "class_index": 0.0,
+          "d": "M 0 140 L 0 90"
+        },
+        {
+          "from": "B",
+          "to": "C",
+          "class_index": 1.0,
+          "d": "M 105.359375 240 L 105.359375 40"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,340 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -18.0,
+        "min_y": 22.0,
+        "max_x": 236.246,
+        "max_y": 638.0
+      },
+      "direction": "BT",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 630.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "develop",
+          "index": 1.0,
+          "pos": 105.359,
+          "bbox_width": 45.773,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "featureA",
+          "index": 2.0,
+          "pos": 218.246,
+          "bbox_width": 57.766,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "11-<dynamic>",
+          "message": "merged branch featureA into develop",
+          "seq": 11.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "C",
+            "FIX-2"
+          ],
+          "branch": "develop",
+          "pos": 30.0,
+          "pos_with_offset": 40.0,
+          "x": 105.359,
+          "y": 40.0
+        },
+        {
+          "id": "C",
+          "message": "",
+          "seq": 10.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "B"
+          ],
+          "branch": "develop",
+          "pos": 80.0,
+          "pos_with_offset": 90.0,
+          "x": 105.359,
+          "y": 90.0
+        },
+        {
+          "id": "9-<dynamic>",
+          "message": "cherry-picked  into main",
+          "seq": 9.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [
+            "cherry-pick:FIX"
+          ],
+          "parents": [
+            "THREE",
+            "FIX"
+          ],
+          "branch": "main",
+          "pos": 130.0,
+          "pos_with_offset": 140.0,
+          "x": 0.0,
+          "y": 140.0
+        },
+        {
+          "id": "THREE",
+          "message": "",
+          "seq": 8.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "7-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 180.0,
+          "pos_with_offset": 190.0,
+          "x": 0.0,
+          "y": 190.0
+        },
+        {
+          "id": "7-<dynamic>",
+          "message": "cherry-picked  into main",
+          "seq": 7.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [
+            "cherry-pick:A"
+          ],
+          "parents": [
+            "TWO",
+            "A"
+          ],
+          "branch": "main",
+          "pos": 230.0,
+          "pos_with_offset": 240.0,
+          "x": 0.0,
+          "y": 240.0
+        },
+        {
+          "id": "TWO",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ONE"
+          ],
+          "branch": "main",
+          "pos": 280.0,
+          "pos_with_offset": 290.0,
+          "x": 0.0,
+          "y": 290.0
+        },
+        {
+          "id": "FIX-2",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "FIX"
+          ],
+          "branch": "featureA",
+          "pos": 330.0,
+          "pos_with_offset": 340.0,
+          "x": 218.246,
+          "y": 340.0
+        },
+        {
+          "id": "FIX",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "B"
+          ],
+          "branch": "featureA",
+          "pos": 380.0,
+          "pos_with_offset": 390.0,
+          "x": 218.246,
+          "y": 390.0
+        },
+        {
+          "id": "B",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "A"
+          ],
+          "branch": "develop",
+          "pos": 430.0,
+          "pos_with_offset": 440.0,
+          "x": 105.359,
+          "y": 440.0
+        },
+        {
+          "id": "ONE",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "main",
+          "pos": 480.0,
+          "pos_with_offset": 490.0,
+          "x": 0.0,
+          "y": 490.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "develop",
+          "pos": 530.0,
+          "pos_with_offset": 540.0,
+          "x": 105.359,
+          "y": 540.0
+        },
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 580.0,
+          "pos_with_offset": 590.0,
+          "x": 0.0,
+          "y": 590.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "A",
+          "class_index": 1.0,
+          "d": "M 0 590 L 85.359375 590 A 20 20, 0, 0, 0, 105.359375 570 L 105.359375 540"
+        },
+        {
+          "from": "ZERO",
+          "to": "ONE",
+          "class_index": 0.0,
+          "d": "M 0 590 L 0 490"
+        },
+        {
+          "from": "A",
+          "to": "B",
+          "class_index": 1.0,
+          "d": "M 105.359375 540 L 105.359375 440"
+        },
+        {
+          "from": "B",
+          "to": "FIX",
+          "class_index": 2.0,
+          "d": "M 105.359375 440 L 198.24609375 440 A 20 20, 0, 0, 0, 218.24609375 420 L 218.24609375 390"
+        },
+        {
+          "from": "FIX",
+          "to": "FIX-2",
+          "class_index": 2.0,
+          "d": "M 218.24609375 390 L 218.24609375 340"
+        },
+        {
+          "from": "ONE",
+          "to": "TWO",
+          "class_index": 0.0,
+          "d": "M 0 490 L 0 290"
+        },
+        {
+          "from": "TWO",
+          "to": "7-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 0 290 L 0 240"
+        },
+        {
+          "from": "A",
+          "to": "7-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 105.359375 540 L 62.6796875 540 A 10 10, 0, 0, 1, 52.6796875 530 L 52.6796875 250 A 10 10, 0, 0, 0, 42.6796875 240 L 0 240"
+        },
+        {
+          "from": "7-<dynamic>",
+          "to": "THREE",
+          "class_index": 0.0,
+          "d": "M 0 240 L 0 190"
+        },
+        {
+          "from": "THREE",
+          "to": "9-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 0 190 L 0 140"
+        },
+        {
+          "from": "FIX",
+          "to": "9-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 218.24609375 390 L 97.2984375 390 A 10 10, 0, 0, 1, 87.2984375 380 L 87.2984375 150 A 10 10, 0, 0, 0, 77.2984375 140 L 0 140"
+        },
+        {
+          "from": "B",
+          "to": "C",
+          "class_index": 1.0,
+          "d": "M 105.359375 440 L 105.359375 90"
+        },
+        {
+          "from": "C",
+          "to": "11-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 105.359375 90 L 105.359375 40"
+        },
+        {
+          "from": "FIX-2",
+          "to": "11-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 218.24609375 340 L 218.24609375 60 A 20 20, 0, 0, 0, 198.24609375 40 L 105.359375 40"
+        }
+      ]
+    }
+  }
+}
