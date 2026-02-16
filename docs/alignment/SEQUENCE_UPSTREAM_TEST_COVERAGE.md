@@ -60,6 +60,9 @@ These fixtures are parity-gated against upstream SVG baselines (DOM parity, root
 - `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_rects_036.mmd`
 - `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_opts_041.mmd`
 - `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_experimental_use_with_052.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_with_an_init_directive_049.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_override_config_with_directive_settings_2_051.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_when_not_mirrored_expe_054.mmd`
 - `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_handle_complex_interactions_between_different_participant_013.mmd`
 - `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030.mmd`
 - `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010.mmd`
@@ -128,7 +131,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 ### Rendering-only / deferred (not part of headless parsing parity)
 
 - `showSequenceNumbers()` depends on `renderer.draw(...)` side effects in upstream tests.
-- bounds calculation, APA rendering, actor mirror behavior, and `svgDraw` unit tests.
+- APA rendering and `svgDraw` unit tests.
 
 ## Docs-derived parser+render fixtures
 

@@ -785,13 +785,6 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 if fixture_text.contains("$$") {
                     return Some("sequence math (deferred)");
                 }
-                // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
-                if fixture_text.contains("%%{init:")
-                    && (fixture_text.contains("\"wrap\": true")
-                        || fixture_text.contains("\"width\""))
-                {
-                    return Some("sequence wrap/width directive (deferred)");
-                }
             }
             _ => {}
         }
@@ -2313,6 +2306,16 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
         None
     }
 
+    fn extract_last_template_literal(s: &str, start: usize) -> Option<(String, usize)> {
+        let mut cursor = start;
+        let mut last: Option<(String, usize)> = None;
+        while let Some((raw, end_rel)) = extract_first_template_literal(s, cursor) {
+            last = Some((raw, end_rel));
+            cursor = end_rel;
+        }
+        last
+    }
+
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
@@ -2628,7 +2631,14 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                 // backtick string from a later `it()` block when the call argument itself isn't
                 // a template literal.
                 let args_slice = &text[start..close_paren];
-                if let Some((raw, end_rel)) = extract_first_template_literal(args_slice, 0) {
+                let use_last_template =
+                    call == "renderGraph" && args_slice.trim_start().starts_with('[');
+                let extracted = if use_last_template {
+                    extract_last_template_literal(args_slice, 0)
+                } else {
+                    extract_first_template_literal(args_slice, 0)
+                };
+                if let Some((raw, end_rel)) = extracted {
                     out.push(CypressBlock {
                         source_spec: spec_path.to_path_buf(),
                         source_stem: source_stem.clone(),
@@ -2929,12 +2939,6 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                 "sequence" => {
                     if fixture_text.contains("$$") {
                         return Some("sequence math (deferred)");
-                    }
-                    if fixture_text.contains("%%{init:")
-                        && (fixture_text.contains("\"wrap\": true")
-                            || fixture_text.contains("\"width\""))
-                    {
-                        return Some("sequence wrap/width directive (deferred)");
                     }
                 }
                 _ => {}
@@ -4246,7 +4250,7 @@ const browserExe = input.browser_exe || null;
 
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
-const mermaidEsmPath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.esm.mjs');
+const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
 const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
@@ -14173,6 +14177,7 @@ const seedStr = String((input.seed ?? 1));
 const width = Number(input.width || 800);
 const height = Number(input.height || 600);
 const backgroundColor = String(input.background_color || 'white');
+const debug = process.env.MERMAN_SEEDED_UPSTREAM_SVG_DEBUG === '1';
 
 if (!inputPath || !outputPath || !configPath) {
   console.error('missing required input/output/config path');
@@ -14181,7 +14186,7 @@ if (!inputPath || !outputPath || !configPath) {
 
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
-const mermaidEsmPath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.esm.mjs');
+const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
 const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
@@ -14193,8 +14198,10 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
   const page = await browser.newPage();
   if (process.env.MERMAN_SEEDED_UPSTREAM_SVG_DEBUG === '1') {
     page.on('console', (msg) => {
-      if (msg && typeof msg.type === 'function' && msg.type() === 'error') {
-        console.error(`[browser:console.error] ${msg.text()}`);
+      if (!msg || typeof msg.type !== 'function') return;
+      const ty = msg.type();
+      if (ty === 'error' || ty === 'warning') {
+        console.error(`[browser:console.${ty}] ${msg.text()}`);
       }
     });
     page.on('pageerror', (err) => {
@@ -14229,23 +14236,31 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
         if (!arr || typeof arr.length !== 'number') {
           return orig(arr);
         }
-        for (let i = 0; i < arr.length; i++) {
-          arr[i] = Math.floor(nextF64() * 256);
+        // Fill the underlying bytes so behavior is consistent for Uint8/16/32 arrays.
+        try {
+          const bytes = new Uint8Array(arr.buffer, arr.byteOffset || 0, arr.byteLength || 0);
+          for (let i = 0; i < bytes.length; i++) {
+            bytes[i] = Math.floor(nextF64() * 256);
+          }
+          return arr;
+        } catch (e) {
+          // Fall back to original behavior if this isn't a typed array.
+          return orig(arr);
         }
-        return arr;
       };
     }
   }, seedStr);
 
   await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-  await page.addScriptTag({ path: zenumlIifePath });
+  await Promise.all([
+    page.addScriptTag({ path: mermaidIifePath }),
+    page.addScriptTag({ path: zenumlIifePath }),
+  ]);
 
-  const mermaidEsmUrl = url.pathToFileURL(mermaidEsmPath).href;
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, mermaidEsmUrl }) => {
-    const mermaidMod = await import(mermaidEsmUrl);
-    const mermaid = mermaidMod && (mermaidMod.default || mermaidMod);
-    if (!mermaid) throw new Error('mermaid module not found');
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, debug }) => {
+    const mermaid = globalThis.mermaid;
+    if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
 
     if (document.fonts && typeof document.fonts[Symbol.iterator] === 'function') {
       await Promise.all(Array.from(document.fonts, (font) => font.load()));
@@ -14267,6 +14282,21 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
     container.innerHTML = '';
     container.style.width = `${Math.max(1, Number(width) || 1)}px`;
 
+    // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
+    if (typeof mermaid.parse === 'function') {
+      try {
+        await mermaid.parse(code);
+      } catch (err) {
+        if (!debug) throw err;
+        return {
+          ok: false,
+          stage: 'parse',
+          error: String(err && err.message ? err.message : err),
+          stack: String(err && err.stack ? err.stack : ''),
+        };
+      }
+    }
+
     async function tryRenderViaMermaidRender() {
       if (typeof mermaid.render !== 'function') return undefined;
       const rendered = await mermaid.render(svgId, code, container);
@@ -14282,7 +14312,12 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
           svg = asStr;
         }
       }
-      return typeof svg === 'string' ? svg : undefined;
+      if (typeof svg === 'string') return svg;
+      const domSvg = container.querySelector && container.querySelector('svg');
+      if (domSvg && typeof domSvg.outerHTML === 'string' && domSvg.outerHTML.trim().startsWith('<svg')) {
+        return domSvg.outerHTML;
+      }
+      return undefined;
     }
 
     async function tryRenderViaMermaidApi() {
@@ -14297,8 +14332,46 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
       });
     }
 
-    return (await tryRenderViaMermaidRender()) ?? (await tryRenderViaMermaidApi());
-  }, { code, cfg, theme, svgId, width, mermaidEsmUrl });
+    const svgText = (await tryRenderViaMermaidRender()) ?? (await tryRenderViaMermaidApi());
+    if (typeof svgText !== 'string') {
+      if (!debug) {
+        throw new Error('mermaid.render returned no svg output');
+      }
+      return {
+        ok: false,
+        stage: 'render',
+        svgTextType: typeof svgText,
+        containerHtmlLen: typeof container.innerHTML === 'string' ? container.innerHTML.length : -1,
+      };
+    }
+
+    container.innerHTML = svgText;
+    const svgEl = container.getElementsByTagName?.('svg')?.[0];
+    if (!svgEl) {
+      if (debug) {
+        return { ok: true, stage: 'no-svg-el', svgTextLen: svgText.length };
+      }
+      return svgText;
+    }
+
+    // Mirror mermaid-cli SVG output shape (XMLSerializer), so outputs are valid XML.
+    // eslint-disable-next-line no-undef
+    const xmlSerializer = new XMLSerializer();
+    const xml = xmlSerializer.serializeToString(svgEl);
+    if (debug) {
+      return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
+    }
+    return xml;
+  }, { code, cfg, theme, svgId, width, debug });
+
+  if (debug) {
+    if (typeof svg !== 'string') {
+      console.error(JSON.stringify(svg, null, 2));
+      process.exit(1);
+    }
+    console.error(`[debug] expected diagnostics object, got svg string len=${svg.length}`);
+    process.exit(1);
+  }
 
   function ensureSvgBackgroundColor(svgText, bg) {
     if (typeof svgText !== 'string') {

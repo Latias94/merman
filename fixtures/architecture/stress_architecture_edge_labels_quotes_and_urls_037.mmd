@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): edge labels with quotes/urls/punctuation.
+
+group api(cloud)[API]
+group data(cloud)[Data]
+
+service gw(server)[Gateway] in api
+service auth(server)[Auth] in api
+service db(database)[Orders] in data
+service cache(database)[Cache] in data
+
+gw:R -[GET]-> L:auth
+auth:B -[POST]-> T:db
+auth:R -[CACHE]-> L:cache
+cache:T -[EVICT]-> B:db

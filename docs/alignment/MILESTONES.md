@@ -41,7 +41,22 @@ Exit criteria:
 - No “silent drift”: new fixtures must include semantic + layout snapshots, and (when applicable)
   upstream SVG baselines.
 
-### M2: Reduce fixture-scoped root viewport overrides
+### M2: Eliminate fixture-scoped renderer special-cases
+
+Goal:
+
+- Remove any diagram renderer behavior keyed to a specific fixture id (temporary debt used to keep
+  parity gates green during coverage expansion).
+
+Exit criteria:
+
+- No fixture-id keyed branches remain in Stage B SVG parity renderers.
+- Global gates remain green for the current corpus.
+- Each removed special-case is replaced by either:
+  - an algorithmic/layout/measurement improvement, or
+  - an ADR that documents an unavoidable upstream ambiguity (rare).
+
+### M3: Reduce fixture-scoped root viewport overrides
 
 Goal:
 
@@ -55,7 +70,23 @@ Exit criteria:
   - a reusable algorithmic change, or
   - an ADR explaining why the override remains necessary.
 
-### M3: ZenUML compatibility (headless)
+### M4: “Beyond parity-root” strict SVG XML parity (selective)
+
+Goal:
+
+- Where feasible, make `strict` mode XML compares match upstream, beyond structure-only parity.
+
+Notes:
+
+- This is intentionally diagram-by-diagram and not a gate for all diagrams on day one.
+
+Exit criteria:
+
+- At least one high-volume diagram (Flowchart) is `strict`-green at `--dom-decimals 3`.
+- Any remaining strict diffs are documented in diagram-specific strict-gap notes (e.g.
+  `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md`).
+
+### M5: ZenUML compatibility (headless)
 
 Goal:
 
@@ -83,7 +114,12 @@ Exit criteria:
   - at least one control-flow feature (e.g. loop/alt) *or* an explicit ADR explaining why it is
     deferred.
 
+## Gap backlog
+
+For the prioritized gap list and execution plan, see:
+
+- `docs/alignment/GAP_BACKLOG.md`
+
 ## Release notes
 
 - Release/publishing gates are defined in `docs/releasing/PUBLISHING.md`.
-

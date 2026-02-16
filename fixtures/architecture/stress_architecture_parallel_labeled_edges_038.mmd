@@ -1,0 +1,22 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multiple labeled edges (via junction fanout to avoid edge-id collisions).
+
+service api(server)[API]
+service db(database)[DB]
+
+junction j_read
+junction j_write
+junction j_health
+junction j_metrics
+
+api:R -[read]-> L:j_read
+j_read:R --> L:db
+
+api:B -[write]-> T:j_write
+j_write:B --> T:db
+
+api:T -[health check]-> B:j_health
+j_health:T --> B:db
+
+api:L -[metrics]-> R:j_metrics
+j_metrics:L --> R:db

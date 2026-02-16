@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): labeled edges across group boundaries using {group} ports.
+
+group east(cloud)[East]
+group west(cloud)[West]
+
+service a(server)[A] in east
+service b(server)[B] in east
+service c(server)[C] in west
+service d(server)[D] in west
+
+a{group}:R -[public]-> L:c{group}
+b{group}:R -[private]-> L:d{group}
+a:R -[sidecar]-> L:b
+c:R -[replicate]-> L:d
+

@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multiple cross-group edges with labels and arrows.
+
+group g1(cloud)[G1]
+group g2(cloud)[G2]
+group g3(cloud)[G3]
+
+service a(server)[A] in g1
+service b(server)[B] in g2
+service c(server)[C] in g3
+service d(server)[D] in g2
+
+b{group}:R -[sync]-> L:a{group}
+a:R -[status]-> L:c
+b{group}:B -[fanout]-> T:c{group}
+b:B -[direct]-> T:d
+d:R -[egress]-> L:c

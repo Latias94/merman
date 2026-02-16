@@ -60,3 +60,19 @@ Source: `repo-ref/mermaid/docs/syntax/kanban.md`
 
 - Full-featured example from the official docs (includes `ticketBaseUrl`, ticket links, and wrapped titles):
   - `fixtures/kanban/upstream_docs_kanban_full_example_012.mmd`
+
+## Upstream Samples (non-docs)
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/kanban/samples.md`
+
+- Imported sample fixtures (SVG baseline enabled):
+  - `fixtures/kanban/upstream_docs_samples_example_001.mmd`
+  - `fixtures/kanban/upstream_docs_samples_example_002.mmd`
+  - `fixtures/kanban/upstream_docs_samples_example_003.mmd`
+  - `fixtures/kanban/upstream_docs_samples_example_004.mmd`
+  - `fixtures/kanban/upstream_docs_samples_example_005.mmd`
+
+Deferred:
+
+- `upstream_docs_samples_example_006` was skipped because Mermaid CLI fails to render the YAML frontmatter
+  in that example (YAMLException in Puppeteer evaluation). Keep it as a dedicated follow-up parity item.

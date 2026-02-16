@@ -225,6 +225,10 @@ pub(super) fn render_sequence_diagram_svg(
         .or_else(|| effective_config.get("forceMenus"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let mirror_actors = seq_cfg
+        .get("mirrorActors")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     let diagram_margin_x = seq_cfg
         .get("diagramMarginX")
         .and_then(|v| v.as_f64())
@@ -586,175 +590,177 @@ pub(super) fn render_sequence_diagram_svg(
         }
     }
 
-    // Mermaid draws bottom actors first (reverse DOM order).
-    for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
-        let Some(actor) = model.actors.get(actor_id) else {
-            continue;
-        };
-        let actor_type = actor.actor_type.as_str();
-        let node_id = format!("actor-bottom-{actor_id}");
-        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-            continue;
-        };
-        let (x, y) = node_left_top(n);
-        let actor_custom_class = actor
-            .properties
-            .get("class")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty());
-        let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
-        let actor_bottom_class = actor_custom_class
-            .map(|c| format!("{c} actor-bottom"))
-            .unwrap_or_else(|| "actor actor-bottom".to_string());
-        match actor_type {
-            // Actor-man variants are drawn later (after `<defs>`), but Mermaid keeps stable
-            // indices by emitting empty `<g/>` placeholders here.
-            "actor" | "boundary" | "control" | "entity" => {
-                out.push_str("<g/>");
+    if mirror_actors {
+        // Mermaid draws bottom actors first (reverse DOM order).
+        for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
+            let Some(actor) = model.actors.get(actor_id) else {
+                continue;
+            };
+            let actor_type = actor.actor_type.as_str();
+            let node_id = format!("actor-bottom-{actor_id}");
+            let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+                continue;
+            };
+            let (x, y) = node_left_top(n);
+            let actor_custom_class = actor
+                .properties
+                .get("class")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+            let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+            let actor_bottom_class = actor_custom_class
+                .map(|c| format!("{c} actor-bottom"))
+                .unwrap_or_else(|| "actor actor-bottom".to_string());
+            match actor_type {
+                // Actor-man variants are drawn later (after `<defs>`), but Mermaid keeps stable
+                // indices by emitting empty `<g/>` placeholders here.
+                "actor" | "boundary" | "control" | "entity" => {
+                    out.push_str("<g/>");
+                }
+                "collections" => {
+                    const OFFSET: f64 = 6.0;
+                    let front_x = x - OFFSET;
+                    let front_y = y + OFFSET;
+                    let cx = front_x + (n.width / 2.0);
+                    let cy = front_y + (n.height / 2.0);
+                    out.push_str("<g>");
+                    let _ = write!(
+                        &mut out,
+                        r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-bottom"/>"##,
+                        x = fmt(x),
+                        y = fmt(y),
+                        w = fmt(n.width),
+                        h = fmt(n.height),
+                        name = escape_xml_display(actor_id)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r##"<rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/>"##,
+                        sx = fmt(front_x),
+                        sy = fmt(front_y),
+                        w = fmt(n.width),
+                        h = fmt(n.height),
+                        name = escape_xml_display(actor_id)
+                    );
+                    write_actor_label(
+                        &mut out,
+                        cx,
+                        cy,
+                        &actor.description,
+                        actor.wrap,
+                        actor_wrap_width,
+                        measurer,
+                        &loop_text_style,
+                    );
+                    out.push_str("</g>");
+                }
+                "queue" => {
+                    let ry = n.height / 2.0;
+                    let rx = ry / (2.5 + n.height / 50.0);
+                    let body_w = n.width - 2.0 * rx;
+                    let y_mid = y + ry;
+                    out.push_str("<g>");
+                    let _ = write!(
+                        &mut out,
+                        r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-bottom"/></g>"##,
+                        tx1 = fmt(rx),
+                        ty = fmt(-n.height / 2.0),
+                        x = fmt(x),
+                        y_mid = fmt(y_mid),
+                        rx = fmt(rx),
+                        ry = fmt(ry),
+                        h = fmt(n.height),
+                        body_w = fmt(body_w)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-bottom"/></g>"##,
+                        tx2 = fmt(n.width - rx),
+                        ty = fmt(-n.height / 2.0),
+                        x = fmt(x),
+                        y_mid = fmt(y_mid),
+                        rx = fmt(rx),
+                        ry = fmt(ry),
+                        h = fmt(n.height)
+                    );
+                    write_actor_label(
+                        &mut out,
+                        n.x,
+                        y_mid,
+                        &actor.description,
+                        actor.wrap,
+                        actor_wrap_width,
+                        measurer,
+                        &loop_text_style,
+                    );
+                    out.push_str("</g>");
+                }
+                "database" => {
+                    // Mermaid's database actor uses a cylinder glyph and updates the actor height after
+                    // the top render; the footer render uses that updated height (≈ width/4 + labelBoxHeight).
+                    let w = n.width / 4.0;
+                    let h = n.width / 4.0;
+                    let rx = w / 2.0;
+                    let ry = rx / (2.5 + w / 50.0);
+                    let footer_h = h + label_box_height;
+                    let tx = w * 1.5;
+                    let ty = (footer_h / 4.0) - 2.0 * ry;
+                    let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
+                    out.push_str("<g>");
+                    let _ = write!(
+                        &mut out,
+                        r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g>"##,
+                        tx = fmt(tx),
+                        ty = fmt(ty),
+                        x = fmt(x),
+                        y1 = fmt(y + ry),
+                        rx = fmt(rx),
+                        ry = fmt(ry),
+                        w = fmt(w),
+                        h2 = fmt(h - 2.0 * ry)
+                    );
+                    write_actor_label(
+                        &mut out,
+                        n.x,
+                        y_text,
+                        &actor.description,
+                        actor.wrap,
+                        actor_wrap_width,
+                        measurer,
+                        &loop_text_style,
+                    );
+                    out.push_str("</g>");
+                }
+                _ => {
+                    out.push_str("<g>");
+                    let _ = write!(
+                        &mut out,
+                        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="{class}"/>"##,
+                        x = fmt(x),
+                        y = fmt(y),
+                        w = fmt(n.width),
+                        h = fmt(n.height),
+                        name = escape_xml(actor_id),
+                        fill = escape_xml_display(actor_rect_fill),
+                        class = escape_attr(&actor_bottom_class),
+                    );
+                    write_actor_label(
+                        &mut out,
+                        n.x,
+                        n.y,
+                        &actor.description,
+                        actor.wrap,
+                        actor_wrap_width,
+                        measurer,
+                        &loop_text_style,
+                    );
+                    out.push_str("</g>");
+                }
             }
-            "collections" => {
-                const OFFSET: f64 = 6.0;
-                let front_x = x - OFFSET;
-                let front_y = y + OFFSET;
-                let cx = front_x + (n.width / 2.0);
-                let cy = front_y + (n.height / 2.0);
-                out.push_str("<g>");
-                let _ = write!(
-                    &mut out,
-                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-bottom"/>"##,
-                    x = fmt(x),
-                    y = fmt(y),
-                    w = fmt(n.width),
-                    h = fmt(n.height),
-                    name = escape_xml_display(actor_id)
-                );
-                let _ = write!(
-                    &mut out,
-                    r##"<rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/>"##,
-                    sx = fmt(front_x),
-                    sy = fmt(front_y),
-                    w = fmt(n.width),
-                    h = fmt(n.height),
-                    name = escape_xml_display(actor_id)
-                );
-                write_actor_label(
-                    &mut out,
-                    cx,
-                    cy,
-                    &actor.description,
-                    actor.wrap,
-                    actor_wrap_width,
-                    measurer,
-                    &loop_text_style,
-                );
-                out.push_str("</g>");
-            }
-            "queue" => {
-                let ry = n.height / 2.0;
-                let rx = ry / (2.5 + n.height / 50.0);
-                let body_w = n.width - 2.0 * rx;
-                let y_mid = y + ry;
-                out.push_str("<g>");
-                let _ = write!(
-                    &mut out,
-                    r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-bottom"/></g>"##,
-                    tx1 = fmt(rx),
-                    ty = fmt(-n.height / 2.0),
-                    x = fmt(x),
-                    y_mid = fmt(y_mid),
-                    rx = fmt(rx),
-                    ry = fmt(ry),
-                    h = fmt(n.height),
-                    body_w = fmt(body_w)
-                );
-                let _ = write!(
-                    &mut out,
-                    r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-bottom"/></g>"##,
-                    tx2 = fmt(n.width - rx),
-                    ty = fmt(-n.height / 2.0),
-                    x = fmt(x),
-                    y_mid = fmt(y_mid),
-                    rx = fmt(rx),
-                    ry = fmt(ry),
-                    h = fmt(n.height)
-                );
-                write_actor_label(
-                    &mut out,
-                    n.x,
-                    y_mid,
-                    &actor.description,
-                    actor.wrap,
-                    actor_wrap_width,
-                    measurer,
-                    &loop_text_style,
-                );
-                out.push_str("</g>");
-            }
-            "database" => {
-                // Mermaid's database actor uses a cylinder glyph and updates the actor height after
-                // the top render; the footer render uses that updated height (≈ width/4 + labelBoxHeight).
-                let w = n.width / 4.0;
-                let h = n.width / 4.0;
-                let rx = w / 2.0;
-                let ry = rx / (2.5 + w / 50.0);
-                let footer_h = h + label_box_height;
-                let tx = w * 1.5;
-                let ty = (footer_h / 4.0) - 2.0 * ry;
-                let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
-                out.push_str("<g>");
-                let _ = write!(
-                    &mut out,
-                    r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g>"##,
-                    tx = fmt(tx),
-                    ty = fmt(ty),
-                    x = fmt(x),
-                    y1 = fmt(y + ry),
-                    rx = fmt(rx),
-                    ry = fmt(ry),
-                    w = fmt(w),
-                    h2 = fmt(h - 2.0 * ry)
-                );
-                write_actor_label(
-                    &mut out,
-                    n.x,
-                    y_text,
-                    &actor.description,
-                    actor.wrap,
-                    actor_wrap_width,
-                    measurer,
-                    &loop_text_style,
-                );
-                out.push_str("</g>");
-            }
-            _ => {
-                out.push_str("<g>");
-                let _ = write!(
-                    &mut out,
-                    r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="{class}"/>"##,
-                    x = fmt(x),
-                    y = fmt(y),
-                    w = fmt(n.width),
-                    h = fmt(n.height),
-                    name = escape_xml(actor_id),
-                    fill = escape_xml_display(actor_rect_fill),
-                    class = escape_attr(&actor_bottom_class),
-                );
-                write_actor_label(
-                    &mut out,
-                    n.x,
-                    n.y,
-                    &actor.description,
-                    actor.wrap,
-                    actor_wrap_width,
-                    measurer,
-                    &loop_text_style,
-                );
-                out.push_str("</g>");
-            }
-        }
 
-        let _ = idx;
+            let _ = idx;
+        }
     }
 
     // Top actors + lifelines.
@@ -3173,9 +3179,14 @@ pub(super) fn render_sequence_diagram_svg(
             "none"
         };
         let popup_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let popup_actor_pos_class = if mirror_actors {
+            "actor-bottom"
+        } else {
+            "actor-top"
+        };
         let popup_panel_class = actor_custom_class
-            .map(|c| format!("actorPopupMenuPanel {c} actor-bottom"))
-            .unwrap_or_else(|| "actorPopupMenuPanel actor actor-bottom".to_string());
+            .map(|c| format!("actorPopupMenuPanel {c} {popup_actor_pos_class}"))
+            .unwrap_or_else(|| format!("actorPopupMenuPanel actor {popup_actor_pos_class}"));
 
         let node_id = format!("actor-top-{actor_id}");
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
@@ -3226,111 +3237,113 @@ pub(super) fn render_sequence_diagram_svg(
         out.push_str("</g>");
     }
 
-    // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
-    let last_idx = model.actor_order.len().saturating_sub(1);
-    for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
-        let Some(actor) = model.actors.get(actor_id) else {
-            continue;
-        };
-        let actor_type = actor.actor_type.as_str();
-        if !matches!(actor_type, "actor" | "boundary" | "control" | "entity") {
-            continue;
-        }
-        let node_id = format!("actor-bottom-{actor_id}");
-        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-            continue;
-        };
-        let (_x, actor_y) = node_left_top(n);
-        let cx = n.x;
+    if mirror_actors {
+        // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
+        let last_idx = model.actor_order.len().saturating_sub(1);
+        for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
+            let Some(actor) = model.actors.get(actor_id) else {
+                continue;
+            };
+            let actor_type = actor.actor_type.as_str();
+            if !matches!(actor_type, "actor" | "boundary" | "control" | "entity") {
+                continue;
+            }
+            let node_id = format!("actor-bottom-{actor_id}");
+            let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+                continue;
+            };
+            let (_x, actor_y) = node_left_top(n);
+            let cx = n.x;
 
-        match actor_type {
-            "actor" => {
-                let r = 15.0;
-                let cy = actor_y + 10.0;
-                let torso_top = cy + r;
-                let torso_bottom = torso_top + 20.0;
-                let arms_y = torso_top + 8.0;
-                let arms_x1 = cx - 18.0;
-                let arms_x2 = cx + 18.0;
-                let leg_y = torso_bottom + 15.0;
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="actor-man actor-bottom" name="{name}"><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
-                    name = escape_xml(actor_id),
-                    idx = last_idx,
-                    cx = fmt(cx),
-                    y1 = fmt(torso_top),
-                    y2 = fmt(torso_bottom),
-                    ax1 = fmt(arms_x1),
-                    ax2 = fmt(arms_x2),
-                    ay = fmt(arms_y),
-                    ly = fmt(leg_y),
-                    lx2 = fmt(cx + 16.0),
-                    cy = fmt(cy),
-                    w = fmt(n.width),
-                    h = fmt(actor_height),
-                    ty = fmt(actor_y + actor_height + 2.5),
-                    label = escape_xml(&actor.description)
-                );
+            match actor_type {
+                "actor" => {
+                    let r = 15.0;
+                    let cy = actor_y + 10.0;
+                    let torso_top = cy + r;
+                    let torso_bottom = torso_top + 20.0;
+                    let arms_y = torso_top + 8.0;
+                    let arms_x1 = cx - 18.0;
+                    let arms_x2 = cx + 18.0;
+                    let leg_y = torso_bottom + 15.0;
+                    let _ = write!(
+                        &mut out,
+                        r##"<g class="actor-man actor-bottom" name="{name}"><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                        name = escape_xml(actor_id),
+                        idx = last_idx,
+                        cx = fmt(cx),
+                        y1 = fmt(torso_top),
+                        y2 = fmt(torso_bottom),
+                        ax1 = fmt(arms_x1),
+                        ax2 = fmt(arms_x2),
+                        ay = fmt(arms_y),
+                        ly = fmt(leg_y),
+                        lx2 = fmt(cx + 16.0),
+                        cy = fmt(cy),
+                        w = fmt(n.width),
+                        h = fmt(actor_height),
+                        ty = fmt(actor_y + actor_height + 2.5),
+                        label = escape_xml(&actor.description)
+                    );
+                }
+                "boundary" => {
+                    let radius = 30.0;
+                    let x_left = cx - radius * 2.5;
+                    let footer_h = 60.0 + label_box_height;
+                    let _ = write!(
+                        &mut out,
+                        r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0,22)"><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                        name = escape_xml(actor_id),
+                        idx = last_idx,
+                        x1 = fmt(x_left),
+                        x2 = fmt(cx - 15.0),
+                        y_t = fmt(actor_y + 10.0),
+                        y0 = fmt(actor_y + 0.0),
+                        y20 = fmt(actor_y + 20.0),
+                        cx = fmt(cx),
+                        cy = fmt(actor_y + 10.0),
+                        ty = fmt(actor_y + (radius / 2.0 - 4.0) + (footer_h / 2.0)),
+                        label = escape_xml(&actor.description)
+                    );
+                }
+                "control" => {
+                    let r = 18.0;
+                    let cy = actor_y + 30.0;
+                    let footer_h = 36.0 + 2.0 * label_box_height;
+                    let _ = write!(
+                        &mut out,
+                        r##"<g class="actor-man actor-bottom" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                        name = escape_xml(actor_id),
+                        cx = fmt(cx),
+                        cy = fmt(cy),
+                        ly = fmt(cy - r),
+                        ty = fmt(actor_y + (r + 5.0) + (footer_h / 2.0)),
+                        label = escape_xml(&actor.description)
+                    );
+                }
+                "entity" => {
+                    let r = 18.0;
+                    let cy = actor_y + 10.0;
+                    let footer_h = 36.0 + label_box_height;
+                    let _ = write!(
+                        &mut out,
+                        r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0, 9)"><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                        name = escape_xml(actor_id),
+                        cx = fmt(cx),
+                        cy = fmt(cy),
+                        w = fmt(n.width),
+                        h = fmt(footer_h),
+                        x1 = fmt(cx - r),
+                        x2 = fmt(cx + r),
+                        y = fmt(cy + r),
+                        ty = fmt(actor_y + ((cy - actor_y + r - 5.0) / 2.0) + (footer_h / 2.0)),
+                        label = escape_xml(&actor.description)
+                    );
+                }
+                _ => {}
             }
-            "boundary" => {
-                let radius = 30.0;
-                let x_left = cx - radius * 2.5;
-                let footer_h = 60.0 + label_box_height;
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0,22)"><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
-                    name = escape_xml(actor_id),
-                    idx = last_idx,
-                    x1 = fmt(x_left),
-                    x2 = fmt(cx - 15.0),
-                    y_t = fmt(actor_y + 10.0),
-                    y0 = fmt(actor_y + 0.0),
-                    y20 = fmt(actor_y + 20.0),
-                    cx = fmt(cx),
-                    cy = fmt(actor_y + 10.0),
-                    ty = fmt(actor_y + (radius / 2.0 - 4.0) + (footer_h / 2.0)),
-                    label = escape_xml(&actor.description)
-                );
-            }
-            "control" => {
-                let r = 18.0;
-                let cy = actor_y + 30.0;
-                let footer_h = 36.0 + 2.0 * label_box_height;
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="actor-man actor-bottom" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
-                    name = escape_xml(actor_id),
-                    cx = fmt(cx),
-                    cy = fmt(cy),
-                    ly = fmt(cy - r),
-                    ty = fmt(actor_y + (r + 5.0) + (footer_h / 2.0)),
-                    label = escape_xml(&actor.description)
-                );
-            }
-            "entity" => {
-                let r = 18.0;
-                let cy = actor_y + 10.0;
-                let footer_h = 36.0 + label_box_height;
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0, 9)"><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
-                    name = escape_xml(actor_id),
-                    cx = fmt(cx),
-                    cy = fmt(cy),
-                    w = fmt(n.width),
-                    h = fmt(footer_h),
-                    x1 = fmt(cx - r),
-                    x2 = fmt(cx + r),
-                    y = fmt(cy + r),
-                    ty = fmt(actor_y + ((cy - actor_y + r - 5.0) / 2.0) + (footer_h / 2.0)),
-                    label = escape_xml(&actor.description)
-                );
-            }
-            _ => {}
-        }
 
-        let _ = actor_idx;
+            let _ = actor_idx;
+        }
     }
 
     if let Some(title) = model.title.as_deref() {
