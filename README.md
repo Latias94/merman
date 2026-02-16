@@ -10,9 +10,10 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 ## Status
 
 - Baseline: Mermaid `@11.12.2`.
-- Parity is enforced via upstream SVG DOM baselines + golden snapshots.
+- Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: `docs/alignment/STATUS.md`.
+- Corpus size (2026-02-16): 1656 upstream SVG baselines across 23 diagrams.
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
 
 ## What you get
@@ -85,6 +86,21 @@ This repo is built around reproducible alignment layers:
 - DOM parity gates: `xtask compare-all-svgs --check-dom` (see `docs/adr/0050-release-quality-gates.md`)
 
 The goal is not “it looks similar”, but “it stays aligned”.
+
+## Why trust it?
+
+`merman` is intentionally **golden-driven**:
+
+- Every imported fixture is backed by semantic + layout snapshots (`fixtures/**/*.golden.json`, `fixtures/**/*.layout.golden.json`).
+- End-to-end SVG output is validated against **official Mermaid CLI** baselines (`fixtures/upstream-svgs/**`).
+- CI/local gates make regressions loud: if a change breaks parity, tests fail.
+
+Quick “confidence check”:
+
+```sh
+cargo nextest run
+cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+```
 
 ## CLI
 
