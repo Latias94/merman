@@ -83,6 +83,17 @@ Imported fixtures:
 - `fixtures/class/upstream_cypress_classdiagram_v2_spec_9_should_render_a_simple_class_diagram_with_clickable_link_011.mmd`
 - `fixtures/class/upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035.mmd`
 
+Batch 2026-02-16 (complex, 8 fixtures; imported via `xtask import-upstream-cypress --diagram class --with-baselines --complex --limit 30`):
+
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_5_1_should_render_a_simple_class_diagram_with_abstract_metho_011.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_6_1_should_render_a_simple_class_diagram_with_static_method_013.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_class_with_text_label_033.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_no_members_040.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_class_with_text_label_033.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classlabel_if_class_has_already_been_defined_ea_038.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_spec_should_handle_an_empty_class_body_with_empty_braces_029.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_should_render_a_simple_class_diagram_with_no_members_032.mmd`
+
 Batch 2026-02-15 (complex, 25 fixtures; imported via `xtask import-upstream-cypress --diagram class --with-baselines --limit 25 --complex`):
 
 - `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_11_1_should_render_a_simple_class_diagram_with_return_type_o_020.mmd`
