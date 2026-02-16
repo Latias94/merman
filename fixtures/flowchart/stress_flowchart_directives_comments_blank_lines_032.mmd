@@ -1,0 +1,22 @@
+%%{init: {"flowchart": {"nodeSpacing": 70, "rankSpacing": 60}} }%%
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): directives + comments + blank lines around subgraphs.
+
+accTitle: Flowchart stress - directives and comments
+accDescr: Ensures directives, blank lines, and end-of-line comments do not affect parsing or layout.
+
+%% comment-only line
+
+%% comment before subgraph
+subgraph ClusterA
+  direction LR
+  a1[One] --> a2[Two]
+end
+
+%% another comment
+subgraph ClusterB
+  direction LR
+  b1[Three] --> b2[Four]
+end
+
+ClusterA --> ClusterB

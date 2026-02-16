@@ -3,33 +3,83 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
-    "classDefs": {},
-    "tooltips": {
-      "cache": "Cache docs",
-      "db": "DB docs",
-      "api": "API docs"
+    "direction": "TB",
+    "accTitle": "Flowchart stress - style and classDef",
+    "accDescr": "Mixes classDef, class assignment, style expressions, and linkStyle on a graph with a subgraph.",
+    "classDefs": {
+      "hot": [
+        "fill:#ffdddd",
+        "stroke:#cc0000",
+        "stroke-width:2px",
+        "color:#330000"
+      ],
+      "cool": [
+        "fill:#ddeeff",
+        "stroke:#004488",
+        "stroke-width:2px",
+        "color:#001122"
+      ]
     },
+    "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "u",
-      "api",
-      "api",
-      "db",
-      "api",
-      "cache"
+      "A",
+      "B",
+      "G",
+      "G",
+      "C"
     ],
     "nodes": [
       {
-        "id": "u",
-        "label": "User",
-        "labelType": "string",
+        "id": "A",
+        "label": "Alpha",
+        "labelType": "text",
         "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "hot"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "B",
+        "label": "Beta",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "cool"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "G",
+        "label": "G",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -45,9 +95,9 @@
         "haveCallback": false
       },
       {
-        "id": "api",
-        "label": "API",
-        "labelType": "string",
+        "id": "C",
+        "label": "Gamma",
+        "labelType": "text",
         "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
@@ -59,60 +109,18 @@
         "assetHeight": null,
         "styles": [],
         "classes": [
-          "clickable"
+          "hot"
         ],
-        "link": "https://example.com/api",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "db",
-        "label": "DB",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/db",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "cache",
-        "label": "Cache",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/cache",
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       }
     ],
     "edges": [
       {
-        "from": "u",
-        "to": "api",
-        "id": "L_u_api_0",
+        "from": "A",
+        "to": "B",
+        "id": "L_A_B_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -120,33 +128,20 @@
         "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
+        "style": [
+          "stroke:#cc0000",
+          "stroke-width:3px",
+          "fill:none"
+        ],
         "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       },
       {
-        "from": "api",
-        "to": "db",
-        "id": "L_api_db_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "api",
-        "to": "cache",
-        "id": "L_api_cache_0",
+        "from": "G",
+        "to": "C",
+        "id": "L_G_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -161,6 +156,23 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "G",
+        "nodes": [
+          "B",
+          "A"
+        ],
+        "title": "Group",
+        "classes": [],
+        "styles": [
+          "fill:#f7f7f7",
+          "stroke:#333",
+          "stroke-width:1px"
+        ],
+        "dir": "LR",
+        "labelType": "string"
+      }
+    ]
   }
 }

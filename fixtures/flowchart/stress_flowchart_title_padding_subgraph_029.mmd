@@ -1,0 +1,20 @@
+---
+title: Stress flowchart title and padding with subgraphs
+config:
+  flowchart:
+    titleTopMargin: 10
+    diagramPadding: 0
+---
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): titleTopMargin + diagramPadding interaction with subgraph bounds.
+
+accTitle: Flowchart stress - title padding
+accDescr: Ensures titleTopMargin and diagramPadding affect root viewBox/max-width consistently with subgraph bounds.
+
+subgraph S
+  direction LR
+  A[Alpha] --> B[Beta]
+end
+
+S --> C[Gamma]
+

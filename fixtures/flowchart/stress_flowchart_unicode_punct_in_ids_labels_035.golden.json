@@ -4,30 +4,24 @@
     "type": "flowchart-v2",
     "keyword": "flowchart",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "accTitle": "Flowchart stress - unicode punctuation",
+    "accDescr": "Exercises non-ascii labels, punctuation-heavy labels, and hyphenated ids.",
     "classDefs": {},
-    "tooltips": {
-      "cache": "Cache docs",
-      "db": "DB docs",
-      "api": "API docs"
-    },
+    "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "u",
-      "api",
-      "api",
-      "db",
-      "api",
-      "cache"
+      "id-1",
+      "id_2",
+      "id_2",
+      "id3"
     ],
     "nodes": [
       {
-        "id": "u",
-        "label": "User",
+        "id": "id-1",
+        "label": "中文 / 日本語 / 한글",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -45,8 +39,8 @@
         "haveCallback": false
       },
       {
-        "id": "api",
-        "label": "API",
+        "id": "id_2",
+        "label": "punct: ,.;:!? (a/b) [x] {y}",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -58,19 +52,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/api",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "db",
-        "label": "DB",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "id": "id3",
+        "label": "emoji: 😀😅👍",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -79,40 +71,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/db",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "cache",
-        "label": "Cache",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/cache",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       }
     ],
     "edges": [
       {
-        "from": "u",
-        "to": "api",
-        "id": "L_u_api_0",
+        "from": "id-1",
+        "to": "id_2",
+        "id": "L_id-1_id_2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -127,33 +96,16 @@
         "animation": null
       },
       {
-        "from": "api",
-        "to": "db",
-        "id": "L_api_db_0",
+        "from": "id_2",
+        "to": "id3",
+        "id": "L_id_2_id3_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "api",
-        "to": "cache",
-        "id": "L_api_cache_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
+        "label": "rtl: שלום-עולם",
+        "labelType": "string",
         "style": [],
         "classes": [],
         "interpolate": null,

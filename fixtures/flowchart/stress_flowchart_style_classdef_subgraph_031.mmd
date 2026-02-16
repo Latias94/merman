@@ -1,0 +1,19 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): classDef + style expressions on nodes, links, and subgraphs.
+
+accTitle: Flowchart stress - style and classDef
+accDescr: Mixes classDef, class assignment, style expressions, and linkStyle on a graph with a subgraph.
+
+classDef hot fill:#ffdddd,stroke:#cc0000,stroke-width:2px,color:#330000
+classDef cool fill:#ddeeff,stroke:#004488,stroke-width:2px,color:#001122
+
+subgraph G["Group"]
+  direction LR
+  A[Alpha]:::hot --> B[Beta]:::cool
+end
+
+style G fill:#f7f7f7,stroke:#333,stroke-width:1px
+linkStyle 0 stroke:#cc0000,stroke-width:3px
+
+G --> C[Gamma]:::hot
+

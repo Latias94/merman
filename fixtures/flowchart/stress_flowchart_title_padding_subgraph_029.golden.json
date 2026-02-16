@@ -3,32 +3,26 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "direction": "TB",
+    "accTitle": "Flowchart stress - title padding",
+    "accDescr": "Ensures titleTopMargin and diagramPadding affect root viewBox/max-width consistently with subgraph bounds.",
     "classDefs": {},
-    "tooltips": {
-      "cache": "Cache docs",
-      "db": "DB docs",
-      "api": "API docs"
-    },
+    "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "u",
-      "api",
-      "api",
-      "db",
-      "api",
-      "cache"
+      "A",
+      "B",
+      "S",
+      "C"
     ],
     "nodes": [
       {
-        "id": "u",
-        "label": "User",
-        "labelType": "string",
+        "id": "A",
+        "label": "Alpha",
+        "labelType": "text",
         "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
@@ -45,9 +39,9 @@
         "haveCallback": false
       },
       {
-        "id": "api",
-        "label": "API",
-        "labelType": "string",
+        "id": "B",
+        "label": "Beta",
+        "labelType": "text",
         "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
@@ -58,19 +52,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/api",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "db",
-        "label": "DB",
+        "id": "S",
+        "label": "S",
         "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -79,19 +71,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/db",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "cache",
-        "label": "Cache",
+        "id": "C",
+        "label": "Gamma",
         "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -100,19 +90,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/cache",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       }
     ],
     "edges": [
       {
-        "from": "u",
-        "to": "api",
-        "id": "L_u_api_0",
+        "from": "A",
+        "to": "B",
+        "id": "L_A_B_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -127,26 +115,9 @@
         "animation": null
       },
       {
-        "from": "api",
-        "to": "db",
-        "id": "L_api_db_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "api",
-        "to": "cache",
-        "id": "L_api_cache_0",
+        "from": "S",
+        "to": "C",
+        "id": "L_S_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -161,6 +132,19 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "S",
+        "nodes": [
+          "B",
+          "A"
+        ],
+        "title": "S",
+        "classes": [],
+        "styles": [],
+        "dir": "LR",
+        "labelType": "text"
+      }
+    ]
   }
 }

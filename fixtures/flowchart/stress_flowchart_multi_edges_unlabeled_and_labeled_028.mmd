@@ -1,0 +1,14 @@
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): multiple parallel edges (labeled + unlabeled) and linkStyle indexing.
+
+accTitle: Flowchart stress - parallel edges
+accDescr: Exercises mixed labeled/unlabeled parallel edges and linkStyle index ordering.
+
+A --> B
+A -->|short| B
+A -->|"a much longer label that wraps at some point"| B
+
+linkStyle 0 stroke:#333,stroke-width:2px
+linkStyle 1 stroke:#0066cc,stroke-width:2px
+linkStyle 2 stroke:#cc3300,stroke-width:4px
+

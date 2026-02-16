@@ -1,0 +1,20 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): a subgraph containing only subgraphs, with links outside.
+
+accTitle: Flowchart stress - subgraph only subgraphs
+accDescr: Ensures clusters without direct nodes still compute bounds correctly when linking to outside nodes.
+
+subgraph TOP
+  direction TB
+  subgraph L
+    direction LR
+    a --> b
+  end
+  subgraph R
+    direction LR
+    c --> d
+  end
+end
+
+start([start]) --> TOP --> finish([end])
+L --> R

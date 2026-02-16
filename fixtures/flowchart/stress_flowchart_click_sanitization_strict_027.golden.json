@@ -4,49 +4,28 @@
     "type": "flowchart-v2",
     "keyword": "flowchart",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "accTitle": "Flowchart stress - strict click sanitization",
+    "accDescr": "Ensures javascript/data links are sanitized in strict mode while http(s) links remain intact.",
     "classDefs": {},
     "tooltips": {
-      "cache": "Cache docs",
-      "db": "DB docs",
-      "api": "API docs"
+      "tail": "data tooltip",
+      "bad": "bad tooltip",
+      "safe": "safe tooltip"
     },
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "u",
-      "api",
-      "api",
-      "db",
-      "api",
-      "cache"
+      "safe",
+      "bad",
+      "bad",
+      "tail"
     ],
     "nodes": [
       {
-        "id": "u",
-        "label": "User",
-        "labelType": "string",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "api",
-        "label": "API",
+        "id": "safe",
+        "label": "Safe link",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -61,16 +40,16 @@
         "classes": [
           "clickable"
         ],
-        "link": "https://example.com/api",
+        "link": "https://example.com/docs?q=1#frag",
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "db",
-        "label": "DB",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "id": "bad",
+        "label": "Unsafe link",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -82,16 +61,16 @@
         "classes": [
           "clickable"
         ],
-        "link": "https://example.com/db",
+        "link": "about:blank",
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "cache",
-        "label": "Cache",
-        "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "id": "tail",
+        "label": "Tail",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -103,16 +82,16 @@
         "classes": [
           "clickable"
         ],
-        "link": "https://example.com/cache",
+        "link": "about:blank",
         "linkTarget": null,
         "haveCallback": false
       }
     ],
     "edges": [
       {
-        "from": "u",
-        "to": "api",
-        "id": "L_u_api_0",
+        "from": "safe",
+        "to": "bad",
+        "id": "L_safe_bad_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -127,26 +106,9 @@
         "animation": null
       },
       {
-        "from": "api",
-        "to": "db",
-        "id": "L_api_db_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "api",
-        "to": "cache",
-        "id": "L_api_cache_0",
+        "from": "bad",
+        "to": "tail",
+        "id": "L_bad_tail_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
