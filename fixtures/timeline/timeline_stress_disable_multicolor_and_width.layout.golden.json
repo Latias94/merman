@@ -1,0 +1,167 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 10.0,
+        "min_y": -61.0,
+        "max_x": 625.51,
+        "max_y": 679.2
+      },
+      "left_margin": 60.0,
+      "base_x": 110.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 390.0,
+      "sections": [
+        {
+          "node": {
+            "x": 110.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Alpha",
+            "label_lines": [
+              "Alpha"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 110.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2020 ",
+                "label_lines": [
+                  "2020"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 205.0,
+                "y1": 235.6,
+                "x2": 205.0,
+                "y2": 629.2
+              },
+              "events": [
+                {
+                  "x": 110.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 118.2,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "A long event that should wrap because the configured timeline width is small",
+                  "label_lines": [
+                    "A   long   event   that",
+                    "should   wrap",
+                    "because   the",
+                    "configured   timeline",
+                    "width   is   small"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 110.0,
+                  "y": 496.0,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Second line with <br> forced break",
+                  "label_lines": [
+                    "Second   line   with",
+                    "forced   break"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 310.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Beta",
+            "label_lines": [
+              "Beta"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 310.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "2021 ",
+                "label_lines": [
+                  "2021"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 405.0,
+                "y1": 235.6,
+                "x2": 405.0,
+                "y2": 629.2
+              },
+              "events": [
+                {
+                  "x": 310.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 118.2,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Markdown *emphasis* and `inline code` should be treated as plain text",
+                  "label_lines": [
+                    "Markdown",
+                    "*emphasis*   and",
+                    "`inline   code`",
+                    "should   be   treated",
+                    "as   plain   text"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 60.0,
+        "y1": 285.6,
+        "x2": 570.0,
+        "y2": 285.6
+      },
+      "title": "Multicolor disabled + narrow width",
+      "title_x": 135.0,
+      "title_y": 20.0
+    }
+  }
+}

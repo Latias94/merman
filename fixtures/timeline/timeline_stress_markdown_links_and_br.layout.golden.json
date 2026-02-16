@@ -1,0 +1,273 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1312.84,
+        "max_y": 701.8
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 812.84,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Developer Experience",
+            "label_lines": [
+              "Developer   Experience"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2018 ",
+                "label_lines": [
+                  "2018"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Added [docs](https://example.com/docs) ",
+                  "label_lines": [
+                    "Added",
+                    "[docs](https://example.com/docs)",
+                    ""
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 443.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Added [issues](https://example.com/issues)",
+                  "label_lines": [
+                    "Added",
+                    "[issues](https://example.com/issues)"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 518.6,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Wrapped text with <br> explicit break",
+                  "label_lines": [
+                    "Wrapped   text   with",
+                    "explicit   break"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2019 ",
+                "label_lines": [
+                  "2019"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 118.2,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Supports (parentheses), [brackets], and {braces} as plain text",
+                  "label_lines": [
+                    "Supports",
+                    "(parentheses),",
+                    "[brackets],   and",
+                    "{braces}   as   plain",
+                    "text"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Release Notes",
+            "label_lines": [
+              "Release   Notes"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "v1.0 ",
+                "label_lines": [
+                  "v1.0"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 235.6,
+                "x2": 695.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Initial release",
+                  "label_lines": [
+                    "Initial   release"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "v1.1 ",
+                "label_lines": [
+                  "v1.1"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 235.6,
+                "x2": 895.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Bug fixes ",
+                  "label_lines": [
+                    "Bug   fixes"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 800.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Performance improvements",
+                  "label_lines": [
+                    "Performance",
+                    "improvements"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 1262.84,
+        "y2": 285.6
+      },
+      "title": "Links, brackets, and <br> tokens",
+      "title_x": 256.42,
+      "title_y": 20.0
+    }
+  }
+}

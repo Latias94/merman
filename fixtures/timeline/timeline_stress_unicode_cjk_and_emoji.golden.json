@@ -1,0 +1,44 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Unicode / CJK / emoji",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "国际化"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "国际化",
+        "type": "国际化",
+        "task": "2022 ",
+        "score": 0,
+        "events": [
+          "支持中文文本渲染"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "国际化",
+        "type": "国际化",
+        "task": "2023 ",
+        "score": 0,
+        "events": [
+          "日本語のテキストも対応"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "国际化",
+        "type": "国际化",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "Emoji support 🚀 should be treated as text"
+        ]
+      }
+    ]
+  }
+}

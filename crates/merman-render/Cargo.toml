@@ -28,6 +28,7 @@ thiserror.workspace = true
 roughr.workspace = true
 ryu-js.workspace = true
 url.workspace = true
+unicode-width.workspace = true
 
 [dev-dependencies]
 futures.workspace = true

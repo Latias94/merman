@@ -1,0 +1,36 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Multicolor disabled + narrow width",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Alpha",
+      "Beta"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "A long event that should wrap because the configured timeline width is small",
+          "Second line with <br> forced break"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Beta",
+        "type": "Beta",
+        "task": "2021 ",
+        "score": 0,
+        "events": [
+          "Markdown *emphasis* and `inline code` should be treated as plain text"
+        ]
+      }
+    ]
+  }
+}
