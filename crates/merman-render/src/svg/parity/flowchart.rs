@@ -10448,17 +10448,23 @@ fn render_flowchart_v2_svg_with_config_inner(
                         // viewport comes from DOM `getBBox()`, so adjust the left/right extents to
                         // match the rendered path's asymmetric bbox.
                         if matches!(shape, "delay" | "curv-trap") {
-                            if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                            if let Some(label_w) = n.label_width {
+                                // Reuse label metrics computed during layout to avoid re-measuring
+                                // HTML/markdown labels while approximating the root viewBox.
+                                let pre_w = if shape == "delay" {
+                                    (label_w + 2.0 * node_padding).max(80.0)
+                                } else {
+                                    ((label_w + 2.0 * node_padding) * 1.25).max(80.0)
+                                };
+                                left_hw = pre_w / 2.0;
+                                right_hw = (n.width - left_hw).max(0.0);
+                            } else if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                                // Fallback: measure if layout did not record label metrics.
                                 let label = flow_node.label.as_deref().unwrap_or("");
                                 let label_type = flow_node
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
-                                let label_plain = flowchart_label_plain_text(
-                                    label,
-                                    label_type,
-                                    ctx.node_html_labels,
-                                );
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_classes(
                                         &ctx.text_style,
@@ -10466,39 +10472,14 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         &flow_node.classes,
                                         &flow_node.styles,
                                     );
-                                let mut metrics =
-                                    crate::flowchart::flowchart_label_metrics_for_layout(
-                                        ctx.measurer,
-                                        label,
-                                        label_type,
-                                        &node_text_style,
-                                        Some(ctx.wrapping_width),
-                                        ctx.node_wrap_mode,
-                                    );
-                                let span_css_height_parity = flow_node.classes.iter().any(|c| {
-                                    model.class_defs.get(c.as_str()).is_some_and(|styles| {
-                                        styles.iter().any(|s| {
-                                            matches!(
-                                                s.split_once(':').map(|p| p.0.trim()),
-                                                Some("background" | "border")
-                                            )
-                                        })
-                                    })
-                                });
-                                if span_css_height_parity {
-                                    crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                                        &mut metrics,
-                                        &node_text_style,
-                                    );
-                                }
-                                let label_has_visual_content =
-                                    label.to_ascii_lowercase().contains("<img")
-                                        || (label_type == "markdown" && label.contains("!["));
-                                if label_plain.trim().is_empty() && !label_has_visual_content {
-                                    metrics.width = 0.0;
-                                    metrics.height = 0.0;
-                                }
-
+                                let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    ctx.measurer,
+                                    label,
+                                    label_type,
+                                    &node_text_style,
+                                    Some(ctx.wrapping_width),
+                                    ctx.node_wrap_mode,
+                                );
                                 let pre_w = if shape == "delay" {
                                     (metrics.width + 2.0 * node_padding).max(80.0)
                                 } else {
