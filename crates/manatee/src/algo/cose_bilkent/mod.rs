@@ -165,16 +165,16 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     }
 
     let output_start = timing_enabled.then(std::time::Instant::now);
+    let node_count = sim.nodes.len();
+    let edge_count = sim.edges.len();
+
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
-    for n in &sim.nodes {
-        positions.insert(
-            n.id.clone(),
-            Point {
-                x: n.center_x(),
-                y: n.center_y(),
-            },
-        );
+    let nodes = std::mem::take(&mut sim.nodes);
+    for n in nodes {
+        let x = n.center_x();
+        let y = n.center_y();
+        positions.insert(n.id, Point { x, y });
     }
     if let Some(s) = output_start {
         timings.output = s.elapsed();
@@ -191,8 +191,8 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
             timings.spring,
             timings.transform,
             timings.output,
-            sim.nodes.len(),
-            sim.edges.len(),
+            node_count,
+            edge_count,
             forest.len(),
         );
     }
