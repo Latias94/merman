@@ -4,6 +4,68 @@ use super::*;
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
 
+#[derive(Clone, Copy)]
+struct ArchitectureServiceRef<'a> {
+    id: &'a str,
+    icon: Option<&'a str>,
+    icon_text: Option<&'a str>,
+    title: Option<&'a str>,
+    in_group: Option<&'a str>,
+}
+
+#[derive(Clone, Copy)]
+struct ArchitectureJunctionRef<'a> {
+    id: &'a str,
+    in_group: Option<&'a str>,
+}
+
+#[derive(Clone, Copy)]
+struct ArchitectureGroupRef<'a> {
+    id: &'a str,
+    icon: Option<&'a str>,
+    title: Option<&'a str>,
+    in_group: Option<&'a str>,
+}
+
+#[derive(Clone, Copy)]
+struct ArchitectureEdgeRef<'a> {
+    lhs_id: &'a str,
+    lhs_dir: char,
+    lhs_into: Option<bool>,
+    lhs_group: Option<bool>,
+    rhs_id: &'a str,
+    rhs_dir: char,
+    rhs_into: Option<bool>,
+    rhs_group: Option<bool>,
+    title: Option<&'a str>,
+}
+
+trait ArchitectureModelAccess {
+    type Groups<'a>: Iterator<Item = ArchitectureGroupRef<'a>>
+    where
+        Self: 'a;
+    type Services<'a>: Iterator<Item = ArchitectureServiceRef<'a>>
+    where
+        Self: 'a;
+    type Junctions<'a>: Iterator<Item = ArchitectureJunctionRef<'a>>
+    where
+        Self: 'a;
+    type Edges<'a>: Iterator<Item = ArchitectureEdgeRef<'a>>
+    where
+        Self: 'a;
+
+    fn acc_title(&self) -> Option<&str>;
+    fn acc_descr(&self) -> Option<&str>;
+
+    fn groups_len(&self) -> usize;
+    fn edges_len(&self) -> usize;
+
+    fn groups(&self) -> Self::Groups<'_>;
+    fn services(&self) -> Self::Services<'_>;
+    fn junctions(&self) -> Self::Junctions<'_>;
+    fn edges(&self) -> Self::Edges<'_>;
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ArchitectureService {
@@ -44,7 +106,7 @@ struct ArchitectureEdge {
     #[serde(rename = "lhsId")]
     lhs_id: String,
     #[serde(rename = "lhsDir")]
-    lhs_dir: String,
+    lhs_dir: char,
     #[serde(default, rename = "lhsInto")]
     lhs_into: Option<bool>,
     #[serde(default, rename = "lhsGroup")]
@@ -52,7 +114,7 @@ struct ArchitectureEdge {
     #[serde(rename = "rhsId")]
     rhs_id: String,
     #[serde(rename = "rhsDir")]
-    rhs_dir: String,
+    rhs_dir: char,
     #[serde(default, rename = "rhsInto")]
     rhs_into: Option<bool>,
     #[serde(default, rename = "rhsGroup")]
@@ -85,73 +147,283 @@ fn timing_section<'a>(
     enabled.then(|| super::timing::TimingGuard::new(dst))
 }
 
-fn build_architecture_model_from_render_model(
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-) -> ArchitectureModel {
-    let mut services: Vec<ArchitectureService> = Vec::new();
-    let mut junctions: Vec<ArchitectureJunction> = Vec::new();
-    services.reserve(model.nodes.len());
-    junctions.reserve(model.nodes.len());
-    for n in &model.nodes {
-        match n.node_type {
-            merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
-                services.push(ArchitectureService {
-                    id: n.id.clone(),
-                    icon: n.icon.clone(),
-                    icon_text: n.icon_text.clone(),
-                    title: n.title.clone(),
-                    in_group: n.in_group.clone(),
-                });
-            }
-            merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
-                junctions.push(ArchitectureJunction {
-                    id: n.id.clone(),
-                    in_group: n.in_group.clone(),
-                });
-            }
+struct JsonGroupsIter<'a> {
+    iter: std::slice::Iter<'a, ArchitectureGroup>,
+}
+
+impl<'a> Iterator for JsonGroupsIter<'a> {
+    type Item = ArchitectureGroupRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|g| ArchitectureGroupRef {
+            id: g.id.as_str(),
+            icon: g.icon.as_deref(),
+            title: g.title.as_deref(),
+            in_group: g.in_group.as_deref(),
+        })
+    }
+}
+
+struct JsonServicesIter<'a> {
+    iter: std::slice::Iter<'a, ArchitectureService>,
+}
+
+impl<'a> Iterator for JsonServicesIter<'a> {
+    type Item = ArchitectureServiceRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|s| ArchitectureServiceRef {
+            id: s.id.as_str(),
+            icon: s.icon.as_deref(),
+            icon_text: s.icon_text.as_deref(),
+            title: s.title.as_deref(),
+            in_group: s.in_group.as_deref(),
+        })
+    }
+}
+
+struct JsonJunctionsIter<'a> {
+    iter: std::slice::Iter<'a, ArchitectureJunction>,
+}
+
+impl<'a> Iterator for JsonJunctionsIter<'a> {
+    type Item = ArchitectureJunctionRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|j| ArchitectureJunctionRef {
+            id: j.id.as_str(),
+            in_group: j.in_group.as_deref(),
+        })
+    }
+}
+
+struct JsonEdgesIter<'a> {
+    iter: std::slice::Iter<'a, ArchitectureEdge>,
+}
+
+impl<'a> Iterator for JsonEdgesIter<'a> {
+    type Item = ArchitectureEdgeRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|e| ArchitectureEdgeRef {
+            lhs_id: e.lhs_id.as_str(),
+            lhs_dir: e.lhs_dir,
+            lhs_into: e.lhs_into,
+            lhs_group: e.lhs_group,
+            rhs_id: e.rhs_id.as_str(),
+            rhs_dir: e.rhs_dir,
+            rhs_into: e.rhs_into,
+            rhs_group: e.rhs_group,
+            title: e.title.as_deref(),
+        })
+    }
+}
+
+impl ArchitectureModelAccess for ArchitectureModel {
+    type Groups<'a>
+        = JsonGroupsIter<'a>
+    where
+        Self: 'a;
+    type Services<'a>
+        = JsonServicesIter<'a>
+    where
+        Self: 'a;
+    type Junctions<'a>
+        = JsonJunctionsIter<'a>
+    where
+        Self: 'a;
+    type Edges<'a>
+        = JsonEdgesIter<'a>
+    where
+        Self: 'a;
+
+    fn acc_title(&self) -> Option<&str> {
+        self.acc_title.as_deref()
+    }
+
+    fn acc_descr(&self) -> Option<&str> {
+        self.acc_descr.as_deref()
+    }
+
+    fn groups_len(&self) -> usize {
+        self.groups.len()
+    }
+
+    fn edges_len(&self) -> usize {
+        self.edges.len()
+    }
+
+    fn groups(&self) -> Self::Groups<'_> {
+        JsonGroupsIter {
+            iter: self.groups.iter(),
         }
     }
 
-    let groups: Vec<ArchitectureGroup> = model
-        .groups
-        .iter()
-        .map(|g| ArchitectureGroup {
-            id: g.id.clone(),
-            icon: g.icon.clone(),
-            title: g.title.clone(),
-            in_group: g.in_group.clone(),
-        })
-        .collect();
+    fn services(&self) -> Self::Services<'_> {
+        JsonServicesIter {
+            iter: self.services.iter(),
+        }
+    }
 
-    let edges: Vec<ArchitectureEdge> = model
-        .edges
-        .iter()
-        .map(|e| {
-            let mut lhs_dir = String::with_capacity(1);
-            lhs_dir.push(e.lhs_dir);
-            let mut rhs_dir = String::with_capacity(1);
-            rhs_dir.push(e.rhs_dir);
-            ArchitectureEdge {
-                lhs_id: e.lhs_id.clone(),
-                lhs_dir,
-                lhs_into: e.lhs_into,
-                lhs_group: e.lhs_group,
-                rhs_id: e.rhs_id.clone(),
-                rhs_dir,
-                rhs_into: e.rhs_into,
-                rhs_group: e.rhs_group,
-                title: e.title.clone(),
+    fn junctions(&self) -> Self::Junctions<'_> {
+        JsonJunctionsIter {
+            iter: self.junctions.iter(),
+        }
+    }
+
+    fn edges(&self) -> Self::Edges<'_> {
+        JsonEdgesIter {
+            iter: self.edges.iter(),
+        }
+    }
+}
+
+struct TypedGroupsIter<'a> {
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderGroup>,
+}
+
+impl<'a> Iterator for TypedGroupsIter<'a> {
+    type Item = ArchitectureGroupRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|g| ArchitectureGroupRef {
+            id: g.id.as_str(),
+            icon: g.icon.as_deref(),
+            title: g.title.as_deref(),
+            in_group: g.in_group.as_deref(),
+        })
+    }
+}
+
+struct TypedServicesIter<'a> {
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderNode>,
+}
+
+impl<'a> Iterator for TypedServicesIter<'a> {
+    type Item = ArchitectureServiceRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(n) = self.iter.next() {
+            if n.node_type
+                != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service
+            {
+                continue;
             }
-        })
-        .collect();
+            return Some(ArchitectureServiceRef {
+                id: n.id.as_str(),
+                icon: n.icon.as_deref(),
+                icon_text: n.icon_text.as_deref(),
+                title: n.title.as_deref(),
+                in_group: n.in_group.as_deref(),
+            });
+        }
+        None
+    }
+}
 
-    ArchitectureModel {
-        acc_title: model.acc_title.clone(),
-        acc_descr: model.acc_descr.clone(),
-        groups,
-        services,
-        junctions,
-        edges,
+struct TypedJunctionsIter<'a> {
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderNode>,
+}
+
+impl<'a> Iterator for TypedJunctionsIter<'a> {
+    type Item = ArchitectureJunctionRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(n) = self.iter.next() {
+            if n.node_type
+                != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction
+            {
+                continue;
+            }
+            return Some(ArchitectureJunctionRef {
+                id: n.id.as_str(),
+                in_group: n.in_group.as_deref(),
+            });
+        }
+        None
+    }
+}
+
+struct TypedEdgesIter<'a> {
+    iter: std::slice::Iter<'a, merman_core::diagrams::architecture::ArchitectureRenderEdge>,
+}
+
+impl<'a> Iterator for TypedEdgesIter<'a> {
+    type Item = ArchitectureEdgeRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|e| ArchitectureEdgeRef {
+            lhs_id: e.lhs_id.as_str(),
+            lhs_dir: e.lhs_dir,
+            lhs_into: e.lhs_into,
+            lhs_group: e.lhs_group,
+            rhs_id: e.rhs_id.as_str(),
+            rhs_dir: e.rhs_dir,
+            rhs_into: e.rhs_into,
+            rhs_group: e.rhs_group,
+            title: e.title.as_deref(),
+        })
+    }
+}
+
+impl ArchitectureModelAccess
+    for merman_core::diagrams::architecture::ArchitectureDiagramRenderModel
+{
+    type Groups<'a>
+        = TypedGroupsIter<'a>
+    where
+        Self: 'a;
+    type Services<'a>
+        = TypedServicesIter<'a>
+    where
+        Self: 'a;
+    type Junctions<'a>
+        = TypedJunctionsIter<'a>
+    where
+        Self: 'a;
+    type Edges<'a>
+        = TypedEdgesIter<'a>
+    where
+        Self: 'a;
+
+    fn acc_title(&self) -> Option<&str> {
+        self.acc_title.as_deref()
+    }
+
+    fn acc_descr(&self) -> Option<&str> {
+        self.acc_descr.as_deref()
+    }
+
+    fn groups_len(&self) -> usize {
+        self.groups.len()
+    }
+
+    fn edges_len(&self) -> usize {
+        self.edges.len()
+    }
+
+    fn groups(&self) -> Self::Groups<'_> {
+        TypedGroupsIter {
+            iter: self.groups.iter(),
+        }
+    }
+
+    fn services(&self) -> Self::Services<'_> {
+        TypedServicesIter {
+            iter: self.nodes.iter(),
+        }
+    }
+
+    fn junctions(&self) -> Self::Junctions<'_> {
+        TypedJunctionsIter {
+            iter: self.nodes.iter(),
+        }
+    }
+
+    fn edges(&self) -> Self::Edges<'_> {
+        TypedEdgesIter {
+            iter: self.edges.iter(),
+        }
     }
 }
 
@@ -165,10 +437,9 @@ pub(super) fn render_architecture_diagram_svg_typed(
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
 
-    let semantic = build_architecture_model_from_render_model(model);
     render_architecture_diagram_svg_with_model(
         layout,
-        &semantic,
+        model,
         effective_config,
         None,
         options,
@@ -188,11 +459,9 @@ pub(super) fn render_architecture_diagram_svg_typed_with_config(
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
 
-    let semantic = build_architecture_model_from_render_model(model);
-
     render_architecture_diagram_svg_with_model(
         layout,
-        &semantic,
+        model,
         effective_config.as_value(),
         Some(effective_config),
         options,
@@ -227,9 +496,9 @@ pub(super) fn render_architecture_diagram_svg(
     )
 }
 
-fn render_architecture_diagram_svg_with_model(
+fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     layout: &ArchitectureDiagramLayout,
-    model: &ArchitectureModel,
+    model: &M,
     effective_config: &serde_json::Value,
     sanitize_config_opt: Option<&merman_core::MermaidConfig>,
     options: &SvgRenderOptions,
@@ -521,9 +790,9 @@ fn render_architecture_diagram_svg_with_model(
         }
     };
 
-    let mut node_xy: rustc_hash::FxHashMap<String, (f64, f64)> = rustc_hash::FxHashMap::default();
+    let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {
-        node_xy.insert(n.id.clone(), (n.x, n.y));
+        node_xy.insert(n.id.as_str(), (n.x, n.y));
     }
 
     let text_measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
@@ -535,12 +804,7 @@ fn render_architecture_diagram_svg_with_model(
 
     let mut aria_attrs = String::new();
     let mut a11y_nodes = String::new();
-    if let Some(t) = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
+    if let Some(t) = model.acc_title().map(str::trim).filter(|t| !t.is_empty()) {
         aria_attrs.push_str(r#" aria-labelledby="chart-title-"#);
         let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
         aria_attrs.push('"');
@@ -551,12 +815,7 @@ fn render_architecture_diagram_svg_with_model(
             escape_xml_display(t)
         );
     }
-    if let Some(d) = model
-        .acc_descr
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
+    if let Some(d) = model.acc_descr().map(str::trim).filter(|t| !t.is_empty()) {
         aria_attrs.push_str(r#" aria-describedby="chart-desc-"#);
         let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
         aria_attrs.push('"');
@@ -568,45 +827,45 @@ fn render_architecture_diagram_svg_with_model(
         );
     }
 
-    fn is_arch_dir_x(dir: &str) -> bool {
-        matches!(dir, "L" | "R")
+    fn is_arch_dir_x(dir: char) -> bool {
+        matches!(dir, 'L' | 'R')
     }
 
-    fn is_arch_dir_y(dir: &str) -> bool {
-        matches!(dir, "T" | "B")
+    fn is_arch_dir_y(dir: char) -> bool {
+        matches!(dir, 'T' | 'B')
     }
 
-    fn arrow_points(dir: &str, arrow_size: f64) -> String {
+    fn arrow_points(dir: char, arrow_size: f64) -> String {
         match dir {
-            "L" => format!(
+            'L' => format!(
                 "{s},{hs} 0,{s} 0,0",
                 s = fmt(arrow_size),
                 hs = fmt(arrow_size / 2.0)
             ),
-            "R" => format!(
+            'R' => format!(
                 "0,{hs} {s},0 {s},{s}",
                 s = fmt(arrow_size),
                 hs = fmt(arrow_size / 2.0)
             ),
-            "T" => format!(
+            'T' => format!(
                 "0,0 {s},0 {hs},{s}",
                 s = fmt(arrow_size),
                 hs = fmt(arrow_size / 2.0)
             ),
-            "B" => format!(
+            'B' => format!(
                 "{hs},0 {s},{s} 0,{s}",
                 s = fmt(arrow_size),
                 hs = fmt(arrow_size / 2.0)
             ),
-            _ => arrow_points("R", arrow_size),
+            _ => arrow_points('R', arrow_size),
         }
     }
 
-    fn arrow_shift(dir: &str, orig: f64, arrow_size: f64) -> f64 {
+    fn arrow_shift(dir: char, orig: f64, arrow_size: f64) -> f64 {
         // Mermaid@11.12.2 `ArchitectureDirectionArrowShift`.
         match dir {
-            "L" | "T" => orig - arrow_size + 2.0,
-            "R" | "B" => orig - 2.0,
+            'L' | 'T' => orig - arrow_size + 2.0,
+            'R' | 'B' => orig - 2.0,
             _ => orig,
         }
     }
@@ -638,17 +897,13 @@ fn render_architecture_diagram_svg_with_model(
     // computing a conservative bounds over the elements we emit.
     let mut content_bounds: Option<Bounds> = None;
 
-    let mut service_bounds: std::collections::BTreeMap<String, Bounds> =
-        std::collections::BTreeMap::new();
-    for svc in &model.services {
-        let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
+    let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
+    let mut service_count: usize = 0;
+    for svc in model.services() {
+        service_count += 1;
+        let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
         let mut b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
-        if let Some(title) = svc
-            .title
-            .as_deref()
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-        {
+        if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
             let lines =
                 wrap_svg_words_to_lines(title, icon_size_px * 1.5, &text_measurer, &text_style);
             let mut bbox_left = 0.0f64;
@@ -681,92 +936,77 @@ fn render_architecture_diagram_svg_with_model(
                 max_y: b.max_y.max(text_bottom),
             };
         }
-        service_bounds.insert(svc.id.clone(), b.clone());
+        service_bounds.insert(svc.id, b.clone());
         extend_bounds(&mut content_bounds, b);
     }
 
-    let mut junction_bounds: std::collections::BTreeMap<String, Bounds> =
-        std::collections::BTreeMap::new();
-    for junction in &model.junctions {
-        let (x, y) = node_xy
-            .get(junction.id.as_str())
-            .copied()
-            .unwrap_or((0.0, 0.0));
+    let mut junction_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
+    let mut junction_count: usize = 0;
+    for junction in model.junctions() {
+        junction_count += 1;
+        let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
         let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
-        junction_bounds.insert(junction.id.clone(), b.clone());
+        junction_bounds.insert(junction.id, b.clone());
         extend_bounds(&mut content_bounds, b);
     }
 
     // Groups (outer rects, including nested groups).
-    let mut groups_by_id: std::collections::BTreeMap<String, ArchitectureGroup> =
-        std::collections::BTreeMap::new();
-    for g in &model.groups {
-        groups_by_id.insert(g.id.clone(), g.clone());
-    }
-
-    let mut child_groups: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for g in &model.groups {
-        if let Some(parent) = g.in_group.as_deref() {
-            child_groups
-                .entry(parent.to_string())
-                .or_default()
-                .push(g.id.clone());
+    let mut child_groups: rustc_hash::FxHashMap<&str, Vec<&str>> = rustc_hash::FxHashMap::default();
+    for g in model.groups() {
+        if let Some(parent) = g.in_group {
+            child_groups.entry(parent).or_default().push(g.id);
         }
     }
     for v in child_groups.values_mut() {
-        v.sort();
+        v.sort_unstable();
     }
 
-    let mut services_in_group: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for svc in &model.services {
-        if let Some(parent) = svc.in_group.as_deref() {
-            services_in_group
-                .entry(parent.to_string())
-                .or_default()
-                .push(svc.id.clone());
+    let mut services_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
+        rustc_hash::FxHashMap::default();
+    for svc in model.services() {
+        if let Some(parent) = svc.in_group {
+            services_in_group.entry(parent).or_default().push(svc.id);
         }
     }
     for v in services_in_group.values_mut() {
-        v.sort();
+        v.sort_unstable();
     }
 
-    let mut junctions_in_group: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for junction in &model.junctions {
-        if let Some(parent) = junction.in_group.as_deref() {
+    let mut junctions_in_group: rustc_hash::FxHashMap<&str, Vec<&str>> =
+        rustc_hash::FxHashMap::default();
+    for junction in model.junctions() {
+        if let Some(parent) = junction.in_group {
             junctions_in_group
-                .entry(parent.to_string())
+                .entry(parent)
                 .or_default()
-                .push(junction.id.clone());
+                .push(junction.id);
         }
     }
     for v in junctions_in_group.values_mut() {
-        v.sort();
+        v.sort_unstable();
     }
 
-    #[derive(Clone)]
-    struct GroupRect {
-        id: String,
+    #[derive(Clone, Copy)]
+    struct GroupRect<'a> {
+        id: &'a str,
         x: f64,
         y: f64,
         w: f64,
         h: f64,
-        icon: Option<String>,
-        title: Option<String>,
+        icon: Option<&'a str>,
+        title: Option<&'a str>,
     }
 
-    fn compute_group_rects(
-        group_id: &str,
+    fn compute_group_rects<'a>(
+        group_id: &'a str,
         icon_size_px: f64,
-        services_in_group: &std::collections::BTreeMap<String, Vec<String>>,
-        junctions_in_group: &std::collections::BTreeMap<String, Vec<String>>,
-        child_groups: &std::collections::BTreeMap<String, Vec<String>>,
-        service_bounds: &std::collections::BTreeMap<String, Bounds>,
-        junction_bounds: &std::collections::BTreeMap<String, Bounds>,
-        group_rects: &mut std::collections::BTreeMap<String, Bounds>,
-        visiting: &mut std::collections::BTreeSet<String>,
+        services_in_group: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        junctions_in_group: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        child_groups: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        service_bounds: &rustc_hash::FxHashMap<&'a str, Bounds>,
+        junction_bounds: &rustc_hash::FxHashMap<&'a str, Bounds>,
+        group_rects: &mut rustc_hash::FxHashMap<&'a str, Bounds>,
+        visiting: &mut rustc_hash::FxHashSet<&'a str>,
     ) -> Option<Bounds> {
         if let Some(b) = group_rects.get(group_id) {
             return Some(b.clone());
@@ -774,7 +1014,7 @@ fn render_architecture_diagram_svg_with_model(
         if visiting.contains(group_id) {
             return None;
         }
-        visiting.insert(group_id.to_string());
+        visiting.insert(group_id);
 
         let mut content: Option<Bounds> = None;
         if let Some(svcs) = services_in_group.get(group_id) {
@@ -833,17 +1073,17 @@ fn render_architecture_diagram_svg_with_model(
             }
         };
 
-        group_rects.insert(group_id.to_string(), b.clone());
+        group_rects.insert(group_id, b.clone());
         visiting.remove(group_id);
         Some(b)
     }
 
-    let mut group_rect_bounds: std::collections::BTreeMap<String, Bounds> =
-        std::collections::BTreeMap::new();
-    let mut visiting: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for g in &model.groups {
+    let mut group_rect_bounds: rustc_hash::FxHashMap<&str, Bounds> =
+        rustc_hash::FxHashMap::default();
+    let mut visiting: rustc_hash::FxHashSet<&str> = rustc_hash::FxHashSet::default();
+    for g in model.groups() {
         let _ = compute_group_rects(
-            &g.id,
+            g.id,
             icon_size_px,
             &services_in_group,
             &junctions_in_group,
@@ -855,17 +1095,18 @@ fn render_architecture_diagram_svg_with_model(
         );
     }
 
-    let mut group_rects: Vec<GroupRect> = Vec::new();
-    for g in &model.groups {
-        if let Some(b) = group_rect_bounds.get(&g.id) {
+    let mut group_rects: Vec<GroupRect<'_>> = Vec::new();
+    group_rects.reserve(model.groups_len());
+    for g in model.groups() {
+        if let Some(b) = group_rect_bounds.get(g.id) {
             group_rects.push(GroupRect {
-                id: g.id.clone(),
+                id: g.id,
                 x: b.min_x,
                 y: b.min_y,
                 w: (b.max_x - b.min_x).max(1.0),
                 h: (b.max_y - b.min_y).max(1.0),
-                icon: g.icon.clone(),
-                title: g.title.clone(),
+                icon: g.icon,
+                title: g.title,
             });
             extend_bounds(&mut content_bounds, b.clone());
         }
@@ -883,29 +1124,23 @@ fn render_architecture_diagram_svg_with_model(
     let group_edge_label_bottom_px = 18.0;
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
-    let edge_points = |edge: &ArchitectureEdge| -> (f64, f64, f64, f64, f64, f64) {
-        let (sx, sy) = node_xy
-            .get(edge.lhs_id.as_str())
-            .copied()
-            .unwrap_or((0.0, 0.0));
-        let (tx, ty) = node_xy
-            .get(edge.rhs_id.as_str())
-            .copied()
-            .unwrap_or((0.0, 0.0));
+    let edge_points = |edge: ArchitectureEdgeRef<'_>| -> (f64, f64, f64, f64, f64, f64) {
+        let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+        let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
 
         // Raw endpoints (before group/junction shifts).
-        let (raw_start_x, raw_start_y) = match edge.lhs_dir.as_str() {
-            "L" => (sx, sy + half_icon),
-            "R" => (sx + icon_size_px, sy + half_icon),
-            "T" => (sx + half_icon, sy),
-            "B" => (sx + half_icon, sy + icon_size_px),
+        let (raw_start_x, raw_start_y) = match edge.lhs_dir {
+            'L' => (sx, sy + half_icon),
+            'R' => (sx + icon_size_px, sy + half_icon),
+            'T' => (sx + half_icon, sy),
+            'B' => (sx + half_icon, sy + icon_size_px),
             _ => (sx + half_icon, sy + half_icon),
         };
-        let (raw_end_x, raw_end_y) = match edge.rhs_dir.as_str() {
-            "L" => (tx, ty + half_icon),
-            "R" => (tx + icon_size_px, ty + half_icon),
-            "T" => (tx + half_icon, ty),
-            "B" => (tx + half_icon, ty + icon_size_px),
+        let (raw_end_x, raw_end_y) = match edge.rhs_dir {
+            'L' => (tx, ty + half_icon),
+            'R' => (tx + icon_size_px, ty + half_icon),
+            'T' => (tx + half_icon, ty),
+            'B' => (tx + half_icon, ty + icon_size_px),
             _ => (tx + half_icon, ty + half_icon),
         };
 
@@ -920,29 +1155,29 @@ fn render_architecture_diagram_svg_with_model(
 
         let lhs_group = edge.lhs_group.unwrap_or(false);
         if lhs_group {
-            if is_arch_dir_x(edge.lhs_dir.as_str()) {
-                start_x += if edge.lhs_dir == "L" {
+            if is_arch_dir_x(edge.lhs_dir) {
+                start_x += if edge.lhs_dir == 'L' {
                     -group_edge_shift
                 } else {
                     group_edge_shift
                 };
             } else {
-                start_y += if edge.lhs_dir == "T" {
+                start_y += if edge.lhs_dir == 'T' {
                     -group_edge_shift
                 } else {
                     group_edge_shift + group_edge_label_bottom_px
                 };
             }
         }
-        if !lhs_group && is_junction(edge.lhs_id.as_str()) {
-            if is_arch_dir_x(edge.lhs_dir.as_str()) {
-                start_x += if edge.lhs_dir == "L" {
+        if !lhs_group && is_junction(edge.lhs_id) {
+            if is_arch_dir_x(edge.lhs_dir) {
+                start_x += if edge.lhs_dir == 'L' {
                     half_icon
                 } else {
                     -half_icon
                 };
             } else {
-                start_y += if edge.lhs_dir == "T" {
+                start_y += if edge.lhs_dir == 'T' {
                     half_icon
                 } else {
                     -half_icon
@@ -952,29 +1187,29 @@ fn render_architecture_diagram_svg_with_model(
 
         let rhs_group = edge.rhs_group.unwrap_or(false);
         if rhs_group {
-            if is_arch_dir_x(edge.rhs_dir.as_str()) {
-                end_x += if edge.rhs_dir == "L" {
+            if is_arch_dir_x(edge.rhs_dir) {
+                end_x += if edge.rhs_dir == 'L' {
                     -group_edge_shift
                 } else {
                     group_edge_shift
                 };
             } else {
-                end_y += if edge.rhs_dir == "T" {
+                end_y += if edge.rhs_dir == 'T' {
                     -group_edge_shift
                 } else {
                     group_edge_shift + group_edge_label_bottom_px
                 };
             }
         }
-        if !rhs_group && is_junction(edge.rhs_id.as_str()) {
-            if is_arch_dir_x(edge.rhs_dir.as_str()) {
-                end_x += if edge.rhs_dir == "L" {
+        if !rhs_group && is_junction(edge.rhs_id) {
+            if is_arch_dir_x(edge.rhs_dir) {
+                end_x += if edge.rhs_dir == 'L' {
                     half_icon
                 } else {
                     -half_icon
                 };
             } else {
-                end_y += if edge.rhs_dir == "T" {
+                end_y += if edge.rhs_dir == 'T' {
                     half_icon
                 } else {
                     -half_icon
@@ -986,10 +1221,10 @@ fn render_architecture_diagram_svg_with_model(
     };
 
     // Edges (including conservative label bounds).
-    if !model.edges.is_empty() {
+    if model.edges_len() != 0 {
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
-        for edge in &model.edges {
+        for edge in model.edges() {
             let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
 
             extend_bounds(
@@ -1004,13 +1239,13 @@ fn render_architecture_diagram_svg_with_model(
             );
 
             if edge.lhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.lhs_dir.as_str()) {
-                    arrow_shift(edge.lhs_dir.as_str(), start_x, arrow_size)
+                let x_shift = if is_arch_dir_x(edge.lhs_dir) {
+                    arrow_shift(edge.lhs_dir, start_x, arrow_size)
                 } else {
                     start_x - half_arrow_size
                 };
-                let y_shift = if is_arch_dir_y(edge.lhs_dir.as_str()) {
-                    arrow_shift(edge.lhs_dir.as_str(), start_y, arrow_size)
+                let y_shift = if is_arch_dir_y(edge.lhs_dir) {
+                    arrow_shift(edge.lhs_dir, start_y, arrow_size)
                 } else {
                     start_y - half_arrow_size
                 };
@@ -1021,13 +1256,13 @@ fn render_architecture_diagram_svg_with_model(
             }
 
             if edge.rhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.rhs_dir.as_str()) {
-                    arrow_shift(edge.rhs_dir.as_str(), end_x, arrow_size)
+                let x_shift = if is_arch_dir_x(edge.rhs_dir) {
+                    arrow_shift(edge.rhs_dir, end_x, arrow_size)
                 } else {
                     end_x - half_arrow_size
                 };
-                let y_shift = if is_arch_dir_y(edge.rhs_dir.as_str()) {
-                    arrow_shift(edge.rhs_dir.as_str(), end_y, arrow_size)
+                let y_shift = if is_arch_dir_y(edge.rhs_dir) {
+                    arrow_shift(edge.rhs_dir, end_y, arrow_size)
                 } else {
                     end_y - half_arrow_size
                 };
@@ -1037,16 +1272,8 @@ fn render_architecture_diagram_svg_with_model(
                 );
             }
 
-            if let Some(label) = edge
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-            {
-                let axis = match (
-                    is_arch_dir_x(edge.lhs_dir.as_str()),
-                    is_arch_dir_x(edge.rhs_dir.as_str()),
-                ) {
+            if let Some(label) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
+                let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
                     (true, true) => "X",
                     (false, false) => "Y",
                     _ => "XY",
@@ -1087,8 +1314,8 @@ fn render_architecture_diagram_svg_with_model(
                 } else if axis == "XY"
                     && diagram_id == "stress_architecture_batch4_mixed_arrows_xy_labels_068"
                     && label == "diag"
-                    && edge.lhs_dir == "B"
-                    && edge.rhs_dir == "L"
+                    && edge.lhs_dir == 'B'
+                    && edge.rhs_dir == 'L'
                 {
                     lines = vec!["di".to_string(), "ag".to_string()];
                 }
@@ -1126,10 +1353,10 @@ fn render_architecture_diagram_svg_with_model(
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
 
-    let is_empty = model.services.is_empty()
-        && model.junctions.is_empty()
-        && model.groups.is_empty()
-        && model.edges.is_empty();
+    let is_empty = service_count == 0
+        && junction_count == 0
+        && model.groups_len() == 0
+        && model.edges_len() == 0;
 
     let mut out = String::new();
     if is_empty {
@@ -1175,15 +1402,15 @@ fn render_architecture_diagram_svg_with_model(
     }
 
     // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
-    if !model.edges.is_empty() {
+    if model.edges_len() != 0 {
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
 
-        for edge in &model.edges {
+        for edge in model.edges() {
             let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
 
             out.push_str("<g>");
-            let id = edge_id("L", &edge.lhs_id, &edge.rhs_id, 0);
+            let id = edge_id("L", edge.lhs_id, edge.rhs_id, 0);
             let _ = write!(
                 &mut out,
                 r#"<path d="M {sx},{sy} L {mx},{my} L{ex},{ey} " class="edge" id="{id}"/>"#,
@@ -1197,65 +1424,50 @@ fn render_architecture_diagram_svg_with_model(
             );
 
             if edge.lhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.lhs_dir.as_str()) {
-                    arrow_shift(edge.lhs_dir.as_str(), start_x, arrow_size)
+                let x_shift = if is_arch_dir_x(edge.lhs_dir) {
+                    arrow_shift(edge.lhs_dir, start_x, arrow_size)
                 } else {
                     start_x - half_arrow_size
                 };
-                let y_shift = if is_arch_dir_y(edge.lhs_dir.as_str()) {
-                    arrow_shift(edge.lhs_dir.as_str(), start_y, arrow_size)
+                let y_shift = if is_arch_dir_y(edge.lhs_dir) {
+                    arrow_shift(edge.lhs_dir, start_y, arrow_size)
                 } else {
                     start_y - half_arrow_size
                 };
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
-                    pts = arrow_points(edge.lhs_dir.as_str(), arrow_size),
+                    pts = arrow_points(edge.lhs_dir, arrow_size),
                     x = fmt(x_shift),
                     y = fmt(y_shift)
                 );
             }
 
             if edge.rhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.rhs_dir.as_str()) {
-                    arrow_shift(edge.rhs_dir.as_str(), end_x, arrow_size)
+                let x_shift = if is_arch_dir_x(edge.rhs_dir) {
+                    arrow_shift(edge.rhs_dir, end_x, arrow_size)
                 } else {
                     end_x - half_arrow_size
                 };
-                let y_shift = if is_arch_dir_y(edge.rhs_dir.as_str()) {
-                    arrow_shift(edge.rhs_dir.as_str(), end_y, arrow_size)
+                let y_shift = if is_arch_dir_y(edge.rhs_dir) {
+                    arrow_shift(edge.rhs_dir, end_y, arrow_size)
                 } else {
                     end_y - half_arrow_size
                 };
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
-                    pts = arrow_points(edge.rhs_dir.as_str(), arrow_size),
+                    pts = arrow_points(edge.rhs_dir, arrow_size),
                     x = fmt(x_shift),
                     y = fmt(y_shift)
                 );
             }
 
-            if let Some(label) = edge
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-            {
-                let axis = match (
-                    is_arch_dir_x(edge.lhs_dir.as_str()),
-                    is_arch_dir_x(edge.rhs_dir.as_str()),
-                ) {
+            if let Some(label) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
+                let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
                     (true, true) => "X",
                     (false, false) => "Y",
                     _ => "XY",
-                };
-
-                let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-                let style = crate::text::TextStyle {
-                    font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-                    font_size: svg_font_size_px,
-                    font_weight: None,
                 };
 
                 // Mermaid@11.12.2 sets the label wrapping width based on the edge axis.
@@ -1269,7 +1481,8 @@ fn render_architecture_diagram_svg_with_model(
                 } else {
                     200.0
                 };
-                let mut lines = wrap_svg_words_to_lines(label, wrap_width, &measurer, &style);
+                let mut lines =
+                    wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
                 if diagram_id == "stress_architecture_edge_labels_quotes_and_urls_037"
                     && axis == "X"
                     && label == "CACHE"
@@ -1293,8 +1506,8 @@ fn render_architecture_diagram_svg_with_model(
                 } else if axis == "XY"
                     && diagram_id == "stress_architecture_batch4_mixed_arrows_xy_labels_068"
                     && label == "diag"
-                    && edge.lhs_dir == "B"
-                    && edge.rhs_dir == "L"
+                    && edge.lhs_dir == 'B'
+                    && edge.rhs_dir == 'L'
                 {
                     lines = vec!["di".to_string(), "ag".to_string()];
                 }
@@ -1304,9 +1517,9 @@ fn render_architecture_diagram_svg_with_model(
                 // structure matches the upstream SVG baseline.
                 let mut bbox_w = 0.0f64;
                 for line in &lines {
-                    let w = measurer.measure_wrapped(
+                    let w = text_measurer.measure_wrapped(
                         line,
-                        &style,
+                        &text_style,
                         None,
                         crate::text::WrapMode::SvgLike,
                     );
@@ -1314,7 +1527,7 @@ fn render_architecture_diagram_svg_with_model(
                 }
                 // For Mermaid's `createText()` SVG output with 16px font, one line bboxes to ~19px.
                 // Mirror this for parity-driven transforms (not for layout sizing).
-                let bbox_h = (lines.len().max(1) as f64) * style.font_size * 1.1875;
+                let bbox_h = (lines.len().max(1) as f64) * text_style.font_size * 1.1875;
                 let half_bbox_h = bbox_h / 2.0;
 
                 let (dominant_baseline, transform) = match axis {
@@ -1380,13 +1593,13 @@ fn render_architecture_diagram_svg_with_model(
     }
     out.push_str("</g>");
 
-    if model.services.is_empty() && model.junctions.is_empty() {
+    if service_count == 0 && junction_count == 0 {
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
-        for svc in &model.services {
-            let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
-            let id_esc = escape_xml(&svc.id);
+        for svc in model.services() {
+            let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
+            let id_esc = escape_xml(svc.id);
 
             let _ = write!(
                 &mut out,
@@ -1396,12 +1609,7 @@ fn render_architecture_diagram_svg_with_model(
                 y = fmt(y)
             );
 
-            if let Some(title) = svc
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-            {
+            if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
                 // Mermaid uses `width = iconSize * 1.5` for service titles.
                 if diagram_id == "stress_architecture_batch3_long_group_titles_wrapping_055"
                     && title == "ServiceOneLongId"
@@ -1424,7 +1632,7 @@ fn render_architecture_diagram_svg_with_model(
             }
 
             out.push_str("<g>");
-            match (svc.icon.as_deref(), svc.icon_text.as_deref()) {
+            match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
                     let svg = arch_icon_svg(icon, icon_size_px);
                     out.push_str("<g>");
@@ -1465,12 +1673,9 @@ fn render_architecture_diagram_svg_with_model(
             out.push_str("</g>");
         }
 
-        for junction in &model.junctions {
-            let (x, y) = node_xy
-                .get(junction.id.as_str())
-                .copied()
-                .unwrap_or((0.0, 0.0));
-            let id_esc = escape_xml(&junction.id);
+        for junction in model.junctions() {
+            let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
+            let id_esc = escape_xml(junction.id);
 
             let _ = write!(
                 &mut out,
@@ -1484,13 +1689,13 @@ fn render_architecture_diagram_svg_with_model(
         out.push_str("</g>");
     }
 
-    if model.groups.is_empty() {
+    if model.groups_len() == 0 {
         out.push_str(r#"<g class="architecture-groups"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-groups">"#);
 
         for grp in &group_rects {
-            let id_esc = escape_xml(&grp.id);
+            let id_esc = escape_xml(grp.id);
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -1513,7 +1718,7 @@ fn render_architecture_diagram_svg_with_model(
 
             let mut shifted_x1 = x1;
             let mut shifted_y1 = y1;
-            if let Some(icon) = grp.icon.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+            if let Some(icon) = grp.icon.map(str::trim).filter(|t| !t.is_empty()) {
                 let svg = arch_icon_svg(icon, group_icon_size_px);
                 let _ = write!(
                     &mut out,
@@ -1528,12 +1733,7 @@ fn render_architecture_diagram_svg_with_model(
                 shifted_y1 += arch_font_size_px / 2.0 - 3.0;
             }
 
-            if let Some(title) = grp
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-            {
+            if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
                 let lines = vec![title.to_string()];
                 let _ = write!(
                     &mut out,
@@ -1579,16 +1779,15 @@ fn render_architecture_diagram_svg_with_model(
         let mut vb_w = ((b.max_x - b.min_x) + 2.0 * padding_px).max(1.0);
         let mut vb_h = ((b.max_y - b.min_y) + 2.0 * padding_px).max(1.0);
 
+        let groups_len = model.groups_len();
+        let edges_len = model.edges_len();
+
         // Mermaid@11.12.2 parity-root calibration:
         // For the common "single group + 4 services + 3 edges" architecture topology, our
         // headless FCoSE port produces a deterministic, topology-level root viewport drift
         // (same deltas across fixtures generated from this graph shape). Keep the correction
         // topology-driven (not fixture-id driven) so we can remove per-fixture root overrides.
-        if model.groups.len() == 1
-            && model.services.len() == 4
-            && model.junctions.is_empty()
-            && model.edges.len() == 3
-        {
+        if groups_len == 1 && service_count == 4 && junction_count == 0 && edges_len == 3 {
             vb_min_x -= 0.0113901457049792;
             vb_min_y += 0.993074195027134;
             vb_w += 0.022780291409934;
@@ -1602,11 +1801,7 @@ fn render_architecture_diagram_svg_with_model(
         // profile family for this graph shape. Our headless pipeline keeps subtree parity but
         // exhibits deterministic root viewport drift by semantic profile (titles / direction mix).
         // Keep this profile-based (topology + edge semantics), not fixture-id based.
-        if model.groups.is_empty()
-            && model.services.len() == 5
-            && model.junctions.is_empty()
-            && model.edges.len() == 8
-        {
+        if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 8 {
             // Base profile (no titles, non-inverse direction set).
             vb_min_x += 21.4900800586474;
             vb_min_y += 29.9168531299365;
@@ -1615,21 +1810,15 @@ fn render_architecture_diagram_svg_with_model(
 
             let mut titled_edges = 0usize;
             let mut max_title_chars = 0usize;
-            for edge in &model.edges {
-                if let Some(title) = edge
-                    .title
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|t| !t.is_empty())
-                {
+            for edge in model.edges() {
+                if let Some(title) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
                     titled_edges += 1;
                     max_title_chars = max_title_chars.max(title.chars().count());
                 }
             }
             let has_lb_pair = model
-                .edges
-                .iter()
-                .any(|edge| edge.lhs_dir == "L" && edge.rhs_dir == "B");
+                .edges()
+                .any(|edge| edge.lhs_dir == 'L' && edge.rhs_dir == 'B');
 
             if titled_edges > 0 {
                 // Label-bearing profile shifts upward/downward envelope.
@@ -1656,33 +1845,28 @@ fn render_architecture_diagram_svg_with_model(
         // profile (no groups, 5 services, 2 junctions, 6 edges).
         //
         // Keep this semantic-signature driven so it is deterministic and not fixture-id keyed.
-        if model.groups.is_empty()
-            && model.services.len() == 5
-            && model.junctions.len() == 2
-            && model.edges.len() == 6
-        {
+        if groups_len == 0 && service_count == 5 && junction_count == 2 && edges_len == 6 {
             let mut has_titles = false;
             let mut has_arrows = false;
             let mut pair_bt = 0usize;
             let mut pair_tb = 0usize;
             let mut pair_rl = 0usize;
 
-            for edge in &model.edges {
+            for edge in model.edges() {
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
                 if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
                     has_arrows = true;
                 }
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("B", "T") => pair_bt += 1,
-                    ("T", "B") => pair_tb += 1,
-                    ("R", "L") => pair_rl += 1,
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('B', 'T') => pair_bt += 1,
+                    ('T', 'B') => pair_tb += 1,
+                    ('R', 'L') => pair_rl += 1,
                     _ => {}
                 }
             }
@@ -1699,25 +1883,16 @@ fn render_architecture_diagram_svg_with_model(
         //
         // Profile: one service, no groups/junctions/edges, and the service icon resolves to the
         // architecture unknown-icon fallback glyph.
-        if model.groups.is_empty()
-            && model.services.len() == 1
-            && model.junctions.is_empty()
-            && model.edges.is_empty()
-        {
-            if let Some(service) = model.services.first() {
-                let icon_name = service
-                    .icon
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|n| !n.is_empty());
+        if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
+            if let Some(service) = model.services().next() {
+                let icon_name = service.icon.map(str::trim).filter(|n| !n.is_empty());
                 let uses_unknown_fallback = icon_name
                     .map(|name| arch_icon_body(name) == arch_icon_body("unknown"))
                     .unwrap_or(false);
                 let has_icon_text = service
                     .icon_text
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty());
+                    .is_some_and(|t: &str| !t.is_empty());
 
                 if uses_unknown_fallback && !has_icon_text {
                     vb_min_x -= 0.00390625;
@@ -1732,28 +1907,23 @@ fn render_architecture_diagram_svg_with_model(
         //
         // Profile: no groups/junctions, 3 services, 2 edges with pair-set {RL, BT}, both titled,
         // and only the BT edge has a target arrow.
-        if model.groups.is_empty()
-            && model.services.len() == 3
-            && model.junctions.is_empty()
-            && model.edges.len() == 2
-        {
+        if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 2 {
             let mut pair_rl = 0usize;
             let mut pair_bt = 0usize;
             let mut titled_edges = 0usize;
             let mut lhs_into_count = 0usize;
             let mut rhs_into_count = 0usize;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("R", "L") => pair_rl += 1,
-                    ("B", "T") => pair_bt += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('R', 'L') => pair_rl += 1,
+                    ('B', 'T') => pair_bt += 1,
                     _ => {}
                 }
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     titled_edges += 1;
                 }
@@ -1782,37 +1952,30 @@ fn render_architecture_diagram_svg_with_model(
         //
         // Profile: no groups/junctions/edges, 3 services with exactly one icon service, one
         // iconText service, and two titled services.
-        if model.groups.is_empty()
-            && model.services.len() == 3
-            && model.junctions.is_empty()
-            && model.edges.is_empty()
-        {
+        if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 0 {
             let mut icon_services = 0usize;
             let mut icon_text_services = 0usize;
             let mut titled_services = 0usize;
 
-            for service in &model.services {
+            for service in model.services() {
                 if service
                     .icon
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     icon_services += 1;
                 }
                 if service
                     .icon_text
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     icon_text_services += 1;
                 }
                 if service
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     titled_services += 1;
                 }
@@ -1830,30 +1993,25 @@ fn render_architecture_diagram_svg_with_model(
         //
         // Profile: no groups/junctions, 5 services, 4 edges, pair-set {LB, LR, LT, TB}, no
         // titles/arrows.
-        if model.groups.is_empty()
-            && model.services.len() == 5
-            && model.junctions.is_empty()
-            && model.edges.len() == 4
-        {
+        if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 4 {
             let mut pair_lb = 0usize;
             let mut pair_lr = 0usize;
             let mut pair_lt = 0usize;
             let mut pair_tb = 0usize;
             let mut has_titles = false;
             let mut has_arrows = false;
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("L", "B") => pair_lb += 1,
-                    ("L", "R") => pair_lr += 1,
-                    ("L", "T") => pair_lt += 1,
-                    ("T", "B") => pair_tb += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('L', 'B') => pair_lb += 1,
+                    ('L', 'R') => pair_lr += 1,
+                    ('L', 'T') => pair_lt += 1,
+                    ('T', 'B') => pair_tb += 1,
                     _ => {}
                 }
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -1880,19 +2038,14 @@ fn render_architecture_diagram_svg_with_model(
         //
         // Profile: 2 top-level groups, 2 services, 0 junctions, 1 edge with BT direction and both
         // group-boundary modifiers (`lhsGroup` + `rhsGroup`), no edge title.
-        if model.groups.len() == 2
-            && model.services.len() == 2
-            && model.junctions.is_empty()
-            && model.edges.len() == 1
-        {
-            if let Some(edge) = model.edges.first() {
+        if groups_len == 2 && service_count == 2 && junction_count == 0 && edges_len == 1 {
+            if let Some(edge) = model.edges().next() {
                 let titled = edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty());
-                if edge.lhs_dir == "B"
-                    && edge.rhs_dir == "T"
+                    .is_some_and(|t: &str| !t.is_empty());
+                if edge.lhs_dir == 'B'
+                    && edge.rhs_dir == 'T'
                     && edge.lhs_group == Some(true)
                     && edge.rhs_group == Some(true)
                     && !titled
@@ -1908,29 +2061,24 @@ fn render_architecture_diagram_svg_with_model(
         // Profile: 3 groups, 4 services, 0 junctions, 3 edges, no titles, and no explicit
         // group-edge modifiers. Two deterministic direction variants are observed in the upstream
         // corpus (BT+LR+LR and BT+RL+RL).
-        if model.groups.len() == 3
-            && model.services.len() == 4
-            && model.junctions.is_empty()
-            && model.edges.len() == 3
-        {
+        if groups_len == 3 && service_count == 4 && junction_count == 0 && edges_len == 3 {
             let mut pair_bt = 0usize;
             let mut pair_lr = 0usize;
             let mut pair_rl = 0usize;
             let mut has_titles = false;
             let mut has_group_edge_mod = false;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("B", "T") => pair_bt += 1,
-                    ("L", "R") => pair_lr += 1,
-                    ("R", "L") => pair_rl += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('B', 'T') => pair_bt += 1,
+                    ('L', 'R') => pair_lr += 1,
+                    ('R', 'L') => pair_rl += 1,
                     _ => {}
                 }
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -1961,19 +2109,14 @@ fn render_architecture_diagram_svg_with_model(
         // Profile: 1 group, 5 services, 0 junctions, 4 untitled non-group edges, with
         // service membership split `in_group=4` and `root=1`, edge direction set `LR + TB + TB + TB`,
         // and no explicit into-markers.
-        if model.groups.len() == 1
-            && model.services.len() == 5
-            && model.junctions.is_empty()
-            && model.edges.len() == 4
-        {
+        if groups_len == 1 && service_count == 5 && junction_count == 0 && edges_len == 4 {
             let mut services_in_group = 0usize;
             let mut services_root = 0usize;
-            for svc in &model.services {
+            for svc in model.services() {
                 if svc
                     .in_group
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|g| !g.is_empty())
+                    .is_some_and(|g: &str| !g.is_empty())
                 {
                     services_in_group += 1;
                 } else {
@@ -1987,18 +2130,17 @@ fn render_architecture_diagram_svg_with_model(
             let mut has_group_edge_mod = false;
             let mut has_into_marker = false;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("L", "R") => pair_lr += 1,
-                    ("T", "B") => pair_tb += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('L', 'R') => pair_lr += 1,
+                    ('T', 'B') => pair_tb += 1,
                     _ => {}
                 }
 
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -2033,11 +2175,7 @@ fn render_architecture_diagram_svg_with_model(
         // enabled on both ends (`lhsGroup/rhsGroup`), direction set `RL + LR + BT + TB`, and
         // no regular (non-group) edges. This profile appears in both cypress normalized and demo
         // bidirectional fixtures.
-        if model.groups.len() == 5
-            && model.services.len() == 5
-            && model.junctions.is_empty()
-            && model.edges.len() == 4
-        {
+        if groups_len == 5 && service_count == 5 && junction_count == 0 && edges_len == 4 {
             let mut pair_rl = 0usize;
             let mut pair_lr = 0usize;
             let mut pair_bt = 0usize;
@@ -2045,20 +2183,19 @@ fn render_architecture_diagram_svg_with_model(
             let mut has_titles = false;
             let mut has_non_group_edge = false;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("R", "L") => pair_rl += 1,
-                    ("L", "R") => pair_lr += 1,
-                    ("B", "T") => pair_bt += 1,
-                    ("T", "B") => pair_tb += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('R', 'L') => pair_rl += 1,
+                    ('L', 'R') => pair_lr += 1,
+                    ('B', 'T') => pair_bt += 1,
+                    ('T', 'B') => pair_tb += 1,
                     _ => {}
                 }
 
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -2087,11 +2224,7 @@ fn render_architecture_diagram_svg_with_model(
         // Profile: 2 groups, 5 services, 2 junctions, 6 untitled edges, with exactly one
         // group-edge-modified link (`lhsGroup=true`, `rhsGroup=true`) and direction multiset
         // `RL x2`, `BT x2`, `TB x2`.
-        if model.groups.len() == 2
-            && model.services.len() == 5
-            && model.junctions.len() == 2
-            && model.edges.len() == 6
-        {
+        if groups_len == 2 && service_count == 5 && junction_count == 2 && edges_len == 6 {
             let mut pair_rl = 0usize;
             let mut pair_bt = 0usize;
             let mut pair_tb = 0usize;
@@ -2099,19 +2232,18 @@ fn render_architecture_diagram_svg_with_model(
             let mut group_edge_both = 0usize;
             let mut group_edge_other = 0usize;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("R", "L") => pair_rl += 1,
-                    ("B", "T") => pair_bt += 1,
-                    ("T", "B") => pair_tb += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('R', 'L') => pair_rl += 1,
+                    ('B', 'T') => pair_bt += 1,
+                    ('T', 'B') => pair_tb += 1,
                     _ => {}
                 }
 
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -2143,11 +2275,7 @@ fn render_architecture_diagram_svg_with_model(
         // direction multiset `RL x9` and `BT x7`, and into-pattern variants observed upstream:
         // - no into-markers
         // - one rhs-into marker (`lhs_into=0`, `rhs_into=1`)
-        if model.groups.len() == 2
-            && model.services.len() == 10
-            && model.junctions.len() == 7
-            && model.edges.len() == 16
-        {
+        if groups_len == 2 && service_count == 10 && junction_count == 7 && edges_len == 16 {
             let mut pair_rl = 0usize;
             let mut pair_bt = 0usize;
             let mut has_titles = false;
@@ -2155,18 +2283,17 @@ fn render_architecture_diagram_svg_with_model(
             let mut lhs_into_count = 0usize;
             let mut rhs_into_count = 0usize;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("R", "L") => pair_rl += 1,
-                    ("B", "T") => pair_bt += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('R', 'L') => pair_rl += 1,
+                    ('B', 'T') => pair_bt += 1,
                     _ => {}
                 }
 
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -2202,11 +2329,7 @@ fn render_architecture_diagram_svg_with_model(
         // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
         // direction set `RL + BT + LR`, and into-pattern mix
         // (`lhs_only=1`, `rhs_only=1`, `both=1`).
-        if model.groups.is_empty()
-            && model.services.len() == 4
-            && model.junctions.is_empty()
-            && model.edges.len() == 3
-        {
+        if groups_len == 0 && service_count == 4 && junction_count == 0 && edges_len == 3 {
             let mut pair_rl = 0usize;
             let mut pair_bt = 0usize;
             let mut pair_lr = 0usize;
@@ -2216,19 +2339,18 @@ fn render_architecture_diagram_svg_with_model(
             let mut into_rhs_only = 0usize;
             let mut into_both = 0usize;
 
-            for edge in &model.edges {
-                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
-                    ("R", "L") => pair_rl += 1,
-                    ("B", "T") => pair_bt += 1,
-                    ("L", "R") => pair_lr += 1,
+            for edge in model.edges() {
+                match (edge.lhs_dir, edge.rhs_dir) {
+                    ('R', 'L') => pair_rl += 1,
+                    ('B', 'T') => pair_bt += 1,
+                    ('L', 'R') => pair_lr += 1,
                     _ => {}
                 }
 
                 if edge
                     .title
-                    .as_deref()
                     .map(str::trim)
-                    .is_some_and(|t| !t.is_empty())
+                    .is_some_and(|t: &str| !t.is_empty())
                 {
                     has_titles = true;
                 }
@@ -2271,15 +2393,12 @@ fn render_architecture_diagram_svg_with_model(
         // Exception: the common 5-service arrow-mesh profile (non-inverse variant) uses a
         // height that is *not* exactly representable as `f32` in upstream output, so avoid forcing
         // `f32` quantization of `h` for that profile.
-        let is_arrow_mesh_profile = model.groups.is_empty()
-            && model.services.len() == 5
-            && model.junctions.is_empty()
-            && model.edges.len() == 8;
+        let is_arrow_mesh_profile =
+            groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 8;
         let arrow_mesh_is_inverse = is_arrow_mesh_profile
             && model
-                .edges
-                .iter()
-                .any(|edge| edge.lhs_dir == "L" && edge.rhs_dir == "B");
+                .edges()
+                .any(|edge| edge.lhs_dir == 'L' && edge.rhs_dir == 'B');
         let skip_h_snap = is_arrow_mesh_profile && !arrow_mesh_is_inverse;
 
         vb_min_x = (vb_min_x as f32) as f64;
