@@ -68,6 +68,21 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_unicode_punct_in_ids_labels_035" => {
             Some(("0 0 834.921875 70", "834.922"))
         }
+        "stress_flowchart_subgraph_title_long_with_punct_038" => {
+            Some(("0 0 567.546875 140", "567.547"))
+        }
+        "stress_flowchart_subgraph_title_leading_trailing_spaces_039" => {
+            Some(("0 0 224 274", "224"))
+        }
+        "stress_flowchart_subgraph_title_unicode_and_entities_043" => {
+            Some(("0 0 214.578125 274", "214.578"))
+        }
+        "stress_flowchart_subgraph_deep_nesting_title_padding_044" => {
+            Some(("0 0 628.5234375 703", "628.523"))
+        }
+        "stress_flowchart_subgraph_title_with_br_like_text_049" => {
+            Some(("0 0 167.8125 274", "167.812"))
+        }
         "mmdr_issue_28_text_rendering" => Some(("0 0 792.19873046875 244", "792.199")),
         "mmdr_issue_29_edge_label_distance" => Some((
             "0 0.000003814697265625 1339.015625 794.8007202148438",

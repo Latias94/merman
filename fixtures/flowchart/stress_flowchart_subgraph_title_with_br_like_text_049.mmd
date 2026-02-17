@@ -1,0 +1,11 @@
+flowchart TB
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: title containing literal "<br/>" text; ensure it is treated as text, not markup.
+
+  subgraph sg["title contains literal <br/> sequence"]
+    direction TB
+    a["A"]
+    b["B"]
+    a --> b
+  end
+

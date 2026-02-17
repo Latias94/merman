@@ -1,0 +1,109 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {
+      "hot": [
+        "fill:#ffdddd",
+        "stroke:#d33",
+        "stroke-width:2px",
+        "color:#222"
+      ]
+    },
+    "tooltips": {
+      "a": "A tooltip"
+    },
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "a",
+      "b",
+      "a",
+      "b"
+    ],
+    "nodes": [
+      {
+        "id": "a",
+        "label": "A",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "hot",
+          "clickable"
+        ],
+        "link": "https://example.com/",
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "b",
+        "label": "B",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "hot"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "a",
+        "to": "b",
+        "id": "L_a_b_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "sg",
+        "nodes": [
+          "a",
+          "b"
+        ],
+        "title": "styled subgraph",
+        "classes": [],
+        "styles": [],
+        "dir": "TB",
+        "labelType": "string"
+      }
+    ]
+  }
+}

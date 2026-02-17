@@ -1,0 +1,135 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "a",
+      "b",
+      "c",
+      "a",
+      "b",
+      "b",
+      "c"
+    ],
+    "nodes": [
+      {
+        "id": "a",
+        "label": "A",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "b",
+        "label": "B",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "c",
+        "label": "C",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "a",
+        "to": "b",
+        "id": "L_a_b_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": "label close to top",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "b",
+        "to": "c",
+        "id": "L_b_c_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "sg",
+        "nodes": [
+          "a",
+          "b",
+          "c"
+        ],
+        "title": "subgraph title",
+        "classes": [],
+        "styles": [],
+        "dir": "TB",
+        "labelType": "string"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+flowchart TB
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: edge label near subgraph title line.
+
+  subgraph sg["subgraph title"]
+    direction TB
+    a["A"]
+    b["B"]
+    c["C"]
+    a -->|label close to top| b
+    b --> c
+  end
+

@@ -1,0 +1,21 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: cross edges between sibling subgraphs; box size should include only internal nodes.
+
+  subgraph left["left box"]
+    direction TB
+    l1["L1"]
+    l2["L2"]
+    l1 --> l2
+  end
+
+  subgraph right["right box"]
+    direction TB
+    r1["R1"]
+    r2["R2"]
+    r1 --> r2
+  end
+
+  l2 --> r1
+  r2 --> l1
+

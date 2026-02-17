@@ -1,0 +1,199 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "p1",
+      "c1a",
+      "c1b",
+      "c1a",
+      "c1b",
+      "g1",
+      "g2",
+      "g1",
+      "g2"
+    ],
+    "nodes": [
+      {
+        "id": "p1",
+        "label": "P1",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "c1a",
+        "label": "C1A",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "c1b",
+        "label": "C1B",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "g1",
+        "label": "G1",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "g2",
+        "label": "G2",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "c1a",
+        "to": "c1b",
+        "id": "L_c1a_c1b_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "g1",
+        "to": "g2",
+        "id": "L_g1_g2_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "c2",
+        "nodes": [
+          "g1",
+          "g2"
+        ],
+        "title": "grand child title with spaces",
+        "classes": [],
+        "styles": [],
+        "dir": "TB",
+        "labelType": "string"
+      },
+      {
+        "id": "c1",
+        "nodes": [
+          "c1a",
+          "c1b",
+          "c2"
+        ],
+        "title": "child-1 title",
+        "classes": [],
+        "styles": [],
+        "dir": "TB",
+        "labelType": "string"
+      },
+      {
+        "id": "p",
+        "nodes": [
+          "p1",
+          "c1"
+        ],
+        "title": "parent title",
+        "classes": [],
+        "styles": [],
+        "dir": "TB",
+        "labelType": "string"
+      }
+    ]
+  }
+}

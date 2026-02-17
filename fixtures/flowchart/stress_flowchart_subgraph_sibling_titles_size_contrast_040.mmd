@@ -1,0 +1,21 @@
+flowchart TB
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: sibling subgraphs with very different title widths.
+
+  subgraph sg_left["short"]
+    direction TB
+    l1["L1"]
+    l2["L2"]
+    l1 --> l2
+  end
+
+  subgraph sg_right["a much much longer title that should expand the box"]
+    direction TB
+    r1["R1"]
+    r2["R2"]
+    r3["R3"]
+    r1 --> r2 --> r3
+  end
+
+  l2 --> r1
+

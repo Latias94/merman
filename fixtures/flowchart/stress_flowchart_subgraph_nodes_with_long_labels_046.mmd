@@ -1,0 +1,11 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: long node labels within a subgraph; check box padding and title offset.
+
+  subgraph sg["subgraph with long internal labels"]
+    direction TB
+    a["a very long node label that should wrap or expand the node"]
+    b["another very long node label that interacts with padding"]
+    a --> b
+  end
+

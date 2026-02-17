@@ -1,0 +1,23 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: deep nesting + title padding; ensure boxes do not overlap.
+
+  subgraph p["parent title"]
+    direction TB
+    p1["P1"]
+
+    subgraph c1["child-1 title"]
+      direction TB
+      c1a["C1A"]
+      c1b["C1B"]
+      c1a --> c1b
+
+      subgraph c2["grand child title with spaces"]
+        direction TB
+        g1["G1"]
+        g2["G2"]
+        g1 --> g2
+      end
+    end
+  end
+

@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-- Current corpus (2026-02-17): 1780 baselines across 23 diagrams.
+- Current corpus (2026-02-17): 1794 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
