@@ -55,6 +55,19 @@ If you prefer keeping comparison artifacts out of the docs tree, pass `--out` ex
 python tools/bench/compare_mermaid_renderers.py --out target/bench/COMPARISON.latest.md
 ```
 
+For lower-noise results (recommended when tracking canaries), use the `long` preset:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py --preset long
+```
+
+If you want to avoid the optional upstream Mermaid JS (puppeteer) run (which can be noisy and slow),
+add `--skip-mermaid-js`:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
+```
+
 ## Stage spot-check (recommended for triage)
 
 When you want to attribute a performance change to a specific pipeline stage quickly (parse vs
@@ -67,15 +80,10 @@ python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium -
 This runs a small set of `--exact` Criterion benchmarks for both `merman` and
 `repo-ref/mermaid-rs-renderer` and writes a compact stage-by-stage report.
 
-If you also have the pinned Node toolchain under `tools/mermaid-cli` (used for parity SVG
-baselines), the script will additionally benchmark upstream Mermaid JS rendering via a single
-headless Chromium instance (puppeteer) and include it in the report.
-
-To install the local Node toolchain:
+For lower-noise spotchecks, use the `long` preset:
 
 ```bash
-cd tools/mermaid-cli
-npm ci
+python tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium
 ```
 
 ## Recommendations
