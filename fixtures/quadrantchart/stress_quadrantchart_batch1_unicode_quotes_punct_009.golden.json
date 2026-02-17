@@ -1,0 +1,48 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Unicode strings (quoted)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Expand",
+      "quadrant2Text": "Promote - now",
+      "quadrant3Text": "Re-evaluate...",
+      "quadrant4Text": "Improve / iterate"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Reach",
+      "xAxisRightText": "High ❤ Reach",
+      "yAxisBottomText": "Low Engagement",
+      "yAxisTopText": "High Engagement"
+    },
+    "points": [
+      {
+        "text": "Emoji&ﬂ°°58¶ßrocket",
+        "x": 0.77,
+        "y": 0.22,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "CJK-项目",
+        "x": 0.33,
+        "y": 0.66,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

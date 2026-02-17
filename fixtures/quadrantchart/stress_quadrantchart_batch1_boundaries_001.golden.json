@@ -1,0 +1,84 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Boundary points (0/1)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Q1 Top Right",
+      "quadrant2Text": "Q2 Top Left",
+      "quadrant3Text": "Q3 Bottom Left",
+      "quadrant4Text": "Q4 Bottom Right"
+    },
+    "axes": {
+      "xAxisLeftText": "Left",
+      "xAxisRightText": "Right",
+      "yAxisBottomText": "Bottom",
+      "yAxisTopText": "Top"
+    },
+    "points": [
+      {
+        "text": "P4",
+        "x": 0.5,
+        "y": 0.5,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P3",
+        "x": 1.0,
+        "y": 0.0,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P2",
+        "x": 0.0,
+        "y": 1.0,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P1",
+        "x": 1.0,
+        "y": 1.0,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P0",
+        "x": 0.0,
+        "y": 0.0,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

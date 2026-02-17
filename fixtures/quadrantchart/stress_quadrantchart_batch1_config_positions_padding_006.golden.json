@@ -1,0 +1,48 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Config positions/padding (points force x-axis bottom)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Plan",
+      "quadrant2Text": "Do",
+      "quadrant3Text": "Delegate",
+      "quadrant4Text": "Delete"
+    },
+    "axes": {
+      "xAxisLeftText": "Urgent",
+      "xAxisRightText": "Not Urgent",
+      "yAxisBottomText": "Not Important",
+      "yAxisTopText": "Important ❤"
+    },
+    "points": [
+      {
+        "text": "Task B",
+        "x": 0.75,
+        "y": 0.25,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Task A",
+        "x": 0.15,
+        "y": 0.85,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

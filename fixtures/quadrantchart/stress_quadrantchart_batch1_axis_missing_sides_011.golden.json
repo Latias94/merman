@@ -1,0 +1,48 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Missing axis sides",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Q1",
+      "quadrant2Text": "Q2",
+      "quadrant3Text": "Q3",
+      "quadrant4Text": "Q4"
+    },
+    "axes": {
+      "xAxisLeftText": "OnlyLeft",
+      "xAxisRightText": "",
+      "yAxisBottomText": "OnlyBottom",
+      "yAxisTopText": ""
+    },
+    "points": [
+      {
+        "text": "B",
+        "x": 0.9,
+        "y": 0.1,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A",
+        "x": 0.1,
+        "y": 0.9,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

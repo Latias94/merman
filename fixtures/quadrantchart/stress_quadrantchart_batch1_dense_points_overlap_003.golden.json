@@ -1,0 +1,132 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Dense points (label overlap risk)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Strong",
+      "quadrant2Text": "Promising",
+      "quadrant3Text": "Weak",
+      "quadrant4Text": "Improving"
+    },
+    "axes": {
+      "xAxisLeftText": "Low",
+      "xAxisRightText": "High",
+      "yAxisBottomText": "Low",
+      "yAxisTopText": "High"
+    },
+    "points": [
+      {
+        "text": "A-09",
+        "x": 0.54,
+        "y": 0.54,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-08",
+        "x": 0.53,
+        "y": 0.54,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-07",
+        "x": 0.52,
+        "y": 0.54,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-06",
+        "x": 0.54,
+        "y": 0.53,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-05",
+        "x": 0.53,
+        "y": 0.53,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-04",
+        "x": 0.52,
+        "y": 0.53,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-03",
+        "x": 0.54,
+        "y": 0.52,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-02",
+        "x": 0.53,
+        "y": 0.52,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A-01",
+        "x": 0.52,
+        "y": 0.52,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}
