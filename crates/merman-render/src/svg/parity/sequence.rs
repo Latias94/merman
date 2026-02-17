@@ -215,6 +215,7 @@ pub(super) fn render_sequence_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
+    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
 
     let seq_cfg = effective_config
         .get("sequence")
@@ -607,7 +608,11 @@ pub(super) fn render_sequence_diagram_svg(
                 .and_then(|v| v.as_str())
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty());
-            let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+            let actor_rect_fill = if actor_custom_class.is_some() {
+                "#EDF2AE"
+            } else {
+                "#eaeaea"
+            };
             let actor_bottom_class = actor_custom_class
                 .map(|c| format!("{c} actor-bottom"))
                 .unwrap_or_else(|| "actor actor-bottom".to_string());
@@ -790,7 +795,11 @@ pub(super) fn render_sequence_diagram_svg(
             .and_then(|v| v.as_str())
             .map(|s| s.trim())
             .filter(|s| !s.is_empty());
-        let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let actor_rect_fill = if actor_custom_class.is_some() {
+            "#EDF2AE"
+        } else {
+            "#eaeaea"
+        };
         let actor_top_class = actor_custom_class
             .map(|c| format!("{c} actor-top"))
             .unwrap_or_else(|| "actor actor-top".to_string());
@@ -3180,7 +3189,11 @@ pub(super) fn render_sequence_diagram_svg(
         } else {
             "none"
         };
-        let popup_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let popup_fill = if actor_custom_class.is_some() {
+            "#EDF2AE"
+        } else {
+            "#eaeaea"
+        };
         let popup_actor_pos_class = if mirror_actors {
             "actor-bottom"
         } else {
@@ -3223,16 +3236,28 @@ pub(super) fn render_sequence_diagram_svg(
             let href = url::Url::parse(href)
                 .map(|u| u.to_string())
                 .unwrap_or_else(|_| href.to_string());
+            let href = merman_core::utils::format_url(&href, &sanitize_config)
+                .filter(|u| u.trim() != merman_core::utils::BLANK_URL);
             let text_x = x + 10.0;
             let text_y = actor_height + link_y + 10.0;
-            let _ = write!(
-                &mut out,
-                r##"<a xlink:href="{href}"><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
-                href = escape_xml(&href),
-                x = fmt(text_x),
-                y = fmt(text_y),
-                label = escape_xml(label)
-            );
+            if let Some(href) = href {
+                let _ = write!(
+                    &mut out,
+                    r##"<a xlink:href="{href}"><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    href = escape_xml(&href),
+                    x = fmt(text_x),
+                    y = fmt(text_y),
+                    label = escape_xml(label)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r##"<a><text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor" style="text-anchor: start; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{label}</tspan></text></a>"##,
+                    x = fmt(text_x),
+                    y = fmt(text_y),
+                    label = escape_xml(label)
+                );
+            }
             link_y += 30.0;
         }
 

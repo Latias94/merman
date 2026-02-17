@@ -1,0 +1,22 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): create/destroy participants inside par branches.
+
+  participant A as Alice
+  participant S as Service
+
+  par allocate
+    create participant W as Worker
+    A->>W: start
+    activate W
+    W-->>A: ready
+    deactivate W
+  and run
+    A->>S: dispatch
+    activate S
+    S-->>A: accepted
+    deactivate S
+  end
+
+  destroy W
+  A-xW: release
+

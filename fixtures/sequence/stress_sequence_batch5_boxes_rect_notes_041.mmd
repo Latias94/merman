@@ -1,0 +1,25 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): box participant groups + nested rect blocks + spanning notes.
+
+  box rgb(230,230,255) Frontend
+    participant U as User
+    participant WEB as Web App
+  end
+  box rgb(255,240,230) Backend
+    participant API as API
+    participant DB as DB
+  end
+
+  rect rgba(250,250,250,0.8)
+    U->>WEB: click "Submit"
+    WEB->>API: POST /submit
+    rect rgba(220,255,220,0.6)
+      activate API
+      API->>DB: write
+      Note over API,DB: transactional
+      DB-->>API: ok
+      deactivate API
+    end
+    API-->>WEB: 201 Created
+  end
+

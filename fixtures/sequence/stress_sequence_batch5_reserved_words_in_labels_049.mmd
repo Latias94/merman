@@ -1,0 +1,14 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): reserved words inside labels should not terminate blocks.
+
+  participant A as Alice
+  participant B as Bob
+
+  alt label contains end
+    A->>B: message with "end" and "else" and "opt"
+  else label contains and/par
+    A->>B: words: and par critical rect loop
+  end
+
+  Note over A,B: text mentions end/else/and/par without affecting parsing
+

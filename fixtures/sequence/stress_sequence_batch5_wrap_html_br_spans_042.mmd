@@ -1,0 +1,10 @@
+%%{init: { "config": { "wrap": true }}}%%
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): wrap directive + <br/> in both messages and notes.
+
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: A long message with an explicit<br/>line break and more words to wrap nicely
+  Note over A,B: first line<br/>second line with plain text
+  B-->>A: ok

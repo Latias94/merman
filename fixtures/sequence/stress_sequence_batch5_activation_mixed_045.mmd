@@ -1,0 +1,19 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): mixed inline activation (+/-) and explicit activate/deactivate.
+
+  participant A as Alice
+  participant S as Service
+  participant DB as DB
+
+  A->>+S: start
+  S->>DB: read
+  activate DB
+  DB-->>S: rows
+  deactivate DB
+
+  S-->>-A: ack
+  A->>S: follow-up
+  activate S
+  S->>S: self-call()
+  deactivate S
+

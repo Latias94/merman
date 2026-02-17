@@ -1,0 +1,200 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "WEB",
+      "API",
+      "DB"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "WEB": {
+        "name": "WEB",
+        "description": "Web App",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "rgba(250,250,250,0.8)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "U",
+        "to": "WEB",
+        "message": "click \"Submit\"",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "WEB",
+        "to": "API",
+        "message": "POST /submit",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "rgba(220,255,220,0.6)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "API",
+        "to": "DB",
+        "message": "write",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "API",
+        "to": "DB",
+        "message": "transactional",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "7",
+        "from": "DB",
+        "to": "API",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "API",
+        "to": "WEB",
+        "message": "201 Created",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "API",
+          "DB"
+        ],
+        "placement": 2,
+        "message": "transactional",
+        "wrap": false
+      }
+    ],
+    "boxes": [
+      {
+        "name": "Frontend",
+        "wrap": false,
+        "fill": "rgb(230,230,255)",
+        "actorKeys": [
+          "U",
+          "WEB"
+        ]
+      },
+      {
+        "name": "Backend",
+        "wrap": false,
+        "fill": "rgb(255,240,230)",
+        "actorKeys": [
+          "API",
+          "DB"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

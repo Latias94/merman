@@ -1,0 +1,97 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "API",
+      "DB",
+      "Q"
+    ],
+    "actors": {
+      "API": {
+        "name": "API",
+        "description": "\"API Gateway\"",
+        "wrap": true,
+        "type": "participant",
+        "links": {
+          "Docs": "https://docs.contoso.com/api",
+          "Unsafe": "javascript:alert(1)"
+        },
+        "properties": {
+          "role": "admin",
+          "tier": 1
+        }
+      },
+      "DB": {
+        "name": "DB",
+        "description": "\"DB (primary)\"",
+        "wrap": true,
+        "type": "participant",
+        "links": {
+          "Admin": "javascript:alert(1)"
+        },
+        "properties": {}
+      },
+      "Q": {
+        "name": "Q",
+        "description": "Q",
+        "wrap": true,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "API",
+        "to": "DB",
+        "message": "SELECT 1",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "DB",
+        "to": "API",
+        "message": "1",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "API",
+        "to": "Q",
+        "message": "enqueue(job)",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Q",
+        "to": "API",
+        "message": "accepted",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
