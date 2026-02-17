@@ -2,6 +2,7 @@ use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod css;
+mod edge;
 mod hierarchy;
 mod label;
 mod render;
@@ -9,6 +10,7 @@ mod style;
 mod types;
 
 pub(super) use css::*;
+use edge::*;
 pub(super) use hierarchy::*;
 pub(super) use label::*;
 pub(super) use style::*;
@@ -260,75 +262,6 @@ pub(super) fn render_flowchart_v2_debug_svg(
 
     out.push_str("</svg>\n");
     out
-}
-
-pub(super) fn flowchart_edge_marker_end_base(
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<&'static str> {
-    match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some("flowchart-v2-pointEnd"),
-        Some("double_arrow_circle") => Some("flowchart-v2-circleEnd"),
-        Some("double_arrow_cross") => Some("flowchart-v2-crossEnd"),
-        Some("arrow_point") => Some("flowchart-v2-pointEnd"),
-        Some("arrow_cross") => Some("flowchart-v2-crossEnd"),
-        Some("arrow_circle") => Some("flowchart-v2-circleEnd"),
-        Some("arrow_open") => None,
-        _ => Some("flowchart-v2-pointEnd"),
-    }
-}
-
-pub(super) fn flowchart_edge_marker_start_base(
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<&'static str> {
-    match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some("flowchart-v2-pointStart"),
-        Some("double_arrow_circle") => Some("flowchart-v2-circleStart"),
-        Some("double_arrow_cross") => Some("flowchart-v2-crossStart"),
-        _ => None,
-    }
-}
-
-#[allow(dead_code)]
-pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
-    let mut out = String::new();
-    css::write_flowchart_edge_class_attr(&mut out, edge);
-    out
-}
-
-fn flowchart_resolve_stroke_for_marker(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[String],
-    default_edge_style: &[String],
-    edge_style: &[String],
-) -> Option<String> {
-    // Marker ids only depend on the resolved `stroke` value, so avoid allocating the full
-    // `FlowchartCompiledStyles` (ordered map + joined style strings) here.
-    let mut stroke: Option<&str> = None;
-
-    for c in classes {
-        let Some(decls) = class_defs.get(c) else {
-            continue;
-        };
-        for d in decls {
-            let Some((k, v)) = parse_style_decl(d) else {
-                continue;
-            };
-            if k == "stroke" {
-                stroke = Some(v);
-            }
-        }
-    }
-
-    for d in default_edge_style.iter().chain(edge_style.iter()) {
-        let Some((k, v)) = parse_style_decl(d) else {
-            continue;
-        };
-        if k == "stroke" {
-            stroke = Some(v);
-        }
-    }
-
-    stroke.map(|s| s.to_string())
 }
 
 pub(super) fn flowchart_edge_path_d_for_bbox(
