@@ -496,6 +496,31 @@ pub(super) fn render_architecture_diagram_svg(
     )
 }
 
+pub(super) fn render_architecture_diagram_svg_with_config(
+    layout: &ArchitectureDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+    let model: ArchitectureModel = {
+        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
+        crate::json::from_value_ref(semantic)?
+    };
+    render_architecture_diagram_svg_with_model(
+        layout,
+        &model,
+        effective_config.as_value(),
+        Some(effective_config),
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
+}
+
 fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     layout: &ArchitectureDiagramLayout,
     model: &M,

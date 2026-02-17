@@ -258,7 +258,12 @@ pub fn render_layout_svg_parts_with_config(
             render_requirement_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::ArchitectureDiagram(layout) => {
-            render_architecture_diagram_svg(layout, semantic, effective_config_value, options)
+            architecture::render_architecture_diagram_svg_with_config(
+                layout,
+                semantic,
+                effective_config,
+                options,
+            )
         }
         LayoutDiagram::MindmapDiagram(layout) => {
             render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
