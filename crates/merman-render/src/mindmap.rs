@@ -311,14 +311,29 @@ fn layout_mindmap_diagram_model(
         timings.measure_nodes = s.elapsed();
     }
 
+    let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
+        rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
+    for (idx, n) in nodes.iter().enumerate() {
+        id_to_idx.insert(n.id.as_str(), idx);
+    }
+
+    let mut edge_indices: Vec<(usize, usize)> = Vec::with_capacity(model.edges.len());
+    for e in &model.edges {
+        let Some(&a) = id_to_idx.get(e.start.as_str()) else {
+            return Err(Error::InvalidModel {
+                message: format!("edge start node not found: {}", e.start),
+            });
+        };
+        let Some(&b) = id_to_idx.get(e.end.as_str()) else {
+            return Err(Error::InvalidModel {
+                message: format!("edge end node not found: {}", e.end),
+            });
+        };
+        edge_indices.push((a, b));
+    }
+
     if use_manatee_layout {
         let manatee_start = timing_enabled.then(std::time::Instant::now);
-        let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
-            rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
-        for (idx, n) in nodes.iter().enumerate() {
-            id_to_idx.insert(n.id.as_str(), idx);
-        }
-
         let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
             .iter()
             .map(|n| manatee::algo::cose_bilkent::IndexedNode {
@@ -330,17 +345,7 @@ fn layout_mindmap_diagram_model(
             .collect();
         let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
             Vec::with_capacity(model.edges.len());
-        for (edge_idx, e) in model.edges.iter().enumerate() {
-            let Some(&a) = id_to_idx.get(e.start.as_str()) else {
-                return Err(Error::InvalidModel {
-                    message: format!("edge start node not found: {}", e.start),
-                });
-            };
-            let Some(&b) = id_to_idx.get(e.end.as_str()) else {
-                return Err(Error::InvalidModel {
-                    message: format!("edge end node not found: {}", e.end),
-                });
-            };
+        for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
             if a == b {
                 continue;
             }
@@ -380,24 +385,9 @@ fn layout_mindmap_diagram_model(
     }
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
-    let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
-        rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
-    for (idx, n) in nodes.iter().enumerate() {
-        id_to_idx.insert(n.id.as_str(), idx);
-    }
-
     let mut edges: Vec<LayoutEdge> = Vec::new();
-    for e in &model.edges {
-        let Some(&sidx) = id_to_idx.get(e.start.as_str()) else {
-            return Err(Error::InvalidModel {
-                message: format!("edge start node not found: {}", e.start),
-            });
-        };
-        let Some(&tidx) = id_to_idx.get(e.end.as_str()) else {
-            return Err(Error::InvalidModel {
-                message: format!("edge end node not found: {}", e.end),
-            });
-        };
+    edges.reserve(model.edges.len());
+    for (e, (sidx, tidx)) in model.edges.iter().zip(edge_indices.iter().copied()) {
         let (sx, sy) = (nodes[sidx].x, nodes[sidx].y);
         let (tx, ty) = (nodes[tidx].x, nodes[tidx].y);
         let points = vec![LayoutPoint { x: sx, y: sy }, LayoutPoint { x: tx, y: ty }];
