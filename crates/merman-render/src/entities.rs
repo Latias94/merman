@@ -3,6 +3,8 @@
 //! This intentionally matches the current "minimal" decoding behavior and does not aim to be a
 //! fully compliant HTML entity decoder.
 
+use std::borrow::Cow;
+
 /// Decodes a minimal subset of entities used by Mermaid labels.
 ///
 /// This matches the historical replacement order used in this repo:
@@ -25,6 +27,13 @@ pub(crate) fn decode_entities_minimal(text: &str) -> String {
         return stage1;
     }
     decode_stage2_quot_apos(&stage1)
+}
+
+pub(crate) fn decode_entities_minimal_cow(text: &str) -> Cow<'_, str> {
+    if !text.contains('&') {
+        return Cow::Borrowed(text);
+    }
+    Cow::Owned(decode_entities_minimal(text))
 }
 
 fn decode_stage1_lt_gt_amp(text: &str) -> String {

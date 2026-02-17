@@ -2,7 +2,7 @@
 
 use super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
-use crate::entities::decode_entities_minimal;
+use crate::entities::decode_entities_minimal_cow;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 // Class diagram SVG renderer implementation (split from parity.rs).
@@ -725,6 +725,14 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
     #[derive(Debug, Default, Clone)]
     struct ClassRenderDetails {
+        clusters: std::time::Duration,
+        edge_paths: std::time::Duration,
+        edge_curve: std::time::Duration,
+        edge_points_json: std::time::Duration,
+        edge_points_b64: std::time::Duration,
+        edge_labels: std::time::Duration,
+        nodes: std::time::Duration,
+        notes_sanitize: std::time::Duration,
         path_bounds: std::time::Duration,
         path_bounds_calls: usize,
     }
@@ -732,7 +740,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
-    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
 
@@ -1041,6 +1049,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
     let mut render_clusters_edges_and_labels =
         |out: &mut String, content_bounds: &mut Option<Bounds>, bounds_dx: f64, bounds_dy: f64| {
             // Clusters (namespaces).
+            let clusters_start = timing_enabled.then(std::time::Instant::now);
             out.push_str(r#"<g class="clusters">"#);
             for c in &layout.clusters {
                 let w = c.width.max(1.0);
@@ -1076,8 +1085,12 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 );
             }
             out.push_str("</g>");
+            if let Some(s) = clusters_start {
+                detail.clusters += s.elapsed();
+            }
 
             // Edge paths.
+            let edge_paths_start = timing_enabled.then(std::time::Instant::now);
             out.push_str(r#"<g class="edgePaths">"#);
             for e in &layout.edges {
                 if e.points.len() < 2 {
@@ -1095,6 +1108,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     });
                 }
 
+                let curve_start = timing_enabled.then(std::time::Instant::now);
                 let (d, d_pb) = if edge_raw_points.len() == 2 {
                     edge_curve_points.clear();
                     let a = &edge_raw_points[0];
@@ -1109,6 +1123,9 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 } else {
                     super::curve::curve_basis_path_d_and_bounds(&edge_raw_points)
                 };
+                if let Some(s) = curve_start {
+                    detail.edge_curve += s.elapsed();
+                }
                 let path_bounds_start = timing_enabled.then(std::time::Instant::now);
                 if let Some(pb) = d_pb.as_ref() {
                     include_path_bounds(content_bounds, pb, bounds_dx, bounds_dy);
@@ -1119,19 +1136,25 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;
                 }
-                edge_points_b64_buf.clear();
-                base64::engine::general_purpose::STANDARD.encode_string(
-                    {
-                        edge_points_json_buf.clear();
-                        json_stringify_points_into(
-                            &mut edge_points_json_buf,
-                            &edge_raw_points,
-                            &mut edge_points_json_ryu,
-                        );
-                        edge_points_json_buf.as_bytes()
-                    },
-                    &mut edge_points_b64_buf,
+
+                let json_start = timing_enabled.then(std::time::Instant::now);
+                edge_points_json_buf.clear();
+                json_stringify_points_into(
+                    &mut edge_points_json_buf,
+                    &edge_raw_points,
+                    &mut edge_points_json_ryu,
                 );
+                if let Some(s) = json_start {
+                    detail.edge_points_json += s.elapsed();
+                }
+
+                let b64_start = timing_enabled.then(std::time::Instant::now);
+                edge_points_b64_buf.clear();
+                base64::engine::general_purpose::STANDARD
+                    .encode_string(edge_points_json_buf.as_bytes(), &mut edge_points_b64_buf);
+                if let Some(s) = b64_start {
+                    detail.edge_points_b64 += s.elapsed();
+                }
 
                 edge_class_buf.clear();
                 edge_class_buf.push_str("edge-thickness-normal ");
@@ -1172,8 +1195,12 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 out.push_str("/>");
             }
             out.push_str("</g>");
+            if let Some(s) = edge_paths_start {
+                detail.edge_paths += s.elapsed();
+            }
 
             // Edge labels + terminals.
+            let edge_labels_start = timing_enabled.then(std::time::Instant::now);
             out.push_str(r#"<g class="edgeLabels">"#);
             // Mermaid renders all edge terminal labels first, then edge labels.
             for e in &layout.edges {
@@ -1285,6 +1312,9 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 }
             }
             out.push_str("</g>");
+            if let Some(s) = edge_labels_start {
+                detail.edge_labels += s.elapsed();
+            }
         };
 
     if wrap_nodes_root {
@@ -1294,6 +1324,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
     }
 
     // Nodes.
+    let nodes_start = timing_enabled.then(std::time::Instant::now);
     out.push_str(r#"<g class="nodes">"#);
 
     if wrap_nodes_root {
@@ -1397,7 +1428,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
             let note_src = note.text.trim();
-            let note_text = decode_entities_minimal(note_src);
+            let note_text = decode_entities_minimal_cow(note_src);
             let metrics =
                 measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
             let fo_w = metrics.width.max(1.0);
@@ -1467,15 +1498,24 @@ pub(super) fn render_class_diagram_v2_svg_model(
             // Mermaid stores sanitized note label fragments (entities + limited tags). Mirror the
             // browser pipeline by running a DOMPurify-like sanitizer and injecting the resulting
             // HTML nodes into the XHTML foreignObject.
+            let sanitize_start = timing_enabled.then(std::time::Instant::now);
             let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-            let note_html = merman_core::sanitize::sanitize_text(&note_html, &sanitize_config);
+            let note_html = merman_core::sanitize::sanitize_text(
+                &note_html,
+                sanitize_config.get_or_insert_with(|| {
+                    merman_core::MermaidConfig::from_value(effective_config.clone())
+                }),
+            );
+            if let Some(s) = sanitize_start {
+                detail.notes_sanitize += s.elapsed();
+            }
             out.push_str(&note_html);
             out.push_str("</p></span></div></foreignObject></g></g>");
             continue;
         }
 
         if let Some(iface) = iface_by_id.get(n.id.as_str()).copied() {
-            let label_text = decode_entities_minimal(iface.label.trim());
+            let label_text = decode_entities_minimal_cow(iface.label.trim());
             let (fo_w_raw, fo_h_raw) = match (n.label_width, n.label_height) {
                 (Some(w), Some(h)) => (w, h),
                 _ => {
@@ -1656,9 +1696,9 @@ pub(super) fn render_class_diagram_v2_svg_model(
         );
         out.push_str("</g>");
 
-        let title_text = decode_entities_minimal(node.text.trim());
+        let title_text = decode_entities_minimal_cow(node.text.trim());
         let title_metrics =
-            measurer.measure_wrapped(&title_text, &text_style, None, WrapMode::HtmlLike);
+            measurer.measure_wrapped(title_text.as_ref(), &text_style, None, WrapMode::HtmlLike);
         let ann_rows = node.annotations.len();
         let members_rows = node.members.len();
         let methods_rows = node.methods.len();
@@ -1685,9 +1725,14 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let title_x = -title_metrics.width.max(0.0) / 2.0;
 
         let mut ann_max_w: f64 = 0.0;
+        let mut ann_label_buf = String::new();
         for a in &node.annotations {
-            let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
-            let m = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+            let decoded = decode_entities_minimal_cow(a.trim());
+            ann_label_buf.clear();
+            ann_label_buf.push('\u{00AB}');
+            ann_label_buf.push_str(decoded.as_ref());
+            ann_label_buf.push('\u{00BB}');
+            let m = measurer.measure_wrapped(&ann_label_buf, &text_style, None, WrapMode::HtmlLike);
             ann_max_w = ann_max_w.max(m.width);
         }
         let ann_x = -ann_max_w.max(0.0) / 2.0;
@@ -1708,7 +1753,11 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 fmt(annotation_group_y)
             );
             for (idx, a) in node.annotations.iter().enumerate() {
-                let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
+                let decoded = decode_entities_minimal_cow(a.trim());
+                ann_label_buf.clear();
+                ann_label_buf.push('\u{00AB}');
+                ann_label_buf.push_str(decoded.as_ref());
+                ann_label_buf.push('\u{00BB}');
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
@@ -1720,7 +1769,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 render_class_html_label(
                     &mut out,
                     "nodeLabel",
-                    t.as_str(),
+                    ann_label_buf.as_str(),
                     true,
                     Some("markdown-node-label"),
                 );
@@ -1741,7 +1790,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
         render_class_html_label(
             &mut out,
             "nodeLabel",
-            title_text.as_str(),
+            title_text.as_ref(),
             true,
             Some("markdown-node-label"),
         );
@@ -1763,11 +1812,11 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 fmt(members_group_y)
             );
             for (idx, m) in node.members.iter().enumerate() {
-                let t = decode_entities_minimal(m.display_text.trim());
+                let t = decode_entities_minimal_cow(m.display_text.trim());
                 let mm = class_row_metrics
                     .and_then(|m| m.members.get(idx).copied())
                     .unwrap_or_else(|| {
-                        measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)
+                        measurer.measure_wrapped(t.as_ref(), &text_style, None, WrapMode::HtmlLike)
                     });
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
@@ -1780,7 +1829,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 render_class_html_label(
                     &mut out,
                     "nodeLabel",
-                    t.as_str(),
+                    t.as_ref(),
                     true,
                     Some("markdown-node-label"),
                 );
@@ -1805,11 +1854,11 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 fmt(methods_group_y)
             );
             for (idx, m) in node.methods.iter().enumerate() {
-                let t = decode_entities_minimal(m.display_text.trim());
+                let t = decode_entities_minimal_cow(m.display_text.trim());
                 let mm = class_row_metrics
                     .and_then(|m| m.methods.get(idx).copied())
                     .unwrap_or_else(|| {
-                        measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)
+                        measurer.measure_wrapped(t.as_ref(), &text_style, None, WrapMode::HtmlLike)
                     });
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
@@ -1822,7 +1871,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 render_class_html_label(
                     &mut out,
                     "nodeLabel",
-                    t.as_str(),
+                    t.as_ref(),
                     true,
                     Some("markdown-node-label"),
                 );
@@ -1876,6 +1925,9 @@ pub(super) fn render_class_diagram_v2_svg_model(
     out.push_str("</g>"); // outer nodes
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
+    if let Some(s) = nodes_start {
+        detail.nodes += s.elapsed();
+    }
 
     drop(render_guard);
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
@@ -2334,13 +2386,21 @@ pub(super) fn render_class_diagram_v2_svg_model(
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[render-timing] diagram=classDiagram total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} path_bounds={:?} path_bounds_calls={} nodes={} edges={} clusters={}",
+            "[render-timing] diagram=classDiagram total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} clusters={:?} edge_paths={:?} edge_curve={:?} edge_points_json={:?} edge_points_b64={:?} edge_labels={:?} nodes={:?} notes_sanitize={:?} path_bounds={:?} path_bounds_calls={} nodes_count={} edges_count={} clusters_count={}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
             timings.viewbox,
             timings.render_svg,
             timings.finalize_svg,
+            detail.clusters,
+            detail.edge_paths,
+            detail.edge_curve,
+            detail.edge_points_json,
+            detail.edge_points_b64,
+            detail.edge_labels,
+            detail.nodes,
+            detail.notes_sanitize,
             detail.path_bounds,
             detail.path_bounds_calls,
             layout.nodes.len(),
