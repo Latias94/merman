@@ -55,6 +55,82 @@ pub(in crate::svg::parity) fn flowchart_effective_parent<'a>(
     None
 }
 
+// Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
+// is positioned by the cluster node transform, and its internal content starts at a fixed 8px
+// margin (graph marginx/marginy in Mermaid's Dagre config).
+pub(in crate::svg::parity) fn flowchart_cluster_root_offsets(
+    ctx: &FlowchartRenderCtx<'_>,
+    cid: &str,
+) -> Option<FlowchartRootOffsets> {
+    const ROOT_MARGIN_PX: f64 = 8.0;
+    let cluster = ctx.layout_clusters_by_id.get(cid)?;
+
+    let abs_left = (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX;
+    let title_total_margin = (cluster.title_margin_top + cluster.title_margin_bottom).max(0.0);
+    let title_y_shift = title_total_margin / 2.0;
+
+    let my_parent = flowchart_effective_parent(ctx, cid);
+    let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
+        *id != cid
+            && sg.nodes.is_empty()
+            && ctx.layout_clusters_by_id.contains_key(id)
+            && flowchart_effective_parent(ctx, id) == my_parent
+    });
+
+    let base_top = (cluster.y - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
+    let extra_transform_y = if has_empty_sibling {
+        cluster.offset_y.max(0.0) * 2.0
+    } else {
+        0.0
+    };
+
+    let abs_top_transform = base_top + extra_transform_y;
+    let abs_top_content = base_top + title_y_shift;
+
+    Some(FlowchartRootOffsets {
+        origin_x: abs_left,
+        origin_y: abs_top_content,
+        abs_top_transform,
+    })
+}
+
+pub(super) fn flowchart_node_dom_indices<'a>(
+    model: &'a crate::flowchart::FlowchartV2Model,
+) -> FxHashMap<&'a str, usize> {
+    if !model.vertex_calls.is_empty() {
+        let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+        out.reserve(model.vertex_calls.len());
+        for (vertex_counter, id) in model.vertex_calls.iter().enumerate() {
+            let id: &'a str = id.as_str();
+            let _ = out.entry(id).or_insert(vertex_counter);
+        }
+        return out;
+    }
+
+    let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+    out.reserve(model.edges.len().saturating_mul(2) + model.nodes.len());
+    let mut vertex_counter: usize = 0;
+
+    // Mermaid FlowDB assigns `domId` when a vertex is first created, but increments the internal
+    // `vertexCounter` on every `addVertex(...)` call (even for repeated references). This means the
+    // domId suffix depends on the full "first-use" order + repeat uses.
+    fn touch<'a>(id: &'a str, out: &mut FxHashMap<&'a str, usize>, c: &mut usize) {
+        let _ = out.entry(id).or_insert(*c);
+        *c += 1;
+    }
+
+    for e in &model.edges {
+        touch(e.from.as_str(), &mut out, &mut vertex_counter);
+        touch(e.to.as_str(), &mut out, &mut vertex_counter);
+    }
+
+    for n in &model.nodes {
+        touch(n.id.as_str(), &mut out, &mut vertex_counter);
+    }
+
+    out
+}
+
 pub(in crate::svg::parity) fn flowchart_root_children_clusters<'a>(
     ctx: &'a FlowchartRenderCtx<'a>,
     parent_cluster: Option<&str>,
