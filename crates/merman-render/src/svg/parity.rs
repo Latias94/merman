@@ -310,14 +310,16 @@ pub fn render_layout_svg_parts_with_config(
             measurer,
             options,
         ),
-        LayoutDiagram::SequenceDiagram(layout) => render_sequence_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
+        LayoutDiagram::SequenceDiagram(layout) => {
+            sequence::render_sequence_diagram_svg_with_config(
+                layout,
+                semantic,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         LayoutDiagram::InfoDiagram(layout) => {
             render_info_diagram_svg(layout, semantic, effective_config_value, options)
         }

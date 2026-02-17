@@ -215,8 +215,47 @@ pub(super) fn render_sequence_diagram_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    render_sequence_diagram_svg_inner(
+        layout,
+        semantic,
+        effective_config,
+        &sanitize_config,
+        _diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_sequence_diagram_svg_with_config(
+    layout: &SequenceDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    _diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    render_sequence_diagram_svg_inner(
+        layout,
+        semantic,
+        effective_config.as_value(),
+        effective_config,
+        _diagram_title,
+        measurer,
+        options,
+    )
+}
+
+fn render_sequence_diagram_svg_inner(
+    layout: &SequenceDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    sanitize_config: &merman_core::MermaidConfig,
+    _diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
 
     let seq_cfg = effective_config
         .get("sequence")
@@ -3234,7 +3273,7 @@ pub(super) fn render_sequence_diagram_svg(
             let href = url::Url::parse(href)
                 .map(|u| u.to_string())
                 .unwrap_or_else(|_| href.to_string());
-            let href = merman_core::utils::format_url(&href, &sanitize_config)
+            let href = merman_core::utils::format_url(&href, sanitize_config)
                 .filter(|u| u.trim() != merman_core::utils::BLANK_URL);
             let text_x = x + 10.0;
             let text_y = actor_height + link_y + 10.0;
