@@ -1,0 +1,156 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "ThemeVariables label cycle + section color wrap",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "S01 Custom",
+      "S02 Custom",
+      "S03 Custom",
+      "S04 Custom",
+      "S05 Default",
+      "S06 Default",
+      "S07 Default",
+      "S08 Default",
+      "S09 Default",
+      "S10 Default",
+      "S11 Default",
+      "S12 Default",
+      "S13 Wrap"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "S01 Custom",
+        "type": "S01 Custom",
+        "task": "P01 ",
+        "score": 0,
+        "events": [
+          "Alpha"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "S02 Custom",
+        "type": "S02 Custom",
+        "task": "P02 ",
+        "score": 0,
+        "events": [
+          "Beta"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "S03 Custom",
+        "type": "S03 Custom",
+        "task": "P03 ",
+        "score": 0,
+        "events": [
+          "Gamma"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "S04 Custom",
+        "type": "S04 Custom",
+        "task": "P04 ",
+        "score": 0,
+        "events": [
+          "Delta"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "S05 Default",
+        "type": "S05 Default",
+        "task": "P05 ",
+        "score": 0,
+        "events": [
+          "Epsilon"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "S06 Default",
+        "type": "S06 Default",
+        "task": "P06 ",
+        "score": 0,
+        "events": [
+          "Zeta"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "S07 Default",
+        "type": "S07 Default",
+        "task": "P07 ",
+        "score": 0,
+        "events": [
+          "Eta"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "S08 Default",
+        "type": "S08 Default",
+        "task": "P08 ",
+        "score": 0,
+        "events": [
+          "Theta"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "S09 Default",
+        "type": "S09 Default",
+        "task": "P09 ",
+        "score": 0,
+        "events": [
+          "Iota"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "S10 Default",
+        "type": "S10 Default",
+        "task": "P10 ",
+        "score": 0,
+        "events": [
+          "Kappa"
+        ]
+      },
+      {
+        "id": 10,
+        "section": "S11 Default",
+        "type": "S11 Default",
+        "task": "P11 ",
+        "score": 0,
+        "events": [
+          "Lambda"
+        ]
+      },
+      {
+        "id": 11,
+        "section": "S12 Default",
+        "type": "S12 Default",
+        "task": "P12 ",
+        "score": 0,
+        "events": [
+          "Mu"
+        ]
+      },
+      {
+        "id": 12,
+        "section": "S13 Wrap",
+        "type": "S13 Wrap",
+        "task": "P13 ",
+        "score": 0,
+        "events": [
+          "Nu (wraps to section 1 colors upstream)"
+        ]
+      }
+    ]
+  }
+}

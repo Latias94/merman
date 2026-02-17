@@ -1,0 +1,18 @@
+%% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/timeline.md (syntax variations) + authored stress
+timeline
+title Mixed indentation, comments, and continuation lines
+
+%% This file intentionally mixes indentation styles.
+section Indentation
+  Period 1 : Event A
+          : Event B
+    Period 2 : Event C : Event D
+          : Event E
+
+%% Blank lines should be ignored by the parser.
+
+section Comments
+  Period 3 : Event F %% trailing comment
+          : Event G
+  Period 4 : Event H
+

@@ -1,0 +1,63 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "meta",
+        "label": "Multiline metadata + label override",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "meta",
+        "label": "Multiline metadata + label override",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "a1",
+        "parentId": "meta",
+        "label": "Label via metadata",
+        "isGroup": false,
+        "ticket": "MC-1000",
+        "priority": "High",
+        "assigned": "knsv",
+        "icon": "star",
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "a2",
+        "parentId": "meta",
+        "label": "Another item",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Very Low",
+        "assigned": "bob",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

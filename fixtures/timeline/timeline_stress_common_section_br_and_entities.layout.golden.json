@@ -1,0 +1,279 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 95.0,
+        "min_y": -61.0,
+        "max_x": 1090.0,
+        "max_y": 719.4
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 590.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 85.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "R&amp;D <br> Phase A",
+            "label_lines": [
+              "R&amp;D",
+              "Phase   A"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2024 ",
+                "label_lines": [
+                  "2024"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 253.2,
+                "x2": 295.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Plan &amp; Align ",
+                  "label_lines": [
+                    "Plan   &amp;   Align"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 445.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Scope &ﬂ°°58¶ß MVP",
+                  "label_lines": [
+                    "Scope   &ﬂ°°58¶ß",
+                    "MVP"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 520.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Risk review &amp; mitigation",
+                  "label_lines": [
+                    "Risk   review   &amp;",
+                    "mitigation"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 85.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Phase B <br> Build",
+            "label_lines": [
+              "Phase   B",
+              "Build"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 400.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "2025 ",
+                "label_lines": [
+                  "2025"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 253.2,
+                "x2": 495.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Implement core renderer ",
+                  "label_lines": [
+                    "Implement   core",
+                    "renderer"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 460.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Stabilize DOM ordering",
+                  "label_lines": [
+                    "Stabilize   DOM",
+                    "ordering"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 536.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Add more fixtures &amp; baselines",
+                  "label_lines": [
+                    "Add   more   fixtures",
+                    "&amp;   baselines"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 85.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "Phase C <br> Ship",
+            "label_lines": [
+              "Phase   C",
+              "Ship"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-1",
+                "label": "2026 ",
+                "label_lines": [
+                  "2026"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 253.2,
+                "x2": 695.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Release candidate ",
+                  "label_lines": [
+                    "Release   candidate"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 445.4,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "GA",
+                  "label_lines": [
+                    "GA"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 303.2,
+        "x2": 1040.0,
+        "y2": 303.2
+      },
+      "title": "Sections with <br> and HTML entities",
+      "title_x": 145.0,
+      "title_y": 20.0
+    }
+  }
+}

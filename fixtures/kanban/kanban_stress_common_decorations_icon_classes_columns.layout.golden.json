@@ -1,0 +1,92 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 515.0,
+        "max_y": -162.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "build",
+          "label": "Build",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 128.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 32.32
+        },
+        {
+          "id": "ship",
+          "label": "Ship",
+          "index": 2.0,
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 79.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 27.84
+        }
+      ],
+      "items": [
+        {
+          "id": "t1",
+          "label": "Compile",
+          "parent_id": "build",
+          "center_x": 200.0,
+          "center_y": -253.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": "star"
+        },
+        {
+          "id": "t2",
+          "label": "Test",
+          "parent_id": "build",
+          "center_x": 200.0,
+          "center_y": -204.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "t3",
+          "label": "Release",
+          "parent_id": "ship",
+          "center_x": 405.0,
+          "center_y": -253.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Textual periods + multi-event forms",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Releases",
+      "Phases"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Releases",
+        "type": "Releases",
+        "task": "Q1 2024 ",
+        "score": 0,
+        "events": [
+          "Alpha ",
+          "Beta"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Releases",
+        "type": "Releases",
+        "task": "Q2 2024 ",
+        "score": 0,
+        "events": [
+          "RC1",
+          "RC2"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Releases",
+        "type": "Releases",
+        "task": "GA ",
+        "score": 0,
+        "events": [
+          "1.0",
+          "1.0.1",
+          "1.1"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase-A ",
+        "score": 0,
+        "events": [
+          "Design ",
+          "Review"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase-B ",
+        "score": 0,
+        "events": [
+          "Build",
+          "Integrate"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase-C ",
+        "score": 0,
+        "events": [
+          "Ship"
+        ]
+      }
+    ]
+  }
+}

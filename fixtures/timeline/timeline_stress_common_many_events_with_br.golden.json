@@ -1,0 +1,50 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Many events per period with explicit <br>",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "2024 Q1 <br> Heavy load"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "2024 Q1 <br> Heavy load",
+        "type": "2024 Q1 <br> Heavy load",
+        "task": "Week 1 ",
+        "score": 0,
+        "events": [
+          "A<br>B",
+          "C<br>D",
+          "E<br>F"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "2024 Q1 <br> Heavy load",
+        "type": "2024 Q1 <br> Heavy load",
+        "task": "Week 2 ",
+        "score": 0,
+        "events": [
+          "G<br>H ",
+          "I<br>J",
+          "K<br>L"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "2024 Q1 <br> Heavy load",
+        "type": "2024 Q1 <br> Heavy load",
+        "task": "Week 3 ",
+        "score": 0,
+        "events": [
+          "M<br>N",
+          "O<br>P",
+          "Q<br>R"
+        ]
+      }
+    ]
+  }
+}
