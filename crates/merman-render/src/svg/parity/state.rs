@@ -4425,25 +4425,28 @@ pub(super) fn roughjs_parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba>
 }
 
 pub(super) fn roughjs_ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-    let mut out = String::new();
-    for op in &opset.ops {
+    let mut out = String::with_capacity(opset.ops.len() * 24);
+    for (idx, op) in opset.ops.iter().enumerate() {
+        if idx != 0 {
+            out.push(' ');
+        }
         match op.op {
             roughr::core::OpType::Move => {
-                let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                let _ = write!(&mut out, "M{} {}", op.data[0], op.data[1]);
             }
             roughr::core::OpType::BCurveTo => {
                 let _ = write!(
                     &mut out,
-                    "C{} {}, {} {}, {} {} ",
+                    "C{} {}, {} {}, {} {}",
                     op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
                 );
             }
             roughr::core::OpType::LineTo => {
-                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                let _ = write!(&mut out, "L{} {}", op.data[0], op.data[1]);
             }
         }
     }
-    out.trim_end().to_string()
+    out
 }
 
 fn mermaid_create_path_from_points(points: &[(f64, f64)]) -> String {
