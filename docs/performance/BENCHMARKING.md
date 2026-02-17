@@ -68,6 +68,8 @@ add `--skip-mermaid-js`:
 python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
 ```
 
+See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary filter and report naming.
+
 ## Stage spot-check (recommended for triage)
 
 When you want to attribute a performance change to a specific pipeline stage quickly (parse vs

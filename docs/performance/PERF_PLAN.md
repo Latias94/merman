@@ -3,6 +3,9 @@
 This document is the actionable performance plan for `merman`.
 It is fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
+For the day-to-day workflow (commands, presets, and reporting conventions), see:
+`docs/performance/PERF_PLAYBOOK.md`.
+
 ## Baseline (2026-02-17)
 
 We track two complementary views against `repo-ref/mermaid-rs-renderer` (mmdr):
@@ -49,6 +52,7 @@ Goal: fast feedback without chasing noise.
 
 - Use `tools/bench/stage_spotcheck.py` to decide *where* to optimize.
 - Use `tools/bench/compare_mermaid_renderers.py` to decide *whether* we improved end-to-end canaries.
+- Prefer `--preset long` for canary decisions (reduces noise at µs-scale).
 - For micro-scale work, prefer stress benches (batching work per iteration) and stable parameters:
   - `--sample-size 50 --warm-up-time 2 --measurement-time 3`
 

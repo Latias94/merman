@@ -24,6 +24,9 @@ Key takeaways:
 - `bench(merman): add mindmap layout stress` (`7cc41c8b`)
 - `perf(sequence): avoid config deep clone in render` (`cb1d0a67`)
 - `bench(merman): reduce end_to_end harness overhead` (`4d17f31d`)
+- `perf(mindmap): reuse id map for edges` (`96343662`)
+- `perf(architecture): avoid config clone in json render` (`e216928c`)
+- `bench(tools): add long preset and skip mermaid-js` (`88053edf`)
 
 ## Next (prioritized)
 
