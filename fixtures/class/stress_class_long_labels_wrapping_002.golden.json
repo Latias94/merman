@@ -1,0 +1,115 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "VeryLongClassName_With_Dashes-And_Underscores": {
+        "id": "VeryLongClassName_With_Dashes-And_Underscores",
+        "type": "",
+        "label": "VeryLongClassName_With_Dashes-And_Underscores",
+        "text": "VeryLongClassName_With_Dashes-And_Underscores",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "doSomethingWithManyParameters",
+            "classifier": "",
+            "parameters": "String a, String b, String c, String d",
+            "returnType": "void",
+            "displayText": "+doSomethingWithManyParameters(String a, String b, String c, String d) : void",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-VeryLongClassName_With_Dashes-And_Underscores-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "AnotherExtremelyLongNamedClass": {
+        "id": "AnotherExtremelyLongNamedClass",
+        "type": "",
+        "label": "AnotherExtremelyLongNamedClass",
+        "text": "AnotherExtremelyLongNamedClass",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "calculateSuperLongResult",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "String",
+            "displayText": "+calculateSuperLongResult() : String",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-AnotherExtremelyLongNamedClass-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "VeryLongClassName_With_Dashes-And_Underscores",
+        "id2": "AnotherExtremelyLongNamedClass",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "edge label with spaces, punctuation, and unicode → αβγ",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

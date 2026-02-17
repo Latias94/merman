@@ -1,0 +1,68 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "AnotherExtremelyLongNamedClass",
+          "x": 357.4,
+          "y": 281.0,
+          "width": 378.64,
+          "height": 126.0,
+          "is_cluster": false
+        },
+        {
+          "id": "VeryLongClassName_With_Dashes-And_Underscores",
+          "x": 357.4,
+          "y": 72.0,
+          "width": 714.8,
+          "height": 144.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "VeryLongClassName_With_Dashes-And_Underscores",
+          "to": "AnotherExtremelyLongNamedClass",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 357.4,
+              "y": 144.0
+            },
+            {
+              "x": 357.4,
+              "y": 181.0
+            },
+            {
+              "x": 357.4,
+              "y": 218.0
+            }
+          ],
+          "label": {
+            "x": 357.4,
+            "y": 181.0,
+            "width": 358.4,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 714.8,
+        "max_y": 344.0
+      }
+    }
+  }
+}

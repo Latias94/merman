@@ -1,0 +1,11 @@
+classDiagram
+direction LR
+
+class User
+class Order
+class Item
+
+User "1" o-- "*" Order : places
+User "1" --> "*" Order : tracks
+Order "1" *-- "*" Item : contains
+Order ..> Item : references

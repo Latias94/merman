@@ -1,0 +1,134 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Server": {
+        "id": "Server",
+        "type": "",
+        "label": "Server",
+        "text": "Server",
+        "cssClasses": "default critical",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "start",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+start()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#aa0000",
+          "stroke-width:2px",
+          "fill:#ffeeee",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "domId": "classId-Server-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Client": {
+        "id": "Client",
+        "type": "",
+        "label": "Client",
+        "text": "Client",
+        "cssClasses": "default normal",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "request",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+request()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "domId": "classId-Client-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Client",
+        "id2": "Server",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "connects",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "critical": {
+        "id": "critical",
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      },
+      "normal": {
+        "id": "normal",
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

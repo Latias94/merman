@@ -1,0 +1,63 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Bar",
+          "x": 255.6,
+          "y": 72.0,
+          "width": 165.44,
+          "height": 126.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Foo",
+          "x": 61.44,
+          "y": 72.0,
+          "width": 122.88,
+          "height": 144.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Foo",
+          "to": "Bar",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 122.88,
+              "y": 72.0
+            },
+            {
+              "x": 147.88,
+              "y": 72.0
+            },
+            {
+              "x": 172.88,
+              "y": 72.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 338.32,
+        "max_y": 144.0
+      }
+    }
+  }
+}

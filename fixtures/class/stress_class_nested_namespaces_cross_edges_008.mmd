@@ -1,0 +1,15 @@
+classDiagram
+direction LR
+
+namespace One {
+  class OneA
+}
+
+namespace One.Two {
+  class TwoB
+  class TwoC
+}
+
+OneA --> TwoB : calls
+TwoC ..> OneA : depends
+TwoB <|-- TwoC

@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): port-pair corner cases (T/L/B/R permutations).
+
+service c(server)[Center]
+service t(server)[Top]
+service b(server)[Bottom]
+service l(server)[Left]
+service r(server)[Right]
+
+c:T -- B:t
+c:B -- T:b
+c:L -- R:l
+c:R -- L:r
+
+l:T -- L:t
+r:B -- R:b
+

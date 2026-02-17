@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multiple disconnected components.
+
+group a(cloud)[A]
+service a1(server)[A1] in a
+service a2(server)[A2] in a
+a1:R --> L:a2
+
+group b(cloud)[B]
+service b1(database)[B1] in b
+service b2(disk)[B2] in b
+b1:B --> T:b2
+
+service lone(internet)[Lone]
+

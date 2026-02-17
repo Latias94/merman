@@ -353,6 +353,21 @@ pub fn lookup_class_root_viewport_override(
         "upstream_cypress_classdiagram_v2_spec_should_render_a_simple_class_diagram_with_style_definition_033" => {
             Some(("0 0 95.5625 100", "95.5625"))
         }
+        "stress_class_click_and_links_011" => Some(("0 0 117.328125 258", "117.328")),
+        "stress_class_comments_and_spacing_005" => Some(("0 0 367.546875 160", "367.547")),
+        "stress_class_dense_namespaces_generics_001" => Some(("0 0 1318.015625 514", "1318.02")),
+        "stress_class_interfaces_and_abstracts_007" => Some(("0 0 330.0546875 342", "330.055")),
+        "stress_class_long_labels_wrapping_002" => Some(("0 0 794.8515625 408", "794.852")),
+        "stress_class_member_separators_and_annotations_009" => {
+            Some(("0 0 290.9765625 408", "290.977"))
+        }
+        "stress_class_nested_namespaces_cross_edges_008" => {
+            Some(("0 0 439.828125 236.5", "439.828"))
+        }
+        "stress_class_notes_and_keywords_003" => Some(("0 0 382.59375 344", "382.594")),
+        "stress_class_parallel_edges_and_cardinality_004" => Some(("0 0 420.5 100", "420.5")),
+        "stress_class_styles_classdef_and_inline_010" => Some(("0 0 136.4296875 342", "136.43")),
+        "stress_class_unicode_and_entities_012" => Some(("0 0 665.734375 184", "665.734")),
         _ => None,
     }
 }

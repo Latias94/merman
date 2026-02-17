@@ -1,0 +1,19 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): deep group chain + crosslinks.
+
+group g1(cloud)[G1]
+group g2(cloud)[G2] in g1
+group g3(cloud)[G3] in g2
+group g4(cloud)[G4] in g3
+
+service a(server)[A] in g4
+service b(server)[B] in g3
+service c(server)[C] in g2
+service d(server)[D] in g1
+
+a:L --> R:b
+b:L --> R:c
+c:L --> R:d
+
+d{group}:B -[back]-> T:a{group}
+

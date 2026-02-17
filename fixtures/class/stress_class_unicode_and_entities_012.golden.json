@@ -1,0 +1,131 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Alpha": {
+        "id": "Alpha",
+        "type": "",
+        "label": "Alpha",
+        "text": "Alpha",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "مرحبا",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+مرحبا() : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "emoji😀",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+emoji😀() : bool",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "名前 String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+名前 String",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Alpha-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Beta": {
+        "id": "Beta",
+        "type": "",
+        "label": "Beta",
+        "text": "Beta",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "値 int",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+値 int",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Beta-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Alpha",
+        "id2": "Beta",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "uses and tests (alpha beta gamma)",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [
+      {
+        "id": "note0",
+        "class": "Alpha",
+        "text": "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀"
+      }
+    ],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+classDiagram
+
+class Data {
+  <<enumeration>>
+  OK
+  ERROR
+  --
+  +fromCode(int code) Data
+}
+
+class Parser {
+  +parse(String text) Data
+}
+
+Parser --> Data

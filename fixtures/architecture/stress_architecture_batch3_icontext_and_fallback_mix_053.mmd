@@ -1,0 +1,13 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): iconText + fallback icon in nested groups.
+
+group cloud(cloud)[Cloud]
+group compute(cloud)[Compute] in cloud
+
+service lambda "logos:aws-lambda" [Lambda] in compute
+service ec2(logos:aws-ec2)[EC2] in compute
+service unknown(iconnamedoesntexist)[Unknown] in cloud
+
+lambda:R --> L:ec2
+unknown:R -[fallback]-> L:lambda
+

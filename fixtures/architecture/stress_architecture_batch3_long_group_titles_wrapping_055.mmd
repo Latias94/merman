@@ -1,0 +1,8 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): long group titles + title placeholders.
+
+group very_long_group_title(cloud)[VeryLongGroupTitle]
+service s1(server)[ServiceOneLongId] in very_long_group_title
+service s2(server)[Service Two] in very_long_group_title
+
+s1:R -[talks]-> L:s2

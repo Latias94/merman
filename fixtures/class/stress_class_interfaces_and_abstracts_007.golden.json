@@ -1,0 +1,140 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "IService": {
+        "id": "IService",
+        "type": "",
+        "label": "IService",
+        "text": "IService",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [
+          "interface"
+        ],
+        "styles": [],
+        "domId": "classId-IService-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "AbstractBase": {
+        "id": "AbstractBase",
+        "type": "",
+        "label": "AbstractBase",
+        "text": "AbstractBase",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "template",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+template()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [
+          "abstract"
+        ],
+        "styles": [],
+        "domId": "classId-AbstractBase-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Impl": {
+        "id": "Impl",
+        "type": "",
+        "label": "Impl",
+        "text": "Impl",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "run",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+run()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Impl-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "IService",
+        "id2": "Impl",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "1",
+        "id1": "AbstractBase",
+        "id2": "Impl",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): port matrix + labeled edges.
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service l1(server)[L1] in left
+service l2(server)[L2] in left
+service r1(database)[R1] in right
+service r2(disk)[R2] in right
+
+l1:R -[db]-> L:r1
+l1:B -[disk]-> T:r2
+l2:R -[replicas]-> L:r1
+l2:T -[sync]-> B:r2

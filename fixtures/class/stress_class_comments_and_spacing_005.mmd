@@ -1,0 +1,15 @@
+classDiagram
+%% comment before
+direction LR
+
+class Foo
+class Bar
+
+Foo <|-- Bar
+
+%% trailing comment
+
+%% blank lines and comments should not break
+Foo : +String id
+Foo : +String name
+Bar : +toString() String
