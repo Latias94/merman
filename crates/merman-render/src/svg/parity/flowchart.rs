@@ -6,6 +6,7 @@ mod hierarchy;
 mod label;
 mod render;
 mod style;
+mod types;
 
 pub(super) use css::*;
 pub(super) use hierarchy::*;
@@ -14,6 +15,7 @@ pub(super) use style::*;
 
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
 use render::{render_flowchart_edge_path, render_flowchart_node, render_flowchart_root};
+use types::*;
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
@@ -82,126 +84,6 @@ impl std::fmt::Display for OptionalStyleXmlAttr<'_> {
         }
         write!(f, r#" style="{}""#, escape_xml_display(s))
     }
-}
-
-pub(super) struct FlowchartRenderCtx<'a> {
-    pub(super) diagram_id: &'a str,
-    #[allow(dead_code)]
-    pub(super) diagram_type: &'static str,
-    pub(super) tx: f64,
-    pub(super) ty: f64,
-    pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) config: &'a merman_core::MermaidConfig,
-    pub(super) node_html_labels: bool,
-    pub(super) edge_html_labels: bool,
-    pub(super) class_defs: &'a IndexMap<String, Vec<String>>,
-    pub(super) node_border_color: String,
-    pub(super) node_fill_color: String,
-    pub(super) default_edge_interpolate: String,
-    pub(super) default_edge_style: Vec<String>,
-    pub(super) trace_edge_id: Option<String>,
-    #[allow(dead_code)]
-    pub(super) node_order: Vec<&'a str>,
-    pub(super) subgraph_order: Vec<&'a str>,
-    pub(super) edge_order: Vec<&'a str>,
-    pub(super) nodes_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowNode>,
-    pub(super) edges_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
-    pub(super) subgraphs_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
-    pub(super) tooltips: &'a FxHashMap<String, String>,
-    pub(super) recursive_clusters: FxHashSet<&'a str>,
-    pub(super) parent: FxHashMap<&'a str, &'a str>,
-    pub(super) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
-    pub(super) dom_node_order_by_root: &'a std::collections::HashMap<String, Vec<String>>,
-    pub(super) node_dom_index: FxHashMap<&'a str, usize>,
-    pub(super) node_padding: f64,
-    pub(super) wrapping_width: f64,
-    pub(super) node_wrap_mode: crate::text::WrapMode,
-    pub(super) edge_wrap_mode: crate::text::WrapMode,
-    pub(super) text_style: crate::text::TextStyle,
-    #[allow(dead_code)]
-    pub(super) diagram_title: Option<&'a str>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct FlowchartRenderDetails {
-    root_calls: u32,
-    clusters: std::time::Duration,
-    edges_select: std::time::Duration,
-    edge_paths: std::time::Duration,
-    edge_labels: std::time::Duration,
-    dom_order: std::time::Duration,
-    nodes: std::time::Duration,
-    node_style_compile: std::time::Duration,
-    node_roughjs: std::time::Duration,
-    node_roughjs_calls: u32,
-    node_label_html: std::time::Duration,
-    node_label_html_calls: u32,
-    nested_roots: std::time::Duration,
-    viewbox_edge_curve_lca: std::time::Duration,
-    viewbox_edge_curve_offsets: std::time::Duration,
-    viewbox_edge_curve_geom: std::time::Duration,
-    viewbox_edge_curve_bbox_union: std::time::Duration,
-    viewbox_edge_curve_geom_calls: u32,
-    viewbox_edge_curve_geom_skipped_bounds: u32,
-}
-
-struct FlowchartEdgeDataPointsScratch {
-    json: String,
-    style_escaped: String,
-    ryu: ryu_js::Buffer,
-    local_points: Vec<crate::model::LayoutPoint>,
-    tmp_points_a: Vec<crate::model::LayoutPoint>,
-    tmp_points_b: Vec<crate::model::LayoutPoint>,
-    tmp_points_c: Vec<crate::model::LayoutPoint>,
-    tmp_points_rev: Vec<crate::model::LayoutPoint>,
-}
-
-impl Default for FlowchartEdgeDataPointsScratch {
-    fn default() -> Self {
-        Self {
-            json: String::new(),
-            style_escaped: String::new(),
-            ryu: ryu_js::Buffer::new(),
-            local_points: Vec::new(),
-            tmp_points_a: Vec::new(),
-            tmp_points_b: Vec::new(),
-            tmp_points_c: Vec::new(),
-            tmp_points_rev: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FlowchartEdgePathGeom {
-    d: String,
-    pb: Option<super::path_bounds::SvgPathBounds>,
-    data_points_b64: String,
-    bounds_skipped_for_viewbox: bool,
-}
-
-#[derive(Debug, Clone)]
-struct FlowchartEdgePathCacheEntry {
-    origin_x: f64,
-    origin_y: f64,
-    abs_top_transform: f64,
-    geom: FlowchartEdgePathGeom,
-}
-
-#[inline]
-fn detail_guard<'a>(
-    enabled: bool,
-    dst: &'a mut std::time::Duration,
-) -> Option<super::timing::TimingGuard<'a>> {
-    enabled.then(|| super::timing::TimingGuard::new(dst))
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FlowchartRootOffsets {
-    origin_x: f64,
-    origin_y: f64,
-    abs_top_transform: f64,
 }
 
 // Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
