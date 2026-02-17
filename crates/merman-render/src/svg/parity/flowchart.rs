@@ -516,7 +516,7 @@ pub(super) fn flowchart_css(
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         font_family,
         fmt(font_size),
         text_color
@@ -527,58 +527,58 @@ pub(super) fn flowchart_css(
     let _ = write!(
         &mut out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id)
+        id.as_str(),
+        id.as_str()
     );
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         error_bkg,
-        escape_xml(diagram_id),
+        id.as_str(),
         error_text,
         error_text
     );
     let _ = write!(
         &mut out,
         r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id)
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str()
     );
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         stroke,
         stroke,
-        escape_xml(diagram_id),
+        id.as_str(),
         stroke
     );
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};color:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         font_family,
         fmt(font_size),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
         font_family,
         text_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         title_color,
-        escape_xml(diagram_id),
+        id.as_str(),
         title_color,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
         text_color,
         text_color
     );
@@ -589,27 +589,27 @@ pub(super) fn flowchart_css(
     let _ = write!(
         &mut out,
         r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         stroke,
         stroke,
-        escape_xml(diagram_id),
+        id.as_str(),
         arrowhead_color,
-        escape_xml(diagram_id),
+        id.as_str(),
         stroke,
-        escape_xml(diagram_id),
+        id.as_str(),
         stroke
     );
     let _ = write!(
         &mut out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
-        escape_xml(diagram_id),
+        id.as_str(),
         edge_label_background,
-        escape_xml(diagram_id),
+        id.as_str(),
         edge_label_background,
-        escape_xml(diagram_id),
+        id.as_str(),
         edge_label_background,
         edge_label_background,
-        escape_xml(diagram_id),
+        id.as_str(),
         label_bkg
     );
     let _ = write!(
@@ -633,19 +633,19 @@ pub(super) fn flowchart_css(
     let _ = write!(
         &mut out,
         r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape rect,#{} .image-shape rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
         edge_label_background,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
         edge_label_background,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
         edge_label_background,
         edge_label_background,
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
-        escape_xml(diagram_id),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
         font_family
     );
 
@@ -688,10 +688,10 @@ pub(super) fn flowchart_css(
             let _ = write!(
                 &mut out,
                 r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-                escape_xml(diagram_id),
+                id.as_str(),
                 escape_xml(class),
                 style,
-                escape_xml(diagram_id),
+                id.as_str(),
                 escape_xml(class),
                 style
             );
@@ -700,7 +700,7 @@ pub(super) fn flowchart_css(
                 let _ = write!(
                     &mut out,
                     r#"#{} .{} {}{{{}}}"#,
-                    escape_xml(diagram_id),
+                    id.as_str(),
                     escape_xml(class),
                     css_element,
                     style
@@ -711,7 +711,7 @@ pub(super) fn flowchart_css(
             let _ = write!(
                 &mut out,
                 r#"#{} .{} tspan{{fill:{}!important;}}"#,
-                escape_xml(diagram_id),
+                id.as_str(),
                 escape_xml(class),
                 escape_xml(c)
             );
@@ -722,35 +722,36 @@ pub(super) fn flowchart_css(
 }
 
 pub(super) fn flowchart_markers(out: &mut String, diagram_id: &str) {
+    let id = escape_xml(diagram_id);
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
     let _ = write!(
         out,
         r#"<marker id="{}_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
-        escape_xml(diagram_id)
+        id.as_str()
     );
 }
 
