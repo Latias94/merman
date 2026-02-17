@@ -32,6 +32,38 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
       - `render/state_medium`: `1.88x`
       - `render/architecture_medium`: `2.10x`
 
+### Latest Local Update (2026-02-17)
+
+- Stage spotcheck (local, not committed):
+  - Command:
+    - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+  - Report:
+    - `target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+  - Notable ratios (`merman / mmdr`):
+    - `architecture_medium`: `layout 2.76x`, `render 2.18x`, `end_to_end 1.74x`
+    - `mindmap_medium`: `layout 1.99x`, `render 1.37x`, `end_to_end 1.78x`
+    - `class_medium render`: `2.79x`
+    - `state_medium parse`: `1.77x`
+- Architecture layout stress bench (local baseline, not committed):
+  - Bench:
+    - `cargo bench -p merman --features render --bench architecture_layout_stress -- --save-baseline arch_layout_base`
+  - Follow-up comparisons:
+    - `cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`
+
+### Recently Landed (2026-02-17)
+
+- `17e1ebbd` — `bench(merman): prevent layout bench elision`
+  - `layout/*` benches now compute a cheap, layout-dependent digest to prevent LLVM from optimizing
+    away expensive layout work.
+- `6c708c07` — `bench(merman): add architecture layout stress`
+  - Adds a layout-only Architecture stress bench (see above).
+- `0f5fa791` — `perf(manatee): use fxhash in graph+fcose`
+  - Uses `FxHash{Map,Set}` in a few small-graph fixed-cost paths (validate/FCoSE bookkeeping).
+- `5d728ebf` — `perf(manatee): skip root compound map when noop`
+  - Avoids building the root-compound membership map unless multiple root compounds are observed.
+- `22a05bb4` — `perf(manatee): avoid id clones in layout output`
+  - Moves node ids into the final `positions` map instead of cloning them (COSE + FCoSE).
+
 ### Recently Landed (2026-02-16)
 
 - `d295a53` — `perf(flowchart): reduce render hot-path overhead`
