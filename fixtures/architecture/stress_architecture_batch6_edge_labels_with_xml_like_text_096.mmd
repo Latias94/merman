@@ -1,0 +1,8 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: edge labels containing XML-like text that must be escaped in SVG.
+
+  service a(server)[A]
+  service b(server)[B]
+
+  a:R -[emit event ping ack]-> L:b

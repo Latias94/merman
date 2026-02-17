@@ -1,0 +1,23 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: junction fan-out + group edges + labeled edges.
+  %% Reference: repo-ref/mermaid/docs/syntax/architecture.md (junctions).
+
+  group edge(cloud)[Edge]
+  group core(cloud)[Core]
+
+  service gw(internet)[Gateway] in edge
+  junction j1
+  junction j2
+
+  service auth(server)[Auth] in core
+  service api(server)[API] in core
+  service db(database)[DB] in core
+  service cache(database)[Cache] in core
+
+  gw:R -- L:j1
+  j1:B -- T:j2
+  j1:R --> L:auth{group}
+  j2:R --> L:api{group}
+  api:B -[read]-> T:db
+  api:T -[cache]-> B:cache

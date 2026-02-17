@@ -1,0 +1,20 @@
+---
+accTitle: Architecture stress batch6
+accDescr: Multiple disconnected components + titles. Mermaid@11.12.2 baseline.
+---
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: disconnected components + title/acc fields.
+
+  title Two islands
+
+  group island1(cloud)[Island One]
+  service a(server)[A] in island1
+  service b(database)[B] in island1
+
+  group island2(cloud)[Island Two]
+  service c(server)[C] in island2
+  service d(database)[D] in island2
+
+  a:R -[read]-> L:b
+  c:R -[write]-> L:d

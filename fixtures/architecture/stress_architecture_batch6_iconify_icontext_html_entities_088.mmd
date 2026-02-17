@@ -1,0 +1,13 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: iconText mixing iconify icon names + HTML entities + unknown icon fallback.
+  %% Reference: repo-ref/mermaid/docs/syntax/architecture.md (icons) + existing stress fixtures.
+
+  group cloud(cloud)[Cloud]
+
+  service lambda "logos:aws-lambda" [Lambda] in cloud
+  service worker "<b>worker</b> &amp; <i>queue</i>" [Job Runner] in cloud
+  service unknown(iconnamedoesntexist)[Unknown] in cloud
+
+  lambda:B -[invoke]-> T:worker
+  worker:R -[reports ok]-> L:unknown

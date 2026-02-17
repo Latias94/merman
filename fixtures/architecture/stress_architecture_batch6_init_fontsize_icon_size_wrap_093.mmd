@@ -1,0 +1,14 @@
+%%{init: {"architecture": {"fontSize": 18, "iconSize": 40, "padding": 30}} }%%
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: init config impacts label wrapping + bbox (fontSize/iconSize/padding).
+
+  group left(cloud)[Left]
+  group right(cloud)[Right]
+
+  service api(server)[API Service] in left
+  service db(database)[Database] in right
+  service disk(disk)[Disk] in right
+
+  api:R -[query long words wrap wrap wrap]-> L:db
+  api:B -[backup daily snapshot at 0200]-> T:disk

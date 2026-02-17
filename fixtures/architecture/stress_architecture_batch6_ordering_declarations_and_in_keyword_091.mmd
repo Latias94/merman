@@ -1,0 +1,14 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: declaration ordering (components can be declared in any order as long as ids exist).
+  %% Reference: repo-ref/mermaid/docs/syntax/architecture.md (ordering note).
+
+  service ext(internet)[External]
+
+  group root(cloud)[Root]
+  group data(cloud)[Data] in root
+  service api(server)[API] in root
+  service db(database)[DB] in data
+
+  ext:R --> L:api{group}
+  api:B -[query]-> T:db{group}

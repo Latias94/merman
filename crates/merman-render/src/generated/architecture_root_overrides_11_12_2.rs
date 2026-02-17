@@ -414,6 +414,54 @@ pub fn lookup_architecture_root_viewport_override(
             "-172.2510223388672 -227.4480438232422 424.5020446777344 585.8961181640625",
             "424.5020446777344",
         )),
+        "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085" => Some((
+            "-158.01492309570312 -65.5 447.6865539550781 262",
+            "447.6865539550781",
+        )),
+        "stress_architecture_batch6_nested_groups_group_edges_and_ports_086" => Some((
+            "-241.50086975097656 -448.21905517578125 548.001708984375 1027.4381103515625",
+            "548.001708984375",
+        )),
+        "stress_architecture_batch6_junctions_multi_split_with_group_edges_087" => Some((
+            "-286.5922393798828 -257.49559020996094 653.1844482421875 645.9911499023438",
+            "653.1844482421875",
+        )),
+        "stress_architecture_batch6_iconify_icontext_html_entities_088" => Some((
+            "-186.7128143310547 -165.9628143310547 448.4256286621094 462.9256591796875",
+            "448.4256286621094",
+        )),
+        "stress_architecture_batch6_disconnected_components_with_titles_089" => Some((
+            "-417.2345886230469 -146.15457153320312 914.4691772460938 423.30914306640625",
+            "914.4691772460938",
+        )),
+        "stress_architecture_batch6_port_matrix_stress_090" => Some((
+            "-150.59911346435547 -190.25 424.1982421875 544.1875",
+            "424.1982421875",
+        )),
+        "stress_architecture_batch6_ordering_declarations_and_in_keyword_091" => Some((
+            "-199.3567352294922 -186.19541931152344 485.7134704589844 506.390869140625",
+            "485.7134704589844",
+        )),
+        "stress_architecture_batch6_mixed_arrow_styles_and_labels_092" => Some((
+            "-219.97486877441406 -9.833333969116211 562.94970703125 195.52083587646484",
+            "562.94970703125",
+        )),
+        "stress_architecture_batch6_init_fontsize_icon_size_wrap_093" => Some((
+            "-135.7482147216797 -160.04725646972656 334.15765380859375 417.0945129394531",
+            "334.15765380859375",
+        )),
+        "stress_architecture_batch6_deep_group_chain_crosslinks_094" => Some((
+            "-12254.1611328125 -17308.404296875 24582.322265625 34750.80859375",
+            "24582.322265625",
+        )),
+        "stress_architecture_batch6_long_group_titles_wrapping_extreme_095" => Some((
+            "-224.34327697753906 -107 533 345",
+            "533",
+        )),
+        "stress_architecture_batch6_edge_labels_with_xml_like_text_096" => Some((
+            "-104.8432846069336 -22 360.68658447265625 184.1875",
+            "360.68658447265625",
+        )),
         "upstream_cypress_other_xss_spec_icon_labels_architecture_001" => {
             Some(("-82.5 -65.5 245 262", "245"))
         }

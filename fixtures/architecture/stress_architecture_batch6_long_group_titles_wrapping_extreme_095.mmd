@@ -1,0 +1,11 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: very long group titles wrapping + nested groups.
+
+  group outer(cloud)[This is a very long group title with many words and spaces that should wrap]
+  group inner(cloud)[Inner group title with lots of words and spaces too] in outer
+
+  service api(server)[API] in inner
+  service db(database)[DB] in inner
+
+  api:R -[query]-> L:db

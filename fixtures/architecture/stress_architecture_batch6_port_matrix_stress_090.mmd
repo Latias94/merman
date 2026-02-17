@@ -1,0 +1,18 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: port matrix stress (many edges with distinct ports/labels).
+
+  service l1(server)[L1]
+  service l2(server)[L2]
+  service l3(server)[L3]
+  service r1(database)[R1]
+  service r2(database)[R2]
+  service r3(database)[R3]
+
+  l1:R -[a]-> L:r1
+  l1:B -[b]-> T:r2
+  l1:T -[c]-> B:r3
+  l2:R -[d]-> L:r2
+  l2:B -[e]-> T:r3
+  l3:R -[f]-> L:r3
+  l3:T -[g]-> B:r1

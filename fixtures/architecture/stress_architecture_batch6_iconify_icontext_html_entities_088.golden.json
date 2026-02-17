@@ -1,0 +1,194 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "cloud",
+        "icon": "cloud",
+        "title": "Cloud",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "lambda",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lambda",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "worker",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "invoke"
+          }
+        ],
+        "icon": null,
+        "iconText": "logos:aws-lambda",
+        "title": "Lambda",
+        "in": "cloud"
+      },
+      {
+        "id": "worker",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lambda",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "worker",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "invoke"
+          },
+          {
+            "lhsId": "worker",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "unknown",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reports ok"
+          }
+        ],
+        "icon": null,
+        "iconText": "<b>worker</b> &amp; <i>queue</i>",
+        "title": "Job Runner",
+        "in": "cloud"
+      },
+      {
+        "id": "unknown",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "worker",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "unknown",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reports ok"
+          }
+        ],
+        "icon": "iconnamedoesntexist",
+        "iconText": null,
+        "title": "Unknown",
+        "in": "cloud"
+      }
+    ],
+    "services": [
+      {
+        "id": "lambda",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lambda",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "worker",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "invoke"
+          }
+        ],
+        "icon": null,
+        "iconText": "logos:aws-lambda",
+        "title": "Lambda",
+        "in": "cloud"
+      },
+      {
+        "id": "worker",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lambda",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "worker",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "invoke"
+          },
+          {
+            "lhsId": "worker",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "unknown",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reports ok"
+          }
+        ],
+        "icon": null,
+        "iconText": "<b>worker</b> &amp; <i>queue</i>",
+        "title": "Job Runner",
+        "in": "cloud"
+      },
+      {
+        "id": "unknown",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "worker",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "unknown",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reports ok"
+          }
+        ],
+        "icon": "iconnamedoesntexist",
+        "iconText": null,
+        "title": "Unknown",
+        "in": "cloud"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "lambda",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "worker",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "invoke"
+      },
+      {
+        "lhsId": "worker",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "unknown",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "reports ok"
+      }
+    ]
+  }
+}
