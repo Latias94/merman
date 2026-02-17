@@ -1,0 +1,65 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ACME, Inc."
+        },
+        {
+          "id": "R&D \"Lab\""
+        },
+        {
+          "id": "Phase 1 - alpha"
+        },
+        {
+          "id": "Phase 2 - beta"
+        },
+        {
+          "id": "Ship"
+        },
+        {
+          "id": "Loss"
+        }
+      ],
+      "links": [
+        {
+          "source": "ACME, Inc.",
+          "target": "R&D \"Lab\"",
+          "value": 12.25
+        },
+        {
+          "source": "R&D \"Lab\"",
+          "target": "Phase 1 - alpha",
+          "value": 7.5
+        },
+        {
+          "source": "R&D \"Lab\"",
+          "target": "Phase 2 - beta",
+          "value": 4.75
+        },
+        {
+          "source": "Phase 1 - alpha",
+          "target": "Ship",
+          "value": 6.0
+        },
+        {
+          "source": "Phase 1 - alpha",
+          "target": "Loss",
+          "value": 1.5
+        },
+        {
+          "source": "Phase 2 - beta",
+          "target": "Ship",
+          "value": 4.0
+        },
+        {
+          "source": "Phase 2 - beta",
+          "target": "Loss",
+          "value": 0.75
+        }
+      ]
+    }
+  }
+}

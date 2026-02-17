@@ -1,0 +1,41 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "A"
+        },
+        {
+          "id": "B"
+        },
+        {
+          "id": "C"
+        }
+      ],
+      "links": [
+        {
+          "source": "A",
+          "target": "B",
+          "value": 5
+        },
+        {
+          "source": "A",
+          "target": "B",
+          "value": 7
+        },
+        {
+          "source": "A",
+          "target": "C",
+          "value": 3
+        },
+        {
+          "source": "C",
+          "target": "B",
+          "value": 1
+        }
+      ]
+    }
+  }
+}

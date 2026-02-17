@@ -1,0 +1,105 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 720.0,
+        "max_y": 320.0
+      },
+      "width": 720.0,
+      "height": 320.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Source",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 6.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 29.471,
+          "y1": 285.992
+        },
+        {
+          "id": "Mid",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 4.1,
+          "x0": 355.0,
+          "x1": 365.0,
+          "y0": 0.0,
+          "y1": 175.29
+        },
+        {
+          "id": "Alt",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 2.8,
+          "x0": 355.0,
+          "x1": 365.0,
+          "y0": 200.29,
+          "y1": 320.0
+        },
+        {
+          "id": "Sink",
+          "index": 3.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 6.0,
+          "x0": 710.0,
+          "x1": 720.0,
+          "y0": 7.673,
+          "y1": 264.195
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Source",
+          "target": "Mid",
+          "value": 3.2,
+          "width": 136.812,
+          "y0": 97.877,
+          "y1": 68.406
+        },
+        {
+          "index": 1.0,
+          "source": "Source",
+          "target": "Alt",
+          "value": 2.8,
+          "width": 119.71,
+          "y0": 226.137,
+          "y1": 260.145
+        },
+        {
+          "index": 2.0,
+          "source": "Mid",
+          "target": "Sink",
+          "value": 4.1,
+          "width": 175.29,
+          "y0": 87.645,
+          "y1": 95.318
+        },
+        {
+          "index": 3.0,
+          "source": "Alt",
+          "target": "Sink",
+          "value": 1.9,
+          "width": 81.232,
+          "y0": 240.906,
+          "y1": 223.579
+        }
+      ]
+    }
+  }
+}

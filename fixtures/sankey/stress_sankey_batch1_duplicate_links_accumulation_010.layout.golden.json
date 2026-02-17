@@ -1,0 +1,93 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 320.0
+      },
+      "width": 700.0,
+      "height": 320.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "A",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 15.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 320.0
+        },
+        {
+          "id": "B",
+          "index": 1.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 13.0,
+          "x0": 690.0,
+          "x1": 700.0,
+          "y0": 0.0,
+          "y1": 277.333
+        },
+        {
+          "id": "C",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 3.0,
+          "x0": 345.0,
+          "x1": 355.0,
+          "y0": 256.0,
+          "y1": 320.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "A",
+          "target": "B",
+          "value": 5.0,
+          "width": 106.667,
+          "y0": 53.333,
+          "y1": 53.333
+        },
+        {
+          "index": 1.0,
+          "source": "A",
+          "target": "B",
+          "value": 7.0,
+          "width": 149.333,
+          "y0": 181.333,
+          "y1": 181.333
+        },
+        {
+          "index": 2.0,
+          "source": "A",
+          "target": "C",
+          "value": 3.0,
+          "width": 64.0,
+          "y0": 288.0,
+          "y1": 288.0
+        },
+        {
+          "index": 3.0,
+          "source": "C",
+          "target": "B",
+          "value": 1.0,
+          "width": 21.333,
+          "y0": 266.667,
+          "y1": 266.667
+        }
+      ]
+    }
+  }
+}

@@ -32,6 +32,7 @@ TODO:
 
 Recently imported (keep gates green after each batch):
 
+- 2026-02-17: Sankey authored stress fixtures batch1 (12 fixtures under `fixtures/sankey/stress_sankey_batch1_*`, with upstream SVG baselines). Hardened Sankey SVG parity for `useMaxWidth=false` (width/height attrs + style) to match Mermaid output and keep the global `parity-root` gate green.
 - 2026-02-17: Timeline authored stress fixtures batch (12 fixtures under `fixtures/timeline/timeline_stress_*`, with upstream SVG baselines). Added fixture-derived Timeline root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.
 - 2026-02-17: Sequence authored stress fixtures batch (12 fixtures under `fixtures/sequence/stress_sequence_batch5_*_040..051.mmd`, with upstream SVG baselines). Added fixture-derived Sequence root viewport overrides and hardened Sequence SVG parity for actor/popup fill when `forceMenus=true` (default actors remain `#eaeaea`, custom-class actors use `#EDF2AE`) plus strict-mode link sanitization in popup menus (unsafe URLs become `<a>` without `xlink:href`), keeping the global `parity-root` gate green.
 - 2026-02-17: State authored stress fixtures batch (12 fixtures under `fixtures/state/stress_state_batch5_*_059..070.mmd`, with upstream SVG baselines). Refreshed State root viewport overrides for the new fixture IDs and hardened State SVG parity so composite state titles (`cluster-label`) are wrapped in `<a>` when a link is present, matching Mermaid output and keeping the global `parity-root` gate green.

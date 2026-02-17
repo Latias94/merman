@@ -1,0 +1,147 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 320.0
+      },
+      "width": 700.0,
+      "height": 320.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Input",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 20.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 16.511,
+          "y1": 286.511
+        },
+        {
+          "id": "Stage 1",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 12.5,
+          "x0": 345.0,
+          "x1": 355.0,
+          "y0": 3.85,
+          "y1": 172.6
+        },
+        {
+          "id": "Stage 2",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 7.5,
+          "x0": 345.0,
+          "x1": 355.0,
+          "y0": 198.446,
+          "y1": 299.696
+        },
+        {
+          "id": "Output A",
+          "index": 3.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 10.0,
+          "x0": 690.0,
+          "x1": 700.0,
+          "y0": 0.0,
+          "y1": 135.0
+        },
+        {
+          "id": "Loss",
+          "index": 4.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 4.0,
+          "x0": 690.0,
+          "x1": 700.0,
+          "y0": 160.0,
+          "y1": 214.0
+        },
+        {
+          "id": "Output B",
+          "index": 5.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 6.0,
+          "x0": 690.0,
+          "x1": 700.0,
+          "y0": 239.0,
+          "y1": 320.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Input",
+          "target": "Stage 1",
+          "value": 12.5,
+          "width": 168.75,
+          "y0": 100.886,
+          "y1": 88.225
+        },
+        {
+          "index": 1.0,
+          "source": "Input",
+          "target": "Stage 2",
+          "value": 7.5,
+          "width": 101.25,
+          "y0": 235.886,
+          "y1": 249.071
+        },
+        {
+          "index": 2.0,
+          "source": "Stage 1",
+          "target": "Output A",
+          "value": 10.0,
+          "width": 135.0,
+          "y0": 71.35,
+          "y1": 67.5
+        },
+        {
+          "index": 3.0,
+          "source": "Stage 1",
+          "target": "Loss",
+          "value": 2.5,
+          "width": 33.75,
+          "y0": 155.725,
+          "y1": 176.875
+        },
+        {
+          "index": 4.0,
+          "source": "Stage 2",
+          "target": "Output B",
+          "value": 6.0,
+          "width": 81.0,
+          "y0": 259.196,
+          "y1": 279.5
+        },
+        {
+          "index": 5.0,
+          "source": "Stage 2",
+          "target": "Loss",
+          "value": 1.5,
+          "width": 20.25,
+          "y0": 208.571,
+          "y1": 203.875
+        }
+      ]
+    }
+  }
+}

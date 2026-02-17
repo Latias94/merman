@@ -1,0 +1,60 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "Input"
+        },
+        {
+          "id": "Stage 1"
+        },
+        {
+          "id": "Stage 2"
+        },
+        {
+          "id": "Output A"
+        },
+        {
+          "id": "Loss"
+        },
+        {
+          "id": "Output B"
+        }
+      ],
+      "links": [
+        {
+          "source": "Input",
+          "target": "Stage 1",
+          "value": 12.5
+        },
+        {
+          "source": "Input",
+          "target": "Stage 2",
+          "value": 7.5
+        },
+        {
+          "source": "Stage 1",
+          "target": "Output A",
+          "value": 10
+        },
+        {
+          "source": "Stage 1",
+          "target": "Loss",
+          "value": 2.5
+        },
+        {
+          "source": "Stage 2",
+          "target": "Output B",
+          "value": 6
+        },
+        {
+          "source": "Stage 2",
+          "target": "Loss",
+          "value": 1.5
+        }
+      ]
+    }
+  }
+}

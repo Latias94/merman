@@ -1,0 +1,44 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "Source"
+        },
+        {
+          "id": "Mid"
+        },
+        {
+          "id": "Alt"
+        },
+        {
+          "id": "Sink"
+        }
+      ],
+      "links": [
+        {
+          "source": "Source",
+          "target": "Mid",
+          "value": 3.2
+        },
+        {
+          "source": "Source",
+          "target": "Alt",
+          "value": 2.8
+        },
+        {
+          "source": "Mid",
+          "target": "Sink",
+          "value": 4.1
+        },
+        {
+          "source": "Alt",
+          "target": "Sink",
+          "value": 1.9
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 680.0,
+        "max_y": 310.0
+      },
+      "width": 680.0,
+      "height": 310.0,
+      "node_width": 10.0,
+      "node_padding": 10.0,
+      "nodes": [
+        {
+          "id": "Gen",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 125.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 14.792,
+          "y1": 304.792
+        },
+        {
+          "id": "Grid",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 120.0,
+          "x0": 335.0,
+          "x1": 345.0,
+          "y0": 31.193,
+          "y1": 309.593
+        },
+        {
+          "id": "Loss",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 5.0,
+          "x0": 670.0,
+          "x1": 680.0,
+          "y0": -0.0,
+          "y1": 11.6
+        },
+        {
+          "id": "Load",
+          "index": 3.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 80.0,
+          "x0": 670.0,
+          "x1": 680.0,
+          "y0": 21.6,
+          "y1": 207.2
+        },
+        {
+          "id": "Export",
+          "index": 4.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 40.0,
+          "x0": 670.0,
+          "x1": 680.0,
+          "y0": 217.2,
+          "y1": 310.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Gen",
+          "target": "Grid",
+          "value": 120.0,
+          "width": 278.4,
+          "y0": 165.592,
+          "y1": 170.393
+        },
+        {
+          "index": 1.0,
+          "source": "Gen",
+          "target": "Loss",
+          "value": 5.0,
+          "width": 11.6,
+          "y0": 20.592,
+          "y1": 5.8
+        },
+        {
+          "index": 2.0,
+          "source": "Grid",
+          "target": "Load",
+          "value": 80.0,
+          "width": 185.6,
+          "y0": 123.993,
+          "y1": 114.4
+        },
+        {
+          "index": 3.0,
+          "source": "Grid",
+          "target": "Export",
+          "value": 40.0,
+          "width": 92.8,
+          "y0": 263.193,
+          "y1": 263.6
+        }
+      ]
+    }
+  }
+}
