@@ -1,0 +1,24 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): autonumber on/off transitions combined with blocks.
+
+  autonumber 1 3
+  participant A as Alice
+  participant B as Bob
+  participant C as Charlie
+
+  A->>B: one
+  B-->>A: four
+  autonumber off
+
+  alt unnumbered block
+    A->>C: unnumbered
+    C-->>A: ok
+  else still unnumbered
+    B->>C: ping
+    C-->>B: pong
+  end
+
+  autonumber 10 2
+  A->>B: ten
+  B-->>A: twelve
+

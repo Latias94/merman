@@ -1,0 +1,18 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): comments, indentation, and escaped semicolons (#59;).
+
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: hello #59; world
+  Note over A,B: note #59; with escaped semicolon
+
+  loop retry
+    A->>B: attempt 1
+    %% comment-only line
+    A->>B: attempt 2 #59;
+  end
+
+  opt optional branch
+    B-->>A: ok
+  end

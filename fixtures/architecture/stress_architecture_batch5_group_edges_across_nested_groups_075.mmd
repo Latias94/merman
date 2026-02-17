@@ -1,0 +1,17 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: edges out of groups using `{group}` modifier across nested groups.
+
+  group vpc(cloud)[VPC]
+  group public(cloud)[Public] in vpc
+  group private(cloud)[Private] in vpc
+
+  service lb(server)[Load Balancer] in public
+  service web(server)[Web] in public
+  service app(server)[App] in private
+  service db(database)[DB] in private
+
+  %% Only use `{group}` when crossing group boundaries.
+  lb:B --> T:web
+  web{group}:B --> T:app{group}
+  app:B --> T:db

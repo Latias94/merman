@@ -1,0 +1,15 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: port matrix (T/B/L/R) with 90-degree edges.
+
+  service left(disk)[Left]
+  service right(disk)[Right]
+  service top(server)[Top]
+  service bottom(server)[Bottom]
+
+  left:R --> L:right
+  left:T --> B:top
+  left:B --> T:bottom
+  top:R --> T:right
+  bottom:R --> B:right
+

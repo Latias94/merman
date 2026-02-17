@@ -367,6 +367,53 @@ pub fn lookup_architecture_root_viewport_override(
             "-118.96281433105469 -110.71281433105469 360.9256286621094 385.1131286621094",
             "360.9256286621094",
         )),
+        "stress_architecture_batch5_dense_group_services_073" => Some((
+            "-195.41329956054688 -166.04556274414062 454.82659912109375 463.09112548828125",
+            "454.82659912109375",
+        )),
+        "stress_architecture_batch5_junction_fanout_grid_074" => Some((
+            "-319.9057312011719 -211.35484313964844 762.8114624023438 586.397216796875",
+            "762.8114624023438",
+        )),
+        "stress_architecture_batch5_group_edges_across_nested_groups_075" => {
+            Some(("-137 -445.6163635253906 354 1022.232666015625", "354"))
+        }
+        "stress_architecture_batch5_long_titles_and_punct_076" => Some((
+            "-273.4628143310547 -165.9628143310547 542.9256286621094 462.9256591796875",
+            "542.9256286621094",
+        )),
+        "stress_architecture_batch5_weird_ids_numbers_077" => Some((
+            "-226.9765167236328 -212.8216552734375 533.9530029296875 556.643310546875",
+            "533.9530029296875",
+        )),
+        "stress_architecture_batch5_services_outside_groups_crosslinks_078" => Some((
+            "-219.20965576171875 -252.98187255859375 518.4193115234375 640.9637451171875",
+            "518.4193115234375",
+        )),
+        "stress_architecture_batch5_multi_edges_same_ports_079" => Some((
+            "-110.3686294555664 -110.71257019042969 372.4039306640625 385.1126403808594",
+            "372.4039306640625",
+        )),
+        "stress_architecture_batch5_bidirectional_arrows_group_modifier_080" => Some((
+            "-335.11102294921875 -242.09506225585938 750.2220458984375 615.1901245117188",
+            "750.2220458984375",
+        )),
+        "stress_architecture_batch5_nested_groups_many_levels_081" => Some((
+            "-266.04710388183594 -316.86309814453125 612.09423828125 770.7261962890625",
+            "612.09423828125",
+        )),
+        "stress_architecture_batch5_ports_matrix_stress_082" => Some((
+            "-103.85939407348633 -194.90057373046875 331.0723419189453 553.4886474609375",
+            "331.0723419189453",
+        )),
+        "stress_architecture_batch5_disconnected_components_083" => Some((
+            "-319.2033386230469 -165.8432846069336 718.4066772460938 462.6865539550781",
+            "718.4066772460938",
+        )),
+        "stress_architecture_batch5_title_accdescr_frontmatter_084" => Some((
+            "-172.2510223388672 -227.4480438232422 424.5020446777344 585.8961181640625",
+            "424.5020446777344",
+        )),
         "upstream_cypress_other_xss_spec_icon_labels_architecture_001" => {
             Some(("-82.5 -65.5 245 262", "245"))
         }

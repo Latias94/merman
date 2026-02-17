@@ -1,0 +1,161 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "S",
+      "DB"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "S": {
+        "name": "S",
+        "description": "Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "S",
+        "message": "start",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "1",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "S",
+        "to": "DB",
+        "message": "read",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "DB",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "DB",
+        "to": "S",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "DB",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "S",
+        "to": "A",
+        "message": "ack",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "A",
+        "to": "S",
+        "message": "follow-up",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "S",
+        "to": "S",
+        "message": "self-call()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

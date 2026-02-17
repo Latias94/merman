@@ -1,0 +1,206 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "WEB",
+      "API",
+      "AUTH",
+      "Q",
+      "W",
+      "DB",
+      "LOG"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "WEB": {
+        "name": "WEB",
+        "description": "Web",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "AUTH": {
+        "name": "AUTH",
+        "description": "AUTH",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "Q": {
+        "name": "Q",
+        "description": "Q",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      },
+      "W": {
+        "name": "W",
+        "description": "W",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "LOG": {
+        "name": "LOG",
+        "description": "LOG",
+        "wrap": false,
+        "type": "collections",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "WEB",
+        "message": "open",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "WEB",
+        "to": "API",
+        "message": "request",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "API",
+        "to": "AUTH",
+        "message": "verify",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "AUTH",
+        "to": "API",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "API",
+        "to": "Q",
+        "message": "enqueue",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Q",
+        "to": "W",
+        "message": "deliver",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "W",
+        "to": "DB",
+        "message": "write",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "DB",
+        "to": "W",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "W",
+        "to": "LOG",
+        "message": "record",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "LOG",
+        "to": "W",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "API",
+        "to": "WEB",
+        "message": "200",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "WEB",
+        "to": "U",
+        "message": "done",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

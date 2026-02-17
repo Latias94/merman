@@ -1,0 +1,24 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): many participants + mixed types to stress horizontal spacing.
+
+  participant U as User
+  participant WEB as Web
+  participant API@{ "type" : "control" }
+  participant AUTH@{ "type" : "entity" }
+  participant Q@{ "type" : "queue" }
+  participant W@{ "type" : "boundary" }
+  participant DB@{ "type" : "database" }
+  participant LOG@{ "type" : "collections" }
+
+  U->>WEB: open
+  WEB->>API: request
+  API->>AUTH: verify
+  AUTH-->>API: ok
+  API->>Q: enqueue
+  Q->>W: deliver
+  W->>DB: write
+  DB-->>W: ok
+  W->>LOG: record
+  LOG-->>W: ok
+  API-->>WEB: 200
+  WEB-->>U: done

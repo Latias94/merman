@@ -1,0 +1,16 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: ids with numbers/underscores + mixed port edges.
+
+  group g_01(cloud)[Group 01]
+  group g_02(cloud)[Group 02]
+
+  service svc_001(server)[svc_001] in g_01
+  service svc_002(server)[svc_002] in g_01
+  service svc_101(server)[svc_101] in g_02
+  service svc_202(database)[svc_202] in g_02
+
+  svc_001:R --> L:svc_101
+  svc_002:B --> T:svc_202
+  svc_101:B --> T:svc_202
+

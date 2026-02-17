@@ -1,0 +1,17 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: bidirectional arrows + `{group}` modifier.
+
+  group a(cloud)[A]
+  group b(cloud)[B]
+
+  service s1(server)[S1] in a
+  service s2(server)[S2] in a
+  service t1(server)[T1] in b
+  service t2(server)[T2] in b
+
+  s1{group}:R --> L:t1{group}
+  t1{group}:B --> T:s2{group}
+  s2{group}:R -- L:t2{group}
+  t2{group}:T -- B:s1{group}
+

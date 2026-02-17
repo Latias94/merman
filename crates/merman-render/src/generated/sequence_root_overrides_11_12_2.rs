@@ -258,6 +258,15 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_nested_frames_001" => Some(("-50 -10 850 1045", "850")),
         "stress_participant_types_006" => Some(("-50 -10 1450 770", "1450")),
         "stress_unicode_punct_012" => Some(("-50 -10 785 333", "785")),
+        "stress_sequence_batch5_alt_par_nested_040" => Some(("-50 -10 862 769", "862")),
+        "stress_sequence_batch5_wrap_html_br_spans_042" => Some(("-50 -10 587 344", "587")),
+        "stress_sequence_batch5_strict_links_properties_044" => Some(("-50 -10 650 347", "650")),
+        "stress_sequence_batch5_create_destroy_in_par_046" => Some(("-50 -10 734 556", "734")),
+        "stress_sequence_batch5_reserved_words_in_labels_049" => Some(("-50 -10 581 408", "581")),
+        "stress_sequence_batch5_many_participants_spacing_050" => {
+            Some(("-50 -10 1650 714", "1650"))
+        }
+        "stress_sequence_batch5_whitespace_semicolons_051" => Some(("-50 -10 452 506", "452")),
         _ => None,
     }
 }

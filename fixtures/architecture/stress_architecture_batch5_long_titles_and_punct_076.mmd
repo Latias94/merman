@@ -1,0 +1,16 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: long titles with punctuation/spaces and multiple edges.
+
+  %% Note: Mermaid architecture labels are tokenized; avoid `-` inside `[]` titles.
+  group pipeline(cloud)[CI CD Pipeline build test deploy]
+
+  service runner(server)[Runner Linux amd64] in pipeline
+  service registry(database)[Container Registry] in pipeline
+  service storage(disk)[Artifacts Storage retention 30d] in pipeline
+  service prod(server)[Production] in pipeline
+
+  runner:R --> L:registry
+  runner:B --> T:storage
+  storage:R --> L:prod
+  registry:B --> T:prod

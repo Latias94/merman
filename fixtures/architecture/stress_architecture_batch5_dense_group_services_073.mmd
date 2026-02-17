@@ -1,0 +1,21 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: dense services inside a group + many cross edges.
+
+  group core(cloud)[Core Platform]
+
+  service api(server)[API Gateway] in core
+  service auth(server)[Auth] in core
+  service billing(server)[Billing] in core
+  service users(database)[Users DB] in core
+  service cache(disk)[Cache] in core
+  service queue(disk)[Queue] in core
+
+  api:R --> L:auth
+  auth:B --> T:users
+  auth:R --> L:billing
+  billing:B --> T:users
+  api:B --> T:cache
+  billing:B --> T:queue
+  queue:R --> L:cache
+

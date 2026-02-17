@@ -1,0 +1,17 @@
+%%{init: { "config": { "securityLevel": "strict", "forceMenus": true, "wrap": true }}}%%
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): strict link sanitization + forced menus.
+
+  participant API as "API Gateway"
+  participant DB as "DB (primary)"
+  participant Q@{ "type" : "queue" }
+
+  links API: { "Docs": "https://docs.contoso.com/api", "Unsafe": "javascript:alert(1)" }
+  links DB: { "Admin": "javascript:alert(1)" }
+  properties API: { "role": "admin", "tier": 1 }
+  details API: svc-api
+
+  API->>DB: SELECT 1
+  DB-->>API: 1
+  API->>Q: enqueue(job)
+  Q-->>API: accepted

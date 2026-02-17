@@ -1,0 +1,24 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): critical with multiple options + notes.
+
+  participant C as Client
+  participant S as Server
+  participant DB as DB
+
+  C->>S: PUT /item
+  activate S
+  critical lock row
+    option update existing
+      S->>DB: select for update
+      DB-->>S: ok
+      S->>DB: update
+      DB-->>S: ok
+    option create new
+      S->>DB: select for update
+      DB-->>S: missing
+      S->>DB: insert
+      DB-->>S: ok
+  end
+  Note over S,DB: lock scope ends at critical end
+  S-->>C: 200
+  deactivate S

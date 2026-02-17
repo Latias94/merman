@@ -1,0 +1,226 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "A",
+      "W",
+      "DB"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A": {
+        "name": "A",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "W": {
+        "name": "W",
+        "description": "Worker",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "A",
+        "message": "POST /jobs",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "execution",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "cache hit",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "U",
+        "message": "200 OK (cached)",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "cache miss",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "A",
+        "to": "DB",
+        "message": "insert(job)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "retry until committed",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "DB",
+        "to": "A",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "A",
+        "to": "U",
+        "message": "202 Accepted",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "telemetry",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "A",
+        "to": "A",
+        "message": "log(event)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "A",
+        "to": "W",
+        "message": "telemetry should not affect execution geometry",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "15",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "A",
+          "W"
+        ],
+        "placement": 2,
+        "message": "telemetry should not affect execution geometry",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

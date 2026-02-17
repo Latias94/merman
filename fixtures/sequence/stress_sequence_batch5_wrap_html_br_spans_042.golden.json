@@ -1,0 +1,82 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": true,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": true,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "A long message with an explicit<br/>line break and more words to wrap nicely",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "first line<br/>second line with plain text",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "2",
+        "from": "B",
+        "to": "A",
+        "message": "ok",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "A",
+          "B"
+        ],
+        "placement": 2,
+        "message": "first line<br/>second line with plain text",
+        "wrap": true
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): nested alt blocks inside a par, with loops and spanning notes.
+
+  participant U as User
+  participant A as API
+  participant W as Worker
+  participant DB as DB
+
+  U->>A: POST /jobs
+  activate A
+  par execution
+    alt cache hit
+      A-->>U: 200 OK (cached)
+    else cache miss
+      A->>DB: insert(job)
+      loop retry until committed
+        DB-->>A: ok
+      end
+      A-->>U: 202 Accepted
+    end
+  and telemetry
+    A->>A: log(event)
+    Note over A,W: telemetry should not affect execution geometry
+  end
+  deactivate A
+

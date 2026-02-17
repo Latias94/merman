@@ -1,0 +1,18 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: 3-level nested groups + cross edges.
+
+  group top(cloud)[TOP]
+  group mid(cloud)[MID] in top
+  group low(cloud)[LOW] in mid
+
+  %% Note: Mermaid architecture labels are tokenized; avoid `-` inside `[]` titles.
+  service s_top(server)[S TOP] in top
+  service s_mid(server)[S MID] in mid
+  service s_low(server)[S LOW] in low
+  service db(database)[DB] in low
+
+  s_top:B --> T:s_mid
+  s_mid:B --> T:s_low
+  s_low:R --> L:db
+  db:T --> B:s_top
