@@ -1,0 +1,14 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: disconnected components and independent groups.
+
+  group g1(cloud)[G1]
+  service a(server)[A] in g1
+  service b(server)[B] in g1
+  a:R --> L:b
+
+  group g2(cloud)[G2]
+  service x(database)[X] in g2
+  service y(disk)[Y] in g2
+  x:B --> T:y
+

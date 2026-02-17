@@ -1,0 +1,21 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: multiple junctions + fanout/fanin routing.
+
+  service a(server)[A]
+  service b(server)[B]
+  service c(server)[C]
+  service d(server)[D]
+
+  junction j1
+  junction j2
+  junction j3
+
+  a:R -- L:j1
+  j1:R -- L:j2
+  j2:R -- L:j3
+
+  b:T -- B:j1
+  c:B -- T:j2
+  d:B -- T:j3
+

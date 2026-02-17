@@ -1,0 +1,19 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: services outside groups linked into groups and between groups.
+
+  %% Note: Mermaid architecture labels are tokenized; avoid `-` inside `[]` titles.
+  group east(cloud)[us east]
+  group west(cloud)[us west]
+
+  service fe(server)[Frontend]
+  service east_api(server)[API] in east
+  service east_db(database)[DB] in east
+  service west_api(server)[API] in west
+  service west_db(database)[DB] in west
+
+  fe:B --> T:east_api
+  fe:B --> T:west_api
+  east_api:B --> T:east_db
+  west_api:B --> T:west_db
+  east_db:R --> L:west_db

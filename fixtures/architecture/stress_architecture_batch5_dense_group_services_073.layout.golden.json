@@ -1,0 +1,268 @@
+{
+  "diagramType": "architecture",
+  "layout": {
+    "ArchitectureDiagram": {
+      "nodes": [
+        {
+          "id": "api",
+          "x": -100.0,
+          "y": -84.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "auth",
+          "x": 100.0,
+          "y": -84.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "billing",
+          "x": 300.0,
+          "y": -84.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "users",
+          "x": 100.0,
+          "y": 116.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "cache",
+          "x": -100.0,
+          "y": 116.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "queue",
+          "x": -300.0,
+          "y": 116.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-0",
+          "from": "api",
+          "to": "auth",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": -20.0,
+              "y": -44.0
+            },
+            {
+              "x": 40.0,
+              "y": -44.0
+            },
+            {
+              "x": 100.0,
+              "y": -44.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-1",
+          "from": "auth",
+          "to": "users",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 140.0,
+              "y": -4.0
+            },
+            {
+              "x": 140.0,
+              "y": 56.0
+            },
+            {
+              "x": 140.0,
+              "y": 116.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-2",
+          "from": "auth",
+          "to": "billing",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 180.0,
+              "y": -44.0
+            },
+            {
+              "x": 240.0,
+              "y": -44.0
+            },
+            {
+              "x": 300.0,
+              "y": -44.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-3",
+          "from": "billing",
+          "to": "users",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 340.0,
+              "y": -4.0
+            },
+            {
+              "x": 240.0,
+              "y": 56.0
+            },
+            {
+              "x": 140.0,
+              "y": 116.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-4",
+          "from": "api",
+          "to": "cache",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": -60.0,
+              "y": -4.0
+            },
+            {
+              "x": -60.0,
+              "y": 56.0
+            },
+            {
+              "x": -60.0,
+              "y": 116.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-5",
+          "from": "billing",
+          "to": "queue",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 340.0,
+              "y": -4.0
+            },
+            {
+              "x": 40.0,
+              "y": 56.0
+            },
+            {
+              "x": -260.0,
+              "y": 116.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-6",
+          "from": "queue",
+          "to": "cache",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": -220.0,
+              "y": 156.0
+            },
+            {
+              "x": -160.0,
+              "y": 156.0
+            },
+            {
+              "x": -100.0,
+              "y": 156.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": -300.0,
+        "min_y": -84.0,
+        "max_x": 380.0,
+        "max_y": 196.0
+      }
+    }
+  }
+}

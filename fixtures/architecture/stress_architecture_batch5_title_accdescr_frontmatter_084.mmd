@@ -1,0 +1,16 @@
+---
+accTitle: Architecture stress batch5
+accDescr: Dense nested groups and routing. Mermaid@11.12.2 baseline.
+---
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: accessibility frontmatter + mixed services/groups.
+
+  group app(cloud)[App]
+  service api(server)[API] in app
+  service db(database)[DB] in app
+  service disk(disk)[Disk] in app
+
+  api:B --> T:db
+  api:B --> T:disk
+
