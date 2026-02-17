@@ -143,14 +143,49 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-fn layout_size(layout: &merman_render::model::LayoutDiagram) -> usize {
+fn layout_digest(layout: &merman_render::model::LayoutDiagram) -> u64 {
     use merman_render::model::LayoutDiagram;
+
+    fn mix(acc: u64, v: u64) -> u64 {
+        acc.rotate_left(7) ^ v.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+    }
+
+    fn f64_bits(v: f64) -> u64 {
+        v.to_bits()
+    }
+
+    fn digest_nodes_edges(
+        nodes: &[merman_render::model::LayoutNode],
+        edges: &[merman_render::model::LayoutEdge],
+    ) -> u64 {
+        let mut acc: u64 = 0;
+        for n in nodes.iter().take(16) {
+            acc = mix(acc, f64_bits(n.x));
+            acc = mix(acc, f64_bits(n.y));
+            acc = mix(acc, f64_bits(n.width));
+            acc = mix(acc, f64_bits(n.height));
+        }
+        for e in edges.iter().take(16) {
+            if let Some(p) = e.points.first() {
+                acc = mix(acc, f64_bits(p.x));
+                acc = mix(acc, f64_bits(p.y));
+            }
+            if let Some(p) = e.points.last() {
+                acc = mix(acc, f64_bits(p.x));
+                acc = mix(acc, f64_bits(p.y));
+            }
+        }
+        acc
+    }
+
     match layout {
-        // Fast, allocation-free "size" hints for a few hot layouts to keep the optimizer honest.
-        LayoutDiagram::FlowchartV2(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
-        LayoutDiagram::SequenceDiagram(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
-        LayoutDiagram::StateDiagramV2(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
-        LayoutDiagram::ClassDiagramV2(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
+        // Cheap, layout-dependent digests to keep the optimizer honest without serializing.
+        LayoutDiagram::FlowchartV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
+        LayoutDiagram::SequenceDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
+        LayoutDiagram::StateDiagramV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
+        LayoutDiagram::ClassDiagramV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
+        LayoutDiagram::ArchitectureDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
+        LayoutDiagram::MindmapDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
         _ => 0,
     }
 }
@@ -257,7 +292,7 @@ fn bench_layout(c: &mut Criterion) {
                         Ok(v) => v,
                         Err(_) => return,
                     };
-                black_box(layout_size(&diagram));
+                black_box(layout_digest(&diagram));
             })
         });
     }
