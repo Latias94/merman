@@ -36,19 +36,21 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 
 - Stage spotcheck (local, not committed):
   - Command:
-    - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+    - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
   - Report:
-    - `target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+    - `target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
   - Notable ratios (`merman / mmdr`):
-    - `architecture_medium`: `layout 2.76x`, `render 2.18x`, `end_to_end 1.74x`
-    - `mindmap_medium`: `layout 1.99x`, `render 1.37x`, `end_to_end 1.78x`
-    - `class_medium render`: `2.79x`
-    - `state_medium parse`: `1.77x`
+    - `architecture_medium`: `layout 2.08x`, `render 2.46x`, `end_to_end 1.88x`
+    - `mindmap_medium`: `layout 1.74x`, `render 1.24x`, `end_to_end 1.42x`
+    - `flowchart_medium render`: `2.21x`
+    - `class_medium render`: `2.36x`
+    - `state_medium parse`: `3.29x`
 - Architecture layout stress bench (local baseline, not committed):
   - Bench:
     - `cargo bench -p merman --features render --bench architecture_layout_stress -- --save-baseline arch_layout_base`
   - Follow-up comparisons:
     - `cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`
+    - Latest run: `layout_stress/architecture_reasonable_height_layout_x50` improved by ~`-33%` (local)
 
 ### Recently Landed (2026-02-17)
 
@@ -63,6 +65,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
   - Avoids building the root-compound membership map unless multiple root compounds are observed.
 - `22a05bb4` — `perf(manatee): avoid id clones in layout output`
   - Moves node ids into the final `positions` map instead of cloning them (COSE + FCoSE).
+- `9439199a` — `perf(architecture): speed up group separation`
+  - Reduces fixed-cost overhead in Architecture `group_separation` (borrowed ids, `FxHash*`,
+    member indexing + cached bboxes).
 
 ### Recently Landed (2026-02-16)
 

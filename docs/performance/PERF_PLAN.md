@@ -63,6 +63,14 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - Unifies JSON vs typed architecture layout input behind a borrowed view (`&str` ids, `Option<char>` dirs).
     - This is primarily a prerequisite for the next Architecture fixed-cost reductions (dense indices + fewer
       string-keyed maps), not a standalone performance win.
+  - `perf(architecture): speed up group separation` (`9439199a`)
+    - Speeds up the Architecture post-layout `group_separation` step by reducing fixed-cost overhead:
+      - borrow ids (`&str`) instead of cloning `String`s in relations
+      - use `FxHash*` instead of `BTree*` for small fixed sets
+      - avoid debug-string based sorting/dedup
+      - pre-index group members and cache bboxes during separation iterations
+    - Architecture stress bench (`cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`):
+      - `layout_stress/architecture_reasonable_height_layout_x50`: ~`-33%` (local)
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
@@ -77,16 +85,18 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 Latest spotcheck (local, not committed, 2026-02-17):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
 - Report:
-  - `target/bench/stage_spotcheck.after_fcose_rootopt_2026-02-17.md`
+  - `target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
 
 Outliers worth optimizing (from the spotcheck above):
 
-- `architecture_medium end_to_end`: `1.74x` (`layout 2.76x`, `render 2.18x`)
-- `mindmap_medium end_to_end`: `1.78x` (`layout 1.99x`, `render 1.37x`)
-- `render/class_medium`: `2.79x`
-- `parse/state_medium`: `1.77x`
+- `architecture_medium end_to_end`: `1.88x` (`layout 2.08x`, `render 2.46x`)
+- `mindmap_medium end_to_end`: `1.42x` (`layout 1.74x`, `render 1.24x`)
+- `render/class_medium`: `2.36x`
+- `render/state_medium`: `2.42x`
+- `render/flowchart_medium`: `2.21x`
+- `parse/state_medium`: `3.29x`
 
 ## Root Cause Map (what is actually slow)
 
@@ -112,37 +122,15 @@ Outliers worth optimizing (from the spotcheck above):
 
 ## Milestones (ordered by ROI)
 
-### P0 — Manatee layout (Architecture + Mindmap)
-
-Targets (spotcheck ratios; validate with stable parameters):
-
-- `end_to_end/architecture_medium`: `<= 1.40x` (from `1.74x`)
-- `layout/architecture_medium`: `<= 2.00x` (from `2.76x`)
-- `end_to_end/mindmap_medium`: `<= 1.40x` (from `1.78x`)
-- `layout/mindmap_medium`: `<= 1.60x` (from `1.99x`)
-
-Work items:
-
-- Keep cutting no-op work in COSE/FCoSE (compound bookkeeping, maps/clones, output conversion).
-- Reduce FCoSE fixed-cost in constraints + spectral init (small graphs first; keep deterministic).
-- Reduce COSE fixed-cost similarly (repulsion/transform/output).
-- Move the hottest loops toward dense indices + preallocated scratch where feasible.
-- Validate with dedicated benches:
-  - `python tools/bench/stage_spotcheck.py ...`
-  - `cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`
-
-Correctness gate:
-
-- `cargo nextest run -p merman-render` (layout + svg parity tests must remain green).
-
-### P1 — Reduce SVG emission overhead (multi-diagram)
+### P0 — Reduce SVG emission overhead (multi-diagram)
 
 Targets:
 
-- `render` gmean: `<= 1.30x` (from `1.57x`)
-- `render/class_medium`: `<= 2.00x` (from `2.79x`)
-- `render/state_medium`: `<= 1.50x` (from `1.84x`)
-- `render/architecture_medium`: `<= 1.60x` (from `2.18x`)
+- `render` gmean: `<= 1.50x` (from `1.97x`)
+- `render/class_medium`: `<= 2.00x` (from `2.36x`)
+- `render/state_medium`: `<= 1.80x` (from `2.42x`)
+- `render/architecture_medium`: `<= 2.00x` (from `2.46x`)
+- `render/flowchart_medium`: `<= 1.80x` (from `2.21x`)
 
 Work items:
 
@@ -152,12 +140,35 @@ Work items:
   - compiled marker ids
   - class→style compilation results for common class sets
 
+Correctness gate:
+
+- `cargo nextest run -p merman-render` (layout + svg parity tests must remain green).
+
+### P1 — Manatee layout fixed-cost (Architecture + Mindmap)
+
+Targets (spotcheck ratios; validate with stable parameters):
+
+- `end_to_end/architecture_medium`: `<= 1.50x` (from `1.88x`)
+- `layout/architecture_medium`: `<= 1.80x` (from `2.08x`)
+- `end_to_end/mindmap_medium`: `<= 1.30x` (from `1.42x`)
+- `layout/mindmap_medium`: `<= 1.50x` (from `1.74x`)
+
+Work items:
+
+- Keep cutting no-op work in COSE/FCoSE (compound bookkeeping, maps/clones, output conversion).
+- Reduce FCoSE fixed-cost in constraints + spectral init (small graphs first; keep deterministic).
+- Reduce COSE iteration cost similarly (repulsion/transform/output).
+- Move the hottest loops toward dense indices + preallocated scratch where feasible.
+- Validate with dedicated benches:
+  - `python tools/bench/stage_spotcheck.py ...`
+  - `cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`
+
 ### P2 — Parse fixed-cost (targeted, not a blanket rewrite)
 
 Targets:
 
-- `parse/state_medium <= 1.80x` (from `1.77x`)
-- `parse/sequence_medium <= 1.15x` (from `1.82x`)
+- `parse/state_medium <= 2.00x` (from `3.29x`)
+- `parse/sequence_medium <= 1.15x` (from `1.17x`)
 
 Work items:
 
