@@ -1,0 +1,21 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): nested junctions + multi-hop routing.
+
+group core(cloud)[Core]
+group data(cloud)[Data] in core
+
+service api(server)[API] in core
+service worker(server)[Worker] in core
+service db(database)[DB] in data
+service cache(disk)[Cache] in data
+
+junction j1 in core
+junction j2 in data
+
+api:R --> L:j1
+worker:T --> B:j1
+
+j1{group}:B --> T:j2{group}
+j2:L --> R:db
+j2:R --> L:cache
+

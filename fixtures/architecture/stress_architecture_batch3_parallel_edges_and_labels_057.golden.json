@@ -1,0 +1,262 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_read",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_write",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "caches"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": null
+      },
+      {
+        "id": "db_read",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_read",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Read",
+        "in": null
+      },
+      {
+        "id": "db_write",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_write",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Write",
+        "in": null
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "caches"
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_read",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_write",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "caches"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": null
+      },
+      {
+        "id": "db_read",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_read",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Read",
+        "in": null
+      },
+      {
+        "id": "db_write",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db_write",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Write",
+        "in": null
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "caches"
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "api",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db_read",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "reads"
+      },
+      {
+        "lhsId": "api",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db_write",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "writes"
+      },
+      {
+        "lhsId": "api",
+        "lhsDir": "T",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "cache",
+        "rhsDir": "B",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "caches"
+      }
+    ]
+  }
+}

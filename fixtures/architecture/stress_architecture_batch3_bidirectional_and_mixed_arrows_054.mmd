@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): bidirectional edges + mixed arrow styles.
+
+service left(server)[Left]
+service center(server)[Center]
+service right(server)[Right]
+
+left:R <--> L:center
+center:R <--> L:right
+
+left:B -[oneway]-> T:right
+right:T -[return]-> B:left

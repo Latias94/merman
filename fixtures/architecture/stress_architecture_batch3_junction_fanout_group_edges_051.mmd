@@ -1,0 +1,22 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): junction fanout + group boundary traversal.
+
+group core(cloud)[Core]
+group ext(cloud)[External]
+
+service api(server)[API] in core
+service db(database)[DB] in core
+service cache(disk)[Cache] in core
+
+service gw(internet)[Gateway] in ext
+service client(internet)[Client] in ext
+
+junction hub in core
+
+api:B --> T:hub
+hub:L --> R:db
+hub:R --> L:cache
+
+client:R --> L:gw
+gw{group}:T -[ingress]-> B:api{group}
+

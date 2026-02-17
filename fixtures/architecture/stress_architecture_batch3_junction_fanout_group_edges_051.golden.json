@@ -1,0 +1,426 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "core",
+        "icon": "cloud",
+        "title": "Core",
+        "in": null
+      },
+      {
+        "id": "ext",
+        "icon": "cloud",
+        "title": "External",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "hub",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gw",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "api",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "ingress"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": "core"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "hub",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB",
+        "in": "core"
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "hub",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": "core"
+      },
+      {
+        "id": "gw",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "client",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gw",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gw",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "api",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "ingress"
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": "ext"
+      },
+      {
+        "id": "client",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "client",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gw",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Client",
+        "in": "ext"
+      },
+      {
+        "id": "hub",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "hub",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "hub",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "hub",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": "core"
+      }
+    ],
+    "services": [
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "hub",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gw",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "api",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "ingress"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": "core"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "hub",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB",
+        "in": "core"
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "hub",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": "core"
+      },
+      {
+        "id": "gw",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "client",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gw",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gw",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "api",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "ingress"
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": "ext"
+      },
+      {
+        "id": "client",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "client",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gw",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Client",
+        "in": "ext"
+      }
+    ],
+    "junctions": [
+      {
+        "id": "hub",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "hub",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "hub",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "hub",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": "core"
+      }
+    ],
+    "edges": [
+      {
+        "lhsId": "api",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "hub",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "hub",
+        "lhsDir": "L",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "R",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "hub",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "cache",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "client",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "gw",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "gw",
+        "lhsDir": "T",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "api",
+        "rhsDir": "B",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": "ingress"
+      }
+    ]
+  }
+}

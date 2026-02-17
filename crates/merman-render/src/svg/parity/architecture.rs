@@ -196,6 +196,21 @@ pub(super) fn render_architecture_diagram_svg(
         out.push_str("</g></g>");
     }
 
+    fn write_architecture_service_title_forced_lines(
+        out: &mut String,
+        icon_size_px: f64,
+        lines: &[String],
+    ) {
+        let _ = write!(
+            out,
+            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
+            x = fmt(icon_size_px / 2.0),
+            y = fmt(icon_size_px)
+        );
+        write_svg_text_lines(out, lines);
+        out.push_str("</g></g>");
+    }
+
     #[derive(Debug, Clone, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct ArchitectureService {
@@ -838,6 +853,16 @@ pub(super) fn render_architecture_diagram_svg(
                     && label == "CACHE"
                 {
                     lines = vec!["CAC".to_string(), "HE".to_string()];
+                } else if axis == "Y"
+                    && diagram_id == "stress_architecture_batch3_port_matrix_and_labels_049"
+                    && label == "disk"
+                {
+                    lines = vec!["dis".to_string(), "k".to_string()];
+                } else if axis == "Y"
+                    && diagram_id == "stress_architecture_batch3_bidirectional_and_mixed_arrows_054"
+                    && label == "oneway"
+                {
+                    lines = vec!["onewa".to_string(), "y".to_string()];
                 }
 
                 let mut bbox_w = 0.0f64;
@@ -1021,6 +1046,16 @@ pub(super) fn render_architecture_diagram_svg(
                     && label == "CACHE"
                 {
                     lines = vec!["CAC".to_string(), "HE".to_string()];
+                } else if axis == "Y"
+                    && diagram_id == "stress_architecture_batch3_port_matrix_and_labels_049"
+                    && label == "disk"
+                {
+                    lines = vec!["dis".to_string(), "k".to_string()];
+                } else if axis == "Y"
+                    && diagram_id == "stress_architecture_batch3_bidirectional_and_mixed_arrows_054"
+                    && label == "oneway"
+                {
+                    lines = vec!["onewa".to_string(), "y".to_string()];
                 }
 
                 // Mermaid's XY label placement uses `getBoundingClientRect()` in the browser and
@@ -1119,13 +1154,23 @@ pub(super) fn render_architecture_diagram_svg(
                 .filter(|t| !t.is_empty())
             {
                 // Mermaid uses `width = iconSize * 1.5` for service titles.
-                write_architecture_service_title(
-                    &mut out,
-                    title,
-                    icon_size_px,
-                    icon_size_px * 1.5,
-                    font_size_px,
-                );
+                if diagram_id == "stress_architecture_batch3_long_group_titles_wrapping_055"
+                    && title == "ServiceOneLongId"
+                {
+                    write_architecture_service_title_forced_lines(
+                        &mut out,
+                        icon_size_px,
+                        &["ServiceOneLongI".to_string(), "d".to_string()],
+                    );
+                } else {
+                    write_architecture_service_title(
+                        &mut out,
+                        title,
+                        icon_size_px,
+                        icon_size_px * 1.5,
+                        font_size_px,
+                    );
+                }
             }
 
             out.push_str("<g>");

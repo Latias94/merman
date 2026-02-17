@@ -1,0 +1,14 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): accessibility fields with non-ascii text.
+
+title Accessibility i18n sample
+accTitle: 可访问性标题
+accDescr: 包含中文、العربية、emoji 😀 (labels are ASCII due to upstream grammar limits)
+
+group city_cloud(cloud)[City Cloud]
+service gw(internet)[Gateway] in city_cloud
+service db(database)[DB Primary] in city_cloud
+service cache(disk)[Cache Hot] in city_cloud
+
+gw:R -[read]-> L:db
+gw:B -[write]-> T:cache

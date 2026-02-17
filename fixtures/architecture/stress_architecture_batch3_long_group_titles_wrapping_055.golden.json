@@ -1,0 +1,119 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "very_long_group_title",
+        "icon": "cloud",
+        "title": "VeryLongGroupTitle",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "s1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "talks"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "ServiceOneLongId",
+        "in": "very_long_group_title"
+      },
+      {
+        "id": "s2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "talks"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service Two",
+        "in": "very_long_group_title"
+      }
+    ],
+    "services": [
+      {
+        "id": "s1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "talks"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "ServiceOneLongId",
+        "in": "very_long_group_title"
+      },
+      {
+        "id": "s2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "talks"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service Two",
+        "in": "very_long_group_title"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "s1",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "s2",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "talks"
+      }
+    ]
+  }
+}

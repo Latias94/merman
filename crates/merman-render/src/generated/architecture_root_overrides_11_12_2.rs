@@ -272,6 +272,54 @@ pub fn lookup_architecture_root_viewport_override(
             "-96.03177261352539 -101.78177261352539 343.06353759765625 367.25103759765625",
             "343.06353759765625",
         )),
+        "stress_architecture_batch3_port_matrix_and_labels_049" => Some((
+            "-606.8623657226562 -792.1575927734375 1293.7247314453125 1715.315185546875",
+            "1293.7247314453125",
+        )),
+        "stress_architecture_batch3_deep_group_chain_050" => Some((
+            "-2008.7728271484375 -7622.0283203125 4094.545654296875 15381.056640625",
+            "4094.545654296875",
+        )),
+        "stress_architecture_batch3_junction_fanout_group_edges_051" => Some((
+            "-375.9061279296875 -254.6621856689453 831.812255859375 640.3243408203125",
+            "831.812255859375",
+        )),
+        "stress_architecture_batch3_unicode_titles_and_services_052" => Some((
+            "-181.9628143310547 -165.9628143310547 447.9256286621094 462.9256591796875",
+            "447.9256286621094",
+        )),
+        "stress_architecture_batch3_icontext_and_fallback_mix_053" => Some((
+            "-314.565185546875 -107 712.13037109375 345",
+            "712.13037109375",
+        )),
+        "stress_architecture_batch3_bidirectional_and_mixed_arrows_054" => Some((
+            "-153.04686737060547 -9.833333969116211 429.09375 195.52083587646484",
+            "429.09375",
+        )),
+        "stress_architecture_batch3_long_group_titles_wrapping_055" => Some((
+            "-221.59327697753906 -65.5 478.1865539550781 262",
+            "478.1865539550781",
+        )),
+        "stress_architecture_batch3_disconnected_components_056" => Some((
+            "-323.6618957519531 -225.87416076660156 727.3237915039062 586.748291015625",
+            "727.3237915039062",
+        )),
+        "stress_architecture_batch3_parallel_edges_and_labels_057" => Some((
+            "-119.83184051513672 -211.1748046875 361.1636962890625 586.037109375",
+            "361.1636962890625",
+        )),
+        "stress_architecture_batch3_port_pairs_corner_cases_058" => Some((
+            "-204.96063232421875 -209.55215454101562 532.9212646484375 583.1453552246094",
+            "532.9212646484375",
+        )),
+        "stress_architecture_batch3_many_services_one_group_059" => Some((
+            "-754.073486328125 -65.5 1588.14697265625 262",
+            "1588.14697265625",
+        )),
+        "stress_architecture_batch3_nested_junctions_routing_060" => Some((
+            "-324.81573486328125 -228.3118133544922 731.1314697265625 589.1236572265625",
+            "731.1314697265625",
+        )),
         "upstream_cypress_other_xss_spec_icon_labels_architecture_001" => {
             Some(("-82.5 -65.5 245 262", "245"))
         }

@@ -1,0 +1,11 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multiple labeled edges from a single node.
+
+service api(server)[API]
+service db_read(database)[DB Read]
+service db_write(database)[DB Write]
+service cache(disk)[Cache]
+
+api:R -[reads]-> L:db_read
+api:B -[writes]-> T:db_write
+api:T -[caches]-> B:cache
