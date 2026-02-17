@@ -425,6 +425,16 @@ def write_markdown(
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
+        "--preset",
+        choices=["quick", "long"],
+        default="quick",
+        help=(
+            "Benchmark parameter preset. "
+            "'quick' keeps the historical defaults (fast iteration). "
+            "'long' uses longer measurement to reduce noise."
+        ),
+    )
+    ap.add_argument(
         "--mmdr-dir",
         default="repo-ref/mermaid-rs-renderer",
         help="Path to a local checkout of mermaid-rs-renderer (default: repo-ref/mermaid-rs-renderer).",
@@ -447,7 +457,23 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--sample-size", type=int, default=20)
     ap.add_argument("--warm-up", type=int, default=1)
     ap.add_argument("--measurement", type=int, default=1)
+    ap.add_argument(
+        "--skip-mermaid-js",
+        action="store_true",
+        help="Skip upstream Mermaid JS benchmarking via puppeteer (even if tools/mermaid-cli exists).",
+    )
     args = ap.parse_args(argv)
+
+    def argv_has(opt: str) -> bool:
+        return any(a == opt or a.startswith(opt + "=") for a in argv)
+
+    if args.preset == "long":
+        if not argv_has("--sample-size"):
+            args.sample_size = 30
+        if not argv_has("--warm-up"):
+            args.warm_up = 2
+        if not argv_has("--measurement"):
+            args.measurement = 3
 
     repo_root = Path(__file__).resolve().parents[2]
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
@@ -557,7 +583,7 @@ def main(argv: list[str]) -> int:
     mermaid_js_results: dict[str, float] = {}
     mermaid_js_rev: str | None = None
     mermaid_js_meta: dict[str, str] = {}
-    if mermaid_cli_dir.exists():
+    if not args.skip_mermaid_js and mermaid_cli_dir.exists():
         # Bench upstream Mermaid JS rendering in a single long-lived headless Chromium instance.
         bench_in = repo_root / "target" / "bench" / "mermaid_js_input.json"
         bench_out = repo_root / "target" / "bench" / "mermaid_js_output.json"
@@ -640,7 +666,10 @@ def main(argv: list[str]) -> int:
                     except Exception:
                         mermaid_js_rev = None
     else:
-        print("[bench] mermaid-js: skipped (missing tools/mermaid-cli)")
+        if args.skip_mermaid_js:
+            print("[bench] mermaid-js: skipped (--skip-mermaid-js)")
+        else:
+            print("[bench] mermaid-js: skipped (missing tools/mermaid-cli)")
 
     common_names = sorted(set(merman_times.keys()) & set(mmdr_times.keys()))
     rows: list[tuple[str, float, float, float | None]] = []

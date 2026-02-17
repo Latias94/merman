@@ -172,6 +172,16 @@ def main(argv: list[str]) -> int:
 
     ap = argparse.ArgumentParser()
     ap.add_argument(
+        "--preset",
+        choices=["quick", "long"],
+        default="quick",
+        help=(
+            "Benchmark parameter preset. "
+            "'quick' keeps the historical defaults (fast iteration). "
+            "'long' uses longer measurement to reduce noise."
+        ),
+    )
+    ap.add_argument(
         "--fixtures",
         default="flowchart_medium,class_medium",
         help="Comma-separated fixture names (default: flowchart_medium,class_medium).",
@@ -190,6 +200,17 @@ def main(argv: list[str]) -> int:
         help="Optional output Markdown path (relative to repo root).",
     )
     args = ap.parse_args(argv)
+
+    def argv_has(opt: str) -> bool:
+        return any(a == opt or a.startswith(opt + "=") for a in argv)
+
+    if args.preset == "long":
+        if not argv_has("--sample-size"):
+            args.sample_size = 30
+        if not argv_has("--warm-up"):
+            args.warm_up = 2
+        if not argv_has("--measurement"):
+            args.measurement = 3
 
     repo_root = Path(__file__).resolve().parents[2]
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
