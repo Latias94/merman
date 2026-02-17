@@ -96,6 +96,8 @@ struct StateRoughCacheKey {
 type StateRoughCircleCache = FxHashMap<StateRoughCacheKey, Arc<String>>;
 type StateRoughPathsCache = FxHashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>;
 
+const STATE_ROUGH_TLS_CACHE_LIMIT: usize = 4096;
+
 fn state_global_rough_circle_cache() -> &'static Mutex<StateRoughCircleCache> {
     static CACHE: OnceLock<Mutex<StateRoughCircleCache>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(FxHashMap::default()))
@@ -104,6 +106,48 @@ fn state_global_rough_circle_cache() -> &'static Mutex<StateRoughCircleCache> {
 fn state_global_rough_paths_cache() -> &'static Mutex<StateRoughPathsCache> {
     static CACHE: OnceLock<Mutex<StateRoughPathsCache>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(FxHashMap::default()))
+}
+
+thread_local! {
+    static STATE_TLS_ROUGH_CIRCLE_CACHE: std::cell::RefCell<StateRoughCircleCache> =
+        std::cell::RefCell::new(FxHashMap::default());
+    static STATE_TLS_ROUGH_PATHS_CACHE: std::cell::RefCell<StateRoughPathsCache> =
+        std::cell::RefCell::new(FxHashMap::default());
+}
+
+#[inline]
+fn state_tls_get_circle(key: StateRoughCacheKey) -> Option<Arc<String>> {
+    STATE_TLS_ROUGH_CIRCLE_CACHE.with(|cache| cache.borrow().get(&key).cloned())
+}
+
+#[inline]
+fn state_tls_put_circle(key: StateRoughCacheKey, value: Arc<String>) {
+    STATE_TLS_ROUGH_CIRCLE_CACHE.with(|cache| {
+        let mut map = cache.borrow_mut();
+        if map.len() >= STATE_ROUGH_TLS_CACHE_LIMIT {
+            // Best-effort bound. This cache only exists to avoid global mutex overhead on
+            // repeated renders within the same thread; eviction does not affect correctness.
+            map.clear();
+        }
+        map.insert(key, value);
+    });
+}
+
+#[inline]
+fn state_tls_get_paths(key: StateRoughCacheKey) -> Option<(Arc<String>, Arc<String>)> {
+    STATE_TLS_ROUGH_PATHS_CACHE.with(|cache| cache.borrow().get(&key).cloned())
+}
+
+#[inline]
+fn state_tls_put_paths(key: StateRoughCacheKey, value: (Arc<String>, Arc<String>)) {
+    STATE_TLS_ROUGH_PATHS_CACHE.with(|cache| {
+        let mut map = cache.borrow_mut();
+        if map.len() >= STATE_ROUGH_TLS_CACHE_LIMIT {
+            // Best-effort bound. See `state_tls_put_circle` for rationale.
+            map.clear();
+        }
+        map.insert(key, value);
+    });
 }
 
 #[inline]
@@ -4779,9 +4823,17 @@ fn render_state_node_svg(
             return v;
         }
 
+        if let Some(v) = state_tls_get_circle(key) {
+            ctx.rough_circle_cache
+                .borrow_mut()
+                .insert(key, Arc::clone(&v));
+            return v;
+        }
+
         if let Ok(global) = state_global_rough_circle_cache().lock() {
             if let Some(v) = global.get(&key) {
                 let v = Arc::clone(v);
+                state_tls_put_circle(key, Arc::clone(&v));
                 ctx.rough_circle_cache
                     .borrow_mut()
                     .insert(key, Arc::clone(&v));
@@ -4795,6 +4847,7 @@ fn render_state_node_svg(
         } else {
             Arc::clone(&built)
         };
+        state_tls_put_circle(key, Arc::clone(&cached));
         ctx.rough_circle_cache
             .borrow_mut()
             .insert(key, Arc::clone(&cached));
@@ -4812,9 +4865,17 @@ fn render_state_node_svg(
             return v;
         }
 
+        if let Some(v) = state_tls_get_paths(key) {
+            ctx.rough_paths_cache
+                .borrow_mut()
+                .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
+            return v;
+        }
+
         if let Ok(global) = state_global_rough_paths_cache().lock() {
             if let Some((fill_d, stroke_d)) = global.get(&key) {
                 let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
+                state_tls_put_paths(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
                 ctx.rough_paths_cache
                     .borrow_mut()
                     .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
@@ -4832,6 +4893,7 @@ fn render_state_node_svg(
         } else {
             (Arc::clone(&built.0), Arc::clone(&built.1))
         };
+        state_tls_put_paths(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
         ctx.rough_paths_cache
             .borrow_mut()
             .insert(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
