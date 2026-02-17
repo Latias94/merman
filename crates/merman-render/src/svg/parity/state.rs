@@ -11,8 +11,8 @@ fn prefer_fast_state_viewport_bounds() -> bool {
     match std::env::var("MERMAN_STATE_VIEWPORT").as_deref() {
         Ok("svg") | Ok("slow") | Ok("0") | Ok("false") => false,
         Ok("layout") | Ok("fast") | Ok("1") | Ok("true") => true,
-        // Default to fast: derive viewBox from layout geometry (avoid SVG scan).
-        _ => true,
+        // Default to slow: derive viewBox from emitted SVG bounds (closest to `svg.getBBox()`).
+        _ => false,
     }
 }
 

@@ -42,6 +42,11 @@ Example:
 - `parity-root` depends on the headless `getBBox()`-like bounds approximation in `merman-render`.
   It treats `<a>` as a transform container (so link-wrapped nodes contribute correctly), and it
   ignores non-rendered containers like `<defs>`/`<marker>` when deriving the root viewport.
+- State diagrams support switching the root viewport strategy via `MERMAN_STATE_VIEWPORT`:
+  - `MERMAN_STATE_VIEWPORT=svg` (default): derive `viewBox`/`max-width` by scanning the emitted SVG
+    (closest to browser `getBBox()` semantics; best parity).
+  - `MERMAN_STATE_VIEWPORT=layout`: derive `viewBox`/`max-width` from layout geometry (faster, but
+    more likely to drift in `parity-root`).
 
 ## Precision
 

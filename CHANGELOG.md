@@ -20,3 +20,4 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - SVG renderer implementation is organized under `svg::parity` to reflect the upstream-as-spec intent.
+- State diagram root viewport (`viewBox`/`max-width`) defaults to SVG-emitted bounds scanning (closest to browser `getBBox()`); set `MERMAN_STATE_VIEWPORT=layout` to use layout-derived bounds.
