@@ -1,0 +1,65 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Period labels with colons (as entities)",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Phases",
+      "Timezones"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase A&ﬂ°°58¶ß alpha ",
+        "score": 0,
+        "events": [
+          "Kickoff"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase B&ﬂ°°58¶ß beta ",
+        "score": 0,
+        "events": [
+          "Hardening"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Phases",
+        "type": "Phases",
+        "task": "Phase C&ﬂ°°58¶ß rc1 ",
+        "score": 0,
+        "events": [
+          "Release candidate"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Timezones",
+        "type": "Timezones",
+        "task": "UTC&ﬂ°°58¶ß00 ",
+        "score": 0,
+        "events": [
+          "Midnight"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Timezones",
+        "type": "Timezones",
+        "task": "UTC&ﬂ°°58¶ß+08 ",
+        "score": 0,
+        "events": [
+          "Beijing time"
+        ]
+      }
+    ]
+  }
+}

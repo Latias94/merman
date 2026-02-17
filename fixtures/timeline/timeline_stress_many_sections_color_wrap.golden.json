@@ -1,0 +1,178 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Many sections (color wrap at 12+)",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "S01",
+      "S02",
+      "S03",
+      "S04",
+      "S05",
+      "S06",
+      "S07",
+      "S08",
+      "S09",
+      "S10",
+      "S11",
+      "S12",
+      "S13",
+      "S14",
+      "S15"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "S01",
+        "type": "S01",
+        "task": "P01 ",
+        "score": 0,
+        "events": [
+          "Event 01"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "S02",
+        "type": "S02",
+        "task": "P02 ",
+        "score": 0,
+        "events": [
+          "Event 02"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "S03",
+        "type": "S03",
+        "task": "P03 ",
+        "score": 0,
+        "events": [
+          "Event 03"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "S04",
+        "type": "S04",
+        "task": "P04 ",
+        "score": 0,
+        "events": [
+          "Event 04"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "S05",
+        "type": "S05",
+        "task": "P05 ",
+        "score": 0,
+        "events": [
+          "Event 05"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "S06",
+        "type": "S06",
+        "task": "P06 ",
+        "score": 0,
+        "events": [
+          "Event 06"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "S07",
+        "type": "S07",
+        "task": "P07 ",
+        "score": 0,
+        "events": [
+          "Event 07"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "S08",
+        "type": "S08",
+        "task": "P08 ",
+        "score": 0,
+        "events": [
+          "Event 08"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "S09",
+        "type": "S09",
+        "task": "P09 ",
+        "score": 0,
+        "events": [
+          "Event 09"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "S10",
+        "type": "S10",
+        "task": "P10 ",
+        "score": 0,
+        "events": [
+          "Event 10"
+        ]
+      },
+      {
+        "id": 10,
+        "section": "S11",
+        "type": "S11",
+        "task": "P11 ",
+        "score": 0,
+        "events": [
+          "Event 11"
+        ]
+      },
+      {
+        "id": 11,
+        "section": "S12",
+        "type": "S12",
+        "task": "P12 ",
+        "score": 0,
+        "events": [
+          "Event 12"
+        ]
+      },
+      {
+        "id": 12,
+        "section": "S13",
+        "type": "S13",
+        "task": "P13 ",
+        "score": 0,
+        "events": [
+          "Event 13 (should reuse the first section color)"
+        ]
+      },
+      {
+        "id": 13,
+        "section": "S14",
+        "type": "S14",
+        "task": "P14 ",
+        "score": 0,
+        "events": [
+          "Event 14"
+        ]
+      },
+      {
+        "id": 14,
+        "section": "S15",
+        "type": "S15",
+        "task": "P15 ",
+        "score": 0,
+        "events": [
+          "Event 15"
+        ]
+      }
+    ]
+  }
+}

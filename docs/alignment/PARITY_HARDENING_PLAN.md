@@ -59,7 +59,7 @@ Root viewport overrides:
 - `sankey_root_overrides_11_12_2.rs`: 5 entries
 - `sequence_root_overrides_11_12_2.rs`: 117 entries
 - `state_root_overrides_11_12_2.rs`: 111 entries
-- `timeline_root_overrides_11_12_2.rs`: 11 entries
+- `timeline_root_overrides_11_12_2.rs`: 14 entries
 
 State text/bbox overrides:
 

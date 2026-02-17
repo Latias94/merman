@@ -1,0 +1,47 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Comments & blank lines",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "A",
+      "B"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "A",
+        "type": "A",
+        "task": "1 ",
+        "score": 0,
+        "events": [
+          "First"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "A",
+        "type": "A",
+        "task": "2 ",
+        "score": 0,
+        "events": [
+          "Second ",
+          "Also second"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "B",
+        "type": "B",
+        "task": "3 ",
+        "score": 0,
+        "events": [
+          "Third",
+          "Continuation"
+        ]
+      }
+    ]
+  }
+}

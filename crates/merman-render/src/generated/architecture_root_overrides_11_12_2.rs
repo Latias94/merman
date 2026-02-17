@@ -454,10 +454,9 @@ pub fn lookup_architecture_root_viewport_override(
             "-12254.1611328125 -17308.404296875 24582.322265625 34750.80859375",
             "24582.322265625",
         )),
-        "stress_architecture_batch6_long_group_titles_wrapping_extreme_095" => Some((
-            "-224.34327697753906 -107 533 345",
-            "533",
-        )),
+        "stress_architecture_batch6_long_group_titles_wrapping_extreme_095" => {
+            Some(("-224.34327697753906 -107 533 345", "533"))
+        }
         "stress_architecture_batch6_edge_labels_with_xml_like_text_096" => Some((
             "-104.8432846069336 -22 360.68658447265625 184.1875",
             "360.68658447265625",

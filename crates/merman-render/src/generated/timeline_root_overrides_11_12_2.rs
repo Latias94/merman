@@ -10,9 +10,15 @@ pub fn lookup_timeline_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "timeline_stress_acctitle_accdescr_and_title" => {
+            Some(("-5 -61 895 594.3999938964844", "895"))
+        }
         "timeline_stress_accdescr_block_multiline" => Some(("-6 -61 896 687.4000244140625", "896")),
         "timeline_stress_disable_multicolor_and_width" => {
             Some(("10 -61 721.59375 740.2000122070312", "721.594"))
+        }
+        "timeline_stress_events_with_entities_and_ampersands" => {
+            Some(("100 -61 1005.8984375 705", "1005.9"))
         }
         "timeline_stress_markdown_links_and_br" => {
             Some(("100 -61 1230.375 780.3999633789062", "1230.38"))
@@ -22,6 +28,9 @@ pub fn lookup_timeline_root_viewport_override(
         }
         "timeline_stress_many_events_single_period" => {
             Some(("-105 -61 795 1421.199951171875", "795"))
+        }
+        "timeline_stress_period_labels_with_colons_entities" => {
+            Some(("100 -61 1390 594.3999938964844", "1390"))
         }
         "timeline_stress_width_large_and_long_labels" => {
             Some(("-6 -61 896 664.7999877929688", "896"))

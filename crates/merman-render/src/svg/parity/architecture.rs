@@ -1106,7 +1106,8 @@ pub(super) fn render_architecture_diagram_svg(
                     && label == "CACHE"
                 {
                     lines = vec!["CAC".to_string(), "HE".to_string()];
-                } else if diagram_id == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
+                } else if diagram_id
+                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
                     && axis == "X"
                     && label == "read path v1 users id with many words for wrapping"
                 {
@@ -1116,7 +1117,8 @@ pub(super) fn render_architecture_diagram_svg(
                         "many words for".to_string(),
                         "wrapping".to_string(),
                     ];
-                } else if diagram_id == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
+                } else if diagram_id
+                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
                     && axis == "Y"
                     && label == "write then invalidate cache ttl 30s retries 3 extra words"
                 {
@@ -1133,7 +1135,8 @@ pub(super) fn render_architecture_diagram_svg(
                         "3 extra".to_string(),
                         "words".to_string(),
                     ];
-                } else if diagram_id == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
+                } else if diagram_id
+                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
                     && axis == "X"
                     && label == "refresh cache from db delta 0 05 wrap words"
                 {
@@ -1142,7 +1145,8 @@ pub(super) fn render_architecture_diagram_svg(
                         "from db delta 0".to_string(),
                         "05 wrap words".to_string(),
                     ];
-                } else if diagram_id == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
+                } else if diagram_id
+                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
                     && axis == "X"
                     && label == "query long words wrap wrap wrap"
                 {
@@ -1152,15 +1156,14 @@ pub(super) fn render_architecture_diagram_svg(
                         "wrap wrap".to_string(),
                         "wrap".to_string(),
                     ];
-                } else if diagram_id == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
+                } else if diagram_id
+                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
                     && axis == "Y"
                     && label == "backup daily snapshot at 0200"
                 {
-                    lines = vec![
-                        "backup daily".to_string(),
-                        "snapshot at 0200".to_string(),
-                    ];
-                } else if diagram_id == "stress_architecture_batch6_mixed_arrow_styles_and_labels_092"
+                    lines = vec!["backup daily".to_string(), "snapshot at 0200".to_string()];
+                } else if diagram_id
+                    == "stress_architecture_batch6_mixed_arrow_styles_and_labels_092"
                     && axis == "X"
                     && label == "labeled"
                 {
@@ -1301,7 +1304,8 @@ pub(super) fn render_architecture_diagram_svg(
                         icon_size_px,
                         &["ServiceOneLongI".to_string(), "d".to_string()],
                     );
-                } else if diagram_id == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
+                } else if diagram_id
+                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
                     && title == "Database"
                 {
                     write_architecture_service_title_forced_lines(

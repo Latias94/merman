@@ -1,0 +1,76 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Duplicate period labels across sections",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Alpha",
+      "Beta",
+      "Gamma"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "A1"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "A2"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Beta",
+        "type": "Beta",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "B1"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Beta",
+        "type": "Beta",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "B2"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Gamma",
+        "type": "Gamma",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "C1"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Gamma",
+        "type": "Gamma",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "C2"
+        ]
+      }
+    ]
+  }
+}

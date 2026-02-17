@@ -1,0 +1,36 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Non-ASCII punctuation “quotes” and dashes — test",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Punctuation"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Punctuation",
+        "type": "Punctuation",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "“Smart quotes”, apostrophes ’, and ellipsis … ",
+          "em—dash and en–dash"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Punctuation",
+        "type": "Punctuation",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "Brackets 【】 and parentheses （） ",
+          "Fullwidth punctuation ：，。"
+        ]
+      }
+    ]
+  }
+}

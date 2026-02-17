@@ -1,0 +1,215 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1105.32,
+        "max_y": 661.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 605.32,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 590.0,
+            "height": 67.8,
+            "content_width": 550.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Entities",
+            "label_lines": [
+              "Entities"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2004 ",
+                "label_lines": [
+                  "2004"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 611.6
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Fish &amp; Chips ",
+                  "label_lines": [
+                    "Fish   &amp;   Chips"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Salt &amp; Vinegar",
+                  "label_lines": [
+                    "Salt   &amp;   Vinegar"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2006 ",
+                "label_lines": [
+                  "2006"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 611.6
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 83.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "1 &lt; 2 &amp;&amp; 2 &gt; 1 ",
+                  "label_lines": [
+                    "1   &lt;   2",
+                    "&amp;&amp;   2   &gt;",
+                    "1"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 460.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Use &quot;quotes&quot;",
+                  "label_lines": [
+                    "Use",
+                    "&quot;quotes&quot;"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2008 ",
+                "label_lines": [
+                  "2008"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 235.6,
+                "x2": 695.0,
+                "y2": 611.6
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 100.6,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Use &ﬂ°°35¶ßhashtags&ﬂ°°59¶ß and &ﬂ°°59¶ßsemicolons&ﬂ°°59¶ß ",
+                  "label_lines": [
+                    "Use",
+                    "&ﬂ°°35¶ßhashtags&ﬂ°°59¶ß",
+                    "and",
+                    "&ﬂ°°59¶ßsemicolons&ﬂ°°59¶ß",
+                    ""
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 478.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Escape &amp; safely",
+                  "label_lines": [
+                    "Escape   &amp;",
+                    "safely"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 1055.32,
+        "y2": 285.6
+      },
+      "title": "Entities & ampersands in event labels",
+      "title_x": 152.66,
+      "title_y": 20.0
+    }
+  }
+}

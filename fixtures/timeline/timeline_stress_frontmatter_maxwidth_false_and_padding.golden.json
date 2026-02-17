@@ -1,0 +1,34 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Frontmatter maxWidth:false + dense labels",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Padding"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Padding",
+        "type": "Padding",
+        "task": "Period 1 ",
+        "score": 0,
+        "events": [
+          "A long event label that should wrap to multiple lines automatically"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Padding",
+        "type": "Padding",
+        "task": "Period 2 ",
+        "score": 0,
+        "events": [
+          "Another long event label that should wrap to multiple lines automatically"
+        ]
+      }
+    ]
+  }
+}

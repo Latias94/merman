@@ -1,0 +1,40 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Leading/trailing spaces & tabs",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Trim?",
+      "Mixed indentation"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Trim?",
+        "type": "Trim?",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "  leading spaces in event",
+          "trailing spaces in event    ",
+          "mixed\t\ttabs\t\tand\tspaces"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Mixed indentation",
+        "type": "Mixed indentation",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "Event A ",
+          "Event B",
+          "Event C",
+          "Event D (tab-indented continuation)"
+        ]
+      }
+    ]
+  }
+}
