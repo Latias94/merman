@@ -112,6 +112,21 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 234.78125 566.53125", "234.781"))
         }
         "upstream_docs_flowchart_parameters_136" => Some(("0 0 192.984375 112", "192.984")),
+        "upstream_docs_flowchart_direct_access_storage_horizontal_cylinder_096" => {
+            Some(("0 0 190.54898071289062 47.5", "190.549"))
+        }
+        "upstream_docs_flowchart_internal_storage_window_pane_106" => {
+            Some(("0 0 164.96875 75", "164.969"))
+        }
+        "upstream_docs_flowchart_multi_process_stacked_rectangle_120" => {
+            Some(("0 0 187.421875 80", "187.422"))
+        }
+        "upstream_docs_flowchart_icon_shape_132" => Some(("0 0 91 127", "91")),
+        "upstream_docs_flowchart_text_on_links_141" => Some(("0 0 318.1875 70", "318.188")),
+        "upstream_docs_flowchart_text_on_links_143" => Some(("0 0 312.3125 70", "312.312")),
+        "upstream_docs_flowchart_special_characters_that_break_syntax_185" => {
+            Some(("0 0 272.65625 70", "272.656"))
+        }
         "upstream_flowchart_v2_stadium_shape_spec" => {
             Some(("-96.54400634765625 -48 610.109375 606", "610.109"))
         }
