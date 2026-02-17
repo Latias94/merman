@@ -6,12 +6,12 @@ For the actively maintained plan and targets, see `docs/performance/PERF_PLAN.md
 ## Current snapshot (2026-02-17)
 
 Latest committed reports:
-- Stage attribution: `docs/performance/spotcheck_2026-02-17.md`
+- Stage attribution: `docs/performance/spotcheck_2026-02-17_after_bench_fix.md`
 - End-to-end comparison: `docs/performance/COMPARISON.md`
 
 Key takeaways:
-- `render` remains the most consistent cross-diagram gap (spotcheck gmean `~1.94x`).
-- `mindmap` and `architecture` are the main layout gaps.
+- `architecture_medium` and `mindmap_medium` are the main end-to-end gaps (see `docs/performance/COMPARISON.md`).
+- `render` remains a consistent cross-diagram gap (spotcheck gmean `~1.46x` on the medium canaries).
 - `class` is already faster end-to-end than mmdr on the medium canary.
 
 ## Completed (selected)
@@ -22,6 +22,8 @@ Key takeaways:
 - `perf(class): speed up edge data-points encoding` (`29a5bdaf`)
 - `perf(class): reduce render fixed-cost` (`6a5bd4c8`)
 - `bench(merman): add mindmap layout stress` (`7cc41c8b`)
+- `perf(sequence): avoid config deep clone in render` (`cb1d0a67`)
+- `bench(merman): reduce end_to_end harness overhead` (`4d17f31d`)
 
 ## Next (prioritized)
 
@@ -61,4 +63,3 @@ Approach:
 
 Goal:
 - Only optimize parse when it is the limiting stage for chosen canaries (especially tiny fixtures).
-
