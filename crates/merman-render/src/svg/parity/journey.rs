@@ -325,7 +325,11 @@ pub(super) fn render_journey_diagram_svg(
         fmt(vb_w),
         fmt(vb_h)
     );
-    let mut svg_h_attr = fmt(if vb_min_y < 0.0 { vb_h - vb_min_y } else { vb_h });
+    let mut svg_h_attr = fmt(if vb_min_y < 0.0 {
+        vb_h - vb_min_y
+    } else {
+        vb_h
+    });
     if let Some((viewbox, max_w)) =
         crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override(
             diagram_id,
