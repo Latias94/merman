@@ -84,8 +84,19 @@ npm ci
 - Run with a mostly idle system (close background heavy apps).
 - Keep the Rust toolchain consistent (e.g. stable vs nightly).
 
+## Stress benches (render-only, lower noise)
+
+Some render paths are fast enough (µs-scale) that small changes get lost in noise. The
+`*_stress` benches batch many renders per iteration to amplify fixed-cost improvements and
+stabilize A/B comparisons.
+
+```bash
+cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+```
+
 ## Future work
 
-- Add larger “stress” fixtures (node-heavy flowcharts, dense edge routing).
+- Add additional “stress” fixtures (node-heavy flowcharts, dense edge routing).
 - Add timing output to `merman-cli` for ad-hoc benchmarking without Criterion.
 - Add a documented “upstream CLI” comparison mode (optional, requires Node.js).
