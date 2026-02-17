@@ -5,6 +5,7 @@ mod css;
 mod debug_svg;
 mod edge;
 mod edge_bbox;
+mod edge_geom;
 mod hierarchy;
 mod label;
 mod render;
@@ -14,6 +15,7 @@ mod util;
 
 pub(super) use css::*;
 use edge::*;
+use edge_geom::flowchart_compute_edge_path_geom;
 use hierarchy::*;
 pub(super) use label::*;
 pub(super) use style::*;
@@ -794,7 +796,7 @@ fn flowchart_edge_path_d_for_bbox_impl(
     Some((d, pb))
 }
 
-fn flowchart_compute_edge_path_geom(
+fn flowchart_compute_edge_path_geom_impl(
     ctx: &FlowchartRenderCtx<'_>,
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
