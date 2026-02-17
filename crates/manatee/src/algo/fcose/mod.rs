@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::graph::{Anchor, Graph, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
 use nalgebra as na;
+use rustc_hash::FxHashMap;
 
 mod spectral;
 
@@ -597,8 +598,8 @@ fn map_align_lists(sim: &SimGraph, groups: &[Vec<String>]) -> Vec<Vec<usize>> {
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
-    id_to_idx: std::collections::BTreeMap<String, usize>,
-    compound_parent: std::collections::BTreeMap<String, Option<String>>,
+    id_to_idx: FxHashMap<String, usize>,
+    compound_parent: FxHashMap<String, Option<String>>,
 }
 
 impl SimGraph {
@@ -618,8 +619,8 @@ impl SimGraph {
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
-        let mut id_to_idx: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut id_to_idx: FxHashMap<String, usize> = FxHashMap::default();
+        id_to_idx.reserve(graph.nodes.len().saturating_mul(2));
 
         for (idx, n) in graph.nodes.iter().enumerate() {
             let w = n.width.max(1.0);
@@ -644,8 +645,8 @@ impl SimGraph {
             id_to_idx.insert(n.id.clone(), idx);
         }
 
-        let mut compound_parent: std::collections::BTreeMap<String, Option<String>> =
-            std::collections::BTreeMap::new();
+        let mut compound_parent: FxHashMap<String, Option<String>> = FxHashMap::default();
+        compound_parent.reserve(graph.compounds.len().saturating_mul(2));
         for c in &graph.compounds {
             compound_parent.insert(c.id.clone(), c.parent.clone());
         }

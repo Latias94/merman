@@ -1,4 +1,5 @@
 use nalgebra::{DMatrix, DVector};
+use rustc_hash::FxHashMap;
 
 use super::{SimEdge, SimNode, XorShift64Star};
 
@@ -15,7 +16,7 @@ const MAX_POWER_ITERATIONS: usize = 10_000;
 pub(super) fn apply_spectral_start_positions(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
-    compound_parent: &std::collections::BTreeMap<String, Option<String>>,
+    compound_parent: &FxHashMap<String, Option<String>>,
     rng: &mut XorShift64Star,
 ) -> bool {
     if nodes.is_empty() {
@@ -125,7 +126,7 @@ enum ElemKey {
 fn build_transformed_adjacency(
     nodes: &[SimNode],
     edges: &[SimEdge],
-    compound_parent: &std::collections::BTreeMap<String, Option<String>>,
+    compound_parent: &FxHashMap<String, Option<String>>,
 ) -> (Vec<Vec<usize>>, usize) {
     let n_real = nodes.len();
 

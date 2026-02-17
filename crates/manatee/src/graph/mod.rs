@@ -1,4 +1,5 @@
 use crate::error::{Error, Result};
+use rustc_hash::FxHashSet;
 
 #[derive(Debug, Clone)]
 pub struct Graph {
@@ -10,13 +11,14 @@ pub struct Graph {
 
 impl Graph {
     pub fn validate(&self) -> Result<()> {
-        let mut node_exists: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        let mut node_exists: FxHashSet<&str> = FxHashSet::default();
+        node_exists.reserve(self.nodes.len().saturating_mul(2));
         for n in &self.nodes {
             node_exists.insert(n.id.as_str());
         }
 
-        let mut compound_exists: std::collections::BTreeSet<&str> =
-            std::collections::BTreeSet::new();
+        let mut compound_exists: FxHashSet<&str> = FxHashSet::default();
+        compound_exists.reserve(self.compounds.len().saturating_mul(2));
         for c in &self.compounds {
             compound_exists.insert(c.id.as_str());
         }
