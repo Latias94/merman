@@ -1,0 +1,44 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "L1"
+        },
+        {
+          "id": "L2"
+        },
+        {
+          "id": "R2"
+        },
+        {
+          "id": "R3"
+        }
+      ],
+      "links": [
+        {
+          "source": "L1",
+          "target": "L2",
+          "value": 10
+        },
+        {
+          "source": "L1",
+          "target": "R2",
+          "value": 5
+        },
+        {
+          "source": "L2",
+          "target": "R3",
+          "value": 7
+        },
+        {
+          "source": "R2",
+          "target": "R3",
+          "value": 8
+        }
+      ]
+    }
+  }
+}

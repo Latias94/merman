@@ -1,0 +1,135 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 720.0,
+        "max_y": -114.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "Todo",
+          "label": "Todo",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 176.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 30.24
+        },
+        {
+          "id": "inprog",
+          "label": "In progress",
+          "index": 2.0,
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 176.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 72.0
+        },
+        {
+          "id": "Done",
+          "label": "Done",
+          "index": 3.0,
+          "center_x": 610.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 91.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 30.24
+        }
+      ],
+      "items": [
+        {
+          "id": "t1",
+          "label": "Write spec",
+          "parent_id": "Todo",
+          "center_x": 200.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-1",
+          "assigned": "alice",
+          "priority": "High",
+          "icon": null
+        },
+        {
+          "id": "t2",
+          "label": "Investigate parsing edge cases",
+          "parent_id": "Todo",
+          "center_x": 200.0,
+          "center_y": -174.0,
+          "width": 185.0,
+          "height": 80.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-2",
+          "assigned": "bob",
+          "priority": "Very Low",
+          "icon": null
+        },
+        {
+          "id": "t3",
+          "label": "Implement renderer",
+          "parent_id": "inprog",
+          "center_x": 405.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-3",
+          "assigned": "Alice B.",
+          "priority": "Very High",
+          "icon": null
+        },
+        {
+          "id": "t4",
+          "label": "Fix subtle layout mismatch",
+          "parent_id": "inprog",
+          "center_x": 405.0,
+          "center_y": -174.0,
+          "width": 185.0,
+          "height": 80.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-4",
+          "assigned": "carol",
+          "priority": "Low",
+          "icon": null
+        },
+        {
+          "id": "t5",
+          "label": "Ship",
+          "parent_id": "Done",
+          "center_x": 610.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-5",
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

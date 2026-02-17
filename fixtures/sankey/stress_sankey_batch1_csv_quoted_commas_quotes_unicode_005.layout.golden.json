@@ -1,0 +1,156 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "ACME, Inc.",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 3.0,
+          "layer": 0.0,
+          "value": 12.25,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 8.756,
+          "y1": 383.756
+        },
+        {
+          "id": "R&D \"Lab\"",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 2.0,
+          "layer": 1.0,
+          "value": 12.25,
+          "x0": 196.667,
+          "x1": 206.667,
+          "y0": 8.779,
+          "y1": 383.779
+        },
+        {
+          "id": "Phase 1 - alpha",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 1.0,
+          "layer": 2.0,
+          "value": 7.5,
+          "x0": 393.333,
+          "x1": 403.333,
+          "y0": 0.0,
+          "y1": 229.592
+        },
+        {
+          "id": "Phase 2 - beta",
+          "index": 3.0,
+          "depth": 2.0,
+          "height": 1.0,
+          "layer": 2.0,
+          "value": 4.75,
+          "x0": 393.333,
+          "x1": 403.333,
+          "y0": 254.592,
+          "y1": 400.0
+        },
+        {
+          "id": "Ship",
+          "index": 4.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 3.0,
+          "value": 10.0,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.0,
+          "y1": 306.122
+        },
+        {
+          "id": "Loss",
+          "index": 5.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 3.0,
+          "value": 2.25,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 331.122,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "ACME, Inc.",
+          "target": "R&D \"Lab\"",
+          "value": 12.25,
+          "width": 375.0,
+          "y0": 196.256,
+          "y1": 196.279
+        },
+        {
+          "index": 1.0,
+          "source": "R&D \"Lab\"",
+          "target": "Phase 1 - alpha",
+          "value": 7.5,
+          "width": 229.592,
+          "y0": 123.575,
+          "y1": 114.796
+        },
+        {
+          "index": 2.0,
+          "source": "R&D \"Lab\"",
+          "target": "Phase 2 - beta",
+          "value": 4.75,
+          "width": 145.408,
+          "y0": 311.075,
+          "y1": 327.296
+        },
+        {
+          "index": 3.0,
+          "source": "Phase 1 - alpha",
+          "target": "Ship",
+          "value": 6.0,
+          "width": 183.673,
+          "y0": 91.837,
+          "y1": 91.837
+        },
+        {
+          "index": 4.0,
+          "source": "Phase 1 - alpha",
+          "target": "Loss",
+          "value": 1.5,
+          "width": 45.918,
+          "y0": 206.633,
+          "y1": 354.082
+        },
+        {
+          "index": 5.0,
+          "source": "Phase 2 - beta",
+          "target": "Ship",
+          "value": 4.0,
+          "width": 122.449,
+          "y0": 315.816,
+          "y1": 244.898
+        },
+        {
+          "index": 6.0,
+          "source": "Phase 2 - beta",
+          "target": "Loss",
+          "value": 0.75,
+          "width": 22.959,
+          "y0": 388.52,
+          "y1": 388.52
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,23 @@
+%% Source: authored stress (section height + wrapping)
+kanban
+  todo[Todo]
+    t1[Write parsing tests]
+    t2[Update docs]@{ assigned: 'alice' }
+    t3[Fix strict-mode link sanitization]@{ priority: 'High' }
+    t4[Add fixtures batch]@{ assigned: bob, priority: 'Low' }
+    t5[Refactor renderer plumbing]
+    t6[Re-run baseline export]
+    t7[Investigate overflow in long labels]
+    t8[Stabilize DOM ordering]
+  doing[Doing]
+    d1[Implement metadata rendering]@{ assigned: 'carol' }
+    d2[Handle decorations ::icon and :::classes]
+    d3[Align viewBox + maxWidth parity-root]
+    d4[Fix wrapping height regression]
+    d5[More dense tasks for stress testing]
+    d6[One more item]
+  done[Done]
+    x1[Ship]@{ ticket: REL-1, priority: 'Very High' }
+    x2[Post-mortem]@{ assigned: 'team' }
+    x3[Cleanup]
+

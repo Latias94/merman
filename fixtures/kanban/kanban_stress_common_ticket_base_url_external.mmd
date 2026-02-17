@@ -1,0 +1,16 @@
+---
+config:
+  kanban:
+    ticketBaseUrl: 'https://example.invalid/browse/#TICKET#'
+---
+%% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/kanban.md (ticketBaseUrl) + authored stress
+kanban
+  [Todo]
+    t1[Write spec]@{ ticket: PROJ-1, assigned: 'alice', priority: 'High' }
+    t2[Investigate parsing edge cases]@{ ticket: PROJ-2, assigned: bob, priority: 'Very Low' }
+  inprog[In progress]
+    t3[Implement renderer]@{ ticket: PROJ-3, assigned: 'Alice B.', priority: 'Very High' }
+    t4[Fix subtle layout mismatch]@{ ticket: PROJ-4, assigned: 'carol', priority: 'Low' }
+  [Done]
+    t5[Ship]@{ ticket: PROJ-5 }
+

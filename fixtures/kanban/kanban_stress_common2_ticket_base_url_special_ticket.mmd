@@ -1,0 +1,14 @@
+---
+config:
+  kanban:
+    ticketBaseUrl: 'https://example.invalid/browse/#TICKET#'
+---
+%% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/kanban.md (ticketBaseUrl) + authored stress
+kanban
+  todo[Todo]
+    a1[Simple ticket]@{ ticket: PROJ-1 }
+    a2[Ticket with dash]@{ ticket: PROJ-12-34, assigned: 'alice', priority: 'High' }
+    a3[Ticket with slash]@{ ticket: PROJ/567, assigned: bob, priority: 'Low' }
+  done[Done]
+    a4[No ticket should not link]@{ assigned: 'carol' }
+

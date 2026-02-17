@@ -1,0 +1,48 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "useMaxWidth:false (width/height attrs)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "TR",
+      "quadrant2Text": "TL",
+      "quadrant3Text": "BL",
+      "quadrant4Text": "BR"
+    },
+    "axes": {
+      "xAxisLeftText": "Left",
+      "xAxisRightText": "Right",
+      "yAxisBottomText": "Bottom",
+      "yAxisTopText": "Top"
+    },
+    "points": [
+      {
+        "text": "B",
+        "x": 0.8,
+        "y": 0.2,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A",
+        "x": 0.2,
+        "y": 0.8,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

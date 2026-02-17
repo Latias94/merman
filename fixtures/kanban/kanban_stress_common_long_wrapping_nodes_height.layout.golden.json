@@ -1,0 +1,64 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 310.0,
+        "max_y": 246.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "In progress",
+          "label": "In progress",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 536.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 72.0
+        }
+      ],
+      "items": [
+        {
+          "id": "w1",
+          "label": "This is a very long task description intended to wrap over multiple lines in the column and stress the section height calculations in the renderer.",
+          "parent_id": "In progress",
+          "center_x": 200.0,
+          "center_y": -163.0,
+          "width": 185.0,
+          "height": 224.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "alice",
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "w2",
+          "label": "Another long task description that should also wrap over multiple lines; it includes extra filler text to make sure it exceeds the typical line width in the default Mermaid layout.",
+          "parent_id": "In progress",
+          "center_x": 200.0,
+          "center_y": 90.0,
+          "width": 185.0,
+          "height": 272.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "bob",
+          "priority": "Low",
+          "icon": null
+        }
+      ]
+    }
+  }
+}

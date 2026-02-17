@@ -1,0 +1,31 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "Left"
+        },
+        {
+          "id": "Center"
+        },
+        {
+          "id": "Right"
+        }
+      ],
+      "links": [
+        {
+          "source": "Left",
+          "target": "Center",
+          "value": 9
+        },
+        {
+          "source": "Center",
+          "target": "Right",
+          "value": 9
+        }
+      ]
+    }
+  }
+}

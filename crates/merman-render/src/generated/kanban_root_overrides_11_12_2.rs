@@ -10,6 +10,10 @@ pub fn lookup_kanban_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "kanban_stress_common2_long_column_titles_wrapping" => Some(("90 -310 425 290", "425")),
+        "kanban_stress_common_multiline_metadata_label_override" => {
+            Some(("90 -310 220 195", "220"))
+        }
         "upstream_docs_samples_example_001" => Some(("90 -310 425 147", "425")),
         "upstream_docs_samples_example_004" => Some(("90 -310 630 318", "630")),
         "upstream_docs_samples_example_005" => Some(("90 -310 835 318", "835")),

@@ -1,0 +1,131 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "pri",
+        "label": "Priority case variants",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "pri",
+        "label": "Priority case variants",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "p1",
+        "parentId": "pri",
+        "label": "Very High canonical",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Very High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "p2",
+        "parentId": "pri",
+        "label": "High canonical",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "p3",
+        "parentId": "pri",
+        "label": "Low canonical",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Low",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "p4",
+        "parentId": "pri",
+        "label": "Very Low canonical",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Very Low",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "p5",
+        "parentId": "pri",
+        "label": "raw token lower",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "high",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "p6",
+        "parentId": "pri",
+        "label": "raw token upper",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "HIGH",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

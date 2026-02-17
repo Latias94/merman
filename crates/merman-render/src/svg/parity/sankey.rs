@@ -25,6 +25,11 @@ pub(super) fn render_sankey_diagram_svg(
     let sankey_cfg = effective_config.get("sankey");
     let sankey_cfg_missing = sankey_cfg.is_none()
         || sankey_cfg.is_some_and(|v| v.as_object().is_some_and(|m| m.contains_key("$ref")));
+    let use_max_width = if sankey_cfg_missing {
+        true
+    } else {
+        config_bool(effective_config, &["sankey", "useMaxWidth"]).unwrap_or(true)
+    };
     let show_values = if sankey_cfg_missing {
         true
     } else {
@@ -99,13 +104,32 @@ pub(super) fn render_sankey_diagram_svg(
     }
 
     let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey">"#,
-        id = diagram_id_esc,
-        w = max_w_attr,
-        viewbox = viewbox_attr,
-    );
+    if use_max_width {
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey">"#,
+            id = diagram_id_esc,
+            w = max_w_attr,
+            viewbox = viewbox_attr,
+        );
+    } else {
+        let mut w_attr = max_w_attr.clone();
+        let mut h_attr = fmt(vb_h);
+        let parts: Vec<&str> = viewbox_attr.split_whitespace().collect();
+        if parts.len() == 4 {
+            w_attr = parts[2].to_string();
+            h_attr = parts[3].to_string();
+        }
+
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{id}" width="{w}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="{h}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey" style="background-color: white;">"#,
+            id = diagram_id_esc,
+            w = w_attr,
+            h = h_attr,
+            viewbox = viewbox_attr,
+        );
+    }
     let _ = write!(&mut out, "<style>{}</style>", sankey_css(diagram_id));
     out.push_str("<g/>");
 

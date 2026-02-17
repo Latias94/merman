@@ -1,0 +1,252 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Large chart + many points",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Q1",
+      "quadrant2Text": "Q2",
+      "quadrant3Text": "Q3",
+      "quadrant4Text": "Q4"
+    },
+    "axes": {
+      "xAxisLeftText": "Low",
+      "xAxisRightText": "High",
+      "yAxisBottomText": "Low",
+      "yAxisTopText": "High"
+    },
+    "points": [
+      {
+        "text": "P19",
+        "x": 0.95,
+        "y": 0.05,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P18",
+        "x": 0.9,
+        "y": 0.1,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P17",
+        "x": 0.85,
+        "y": 0.15,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P16",
+        "x": 0.8,
+        "y": 0.2,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P15",
+        "x": 0.75,
+        "y": 0.25,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P14",
+        "x": 0.7,
+        "y": 0.3,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P13",
+        "x": 0.65,
+        "y": 0.35,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P12",
+        "x": 0.6,
+        "y": 0.4,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P11",
+        "x": 0.55,
+        "y": 0.45,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P10",
+        "x": 0.5,
+        "y": 0.5,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P09",
+        "x": 0.45,
+        "y": 0.55,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P08",
+        "x": 0.4,
+        "y": 0.6,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P07",
+        "x": 0.35,
+        "y": 0.65,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P06",
+        "x": 0.3,
+        "y": 0.7,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P05",
+        "x": 0.25,
+        "y": 0.75,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P04",
+        "x": 0.2,
+        "y": 0.8,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P03",
+        "x": 0.15,
+        "y": 0.85,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P02",
+        "x": 0.1,
+        "y": 0.9,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "P01",
+        "x": 0.05,
+        "y": 0.95,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

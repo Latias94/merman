@@ -1,0 +1,67 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Style precedence",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Q1",
+      "quadrant2Text": "Q2",
+      "quadrant3Text": "Q3",
+      "quadrant4Text": "Q4"
+    },
+    "axes": {
+      "xAxisLeftText": "Low",
+      "xAxisRightText": "High",
+      "yAxisBottomText": "Low",
+      "yAxisTopText": "High"
+    },
+    "points": [
+      {
+        "text": "Point C",
+        "x": 0.7,
+        "y": 0.7,
+        "className": null,
+        "styles": {
+          "radius": 14,
+          "color": "#ff00ff",
+          "strokeColor": "#00ffff",
+          "strokeWidth": "4px"
+        }
+      },
+      {
+        "text": "Point B",
+        "x": 0.8,
+        "y": 0.8,
+        "className": "hot",
+        "styles": {
+          "radius": 9,
+          "color": "#00ff00",
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Point A",
+        "x": 0.9,
+        "y": 0.9,
+        "className": "hot",
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {
+      "hot": {
+        "radius": 12,
+        "color": "#ff3300",
+        "strokeColor": "#000000",
+        "strokeWidth": "2px"
+      }
+    }
+  }
+}

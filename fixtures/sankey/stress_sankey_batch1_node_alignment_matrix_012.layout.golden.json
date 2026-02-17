@@ -1,0 +1,105 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 760.0,
+        "max_y": 340.0
+      },
+      "width": 760.0,
+      "height": 340.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "L1",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 15.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 8.034,
+          "y1": 270.534
+        },
+        {
+          "id": "L2",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 10.0,
+          "x0": 375.0,
+          "x1": 385.0,
+          "y0": 0.0,
+          "y1": 175.0
+        },
+        {
+          "id": "R2",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 8.0,
+          "x0": 375.0,
+          "x1": 385.0,
+          "y0": 200.0,
+          "y1": 340.0
+        },
+        {
+          "id": "R3",
+          "index": 3.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 15.0,
+          "x0": 750.0,
+          "x1": 760.0,
+          "y0": 41.206,
+          "y1": 303.706
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "L1",
+          "target": "L2",
+          "value": 10.0,
+          "width": 175.0,
+          "y0": 95.534,
+          "y1": 87.5
+        },
+        {
+          "index": 1.0,
+          "source": "L1",
+          "target": "R2",
+          "value": 5.0,
+          "width": 87.5,
+          "y0": 226.784,
+          "y1": 243.75
+        },
+        {
+          "index": 2.0,
+          "source": "L2",
+          "target": "R3",
+          "value": 7.0,
+          "width": 122.5,
+          "y0": 61.25,
+          "y1": 102.456
+        },
+        {
+          "index": 3.0,
+          "source": "R2",
+          "target": "R3",
+          "value": 8.0,
+          "width": 140.0,
+          "y0": 270.0,
+          "y1": 233.706
+        }
+      ]
+    }
+  }
+}

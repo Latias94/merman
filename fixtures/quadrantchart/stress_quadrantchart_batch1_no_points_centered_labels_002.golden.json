@@ -1,0 +1,23 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "No points (axis/quadrants centered)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Invest",
+      "quadrant2Text": "Quick wins",
+      "quadrant3Text": "Avoid",
+      "quadrant4Text": "Delegate"
+    },
+    "axes": {
+      "xAxisLeftText": "Effort",
+      "xAxisRightText": "Impact",
+      "yAxisBottomText": "Cost",
+      "yAxisTopText": "Benefit"
+    },
+    "points": [],
+    "classes": {}
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 95.0,
+        "min_y": -61.0,
+        "max_x": 1090.0,
+        "max_y": 719.4
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 590.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 590.0,
+            "height": 85.4,
+            "content_width": 550.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2024 Q1 <br> Heavy load",
+            "label_lines": [
+              "2024   Q1",
+              "Heavy   load"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Week 1 ",
+                "label_lines": [
+                  "Week   1"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 253.2,
+                "x2": 295.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "A<br>B",
+                  "label_lines": [
+                    "A",
+                    "B"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 460.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "C<br>D",
+                  "label_lines": [
+                    "C",
+                    "D"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 536.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "E<br>F",
+                  "label_lines": [
+                    "E",
+                    "F"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Week 2 ",
+                "label_lines": [
+                  "Week   2"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 253.2,
+                "x2": 495.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "G<br>H ",
+                  "label_lines": [
+                    "G",
+                    "H"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 460.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "I<br>J",
+                  "label_lines": [
+                    "I",
+                    "J"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 536.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "K<br>L",
+                  "label_lines": [
+                    "K",
+                    "L"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 600.0,
+                "y": 185.4,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Week 3 ",
+                "label_lines": [
+                  "Week   3"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 253.2,
+                "x2": 695.0,
+                "y2": 669.4
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 385.4,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "M<br>N",
+                  "label_lines": [
+                    "M",
+                    "N"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 460.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "O<br>P",
+                  "label_lines": [
+                    "O",
+                    "P"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 536.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Q<br>R",
+                  "label_lines": [
+                    "Q",
+                    "R"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 303.2,
+        "x2": 1040.0,
+        "y2": 303.2
+      },
+      "title": "Many events per period with explicit <br>",
+      "title_x": 145.0,
+      "title_y": 20.0
+    }
+  }
+}

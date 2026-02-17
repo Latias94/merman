@@ -1,0 +1,92 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 515.0,
+        "max_y": -67.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "long1",
+          "label": "This is a very long column title intended to wrap over multiple lines in the header area",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 140.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 570.08
+        },
+        {
+          "id": "long2",
+          "label": "Another extremely long column title with extra filler text to stress header height and alignment",
+          "index": 2.0,
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 223.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 636.32
+        }
+      ],
+      "items": [
+        {
+          "id": "t1",
+          "label": "Short",
+          "parent_id": "long1",
+          "center_x": 200.0,
+          "center_y": -253.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "t2",
+          "label": "Another short",
+          "parent_id": "long1",
+          "center_x": 200.0,
+          "center_y": -198.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "alice",
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "t3",
+          "label": "Task with a long description that should wrap over multiple lines in the item body and increase the node height accordingly.",
+          "parent_id": "long2",
+          "center_x": 405.0,
+          "center_y": -181.0,
+          "width": 185.0,
+          "height": 188.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

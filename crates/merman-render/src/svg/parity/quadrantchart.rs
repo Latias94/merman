@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
     _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     fn dominant_baseline(horizontal_pos: &str) -> &'static str {
@@ -36,13 +36,33 @@ pub(super) fn render_quadrantchart_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
     let diagram_id_esc = escape_xml(diagram_id);
 
+    let qc_cfg = effective_config.get("quadrantChart");
+    let qc_cfg_missing = qc_cfg.is_none()
+        || qc_cfg.is_some_and(|v| v.as_object().is_some_and(|m| m.contains_key("$ref")));
+    let use_max_width = if qc_cfg_missing {
+        true
+    } else {
+        config_bool(effective_config, &["quadrantChart", "useMaxWidth"]).unwrap_or(true)
+    };
+
     let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {w} {h}" style="max-width: {w}px; background-color: white;" role="graphics-document document" aria-roledescription="quadrantChart">"#,
-        w = fmt(layout.width.max(1.0)),
-        h = fmt(layout.height.max(1.0)),
-    );
+    let w = layout.width.max(1.0);
+    let h = layout.height.max(1.0);
+    if use_max_width {
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="0 0 {w} {h}" role="graphics-document document" aria-roledescription="quadrantChart">"#,
+            w = fmt(w),
+            h = fmt(h),
+        );
+    } else {
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{diagram_id_esc}" width="{w}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="{h}" viewBox="0 0 {w} {h}" role="graphics-document document" aria-roledescription="quadrantChart" style="background-color: white;">"#,
+            w = fmt(w),
+            h = fmt(h),
+        );
+    }
 
     let _ = write!(&mut out, r#"<style>{}</style>"#, info_css(diagram_id));
 

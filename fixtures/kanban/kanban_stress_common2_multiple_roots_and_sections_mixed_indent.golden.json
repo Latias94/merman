@@ -1,0 +1,97 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "section1",
+        "label": "section1",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      },
+      {
+        "id": "section2",
+        "label": "section2",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "section1",
+        "label": "section1",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "A",
+        "parentId": "section1",
+        "label": "A",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "section2",
+        "label": "section2",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "B",
+        "parentId": "section2",
+        "label": "B",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "C",
+        "parentId": "section2",
+        "label": "C",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

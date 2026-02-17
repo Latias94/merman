@@ -1,0 +1,773 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 3090.0,
+        "max_y": 568.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 2590.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "S01 Custom",
+            "label_lines": [
+              "S01   Custom"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "P01 ",
+                "label_lines": [
+                  "P01"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Alpha",
+                  "label_lines": [
+                    "Alpha"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "S02 Custom",
+            "label_lines": [
+              "S02   Custom"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "P02 ",
+                "label_lines": [
+                  "P02"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Beta",
+                  "label_lines": [
+                    "Beta"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "S03 Custom",
+            "label_lines": [
+              "S03   Custom"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-1",
+                "label": "P03 ",
+                "label_lines": [
+                  "P03"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 235.6,
+                "x2": 695.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Gamma",
+                  "label_lines": [
+                    "Gamma"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-2",
+            "label": "S04 Custom",
+            "label_lines": [
+              "S04   Custom"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-2",
+                "label": "P04 ",
+                "label_lines": [
+                  "P04"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 235.6,
+                "x2": 895.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-2",
+                  "label": "Delta",
+                  "label_lines": [
+                    "Delta"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-3",
+            "label": "S05 Default",
+            "label_lines": [
+              "S05   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 1000.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-3",
+                "label": "P05 ",
+                "label_lines": [
+                  "P05"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1095.0,
+                "y1": 235.6,
+                "x2": 1095.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 1000.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-3",
+                  "label": "Epsilon",
+                  "label_lines": [
+                    "Epsilon"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-4",
+            "label": "S06 Default",
+            "label_lines": [
+              "S06   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 1200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-4",
+                "label": "P06 ",
+                "label_lines": [
+                  "P06"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1295.0,
+                "y1": 235.6,
+                "x2": 1295.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 1200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-4",
+                  "label": "Zeta",
+                  "label_lines": [
+                    "Zeta"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-5",
+            "label": "S07 Default",
+            "label_lines": [
+              "S07   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 1400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-5",
+                "label": "P07 ",
+                "label_lines": [
+                  "P07"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1495.0,
+                "y1": 235.6,
+                "x2": 1495.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 1400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-5",
+                  "label": "Eta",
+                  "label_lines": [
+                    "Eta"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-6",
+            "label": "S08 Default",
+            "label_lines": [
+              "S08   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 1600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-6",
+                "label": "P08 ",
+                "label_lines": [
+                  "P08"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1695.0,
+                "y1": 235.6,
+                "x2": 1695.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 1600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-6",
+                  "label": "Theta",
+                  "label_lines": [
+                    "Theta"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-7",
+            "label": "S09 Default",
+            "label_lines": [
+              "S09   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 1800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-7",
+                "label": "P09 ",
+                "label_lines": [
+                  "P09"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1895.0,
+                "y1": 235.6,
+                "x2": 1895.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 1800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-7",
+                  "label": "Iota",
+                  "label_lines": [
+                    "Iota"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-8",
+            "label": "S10 Default",
+            "label_lines": [
+              "S10   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 2000.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-8",
+                "label": "P10 ",
+                "label_lines": [
+                  "P10"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 2095.0,
+                "y1": 235.6,
+                "x2": 2095.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 2000.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-8",
+                  "label": "Kappa",
+                  "label_lines": [
+                    "Kappa"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-9",
+            "label": "S11 Default",
+            "label_lines": [
+              "S11   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 2200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-9",
+                "label": "P11 ",
+                "label_lines": [
+                  "P11"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 2295.0,
+                "y1": 235.6,
+                "x2": 2295.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 2200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-9",
+                  "label": "Lambda",
+                  "label_lines": [
+                    "Lambda"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-10",
+            "label": "S12 Default",
+            "label_lines": [
+              "S12   Default"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 2400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-10",
+                "label": "P12 ",
+                "label_lines": [
+                  "P12"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 2495.0,
+                "y1": 235.6,
+                "x2": 2495.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 2400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-10",
+                  "label": "Mu",
+                  "label_lines": [
+                    "Mu"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "S13 Wrap",
+            "label_lines": [
+              "S13   Wrap"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 2600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "P13 ",
+                "label_lines": [
+                  "P13"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 2695.0,
+                "y1": 235.6,
+                "x2": 2695.0,
+                "y2": 518.6
+              },
+              "events": [
+                {
+                  "x": 2600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 83.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Nu (wraps to section 1 colors upstream)",
+                  "label_lines": [
+                    "Nu   (wraps   to",
+                    "section   1   colors",
+                    "upstream)"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 3040.0,
+        "y2": 285.6
+      },
+      "title": "ThemeVariables label cycle + section color wrap",
+      "title_x": 1145.0,
+      "title_y": 20.0
+    }
+  }
+}

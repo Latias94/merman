@@ -1,0 +1,279 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1290.0,
+        "max_y": 649.0
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 790.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Indentation",
+            "label_lines": [
+              "Indentation"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Period 1 ",
+                "label_lines": [
+                  "Period   1"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 599.0
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A",
+                  "label_lines": [
+                    "Event   A"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B",
+                  "label_lines": [
+                    "Event   B"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Period 2 ",
+                "label_lines": [
+                  "Period   2"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 599.0
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event C ",
+                  "label_lines": [
+                    "Event   C"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event D",
+                  "label_lines": [
+                    "Event   D"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 487.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event E",
+                  "label_lines": [
+                    "Event   E"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Comments",
+            "label_lines": [
+              "Comments"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Period 3 ",
+                "label_lines": [
+                  "Period   3"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 235.6,
+                "x2": 695.0,
+                "y2": 599.0
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Event F %% trailing comment",
+                  "label_lines": [
+                    "Event   F   %%",
+                    "trailing   comment"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 443.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Event G",
+                  "label_lines": [
+                    "Event   G"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Period 4 ",
+                "label_lines": [
+                  "Period   4"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 235.6,
+                "x2": 895.0,
+                "y2": 599.0
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Event H",
+                  "label_lines": [
+                    "Event   H"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 1240.0,
+        "y2": 285.6
+      },
+      "title": "Mixed indentation, comments, and continuation lines",
+      "title_x": 245.0,
+      "title_y": 20.0
+    }
+  }
+}

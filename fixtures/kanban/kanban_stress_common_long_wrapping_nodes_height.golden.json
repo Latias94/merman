@@ -1,0 +1,63 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "In progress",
+        "label": "In progress",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "In progress",
+        "label": "In progress",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "w1",
+        "parentId": "In progress",
+        "label": "This is a very long task description intended to wrap over multiple lines in the column and stress the section height calculations in the renderer.",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "w2",
+        "parentId": "In progress",
+        "label": "Another long task description that should also wrap over multiple lines; it includes extra filler text to make sure it exceeds the typical line width in the default Mermaid layout.",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Low",
+        "assigned": "bob",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

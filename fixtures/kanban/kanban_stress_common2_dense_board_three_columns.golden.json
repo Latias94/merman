@@ -1,0 +1,352 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "todo",
+        "label": "Todo",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "doing",
+        "label": "Doing",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "todo",
+        "label": "Todo",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "t1",
+        "parentId": "todo",
+        "label": "Write parsing tests",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t2",
+        "parentId": "todo",
+        "label": "Update docs",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t3",
+        "parentId": "todo",
+        "label": "Fix strict-mode link sanitization",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t4",
+        "parentId": "todo",
+        "label": "Add fixtures batch",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Low",
+        "assigned": "bob",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t5",
+        "parentId": "todo",
+        "label": "Refactor renderer plumbing",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t6",
+        "parentId": "todo",
+        "label": "Re-run baseline export",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t7",
+        "parentId": "todo",
+        "label": "Investigate overflow in long labels",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t8",
+        "parentId": "todo",
+        "label": "Stabilize DOM ordering",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "doing",
+        "label": "Doing",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "d1",
+        "parentId": "doing",
+        "label": "Implement metadata rendering",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "carol",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "d2",
+        "parentId": "doing",
+        "label": "Handle decorations ::icon and :::classes",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "d3",
+        "parentId": "doing",
+        "label": "Align viewBox + maxWidth parity-root",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "d4",
+        "parentId": "doing",
+        "label": "Fix wrapping height regression",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "d5",
+        "parentId": "doing",
+        "label": "More dense tasks for stress testing",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "d6",
+        "parentId": "doing",
+        "label": "One more item",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "x1",
+        "parentId": "done",
+        "label": "Ship",
+        "isGroup": false,
+        "ticket": "REL-1",
+        "priority": "Very High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "x2",
+        "parentId": "done",
+        "label": "Post-mortem",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "team",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "x3",
+        "parentId": "done",
+        "label": "Cleanup",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

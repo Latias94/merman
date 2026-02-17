@@ -1,0 +1,75 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 850.0,
+        "max_y": 380.0
+      },
+      "width": 850.0,
+      "height": 380.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "A very long source label with many words for measurement",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 12.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 380.0
+        },
+        {
+          "id": "Intermediate with a very long label too",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 12.0,
+          "x0": 420.0,
+          "x1": 430.0,
+          "y0": 0.0,
+          "y1": 380.0
+        },
+        {
+          "id": "A very long target label with many words for measurement",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 12.0,
+          "x0": 840.0,
+          "x1": 850.0,
+          "y0": 0.0,
+          "y1": 380.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "A very long source label with many words for measurement",
+          "target": "Intermediate with a very long label too",
+          "value": 12.0,
+          "width": 380.0,
+          "y0": 190.0,
+          "y1": 190.0
+        },
+        {
+          "index": 1.0,
+          "source": "Intermediate with a very long label too",
+          "target": "A very long target label with many words for measurement",
+          "value": 12.0,
+          "width": 380.0,
+          "y0": 190.0,
+          "y1": 190.0
+        }
+      ]
+    }
+  }
+}

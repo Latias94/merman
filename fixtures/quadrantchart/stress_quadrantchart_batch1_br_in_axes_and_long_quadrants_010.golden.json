@@ -1,0 +1,36 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Long axis labels (no HTML)",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "We should expand a lot with many words",
+      "quadrant2Text": "Need to promote with many words too",
+      "quadrant3Text": "Re-evaluate this one carefully",
+      "quadrant4Text": "May be improved over time"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Reach with many words for wrapping",
+      "xAxisRightText": "High Reach with many words for wrapping",
+      "yAxisBottomText": "Low Engagement with many words for wrapping",
+      "yAxisTopText": "High Engagement with many words for wrapping"
+    },
+    "points": [
+      {
+        "text": "Long Point Label With Many Words",
+        "x": 0.62,
+        "y": 0.62,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

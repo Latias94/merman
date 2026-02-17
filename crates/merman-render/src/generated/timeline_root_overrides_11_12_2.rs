@@ -10,6 +10,9 @@ pub fn lookup_timeline_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "timeline_stress_common_long_unbroken_words" => {
+            Some(("9.6796875 -61 1467.4140625 594.3999938964844", "1467.41"))
+        }
         "timeline_stress_acctitle_accdescr_and_title" => {
             Some(("-5 -61 895 594.3999938964844", "895"))
         }

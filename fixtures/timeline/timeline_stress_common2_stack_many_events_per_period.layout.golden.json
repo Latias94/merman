@@ -1,0 +1,238 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": -5.0,
+        "min_y": -61.0,
+        "max_x": 890.0,
+        "max_y": 764.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 390.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Stack",
+            "label_lines": [
+              "Stack"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Period 1 ",
+                "label_lines": [
+                  "Period   1"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 714.6
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A1 ",
+                  "label_lines": [
+                    "Event   A1"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A2 ",
+                  "label_lines": [
+                    "Event   A2"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 487.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A3",
+                  "label_lines": [
+                    "Event   A3"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 547.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A4",
+                  "label_lines": [
+                    "Event   A4"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 607.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event A5",
+                  "label_lines": [
+                    "Event   A5"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Period 2 ",
+                "label_lines": [
+                  "Period   2"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 714.6
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B1",
+                  "label_lines": [
+                    "Event   B1"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B2",
+                  "label_lines": [
+                    "Event   B2"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 487.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B3",
+                  "label_lines": [
+                    "Event   B3"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 547.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B4",
+                  "label_lines": [
+                    "Event   B4"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 607.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Event B5",
+                  "label_lines": [
+                    "Event   B5"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 840.0,
+        "y2": 285.6
+      },
+      "title": "Many stacked events per period",
+      "title_x": 45.0,
+      "title_y": 20.0
+    }
+  }
+}

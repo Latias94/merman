@@ -1,0 +1,51 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Sections with <br> and HTML entities",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "R&amp;D <br> Phase A",
+      "Phase B <br> Build",
+      "Phase C <br> Ship"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "R&amp;D <br> Phase A",
+        "type": "R&amp;D <br> Phase A",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "Plan &amp; Align ",
+          "Scope &ﬂ°°58¶ß MVP",
+          "Risk review &amp; mitigation"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Phase B <br> Build",
+        "type": "Phase B <br> Build",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "Implement core renderer ",
+          "Stabilize DOM ordering",
+          "Add more fixtures &amp; baselines"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Phase C <br> Ship",
+        "type": "Phase C <br> Ship",
+        "task": "2026 ",
+        "score": 0,
+        "events": [
+          "Release candidate ",
+          "GA"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "pri",
+        "label": "Priority matrix",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "pri",
+        "label": "Priority matrix",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "vh",
+        "parentId": "pri",
+        "label": "Very High",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Very High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "h",
+        "parentId": "pri",
+        "label": "High",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "High",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "l",
+        "parentId": "pri",
+        "label": "Low",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Low",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "vl",
+        "parentId": "pri",
+        "label": "Very Low",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Very Low",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "raw1",
+        "parentId": "pri",
+        "label": "raw priority token",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "high",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

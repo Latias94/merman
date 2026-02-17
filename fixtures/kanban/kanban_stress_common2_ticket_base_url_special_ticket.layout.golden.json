@@ -1,0 +1,107 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 515.0,
+        "max_y": -77.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "todo",
+          "label": "Todo",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 213.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 30.24
+        },
+        {
+          "id": "done",
+          "label": "Done",
+          "index": 2.0,
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 91.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 30.24
+        }
+      ],
+      "items": [
+        {
+          "id": "a1",
+          "label": "Simple ticket",
+          "parent_id": "todo",
+          "center_x": 200.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-1",
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "a2",
+          "label": "Ticket with dash",
+          "parent_id": "todo",
+          "center_x": 200.0,
+          "center_y": -186.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ-12-34",
+          "assigned": "alice",
+          "priority": "High",
+          "icon": null
+        },
+        {
+          "id": "a3",
+          "label": "Ticket with slash",
+          "parent_id": "todo",
+          "center_x": 200.0,
+          "center_y": -125.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "PROJ/567",
+          "assigned": "bob",
+          "priority": "Low",
+          "icon": null
+        },
+        {
+          "id": "a4",
+          "label": "No ticket should not link",
+          "parent_id": "done",
+          "center_x": 405.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "carol",
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

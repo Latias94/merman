@@ -1,0 +1,120 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "In"
+        },
+        {
+          "id": "A"
+        },
+        {
+          "id": "B"
+        },
+        {
+          "id": "C"
+        },
+        {
+          "id": "X"
+        },
+        {
+          "id": "Y"
+        },
+        {
+          "id": "Z"
+        },
+        {
+          "id": "Out 1"
+        },
+        {
+          "id": "Out 2"
+        },
+        {
+          "id": "Out 3"
+        },
+        {
+          "id": "Loss"
+        }
+      ],
+      "links": [
+        {
+          "source": "In",
+          "target": "A",
+          "value": 10
+        },
+        {
+          "source": "In",
+          "target": "B",
+          "value": 8
+        },
+        {
+          "source": "In",
+          "target": "C",
+          "value": 6
+        },
+        {
+          "source": "A",
+          "target": "X",
+          "value": 5
+        },
+        {
+          "source": "A",
+          "target": "Y",
+          "value": 5
+        },
+        {
+          "source": "B",
+          "target": "Y",
+          "value": 3
+        },
+        {
+          "source": "B",
+          "target": "Z",
+          "value": 5
+        },
+        {
+          "source": "C",
+          "target": "X",
+          "value": 2
+        },
+        {
+          "source": "C",
+          "target": "Z",
+          "value": 4
+        },
+        {
+          "source": "X",
+          "target": "Out 1",
+          "value": 7
+        },
+        {
+          "source": "X",
+          "target": "Out 2",
+          "value": 0.5
+        },
+        {
+          "source": "Y",
+          "target": "Out 1",
+          "value": 6
+        },
+        {
+          "source": "Y",
+          "target": "Out 3",
+          "value": 2
+        },
+        {
+          "source": "Z",
+          "target": "Out 2",
+          "value": 7
+        },
+        {
+          "source": "Z",
+          "target": "Loss",
+          "value": 2
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Repeated period labels across sections",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Phase A",
+      "Phase B",
+      "Phase C"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Phase A",
+        "type": "Phase A",
+        "task": "SamePeriod ",
+        "score": 0,
+        "events": [
+          "Event A1",
+          "Event A2"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Phase B",
+        "type": "Phase B",
+        "task": "SamePeriod ",
+        "score": 0,
+        "events": [
+          "Event B1",
+          "Event B2"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Phase C",
+        "type": "Phase C",
+        "task": "SamePeriod ",
+        "score": 0,
+        "events": [
+          "Event C1",
+          "Event C2"
+        ]
+      }
+    ]
+  }
+}

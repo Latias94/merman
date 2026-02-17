@@ -1,0 +1,97 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "long1",
+        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "long2",
+        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "long1",
+        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "t1",
+        "parentId": "long1",
+        "label": "Short",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "t2",
+        "parentId": "long1",
+        "label": "Another short",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "long2",
+        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "t3",
+        "parentId": "long2",
+        "label": "Task with a long description that should wrap over multiple lines in the item body and increase the node height accordingly.",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

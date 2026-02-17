@@ -1,0 +1,79 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Style whitespace & order",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "One",
+      "quadrant2Text": "Two",
+      "quadrant3Text": "Three",
+      "quadrant4Text": "Four"
+    },
+    "axes": {
+      "xAxisLeftText": "Left",
+      "xAxisRightText": "Right",
+      "yAxisBottomText": "Bottom",
+      "yAxisTopText": "Top"
+    },
+    "points": [
+      {
+        "text": "W3",
+        "x": 0.2,
+        "y": 0.2,
+        "className": "c3",
+        "styles": {
+          "radius": null,
+          "color": "#0000ff",
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "W2",
+        "x": 0.9,
+        "y": 0.1,
+        "className": "c2",
+        "styles": {
+          "radius": 10,
+          "color": null,
+          "strokeColor": "#310085",
+          "strokeWidth": "6px"
+        }
+      },
+      {
+        "text": "W1",
+        "x": 0.1,
+        "y": 0.9,
+        "className": "c1",
+        "styles": {
+          "radius": 10,
+          "color": "#ff3300",
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {
+      "c2": {
+        "radius": 10,
+        "color": "#908342",
+        "strokeColor": "#310085",
+        "strokeWidth": "10px"
+      },
+      "c3": {
+        "radius": 10,
+        "color": "#f00fff",
+        "strokeColor": null,
+        "strokeWidth": null
+      },
+      "c1": {
+        "radius": null,
+        "color": "#109060",
+        "strokeColor": null,
+        "strokeWidth": null
+      }
+    }
+  }
+}

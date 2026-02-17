@@ -1,0 +1,112 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Frontmatter maxWidth:false + disableMulticolor + many periods",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "P01 ",
+        "score": 0,
+        "events": [
+          "Event 01"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "",
+        "type": "",
+        "task": "P02 ",
+        "score": 0,
+        "events": [
+          "Event 02"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "",
+        "type": "",
+        "task": "P03 ",
+        "score": 0,
+        "events": [
+          "Event 03"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "",
+        "type": "",
+        "task": "P04 ",
+        "score": 0,
+        "events": [
+          "Event 04"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "",
+        "type": "",
+        "task": "P05 ",
+        "score": 0,
+        "events": [
+          "Event 05"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "",
+        "type": "",
+        "task": "P06 ",
+        "score": 0,
+        "events": [
+          "Event 06"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "",
+        "type": "",
+        "task": "P07 ",
+        "score": 0,
+        "events": [
+          "Event 07"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "",
+        "type": "",
+        "task": "P08 ",
+        "score": 0,
+        "events": [
+          "Event 08"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "",
+        "type": "",
+        "task": "P09 ",
+        "score": 0,
+        "events": [
+          "Event 09"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "",
+        "type": "",
+        "task": "P10 ",
+        "score": 0,
+        "events": [
+          "Event 10"
+        ]
+      }
+    ]
+  }
+}

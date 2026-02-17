@@ -1,0 +1,59 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Mixed indentation, comments, and continuation lines",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Indentation",
+      "Comments"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Indentation",
+        "type": "Indentation",
+        "task": "Period 1 ",
+        "score": 0,
+        "events": [
+          "Event A",
+          "Event B"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Indentation",
+        "type": "Indentation",
+        "task": "Period 2 ",
+        "score": 0,
+        "events": [
+          "Event C ",
+          "Event D",
+          "Event E"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Comments",
+        "type": "Comments",
+        "task": "Period 3 ",
+        "score": 0,
+        "events": [
+          "Event F %% trailing comment",
+          "Event G"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Comments",
+        "type": "Comments",
+        "task": "Period 4 ",
+        "score": 0,
+        "events": [
+          "Event H"
+        ]
+      }
+    ]
+  }
+}
