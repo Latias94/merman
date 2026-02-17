@@ -1310,26 +1310,35 @@ fn layout_architecture_diagram_model(
                 }
             }
 
-            #[derive(Debug, Clone)]
-            enum GroupRel {
+            let mut group_members: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
+            group_members.reserve(model.groups.len().saturating_mul(2));
+            for (idx, n) in nodes.iter().enumerate() {
+                let Some(g) = node_root_group.get(n.id.as_str()).copied() else {
+                    continue;
+                };
+                group_members.entry(g).or_default().push(idx);
+            }
+
+            #[derive(Debug, Clone, Copy)]
+            enum GroupRel<'a> {
                 LeftOf {
-                    left: String,
-                    right: String,
+                    left: &'a str,
+                    right: &'a str,
                     gap: f64,
                 },
                 Above {
-                    top: String,
-                    bottom: String,
+                    top: &'a str,
+                    bottom: &'a str,
                     gap: f64,
                 },
                 AlignTop {
-                    a: String,
-                    b: String,
+                    a: &'a str,
+                    b: &'a str,
                 },
             }
 
-            let mut rels: Vec<GroupRel> = Vec::new();
-            let mut left_of_pairs: Vec<(String, String)> = Vec::new();
+            let mut rels: Vec<GroupRel<'_>> = Vec::new();
+            let mut left_of_pairs: Vec<(&str, &str)> = Vec::new();
             for e in &model.edges {
                 let Some(lhs_g) = node_root_group.get(e.lhs_id).copied() else {
                     continue;
@@ -1375,19 +1384,19 @@ fn layout_architecture_diagram_model(
                 match (e.lhs_dir, e.rhs_dir) {
                     (Some('R'), Some('L')) => {
                         rels.push(GroupRel::LeftOf {
-                            left: lhs_g.to_string(),
-                            right: rhs_g.to_string(),
+                            left: lhs_g,
+                            right: rhs_g,
                             gap,
                         });
-                        left_of_pairs.push((lhs_g.to_string(), rhs_g.to_string()));
+                        left_of_pairs.push((lhs_g, rhs_g));
                     }
                     (Some('L'), Some('R')) => {
                         rels.push(GroupRel::LeftOf {
-                            left: rhs_g.to_string(),
-                            right: lhs_g.to_string(),
+                            left: rhs_g,
+                            right: lhs_g,
                             gap,
                         });
-                        left_of_pairs.push((rhs_g.to_string(), lhs_g.to_string()));
+                        left_of_pairs.push((rhs_g, lhs_g));
                     }
                     // Vertical adjacency in SVG y-down coordinates:
                     //
@@ -1396,13 +1405,13 @@ fn layout_architecture_diagram_model(
                     // - `lhs:B -- rhs:T` means lhs is *above* rhs (lhs connects from its bottom to
                     //   rhs's top), so lhs is above rhs.
                     (Some('T'), Some('B')) => rels.push(GroupRel::Above {
-                        top: rhs_g.to_string(),
-                        bottom: lhs_g.to_string(),
+                        top: rhs_g,
+                        bottom: lhs_g,
                         gap: gap + if is_group_edge { 18.0 } else { 0.0 },
                     }),
                     (Some('B'), Some('T')) => rels.push(GroupRel::Above {
-                        top: lhs_g.to_string(),
-                        bottom: rhs_g.to_string(),
+                        top: lhs_g,
+                        bottom: rhs_g,
                         gap: gap + if is_group_edge { 18.0 } else { 0.0 },
                     }),
                     _ => {}
@@ -1414,16 +1423,16 @@ fn layout_architecture_diagram_model(
             // keep sibling groups on the same baseline when they are arranged left-to-right.
             //
             // Do not add this helper constraint when an explicit vertical relation exists.
-            let mut has_above: std::collections::BTreeSet<(String, String)> =
-                std::collections::BTreeSet::new();
+            let mut has_above: FxHashSet<(&str, &str)> = FxHashSet::default();
+            has_above.reserve(rels.len().saturating_mul(2));
             for r in &rels {
                 if let GroupRel::Above { top, bottom, .. } = r {
-                    has_above.insert((top.clone(), bottom.clone()));
-                    has_above.insert((bottom.clone(), top.clone()));
+                    has_above.insert((top, bottom));
+                    has_above.insert((bottom, top));
                 }
             }
             for (left, right) in left_of_pairs {
-                if has_above.contains(&(left.clone(), right.clone())) {
+                if has_above.contains(&(left, right)) {
                     continue;
                 }
                 let (a, b) = if left <= right {
@@ -1434,8 +1443,68 @@ fn layout_architecture_diagram_model(
                 rels.push(GroupRel::AlignTop { a, b });
             }
 
-            rels.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
-            rels.dedup_by(|a, b| format!("{a:?}") == format!("{b:?}"));
+            // Deterministic ordering + dedup without allocating debug strings.
+            //
+            // For duplicate directional relations between the same group pair, keep the maximum
+            // gap (smaller gaps are redundant).
+            fn rel_kind(r: &GroupRel<'_>) -> u8 {
+                match r {
+                    GroupRel::LeftOf { .. } => 0,
+                    GroupRel::Above { .. } => 1,
+                    GroupRel::AlignTop { .. } => 2,
+                }
+            }
+
+            fn rel_a<'a>(r: &'a GroupRel<'a>) -> &'a str {
+                match r {
+                    GroupRel::LeftOf { left, .. } => left,
+                    GroupRel::Above { top, .. } => top,
+                    GroupRel::AlignTop { a, .. } => a,
+                }
+            }
+
+            fn rel_b<'a>(r: &'a GroupRel<'a>) -> &'a str {
+                match r {
+                    GroupRel::LeftOf { right, .. } => right,
+                    GroupRel::Above { bottom, .. } => bottom,
+                    GroupRel::AlignTop { b, .. } => b,
+                }
+            }
+
+            fn rel_gap_bits(r: &GroupRel<'_>) -> u64 {
+                match r {
+                    GroupRel::LeftOf { gap, .. } | GroupRel::Above { gap, .. } => gap.to_bits(),
+                    GroupRel::AlignTop { .. } => 0,
+                }
+            }
+
+            rels.sort_by(|a, b| {
+                (rel_kind(a), rel_a(a), rel_b(a), rel_gap_bits(a)).cmp(&(
+                    rel_kind(b),
+                    rel_a(b),
+                    rel_b(b),
+                    rel_gap_bits(b),
+                ))
+            });
+            let mut deduped: Vec<GroupRel<'_>> = Vec::with_capacity(rels.len());
+            for r in rels.drain(..) {
+                if let Some(last) = deduped.last_mut()
+                    && rel_kind(last) == rel_kind(&r)
+                    && rel_a(last) == rel_a(&r)
+                    && rel_b(last) == rel_b(&r)
+                {
+                    match (last, r) {
+                        (GroupRel::LeftOf { gap, .. }, GroupRel::LeftOf { gap: g, .. })
+                        | (GroupRel::Above { gap, .. }, GroupRel::Above { gap: g, .. }) => {
+                            *gap = gap.max(g);
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+                deduped.push(r);
+            }
+            rels = deduped;
 
             let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
             let text_style = crate::text::TextStyle {
@@ -1452,100 +1521,142 @@ fn layout_architecture_diagram_model(
                 max_y: f64,
             }
 
+            #[derive(Debug, Clone, Copy)]
+            struct LabelExtras {
+                left: f64,
+                right: f64,
+                bottom: f64,
+            }
+
+            fn measure_service_label_extras(
+                title: &str,
+                max_width_px: f64,
+                measurer: &dyn crate::text::TextMeasurer,
+                style: &crate::text::TextStyle,
+                icon_size: f64,
+                font_size_px: f64,
+            ) -> Option<LabelExtras> {
+                let title = title.trim();
+                if title.is_empty() {
+                    return None;
+                }
+
+                let mut max_left = 0.0f64;
+                let mut max_right = 0.0f64;
+                let mut line_count = 0usize;
+
+                // Greedy wrap matching `wrapSvgWordsToLines`, but without allocating intermediate
+                // line `String`s and without `format!` churn in the inner loop.
+                for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(title)
+                {
+                    let tokens =
+                        crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
+                    let mut curr = String::new();
+                    for tok in tokens {
+                        if curr.is_empty() {
+                            curr.push_str(&tok);
+                            continue;
+                        }
+
+                        let old_len = curr.len();
+                        curr.push_str(&tok);
+                        let w = measurer.measure(curr.trim_end(), style).width;
+                        if w <= max_width_px {
+                            continue;
+                        }
+
+                        curr.truncate(old_len);
+                        let line = curr.trim();
+                        if !line.is_empty() {
+                            let (l, r) = measurer.measure_svg_text_bbox_x(line, style);
+                            max_left = max_left.max(l);
+                            max_right = max_right.max(r);
+                            line_count += 1;
+                        }
+
+                        curr.clear();
+                        curr.push_str(&tok);
+                    }
+
+                    let line = curr.trim();
+                    if !line.is_empty() {
+                        let (l, r) = measurer.measure_svg_text_bbox_x(line, style);
+                        max_left = max_left.max(l);
+                        max_right = max_right.max(r);
+                        line_count += 1;
+                    }
+                }
+
+                if line_count == 0 {
+                    return None;
+                }
+
+                let bbox_h = (line_count as f64) * font_size_px * 1.1875;
+                let half_icon = icon_size / 2.0;
+                Some(LabelExtras {
+                    left: (half_icon - max_left).min(0.0),
+                    right: (max_right - half_icon).max(0.0),
+                    bottom: (bbox_h - 1.0).max(0.0),
+                })
+            }
+
             fn group_bbox(
                 nodes: &[LayoutNode],
-                group: &str,
-                node_root_group: &FxHashMap<&str, &str>,
+                members: &[usize],
                 node_type: &FxHashMap<&str, ArchitectureNodeType>,
                 node_title: &FxHashMap<&str, &str>,
+                label_extras: &mut FxHashMap<String, LabelExtras>,
                 measurer: &dyn crate::text::TextMeasurer,
                 text_style: &crate::text::TextStyle,
                 icon_size: f64,
                 font_size_px: f64,
             ) -> Option<BBox> {
-                fn wrap_svg_words_to_lines(
-                    text: &str,
-                    max_width_px: f64,
-                    measurer: &dyn crate::text::TextMeasurer,
-                    style: &crate::text::TextStyle,
-                ) -> Vec<String> {
-                    let mut out: Vec<String> = Vec::new();
-                    for raw_line in
-                        crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
-                    {
-                        let tokens =
-                            crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
-                        let mut curr = String::new();
-                        for tok in tokens {
-                            let candidate = format!("{curr}{tok}");
-                            let w = measurer.measure(candidate.trim_end(), style).width;
-                            if curr.is_empty() || w <= max_width_px {
-                                curr = candidate;
-                            } else {
-                                out.push(curr.trim().to_string());
-                                curr = tok;
-                            }
-                        }
-                        out.push(curr.trim().to_string());
-                    }
-                    out
+                if members.is_empty() {
+                    return None;
                 }
 
                 let mut min_x = f64::INFINITY;
                 let mut min_y = f64::INFINITY;
                 let mut max_x = f64::NEG_INFINITY;
                 let mut max_y = f64::NEG_INFINITY;
-                let mut any = false;
-                for n in nodes {
-                    let Some(g) = node_root_group.get(n.id.as_str()).copied() else {
+
+                for &idx in members {
+                    let Some(n) = nodes.get(idx) else {
                         continue;
                     };
-                    if g != group {
-                        continue;
-                    }
-                    any = true;
 
                     // Match Architecture Stage B bounds used for group rect sizing:
                     // icon rect + (optional) wrapped service label bbox.
                     let mut nx1 = n.x;
-                    let mut ny1 = n.y;
+                    let ny1 = n.y;
                     let mut nx2 = n.x + n.width;
                     let mut ny2 = n.y + n.height;
 
                     let is_service = node_type.get(n.id.as_str()).copied()
                         == Some(ArchitectureNodeType::Service);
                     if is_service {
-                        if let Some(title) = node_title
-                            .get(n.id.as_str())
-                            .copied()
-                            .map(str::trim)
-                            .filter(|t| !t.is_empty())
-                        {
-                            let lines = wrap_svg_words_to_lines(
-                                title,
-                                icon_size * 1.5,
-                                measurer,
-                                text_style,
-                            );
-                            let mut bbox_left = 0.0f64;
-                            let mut bbox_right = 0.0f64;
-                            for line in &lines {
-                                let (l, r) = measurer.measure_svg_text_bbox_x(line, text_style);
-                                bbox_left = bbox_left.max(l);
-                                bbox_right = bbox_right.max(r);
+                        if let Some(title) = node_title.get(n.id.as_str()).copied() {
+                            let extras = if let Some(v) = label_extras.get(n.id.as_str()).copied() {
+                                Some(v)
+                            } else {
+                                let computed = measure_service_label_extras(
+                                    title,
+                                    icon_size * 1.5,
+                                    measurer,
+                                    text_style,
+                                    icon_size,
+                                    font_size_px,
+                                );
+                                if let Some(v) = computed {
+                                    label_extras.insert(n.id.clone(), v);
+                                }
+                                computed
+                            };
+                            if let Some(extras) = extras {
+                                nx1 = nx1.min(n.x + extras.left);
+                                nx2 = nx2.max(n.x + icon_size + extras.right);
+                                ny2 = ny2.max(n.y + icon_size + extras.bottom);
                             }
-                            let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
-
-                            let cx = n.x + icon_size / 2.0;
-                            let text_top = n.y + icon_size - 1.0;
-                            let text_left = cx - bbox_left;
-                            let text_right = cx + bbox_right;
-                            let text_bottom = text_top + bbox_h;
-
-                            nx1 = nx1.min(text_left);
-                            ny1 = ny1.min(text_top);
-                            nx2 = nx2.max(text_right);
-                            ny2 = ny2.max(text_bottom);
                         }
                     }
 
@@ -1554,9 +1665,15 @@ fn layout_architecture_diagram_model(
                     max_x = max_x.max(nx2);
                     max_y = max_y.max(ny2);
                 }
-                if !any {
+
+                if !(min_x.is_finite()
+                    && min_y.is_finite()
+                    && max_x.is_finite()
+                    && max_y.is_finite())
+                {
                     return None;
                 }
+
                 let pad = (icon_size / 2.0) + 2.5;
                 Some(BBox {
                     min_x: min_x - pad,
@@ -1566,24 +1683,51 @@ fn layout_architecture_diagram_model(
                 })
             }
 
+            let mut label_extras: FxHashMap<String, LabelExtras> = FxHashMap::default();
+            label_extras.reserve(node_title.len());
+
+            let mut bboxes: FxHashMap<&str, BBox> = FxHashMap::default();
+            bboxes.reserve(group_members.len().saturating_mul(2));
+            for (&group, members) in &group_members {
+                if let Some(bb) = group_bbox(
+                    nodes,
+                    members,
+                    &node_type,
+                    &node_title,
+                    &mut label_extras,
+                    &measurer,
+                    &text_style,
+                    icon_size,
+                    font_size_px,
+                ) {
+                    bboxes.insert(group, bb);
+                }
+            }
+
             fn translate_group(
                 nodes: &mut [LayoutNode],
                 group: &str,
-                node_root_group: &FxHashMap<&str, &str>,
+                group_members: &FxHashMap<&str, Vec<usize>>,
+                bboxes: &mut FxHashMap<&str, BBox>,
                 dx: f64,
                 dy: f64,
             ) {
                 if dx == 0.0 && dy == 0.0 {
                     return;
                 }
-                for n in nodes {
-                    let Some(g) = node_root_group.get(n.id.as_str()).copied() else {
-                        continue;
-                    };
-                    if g == group {
-                        n.x += dx;
-                        n.y += dy;
+                if let Some(members) = group_members.get(group) {
+                    for &idx in members {
+                        if let Some(n) = nodes.get_mut(idx) {
+                            n.x += dx;
+                            n.y += dy;
+                        }
                     }
+                }
+                if let Some(bb) = bboxes.get_mut(group) {
+                    bb.min_x += dx;
+                    bb.max_x += dx;
+                    bb.min_y += dy;
+                    bb.max_y += dy;
                 }
             }
 
@@ -1593,104 +1737,86 @@ fn layout_architecture_diagram_model(
                 for rel in &rels {
                     match rel {
                         GroupRel::LeftOf { left, right, gap } => {
-                            let Some(a) = group_bbox(
-                                nodes,
-                                left,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(a) = bboxes.get(left).copied() else {
                                 continue;
                             };
-                            let Some(b) = group_bbox(
-                                nodes,
-                                right,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(b) = bboxes.get(right).copied() else {
                                 continue;
                             };
                             let need = (a.max_x + gap) - b.min_x;
                             if need > 1e-6 {
-                                translate_group(nodes, left, &node_root_group, -need / 2.0, 0.0);
-                                translate_group(nodes, right, &node_root_group, need / 2.0, 0.0);
+                                translate_group(
+                                    nodes,
+                                    left,
+                                    &group_members,
+                                    &mut bboxes,
+                                    -need / 2.0,
+                                    0.0,
+                                );
+                                translate_group(
+                                    nodes,
+                                    right,
+                                    &group_members,
+                                    &mut bboxes,
+                                    need / 2.0,
+                                    0.0,
+                                );
                                 changed = true;
                             }
                         }
                         GroupRel::Above { top, bottom, gap } => {
-                            let Some(a) = group_bbox(
-                                nodes,
-                                top,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(a) = bboxes.get(top).copied() else {
                                 continue;
                             };
-                            let Some(b) = group_bbox(
-                                nodes,
-                                bottom,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(b) = bboxes.get(bottom).copied() else {
                                 continue;
                             };
                             let need = (a.max_y + gap) - b.min_y;
                             if need > 1e-6 {
-                                translate_group(nodes, top, &node_root_group, 0.0, -need / 2.0);
-                                translate_group(nodes, bottom, &node_root_group, 0.0, need / 2.0);
+                                translate_group(
+                                    nodes,
+                                    top,
+                                    &group_members,
+                                    &mut bboxes,
+                                    0.0,
+                                    -need / 2.0,
+                                );
+                                translate_group(
+                                    nodes,
+                                    bottom,
+                                    &group_members,
+                                    &mut bboxes,
+                                    0.0,
+                                    need / 2.0,
+                                );
                                 changed = true;
                             }
                         }
                         GroupRel::AlignTop { a, b } => {
-                            let Some(ba) = group_bbox(
-                                nodes,
-                                a,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(ba) = bboxes.get(a).copied() else {
                                 continue;
                             };
-                            let Some(bb) = group_bbox(
-                                nodes,
-                                b,
-                                &node_root_group,
-                                &node_type,
-                                &node_title,
-                                &measurer,
-                                &text_style,
-                                icon_size,
-                                font_size_px,
-                            ) else {
+                            let Some(bb) = bboxes.get(b).copied() else {
                                 continue;
                             };
                             let dy = ba.min_y - bb.min_y;
                             if dy.abs() > 1e-6 {
-                                translate_group(nodes, a, &node_root_group, 0.0, -dy / 2.0);
-                                translate_group(nodes, b, &node_root_group, 0.0, dy / 2.0);
+                                translate_group(
+                                    nodes,
+                                    a,
+                                    &group_members,
+                                    &mut bboxes,
+                                    0.0,
+                                    -dy / 2.0,
+                                );
+                                translate_group(
+                                    nodes,
+                                    b,
+                                    &group_members,
+                                    &mut bboxes,
+                                    0.0,
+                                    dy / 2.0,
+                                );
                                 changed = true;
                             }
                         }
