@@ -25,4 +25,3 @@ pub fn lookup_journey_root_viewport_override(
         _ => None,
     }
 }
-
