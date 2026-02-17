@@ -1070,12 +1070,25 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if created.is_empty() {
-        return Err(XtaskError::SnapshotUpdateFailed(if with_baselines {
-            "no fixtures were imported (all candidates failed upstream rendering)".to_string()
-        } else {
+        if with_baselines {
+            let mut msg = String::from("no fixtures were imported");
+            if report_total_candidates == 0 {
+                msg.push_str(" (no Mermaid code blocks were detected)");
+            } else if report_skip_duplicate_content == report_total_candidates {
+                msg.push_str(" (all candidates were duplicates of existing fixtures)");
+            } else if report_skip_duplicate_content + report_skip_exists == report_total_candidates
+            {
+                msg.push_str(" (all candidates were duplicates or already existed)");
+            } else {
+                msg.push_str(" (no candidates passed upstream baseline/snapshot gating)");
+            }
+            msg.push_str(&format!("; report: {}", report_path.display()));
+            return Err(XtaskError::SnapshotUpdateFailed(msg));
+        }
+        return Err(XtaskError::SnapshotUpdateFailed(
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
-                .to_string()
-        }));
+                .to_string(),
+        ));
     }
 
     eprintln!("Imported {} fixtures:", created.len());
@@ -1703,6 +1716,28 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if created.is_empty() {
+        if !skipped.is_empty() {
+            let mut dup = 0usize;
+            let mut exists = 0usize;
+            let mut deferred = 0usize;
+            for s in &skipped {
+                if s.starts_with("skip (duplicate content):") {
+                    dup += 1;
+                } else if s.starts_with("skip (already exists):") {
+                    exists += 1;
+                } else if s.starts_with("skip (already deferred):") {
+                    deferred += 1;
+                }
+            }
+            let mut msg = String::from("no fixtures were imported");
+            if dup + exists + deferred > 0 {
+                msg.push_str(&format!(
+                    " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred)"
+                ));
+            }
+            msg.push_str(" (use --overwrite, or adjust --filter/--limit)");
+            return Err(XtaskError::SnapshotUpdateFailed(msg));
+        }
         return Err(XtaskError::SnapshotUpdateFailed(
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
                 .to_string(),
@@ -1879,7 +1914,8 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
         created = kept;
         if created.is_empty() {
             return Err(XtaskError::SnapshotUpdateFailed(
-                "no fixtures were imported (all candidates were deferred due to baseline/snapshot failures)".to_string(),
+                "no fixtures were imported (all created candidates were deferred due to baseline/snapshot failures)"
+                    .to_string(),
             ));
         }
     }
@@ -2901,6 +2937,28 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if created.is_empty() {
+        if !skipped.is_empty() {
+            let mut dup = 0usize;
+            let mut exists = 0usize;
+            let mut deferred = 0usize;
+            for s in &skipped {
+                if s.starts_with("skip (duplicate content):") {
+                    dup += 1;
+                } else if s.starts_with("skip (already exists):") {
+                    exists += 1;
+                } else if s.starts_with("skip (already deferred):") {
+                    deferred += 1;
+                }
+            }
+            let mut msg = String::from("no fixtures were imported");
+            if dup + exists + deferred > 0 {
+                msg.push_str(&format!(
+                    " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred)"
+                ));
+            }
+            msg.push_str(" (use --overwrite, or adjust --filter/--limit)");
+            return Err(XtaskError::SnapshotUpdateFailed(msg));
+        }
         return Err(XtaskError::SnapshotUpdateFailed(
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
                 .to_string(),

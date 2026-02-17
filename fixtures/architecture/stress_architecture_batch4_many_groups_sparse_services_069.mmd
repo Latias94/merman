@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): many groups with sparse services (group rect bounds).
+
+group g1(cloud)[G1]
+group g2(cloud)[G2]
+group g3(cloud)[G3]
+group g4(cloud)[G4]
+
+service a(server)[A] in g1
+service b(server)[B] in g2
+service c(server)[C] in g3
+service d(server)[D] in g4
+
+a:R -- L:b
+b:R -- L:c
+c:R -- L:d

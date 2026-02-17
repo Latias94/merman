@@ -1,0 +1,10 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): ids with digits/underscores.
+
+group g_1(cloud)[G_1]
+service s_01(server)[S_01] in g_1
+service s_02(database)[S_02] in g_1
+junction j_0 in g_1
+
+s_01:R -- L:j_0
+j_0:R -- L:s_02

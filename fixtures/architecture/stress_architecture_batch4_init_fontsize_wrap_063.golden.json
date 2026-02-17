@@ -1,0 +1,187 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "top",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "mid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "long label words"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Top",
+        "in": null
+      },
+      {
+        "id": "mid",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "mid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "long label words"
+          },
+          {
+            "lhsId": "mid",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "bot",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "another label"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid",
+        "in": null
+      },
+      {
+        "id": "bot",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "mid",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "bot",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "another label"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Bot",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "top",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "mid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "long label words"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Top",
+        "in": null
+      },
+      {
+        "id": "mid",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "mid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "long label words"
+          },
+          {
+            "lhsId": "mid",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "bot",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "another label"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid",
+        "in": null
+      },
+      {
+        "id": "bot",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "mid",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "bot",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "another label"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Bot",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "top",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "mid",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "long label words"
+      },
+      {
+        "lhsId": "mid",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "bot",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "another label"
+      }
+    ]
+  }
+}

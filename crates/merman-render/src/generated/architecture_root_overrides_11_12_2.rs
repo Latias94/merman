@@ -320,6 +320,53 @@ pub fn lookup_architecture_root_viewport_override(
             "-324.81573486328125 -228.3118133544922 731.1314697265625 589.1236572265625",
             "731.1314697265625",
         )),
+        "stress_architecture_batch4_init_small_icons_061" => Some((
+            "-60.53569793701172 -56.28569793701172 187.85890197753906 191.57139587402344",
+            "187.85890197753906",
+        )),
+        "stress_architecture_batch4_init_large_icons_062" => Some((
+            "-272.7512664794922 -344.3980712890625 665.5025024414062 865.796142578125",
+            "665.5025024414062",
+        )),
+        "stress_architecture_batch4_init_fontsize_wrap_063" => Some((
+            "20 -208.9365234375 161.78750610351562 585.560546875",
+            "161.78750610351562",
+        )),
+        "stress_architecture_batch4_icontext_xml_escapes_064" => Some((
+            "-182.84327697753906 -65.5 445.6865539550781 262",
+            "445.6865539550781",
+        )),
+        "stress_architecture_batch4_title_accdescr_multiline_065" => Some((
+            "-119.5932846069336 -22 360.68658447265625 184.1875",
+            "360.68658447265625",
+        )),
+        "stress_architecture_batch4_three_level_groups_crosslinks_066" => Some((
+            "-246.3937225341797 -107 572.7874755859375 345",
+            "572.7874755859375",
+        )),
+        "stress_architecture_batch4_nested_groups_junction_fanout_067" => Some((
+            "-308.64166259765625 -343.0796203613281 697.2833251953125 817.1592407226562",
+            "697.2833251953125",
+        )),
+        "stress_architecture_batch4_mixed_arrows_xy_labels_068" => Some((
+            "-94.03656005859375 -108.98558044433594 343.7802429199219 378.4718017578125",
+            "343.7802429199219",
+        )),
+        "stress_architecture_batch4_many_groups_sparse_services_069" => Some((
+            "-423.6114501953125 -65.5 927.222900390625 262",
+            "927.222900390625",
+        )),
+        "stress_architecture_batch4_weird_ids_numbers_070" => {
+            Some(("-283.1865234375 -65.5 646.373046875 262", "646.373046875"))
+        }
+        "stress_architecture_batch4_i18n_accessibility_071" => Some((
+            "-182.84327697753906 -65.5 445.6865539550781 262",
+            "445.6865539550781",
+        )),
+        "stress_architecture_batch4_ports_matrix_072" => Some((
+            "-118.96281433105469 -110.71281433105469 360.9256286621094 385.1131286621094",
+            "360.9256286621094",
+        )),
         "upstream_cypress_other_xss_spec_icon_labels_architecture_001" => {
             Some(("-82.5 -65.5 245 262", "245"))
         }

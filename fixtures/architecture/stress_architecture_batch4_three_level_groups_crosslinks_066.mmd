@@ -1,0 +1,13 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): 3-level groups + cross-group links.
+
+group root(cloud)[Root]
+group left(cloud)[Left] in root
+group right(cloud)[Right] in root
+
+service l1(server)[L1] in left
+service l2(server)[L2] in left
+service r1(database)[R1] in right
+
+l1:R --> L:r1
+l2:R -[rep]-> L:r1

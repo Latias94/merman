@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): i18n accessibility fields (diagram titles/labels are ASCII due to upstream grammar limits).
+
+title Accessibility i18n batch4
+accTitle: 可访问性标题
+accDescr: 包含中文、العربية、emoji 😀
+
+group cloud(cloud)[Cloud]
+service api(server)[API] in cloud
+service db(database)[DB] in cloud
+
+api:R -[read]-> L:db

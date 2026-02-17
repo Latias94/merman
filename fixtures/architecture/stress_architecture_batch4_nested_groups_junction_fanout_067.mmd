@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): nested groups + junction fanout + group edges.
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service a(server)[A] in left
+service b(server)[B] in left
+junction j in left
+
+service c(server)[C] in right
+service d(database)[D] in right
+
+a:R -- L:j
+b:B -- T:j
+j{group}:R --> L:c{group}
+j{group}:B --> T:d{group}

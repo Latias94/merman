@@ -1,0 +1,13 @@
+%%{init: {"architecture": {"iconSize": 120, "padding": 60, "fontSize": 18}} }%%
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): init config (large iconSize/padding/fontSize).
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service api(server)[API] in left
+service db(database)[DB] in right
+service disk(disk)[Disk] in right
+
+api:R -[query]-> L:db
+api:B -[backup]-> T:disk
