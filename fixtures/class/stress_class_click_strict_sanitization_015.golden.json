@@ -1,0 +1,82 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "HomePage": {
+        "id": "HomePage",
+        "type": "",
+        "label": "HomePage",
+        "text": "HomePage",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-HomePage-0",
+        "parent": null,
+        "link": "about:blank",
+        "linkTarget": "_blank",
+        "tooltip": "Unsafe",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Docs": {
+        "id": "Docs",
+        "type": "",
+        "label": "Docs",
+        "text": "Docs",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Docs-1",
+        "parent": null,
+        "link": "https://example.com/docs",
+        "linkTarget": "_blank",
+        "tooltip": "Safe",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "HomePage",
+        "id2": "Docs",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "link",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): many relations and labels to stress routing and label placement.
+
+class A
+class B
+class C
+class D
+class E
+
+A --> B : calls
+A --> C : reads
+A --> D : writes
+B ..> D : caches
+C ..> D : depends
+D --> E : emits
+E ..> A : feedback
+B o-- C : shares
+

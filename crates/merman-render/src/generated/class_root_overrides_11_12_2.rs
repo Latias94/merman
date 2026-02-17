@@ -368,6 +368,24 @@ pub fn lookup_class_root_viewport_override(
         "stress_class_parallel_edges_and_cardinality_004" => Some(("0 0 420.5 100", "420.5")),
         "stress_class_styles_classdef_and_inline_010" => Some(("0 0 136.4296875 342", "136.43")),
         "stress_class_unicode_and_entities_012" => Some(("0 0 665.734375 184", "665.734")),
+        "stress_class_nested_generics_static_013" => Some(("0 0 1176.125 190", "1176.12")),
+        "stress_class_notes_wrap_positions_014" => Some(("0 0 584.11328125 502", "584.113")),
+        "stress_class_click_strict_sanitization_015" => Some(("0 0 117.328125 258", "117.328")),
+        "stress_class_styles_multiple_classdef_016" => Some(("0 0 890.34375 142", "890.344")),
+        "stress_class_unicode_namespace_mix_017" => Some(("-8 0 409.140625 772", "409.141")),
+        "stress_class_interfaces_generics_dependencies_018" => {
+            Some(("0 0 217.59375 500", "217.594"))
+        }
+        "stress_class_association_aggregation_composition_019" => {
+            Some(("0 0 624.03125 159", "624.031"))
+        }
+        "stress_class_many_relations_labels_020" => Some(("0 0 597.984375 268", "597.984")),
+        "stress_class_nested_namespaces_many_levels_021" => {
+            Some(("-8 0 667.8671875 462", "667.867"))
+        }
+        "stress_class_member_types_arrays_generics_022" => Some(("0 0 337.8984375 208", "337.898")),
+        "stress_class_enums_and_interfaces_mix_023" => Some(("0 0 569.8828125 208", "569.883")),
+        "stress_class_comments_inside_namespaces_024" => Some(("-8 0 356.7890625 369", "356.789")),
         _ => None,
     }
 }

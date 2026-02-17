@@ -1,0 +1,15 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): association + aggregation + composition with labels.
+
+class User
+class Cart
+class Item
+class Payment
+
+User "1" o-- "1" Cart : owns
+Cart "1" *-- "*" Item : contains
+User ..> Payment : initiates
+Payment --> Cart : charges for
+

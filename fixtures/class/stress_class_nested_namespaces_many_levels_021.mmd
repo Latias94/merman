@@ -1,0 +1,17 @@
+classDiagram
+direction TB
+
+%% Authored stress fixture (Mermaid@11.12.2): deep namespaces with cross-namespace edges.
+
+namespace Root.A {
+  class A1
+  class A2
+}
+
+namespace Root.B.B1 {
+  class B1a
+  class B1b
+}
+
+Root.A.A1 --> Root.B.B1.B1a : cross
+Root.A.A2 ..> Root.B.B1.B1b : cross

@@ -1,0 +1,180 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Alpha",
+          "x": 111.14,
+          "y": 109.5,
+          "width": 147.28,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Core",
+          "x": 111.14,
+          "y": 109.5,
+          "width": 222.28,
+          "height": 219.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Core.Alpha",
+          "x": 111.14,
+          "y": 580.0,
+          "width": 93.44,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note0",
+          "x": 111.14,
+          "y": 715.5,
+          "width": 101.56,
+          "height": 87.0,
+          "is_cluster": false
+        },
+        {
+          "id": "支付",
+          "x": 111.14,
+          "y": 378.5,
+          "width": 181.88,
+          "height": 219.0,
+          "is_cluster": true
+        },
+        {
+          "id": "支付.订单",
+          "x": 333.24,
+          "y": 647.75,
+          "width": 66.88,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "订单",
+          "x": 111.14,
+          "y": 378.5,
+          "width": 106.88,
+          "height": 144.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Core.Alpha",
+          "to": "支付.订单",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 157.86,
+              "y": 580.0
+            },
+            {
+              "x": 261.04,
+              "y": 580.0
+            },
+            {
+              "x": 299.8,
+              "y": 616.371
+            }
+          ],
+          "label": {
+            "x": 261.04,
+            "y": 580.0,
+            "width": 27.52,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edgeNote2",
+          "from": "note0",
+          "to": "支付.订单",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 161.92,
+              "y": 715.5
+            },
+            {
+              "x": 261.04,
+              "y": 715.5
+            },
+            {
+              "x": 299.8,
+              "y": 679.129
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Core",
+          "x": 111.14,
+          "y": 109.5,
+          "width": 222.28,
+          "height": 219.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Core",
+          "title_label": {
+            "x": 111.14,
+            "y": 12.0,
+            "width": 30.24,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "支付",
+          "x": 111.14,
+          "y": 378.5,
+          "width": 181.88,
+          "height": 219.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "支付",
+          "title_label": {
+            "x": 111.14,
+            "y": 281.0,
+            "width": 19.2,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 366.68,
+        "max_y": 759.0
+      }
+    }
+  }
+}

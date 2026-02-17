@@ -1,0 +1,13 @@
+%%{init: { "config": { "securityLevel": "strict" }}}%%
+classDiagram
+
+%% Authored stress fixture (Mermaid@11.12.2): strict mode URL sanitization for click links.
+
+class HomePage
+class Docs
+
+HomePage --> Docs : link
+
+click HomePage href "javascript:alert(1)" "Unsafe"
+click Docs href "https://example.com/docs" "Safe"
+

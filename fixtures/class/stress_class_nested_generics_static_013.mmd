@@ -1,0 +1,20 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): nested generics + static/abstract markers.
+
+class Result~T~ {
+  +T value
+  +isOk() bool
+  +from(v: T) Result~T~$
+}
+
+class Parser {
+  +parse(text: String) Result~String~
+  +parseAll(texts: List~String~) List~Result~String~~
+  +internalHook() bool*
+}
+
+Parser ..> Result~T~ : returns
+note for Parser "Static ($) and abstract (*) markers should render."
+

@@ -1,0 +1,22 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): enum + interface + implementation.
+
+class Status {
+  <<enumeration>>
+  OK
+  ERROR
+  UNKNOWN
+}
+
+class IService
+<<interface>> IService
+
+class Impl {
+  +run() Status
+}
+
+IService <|.. Impl
+Impl ..> Status : returns
+

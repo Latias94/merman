@@ -1,0 +1,151 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Result": {
+        "id": "Result",
+        "type": "T",
+        "label": "Result",
+        "text": "Result&lt;T&gt;",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "isOk",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+isOk() : bool",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "from",
+            "classifier": "$",
+            "parameters": "v: T",
+            "returnType": "Result~T~",
+            "displayText": "+from(v: T) : Result<T>",
+            "cssStyle": "text-decoration:underline;"
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "T value",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+T value",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Result-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Parser": {
+        "id": "Parser",
+        "type": "",
+        "label": "Parser",
+        "text": "Parser",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "parse",
+            "classifier": "",
+            "parameters": "text: String",
+            "returnType": "Result~String~",
+            "displayText": "+parse(text: String) : Result<String>",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "parseAll",
+            "classifier": "",
+            "parameters": "texts: List~String~",
+            "returnType": "List~Result~String~~",
+            "displayText": "+parseAll(texts: List<String>) : List<Result<String>>",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "internalHook",
+            "classifier": "*",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+internalHook() : bool",
+            "cssStyle": "font-style:italic;"
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Parser-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Parser",
+        "id2": "Result",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "returns",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      }
+    ],
+    "notes": [
+      {
+        "id": "note0",
+        "class": "Parser",
+        "text": "Static ($) and abstract (*) markers should render."
+      }
+    ],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

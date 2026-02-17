@@ -991,6 +991,18 @@ pub(super) fn render_class_diagram_v2_svg(
     };
     let nodes_root_dy = 0.0;
 
+    // Mermaid@11.12.2 renders namespaces as nested subgraphs when the root viewBox indicates the
+    // `-8px` x-margin behavior (minX=-8, minY=0). In that mode:
+    // - The outer `clusters` group is an empty placeholder.
+    // - Each namespace cluster is emitted as a nested `<g class="root" ...>` inside `<g class="nodes">`,
+    //   with empty `edgePaths/edgeLabels` placeholders.
+    // - All relations still render at the outer root level (not inside the namespace subgraphs).
+    let render_namespaces_as_subgraphs = !wrap_nodes_root
+        && !model.namespaces.is_empty()
+        && viewbox_override_min_xy.is_some_and(|(min_x, min_y)| {
+            (min_x + GRAPH_MARGIN_PX).abs() <= 1e-9 && (min_y - 0.0).abs() <= 1e-9
+        });
+
     let render_clusters_edges_and_labels =
         |out: &mut String, content_bounds: &mut Option<Bounds>, bounds_dx: f64, bounds_dy: f64| {
             // Clusters (namespaces).
@@ -1224,8 +1236,209 @@ pub(super) fn render_class_diagram_v2_svg(
             out.push_str("</g>");
         };
 
+    let render_edge_paths_and_labels = |out: &mut String,
+                                        content_bounds: &mut Option<Bounds>,
+                                        bounds_dx: f64,
+                                        bounds_dy: f64| {
+        // Edge paths.
+        out.push_str(r#"<g class="edgePaths">"#);
+        for e in &layout.edges {
+            if e.points.len() < 2 {
+                continue;
+            }
+
+            let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+
+            let mut raw_points = e.points.clone();
+            for p in &mut raw_points {
+                p.x += content_tx;
+                p.y += content_ty;
+            }
+
+            let mut curve_points = raw_points.clone();
+            if curve_points.len() == 2 {
+                let a = &curve_points[0];
+                let b = &curve_points[1];
+                curve_points.insert(
+                    1,
+                    crate::model::LayoutPoint {
+                        x: (a.x + b.x) / 2.0,
+                        y: (a.y + b.y) / 2.0,
+                    },
+                );
+            }
+            let d = curve_basis_path_d(&curve_points);
+            include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
+            let points_b64 = base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
+
+            let mut class = String::from("edge-thickness-normal ");
+            if e.id.starts_with("edgeNote") {
+                class.push_str(class_note_edge_pattern());
+            } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                class.push_str(class_edge_pattern(rel.relation.line_type));
+            } else {
+                class.push_str("edge-pattern-solid");
+            }
+            class.push_str(" relation");
+
+            let mut marker_start: Option<String> = None;
+            let mut marker_end: Option<String> = None;
+            if !e.id.starts_with("edgeNote") {
+                if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                    if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                        marker_start = Some(format!(
+                            "url(#{}_{aria_roledescription}-{name})",
+                            diagram_id
+                        ));
+                    }
+                    if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                        marker_end = Some(format!(
+                            "url(#{}_{aria_roledescription}-{name})",
+                            diagram_id
+                        ));
+                    }
+                }
+            }
+
+            let _ = write!(
+                out,
+                r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+                escape_attr(&d),
+                escape_attr(&dom_id),
+                escape_attr(&class),
+                escape_attr(&dom_id),
+                escape_attr(&points_b64),
+            );
+            if let Some(url) = marker_start {
+                let _ = write!(out, r#" marker-start="{}""#, escape_attr(&url));
+            }
+            if let Some(url) = marker_end {
+                let _ = write!(out, r#" marker-end="{}""#, escape_attr(&url));
+            }
+            out.push_str("/>");
+        }
+        out.push_str("</g>");
+
+        // Edge labels + terminals.
+        out.push_str(r#"<g class="edgeLabels">"#);
+        // Mermaid renders all edge terminal labels first, then edge labels.
+        for e in &layout.edges {
+            let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+                continue;
+            };
+            let start_text = if rel.relation_title_1 == "none" {
+                ""
+            } else {
+                rel.relation_title_1.as_str()
+            };
+            if start_text.trim().is_empty() {
+                continue;
+            }
+            for lbl in [&e.start_label_left, &e.start_label_right] {
+                if let Some(lbl) = lbl.as_ref() {
+                    include_xywh(
+                        content_bounds,
+                        lbl.x + content_tx + bounds_dx,
+                        lbl.y + content_ty + bounds_dy,
+                        9.0,
+                        12.0,
+                    );
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                        fmt(lbl.x + content_tx),
+                        fmt(lbl.y + content_ty),
+                        escape_xml(start_text.trim())
+                    );
+                }
+            }
+        }
+        for e in &layout.edges {
+            let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+                continue;
+            };
+            let end_text = if rel.relation_title_2 == "none" {
+                ""
+            } else {
+                rel.relation_title_2.as_str()
+            };
+            if end_text.trim().is_empty() {
+                continue;
+            }
+            for lbl in [&e.end_label_left, &e.end_label_right] {
+                if let Some(lbl) = lbl.as_ref() {
+                    include_xywh(
+                        content_bounds,
+                        lbl.x + content_tx + bounds_dx,
+                        lbl.y + content_ty + bounds_dy,
+                        9.0,
+                        12.0,
+                    );
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                        fmt(lbl.x + content_tx),
+                        fmt(lbl.y + content_ty),
+                        escape_xml(end_text.trim())
+                    );
+                }
+            }
+        }
+        for e in &layout.edges {
+            let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+            let label_text = if e.id.starts_with("edgeNote") {
+                String::new()
+            } else {
+                relations_by_id
+                    .get(e.id.as_str())
+                    .map(|r| r.title.clone())
+                    .unwrap_or_default()
+            };
+
+            if label_text.trim().is_empty() {
+                let _ = write!(
+                    out,
+                    r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                    escape_attr(&dom_id)
+                );
+            } else if let Some(lbl) = e.label.as_ref() {
+                include_xywh(
+                    content_bounds,
+                    lbl.x + content_tx - lbl.width / 2.0 + bounds_dx,
+                    lbl.y + content_ty - lbl.height / 2.0 + bounds_dy,
+                    lbl.width.max(0.0),
+                    lbl.height.max(0.0),
+                );
+                let _ = write!(
+                    out,
+                    r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
+                    escape_attr(&dom_id),
+                    fmt(-lbl.width / 2.0),
+                    fmt(-lbl.height / 2.0),
+                    fmt(lbl.width.max(0.0)),
+                    fmt(lbl.height.max(0.0)),
+                );
+                render_class_html_label(out, "edgeLabel", label_text.trim(), true, None);
+                out.push_str("</div></foreignObject></g></g>");
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                    escape_attr(&dom_id)
+                );
+            }
+        }
+        out.push_str("</g>");
+    };
+
     if wrap_nodes_root {
         out.push_str(r#"<g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/>"#);
+    } else if render_namespaces_as_subgraphs {
+        out.push_str(r#"<g class="clusters"/>"#);
+        render_edge_paths_and_labels(&mut out, &mut content_bounds, 0.0, 0.0);
     } else {
         render_clusters_edges_and_labels(&mut out, &mut content_bounds, 0.0, 0.0);
     }
@@ -1307,7 +1520,42 @@ pub(super) fn render_class_diagram_v2_svg(
         ordered_ids = inner.into_iter().chain(outer).collect();
     }
 
+    let namespace_keys: Vec<&str> = model.namespaces.keys().map(|k| k.as_str()).collect();
+    let namespace_key_set: std::collections::HashSet<&str> =
+        namespace_keys.iter().copied().collect();
+
+    let mut clusters_by_id: std::collections::HashMap<&str, &crate::model::LayoutCluster> =
+        std::collections::HashMap::new();
+    for c in &layout.clusters {
+        clusters_by_id.insert(c.id.as_str(), c);
+    }
+
+    if render_namespaces_as_subgraphs {
+        // Ensure namespace-contained nodes are rendered in namespace order (one nested subgraph per
+        // namespace) before emitting any non-namespace nodes at the outer level.
+        let mut inner: Vec<&str> = Vec::new();
+        let mut used: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+        for ns_id in &namespace_keys {
+            for id in &ordered_ids {
+                let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+                if parent == Some(*ns_id) && used.insert(*id) {
+                    inner.push(*id);
+                }
+            }
+        }
+
+        let mut outer: Vec<&str> = Vec::new();
+        for id in &ordered_ids {
+            if !used.contains(id) {
+                outer.push(*id);
+            }
+        }
+        ordered_ids = inner.into_iter().chain(outer).collect();
+    }
+
     let mut inner_nodes_group_open = wrap_nodes_root;
+    let mut active_namespace_subgraph: Option<&str> = None;
     for id in ordered_ids {
         if wrap_nodes_root && inner_nodes_group_open {
             let parent = class_nodes_by_id.get(id).and_then(|n| n.parent.as_deref());
@@ -1317,6 +1565,56 @@ pub(super) fn render_class_diagram_v2_svg(
                 out.push_str("</g>"); // inner nodes
                 out.push_str("</g>"); // inner root
                 inner_nodes_group_open = false;
+            }
+        }
+
+        if render_namespaces_as_subgraphs {
+            let parent = class_nodes_by_id.get(id).and_then(|n| n.parent.as_deref());
+            let parent = parent.filter(|p| namespace_key_set.contains(p));
+
+            if parent != active_namespace_subgraph {
+                if active_namespace_subgraph.is_some() {
+                    out.push_str("</g>"); // namespace subgraph nodes
+                    out.push_str("</g>"); // namespace subgraph root
+                }
+
+                active_namespace_subgraph = parent;
+                if let Some(ns_id) = active_namespace_subgraph {
+                    out.push_str(r#"<g class="root" transform="translate(0, 0)">"#);
+                    out.push_str(r#"<g class="clusters">"#);
+
+                    if let Some(c) = clusters_by_id.get(ns_id).copied() {
+                        let w = c.width.max(1.0);
+                        let h = c.height.max(1.0);
+                        let left = c.x - w / 2.0 + content_tx;
+                        let top = c.y - h / 2.0 + content_ty;
+                        include_xywh(&mut content_bounds, left, top, w, h);
+
+                        let label_w = c.title_label.width.max(0.0);
+                        let label_h = 24.0;
+                        let label_x = left + (w - label_w) / 2.0;
+                        let label_y = top + c.title_margin_top;
+                        include_xywh(&mut content_bounds, label_x, label_y, label_w, label_h);
+
+                        let _ = write!(
+                            &mut out,
+                            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                            escape_attr(&c.id),
+                            fmt(left),
+                            fmt(top),
+                            fmt(w),
+                            fmt(h),
+                            fmt(label_x),
+                            fmt(label_y),
+                            fmt(label_w),
+                            escape_xml(&c.title)
+                        );
+                    }
+
+                    out.push_str(
+                        r#"</g><g class="edgeLabels"/><g class="edgePaths"/><g class="nodes">"#,
+                    );
+                }
             }
         }
 
@@ -1485,7 +1783,10 @@ pub(super) fn render_class_diagram_v2_svg(
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty());
-        let include_href = link.is_some_and(|s| !s.to_ascii_lowercase().starts_with("javascript:"));
+        let include_href = link.is_some_and(|s| {
+            let lower = s.to_ascii_lowercase();
+            !lower.starts_with("javascript:") && lower != "about:blank"
+        });
         let have_callback = node.have_callback;
         let node_tx = n.x + content_tx;
         let node_ty = n.y + content_ty;
@@ -1764,6 +2065,11 @@ pub(super) fn render_class_diagram_v2_svg(
         if link.is_some() {
             out.push_str("</a>");
         }
+    }
+
+    if render_namespaces_as_subgraphs && active_namespace_subgraph.is_some() {
+        out.push_str("</g>"); // namespace subgraph nodes
+        out.push_str("</g>"); // namespace subgraph root
     }
 
     if inner_nodes_group_open {
