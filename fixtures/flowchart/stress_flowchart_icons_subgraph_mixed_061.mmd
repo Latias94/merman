@@ -1,0 +1,15 @@
+flowchart TD
+
+%% Authored stress fixture (Mermaid@11.12.2): Icons inside nested subgraphs.
+
+    subgraph S1["Group fa:fa-layer-group"]
+        A["fa:fa-play start"]
+        B["fa:fa-stop stop"]
+    end
+
+    subgraph S2["Other fa:fa-boxes-stacked"]
+        C["fa:fa-gear config"]
+    end
+
+    A-->C
+    B-->C

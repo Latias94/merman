@@ -1,0 +1,12 @@
+%%{init: {"securityLevel": "strict"}}%%
+flowchart TD
+
+%% Authored stress fixture (Mermaid@11.12.2): Strict click sanitization with icon-labeled nodes.
+
+    A["fa:fa-house Home"]
+    B["fa:fa-book Docs"]
+
+    A-->B
+
+    click A href "javascript:alert('xss')"
+    click B href "https://example.com/docs"

@@ -1,0 +1,19 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: nested groups + {group} modifier edges + ports.
+  %% Reference: repo-ref/mermaid/docs/syntax/architecture.md (edges out of groups).
+
+  group vpc(cloud)[VPC]
+  group public(cloud)[Public Subnet] in vpc
+  group private(cloud)[Private Subnet] in vpc
+
+  service ingress(internet)[Ingress] in public
+  service lb(server)[Load Balancer] in public
+  service api(server)[API] in private
+  service db(database)[DB] in private
+  service disk(disk)[Backup Disk] in private
+
+  ingress:B --> T:lb
+  lb{group}:B --> T:api{group}
+  api:R -[query]-> L:db
+  db:B -[backup nightly 0200]-> T:disk

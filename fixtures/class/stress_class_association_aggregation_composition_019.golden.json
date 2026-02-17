@@ -1,0 +1,159 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "User": {
+        "id": "User",
+        "type": "",
+        "label": "User",
+        "text": "User",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-User-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Cart": {
+        "id": "Cart",
+        "type": "",
+        "label": "Cart",
+        "text": "Cart",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Cart-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Item": {
+        "id": "Item",
+        "type": "",
+        "label": "Item",
+        "text": "Item",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Item-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Payment": {
+        "id": "Payment",
+        "type": "",
+        "label": "Payment",
+        "text": "Payment",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Payment-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "User",
+        "id2": "Cart",
+        "relationTitle1": "1",
+        "relationTitle2": "1",
+        "title": "owns",
+        "relation": {
+          "type1": 0,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Cart",
+        "id2": "Item",
+        "relationTitle1": "1",
+        "relationTitle2": "*",
+        "title": "contains",
+        "relation": {
+          "type1": 2,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "User",
+        "id2": "Payment",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "initiates",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "3",
+        "id1": "Payment",
+        "id2": "Cart",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "charges for",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

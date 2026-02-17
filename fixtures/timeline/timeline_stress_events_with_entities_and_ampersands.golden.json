@@ -1,0 +1,47 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Entities & ampersands in event labels",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Entities"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2004 ",
+        "score": 0,
+        "events": [
+          "Fish &amp; Chips ",
+          "Salt &amp; Vinegar"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2006 ",
+        "score": 0,
+        "events": [
+          "1 &lt; 2 &amp;&amp; 2 &gt; 1 ",
+          "Use &quot;quotes&quot;"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2008 ",
+        "score": 0,
+        "events": [
+          "Use &ﬂ°°35¶ßhashtags&ﬂ°°59¶ß and &ﬂ°°59¶ßsemicolons&ﬂ°°59¶ß ",
+          "Escape &amp; safely"
+        ]
+      }
+    ]
+  }
+}

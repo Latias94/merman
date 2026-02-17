@@ -1,0 +1,209 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "A1",
+          "x": 58.78,
+          "y": 79.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "A2",
+          "x": 58.78,
+          "y": 213.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B1a",
+          "x": 229.78,
+          "y": 79.5,
+          "width": 49.44,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B1b",
+          "x": 229.78,
+          "y": 213.5,
+          "width": 49.44,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.A",
+          "x": 58.78,
+          "y": 146.5,
+          "width": 117.56,
+          "height": 293.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Root.A.A1",
+          "x": 387.68,
+          "y": 146.5,
+          "width": 91.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.A.A2",
+          "x": 558.96,
+          "y": 146.5,
+          "width": 91.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.B.B1",
+          "x": 229.78,
+          "y": 146.5,
+          "width": 124.44,
+          "height": 293.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Root.B.B1.B1a",
+          "x": 387.68,
+          "y": 409.0,
+          "width": 121.28,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Root.B.B1.B1b",
+          "x": 558.96,
+          "y": 409.0,
+          "width": 121.28,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Root.A.A1",
+          "to": "Root.B.B1.B1a",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 387.68,
+              "y": 188.5
+            },
+            {
+              "x": 387.68,
+              "y": 330.0
+            },
+            {
+              "x": 387.68,
+              "y": 367.0
+            }
+          ],
+          "label": {
+            "x": 387.68,
+            "y": 330.0,
+            "width": 34.4,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "Root.A.A2",
+          "to": "Root.B.B1.B1b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 558.96,
+              "y": 188.5
+            },
+            {
+              "x": 558.96,
+              "y": 330.0
+            },
+            {
+              "x": 558.96,
+              "y": 367.0
+            }
+          ],
+          "label": {
+            "x": 558.96,
+            "y": 330.0,
+            "width": 34.4,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Root.A",
+          "x": 58.78,
+          "y": 146.5,
+          "width": 117.56,
+          "height": 293.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Root.A",
+          "title_label": {
+            "x": 58.78,
+            "y": 12.0,
+            "width": 44.32,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Root.B.B1",
+          "x": 229.78,
+          "y": 146.5,
+          "width": 124.44,
+          "height": 293.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Root.B.B1",
+          "title_label": {
+            "x": 229.78,
+            "y": 12.0,
+            "width": 67.36,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 619.6,
+        "max_y": 451.0
+      }
+    }
+  }
+}

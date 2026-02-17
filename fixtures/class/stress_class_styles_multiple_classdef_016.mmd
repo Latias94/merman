@@ -1,0 +1,25 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): multiple classDef + style overrides + mixed edges.
+
+class Client:::client {
+  +request() Response
+}
+class API:::svc {
+  +handle(req: Request) Response
+}
+class DB:::db {
+  +query(sql: String) Rows
+}
+
+classDef client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
+classDef svc fill:#ddddff,stroke:#0000aa,stroke-width:2px
+classDef db fill:#ffdddd,stroke:#aa0000,stroke-width:2px
+
+Client --> API : uses
+API --> DB : reads
+API ..> DB : caches
+
+style API fill:#eef,stroke:#00f,stroke-width:2px
+

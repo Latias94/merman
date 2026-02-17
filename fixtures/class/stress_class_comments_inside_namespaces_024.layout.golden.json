@@ -1,0 +1,106 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Bar",
+          "x": 303.08,
+          "y": 311.0,
+          "width": 47.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Foo",
+          "x": 98.94,
+          "y": 109.5,
+          "width": 122.88,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Outer",
+          "x": 98.94,
+          "y": 109.5,
+          "width": 197.88,
+          "height": 219.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Outer.Foo",
+          "x": 98.94,
+          "y": 311.0,
+          "width": 88.96,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Outer.Foo",
+          "to": "Bar",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 143.42,
+              "y": 311.0
+            },
+            {
+              "x": 238.64,
+              "y": 311.0
+            },
+            {
+              "x": 279.4,
+              "y": 311.0
+            }
+          ],
+          "label": {
+            "x": 238.64,
+            "y": 311.0,
+            "width": 31.52,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Outer",
+          "x": 98.94,
+          "y": 109.5,
+          "width": 197.88,
+          "height": 219.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Outer",
+          "title_label": {
+            "x": 98.94,
+            "y": 12.0,
+            "width": 37.12,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 326.76,
+        "max_y": 353.0
+      }
+    }
+  }
+}

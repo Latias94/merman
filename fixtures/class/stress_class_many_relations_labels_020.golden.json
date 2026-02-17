@@ -1,0 +1,230 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "A": {
+        "id": "A",
+        "type": "",
+        "label": "A",
+        "text": "A",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-A-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "B": {
+        "id": "B",
+        "type": "",
+        "label": "B",
+        "text": "B",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-B-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "C": {
+        "id": "C",
+        "type": "",
+        "label": "C",
+        "text": "C",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-C-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "D": {
+        "id": "D",
+        "type": "",
+        "label": "D",
+        "text": "D",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-D-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "E": {
+        "id": "E",
+        "type": "",
+        "label": "E",
+        "text": "E",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-E-4",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "A",
+        "id2": "B",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "calls",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "A",
+        "id2": "C",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "reads",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "A",
+        "id2": "D",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "writes",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "3",
+        "id1": "B",
+        "id2": "D",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "caches",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "4",
+        "id1": "C",
+        "id2": "D",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "depends",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "5",
+        "id1": "D",
+        "id2": "E",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "emits",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "6",
+        "id1": "E",
+        "id2": "A",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "feedback",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "7",
+        "id1": "B",
+        "id2": "C",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "shares",
+        "relation": {
+          "type1": 0,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

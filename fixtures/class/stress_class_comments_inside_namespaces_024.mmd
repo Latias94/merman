@@ -1,0 +1,19 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): comments/blank lines inside namespaces and class blocks.
+
+namespace Outer {
+  %% inner comment
+  class Foo {
+    +String id
+
+    %% comment between members
+    +String name
+  }
+}
+
+class Bar
+
+Outer.Foo --> Bar : links
+

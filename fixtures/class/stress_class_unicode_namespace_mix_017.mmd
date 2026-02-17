@@ -1,0 +1,22 @@
+classDiagram
+direction LR
+
+%% Authored stress fixture (Mermaid@11.12.2): unicode identifiers inside namespaces and notes.
+
+namespace Core {
+  class Alpha {
+    +名前 String
+    +مرحبا() void
+  }
+}
+
+namespace 支付 {
+  class 订单 {
+    +编号 String
+    +金额 int
+  }
+}
+
+Core.Alpha --> 支付.订单 : uses
+note for 支付.订单 "CJK: 你好<br/>RTL: مرحبا<br/>Emoji: 😀"
+

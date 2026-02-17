@@ -1,0 +1,14 @@
+flowchart TD
+
+%% Authored stress fixture (Mermaid@11.12.2): classDef/style interactions with icon tokens.
+
+    classDef hot fill:#ffdddd,stroke:#cc0000,stroke-width:2px;
+    classDef cool fill:#ddffdd,stroke:#00aa00,stroke-width:2px;
+
+    A["fa:fa-fire hot path"]:::hot
+    B["fa:fa-snowflake cool path"]:::cool
+    C["fa:fa-scale-balanced neutral"]
+
+    A-->C
+    B-->C
+    style C fill:#eeeeff,stroke:#3333aa,stroke-width:2px

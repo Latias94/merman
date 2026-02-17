@@ -1,0 +1,23 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: deeper group chain + crosslinks + group edges.
+
+  group g1(cloud)[Layer 1]
+  group g2(cloud)[Layer 2] in g1
+  group g3(cloud)[Layer 3] in g2
+  group g4(cloud)[Layer 4] in g3
+  group g5(cloud)[Layer 5] in g4
+
+  service s1(server)[S1] in g5
+  service s2(server)[S2] in g4
+  service s3(server)[S3] in g3
+  service s4(server)[S4] in g2
+  service s5(server)[S5] in g1
+
+  s1:T --> B:s2
+  s2:R --> L:s3
+  s3:B --> T:s4
+  s4:L --> R:s5
+
+  s5{group}:B -[backjump]-> T:s1{group}
+  s2{group}:L -[cross]-> R:s4{group}

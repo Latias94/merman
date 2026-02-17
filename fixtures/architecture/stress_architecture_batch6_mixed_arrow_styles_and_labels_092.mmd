@@ -1,0 +1,14 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: mix of '--', '-->', '<--', '<-->' and labeled edges.
+
+  service a(server)[A]
+  service b(server)[B]
+  service c(server)[C]
+  service d(server)[D]
+
+  a:R -- L:b
+  b:B --> T:c
+  c:L <-- R:d
+  a:B <--> T:d
+  b:R -[labeled]-> L:d

@@ -1,0 +1,203 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Client": {
+        "id": "Client",
+        "type": "",
+        "label": "Client",
+        "text": "Client",
+        "cssClasses": "default client",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "request",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "Response",
+            "displayText": "+request() : Response",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "domId": "classId-Client-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "API": {
+        "id": "API",
+        "type": "",
+        "label": "API",
+        "text": "API",
+        "cssClasses": "default svc",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "handle",
+            "classifier": "",
+            "parameters": "req: Request",
+            "returnType": "Response",
+            "displayText": "+handle(req: Request) : Response",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#ddddff",
+          "stroke:#0000aa",
+          "stroke-width:2px",
+          "fill:#eef",
+          "stroke:#00f",
+          "stroke-width:2px"
+        ],
+        "domId": "classId-API-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "DB": {
+        "id": "DB",
+        "type": "",
+        "label": "DB",
+        "text": "DB",
+        "cssClasses": "default db",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "query",
+            "classifier": "",
+            "parameters": "sql: String",
+            "returnType": "Rows",
+            "displayText": "+query(sql: String) : Rows",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "domId": "classId-DB-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Client",
+        "id2": "API",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "uses",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "API",
+        "id2": "DB",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "reads",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "API",
+        "id2": "DB",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "caches",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "client": {
+        "id": "client",
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      },
+      "svc": {
+        "id": "svc",
+        "styles": [
+          "fill:#ddddff",
+          "stroke:#0000aa",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      },
+      "db": {
+        "id": "db",
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

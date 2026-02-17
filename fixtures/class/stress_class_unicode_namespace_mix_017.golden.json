@@ -1,0 +1,184 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Alpha": {
+        "id": "Alpha",
+        "type": "",
+        "label": "Alpha",
+        "text": "Alpha",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "مرحبا",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+مرحبا() : void",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "名前 String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+名前 String",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Alpha-0",
+        "parent": "Core",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "订单": {
+        "id": "订单",
+        "type": "",
+        "label": "订单",
+        "text": "订单",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "编号 String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+编号 String",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "金额 int",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+金额 int",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-订单-1",
+        "parent": "支付",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Core.Alpha": {
+        "id": "Core.Alpha",
+        "type": "",
+        "label": "Core.Alpha",
+        "text": "Core.Alpha",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Core.Alpha-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "支付.订单": {
+        "id": "支付.订单",
+        "type": "",
+        "label": "支付.订单",
+        "text": "支付.订单",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-支付.订单-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Core.Alpha",
+        "id2": "支付.订单",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "uses",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [
+      {
+        "id": "note0",
+        "class": "支付.订单",
+        "text": "CJK: 你好<br/>RTL: مرحبا<br/>Emoji: 😀"
+      }
+    ],
+    "interfaces": [],
+    "namespaces": {
+      "Core": {
+        "id": "Core",
+        "domId": "classId-Core-0",
+        "classIds": [
+          "Alpha"
+        ]
+      },
+      "支付": {
+        "id": "支付",
+        "domId": "classId-支付-1",
+        "classIds": [
+          "订单"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

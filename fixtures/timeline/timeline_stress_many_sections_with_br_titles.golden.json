@@ -1,0 +1,169 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Many sections with <br> in titles",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "01 <br> Alpha",
+      "02 <br> Beta",
+      "03 <br> Gamma",
+      "04 <br> Delta",
+      "05 <br> Epsilon",
+      "06 <br> Zeta",
+      "07 <br> Eta",
+      "08 <br> Theta",
+      "09 <br> Iota",
+      "10 <br> Kappa",
+      "11 <br> Lambda",
+      "12 <br> Mu",
+      "13 <br> Nu"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "01 <br> Alpha",
+        "type": "01 <br> Alpha",
+        "task": "A ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "02 <br> Beta",
+        "type": "02 <br> Beta",
+        "task": "B ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "03 <br> Gamma",
+        "type": "03 <br> Gamma",
+        "task": "C ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "04 <br> Delta",
+        "type": "04 <br> Delta",
+        "task": "D ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "05 <br> Epsilon",
+        "type": "05 <br> Epsilon",
+        "task": "E ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "06 <br> Zeta",
+        "type": "06 <br> Zeta",
+        "task": "F ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "07 <br> Eta",
+        "type": "07 <br> Eta",
+        "task": "G ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "08 <br> Theta",
+        "type": "08 <br> Theta",
+        "task": "H ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "09 <br> Iota",
+        "type": "09 <br> Iota",
+        "task": "I ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "10 <br> Kappa",
+        "type": "10 <br> Kappa",
+        "task": "J ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 10,
+        "section": "11 <br> Lambda",
+        "type": "11 <br> Lambda",
+        "task": "K ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 11,
+        "section": "12 <br> Mu",
+        "type": "12 <br> Mu",
+        "task": "L ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      },
+      {
+        "id": 12,
+        "section": "13 <br> Nu",
+        "type": "13 <br> Nu",
+        "task": "M ",
+        "score": 0,
+        "events": [
+          "One ",
+          "Two"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "A1": {
+        "id": "A1",
+        "type": "",
+        "label": "A1",
+        "text": "A1",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-A1-0",
+        "parent": "Root.A",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "A2": {
+        "id": "A2",
+        "type": "",
+        "label": "A2",
+        "text": "A2",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-A2-1",
+        "parent": "Root.A",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "B1a": {
+        "id": "B1a",
+        "type": "",
+        "label": "B1a",
+        "text": "B1a",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-B1a-2",
+        "parent": "Root.B.B1",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "B1b": {
+        "id": "B1b",
+        "type": "",
+        "label": "B1b",
+        "text": "B1b",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-B1b-3",
+        "parent": "Root.B.B1",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Root.A.A1": {
+        "id": "Root.A.A1",
+        "type": "",
+        "label": "Root.A.A1",
+        "text": "Root.A.A1",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Root.A.A1-4",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Root.B.B1.B1a": {
+        "id": "Root.B.B1.B1a",
+        "type": "",
+        "label": "Root.B.B1.B1a",
+        "text": "Root.B.B1.B1a",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Root.B.B1.B1a-5",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Root.A.A2": {
+        "id": "Root.A.A2",
+        "type": "",
+        "label": "Root.A.A2",
+        "text": "Root.A.A2",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Root.A.A2-6",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Root.B.B1.B1b": {
+        "id": "Root.B.B1.B1b",
+        "type": "",
+        "label": "Root.B.B1.B1b",
+        "text": "Root.B.B1.B1b",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Root.B.B1.B1b-7",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Root.A.A1",
+        "id2": "Root.B.B1.B1a",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "cross",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Root.A.A2",
+        "id2": "Root.B.B1.B1b",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "cross",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Root.A": {
+        "id": "Root.A",
+        "domId": "classId-Root.A-0",
+        "classIds": [
+          "A1",
+          "A2"
+        ]
+      },
+      "Root.B.B1": {
+        "id": "Root.B.B1",
+        "domId": "classId-Root.B.B1-1",
+        "classIds": [
+          "B1a",
+          "B1b"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

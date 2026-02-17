@@ -1,0 +1,93 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Dense grid (many periods × many events)",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Q1",
+      "Q2"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Q1",
+        "type": "Q1",
+        "task": "P1 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Q1",
+        "type": "Q1",
+        "task": "P2 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Q1",
+        "type": "Q1",
+        "task": "P3 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Q2",
+        "type": "Q2",
+        "task": "P4 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Q2",
+        "type": "Q2",
+        "task": "P5 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Q2",
+        "type": "Q2",
+        "task": "P6 ",
+        "score": 0,
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ]
+      }
+    ]
+  }
+}

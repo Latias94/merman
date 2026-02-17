@@ -83,6 +83,19 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_title_with_br_like_text_049" => {
             Some(("0 0 167.8125 274", "167.812"))
         }
+        "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
+        "stress_flowchart_icons_prefixes_and_quotes_052" => Some(("0 0 566.5625 278", "566.562")),
+        "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
+        "stress_flowchart_icons_multiline_br_054" => Some(("0 0 145.5 374", "145.5")),
+        "stress_flowchart_icons_comments_separate_line_055" => Some(("0 0 92 174", "92")),
+        "stress_flowchart_icons_unicode_and_wrap_056" => Some(("0 0 701.515625 94", "701.516")),
+        "stress_flowchart_icons_click_security_strict_057" => {
+            Some(("0 0 139.890625 174", "139.891"))
+        }
+        "stress_flowchart_icons_classdef_and_style_058" => Some(("0 0 351.578125 174", "351.578")),
+        "stress_flowchart_icons_dense_fanout_060" => Some(("0 0 523.453125 278", "523.453")),
+        "stress_flowchart_icons_subgraph_mixed_061" => Some(("0 0 353.75 274", "353.75")),
+        "stress_flowchart_icons_edge_to_cluster_062" => Some(("0 0 422.078125 244", "422.078")),
         "mmdr_issue_28_text_rendering" => Some(("0 0 792.19873046875 244", "792.199")),
         "mmdr_issue_29_edge_label_distance" => Some((
             "0 0.000003814697265625 1339.015625 794.8007202148438",

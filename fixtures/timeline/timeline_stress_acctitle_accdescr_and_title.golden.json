@@ -1,0 +1,44 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Title (visible) — should not overlap",
+    "accTitle": null,
+    "accDescr": "This is a multi-line accessibility description.\nIt includes blank lines and punctuation: commas, dashes - and parentheses (ok).",
+    "sections": [
+      "Access"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "accTitle Accessibility title",
+        "score": 0,
+        "events": [
+          "Timeline"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Access",
+        "type": "Access",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "First milestone"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Access",
+        "type": "Access",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "Second milestone"
+        ]
+      }
+    ]
+  }
+}

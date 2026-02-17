@@ -1,0 +1,19 @@
+classDiagram
+direction TB
+
+%% Authored stress fixture (Mermaid@11.12.2): generic interfaces + implementation + dependency edges.
+
+class IRepository~T~
+<<interface>> IRepository~T~
+
+class Service~T~ {
+  +get(id: String) T
+}
+
+class SqlRepo~T~ {
+  +get(id: String) T
+}
+
+IRepository~T~ <|.. SqlRepo~T~
+Service~T~ ..> IRepository~T~ : depends
+

@@ -1,0 +1,13 @@
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: long edge labels with punctuation/unicode that stress wrapping + bbox.
+  %% Reference: repo-ref/mermaid/docs/syntax/architecture.md (edges + labels examples in existing fixtures).
+
+  group app(cloud)[Application]
+  service api(server)[API] in app
+  service db(database)[Primary DB] in app
+  service cache(database)[Cache] in app
+
+  api:R -[read path v1 users id with many words for wrapping]-> L:db
+  api:B -[write then invalidate cache ttl 30s retries 3 extra words]-> T:cache
+  cache:R -[refresh cache from db delta 0 05 wrap words]-> L:db

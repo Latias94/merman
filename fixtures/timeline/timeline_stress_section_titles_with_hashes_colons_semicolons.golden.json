@@ -1,0 +1,35 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Section titles with punctuation",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "#1 Alpha; Beta",
+      "#2 Gamma; Delta"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "#1 Alpha; Beta",
+        "type": "#1 Alpha; Beta",
+        "task": "P1 ",
+        "score": 0,
+        "events": [
+          "Uses ﬂ°hashtags¶ß and &ﬂ°°58¶ßcolons&ﬂ°°58¶ß"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "#2 Gamma; Delta",
+        "type": "#2 Gamma; Delta",
+        "task": "P2 ",
+        "score": 0,
+        "events": [
+          "Mixed punctuation; keep it stable"
+        ]
+      }
+    ]
+  }
+}
