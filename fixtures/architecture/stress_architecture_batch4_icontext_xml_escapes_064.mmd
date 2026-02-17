@@ -1,0 +1,8 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): iconText escapes + sanitizer (foreignObject).
+
+group api(cloud)[API]
+service db "<b>DB</b> & <i>Cache</i>" [Database] in api
+service app(server)[App] in api
+
+app:R --> L:db

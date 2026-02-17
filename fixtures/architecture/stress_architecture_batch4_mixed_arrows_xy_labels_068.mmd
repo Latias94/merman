@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): mixed arrows + XY routing + rotated labels.
+
+service tl(server)[TL]
+service tr(server)[TR]
+service bl(server)[BL]
+service br(server)[BR]
+
+tl:R -[east]-> L:tr
+tl:B -[south]-> T:bl
+tr:B -[diag]-> L:br
+bl:R -[diag]-> T:br

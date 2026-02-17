@@ -1,0 +1,128 @@
+{
+  "diagramType": "architecture",
+  "layout": {
+    "ArchitectureDiagram": {
+      "nodes": [
+        {
+          "id": "a",
+          "x": -35.0,
+          "y": 47.0,
+          "width": 40.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b",
+          "x": 35.0,
+          "y": -23.0,
+          "width": 40.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "c",
+          "x": 35.0,
+          "y": 47.0,
+          "width": 40.0,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-0",
+          "from": "a",
+          "to": "b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 5.0,
+              "y": 67.0
+            },
+            {
+              "x": 20.0,
+              "y": 32.0
+            },
+            {
+              "x": 35.0,
+              "y": -3.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-1",
+          "from": "b",
+          "to": "c",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 55.0,
+              "y": 17.0
+            },
+            {
+              "x": 55.0,
+              "y": 32.0
+            },
+            {
+              "x": 55.0,
+              "y": 47.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge-2",
+          "from": "c",
+          "to": "a",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 35.0,
+              "y": 67.0
+            },
+            {
+              "x": 20.0,
+              "y": 67.0
+            },
+            {
+              "x": 5.0,
+              "y": 67.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": -35.0,
+        "min_y": -23.0,
+        "max_x": 75.0,
+        "max_y": 87.0
+      }
+    }
+  }
+}

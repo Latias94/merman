@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): port direction matrix + arrow styles.
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+service d(server)[D]
+
+a:R --> L:b
+a:B --> T:c
+b:B --> T:d
+c:R --> L:d

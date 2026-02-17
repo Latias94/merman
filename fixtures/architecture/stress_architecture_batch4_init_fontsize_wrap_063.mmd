@@ -1,0 +1,10 @@
+%%{init: {"architecture": {"fontSize": 20}} }%%
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): init config (fontSize impacts edge label wrapping + bbox).
+
+service top(server)[Top]
+service mid(server)[Mid]
+service bot(server)[Bot]
+
+top:B -[long label words]-> T:mid
+mid:B -[another label]-> T:bot
