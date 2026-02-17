@@ -5,35 +5,32 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 For the current prioritized TODO/milestone plan, see `docs/performance/PERF_PLAN.md`.
 
-## Current Status (2026-02-16)
+## Current Status (2026-02-17)
 
-### Stable Baseline (2026-02-16)
+### Stable Baseline (2026-02-17)
 
 Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.baseline_2026-02-16.md`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md`
 - Report:
-  - `target/bench/stage_spotcheck.after_merge_main_2026-02-16.md` (not committed)
+  - `target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md` (local, not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.32x`
-  - `layout`: `0.87x`
-  - `render`: `1.61x`
-  - `end_to_end`: `0.90x`
+  - `parse`: `1.18x`
+  - `layout`: `0.78x`
+  - `render`: `1.53x`
+  - `end_to_end`: `1.01x`
 - Interpretation:
-  - **Overall end-to-end is already competitive**, largely because we are faster on several layouts
-    (`class_medium`, `state_medium`, `sequence_medium`).
+  - **Overall end-to-end is now near parity** on the prioritized medium fixtures.
   - The remaining performance gap is **concentrated**:
-    - `flowchart_medium end_to_end`: `1.42x` (render-heavy; `render 1.62x`, `layout 1.05x`)
-    - `mindmap_medium end_to_end`: `1.60x` (layout-heavy; `layout 2.02x`, `render 1.25x`)
-    - `architecture_medium end_to_end`: `2.01x` (layout+render; `layout 3.35x`, `render 1.97x`)
-    - Architecture dedicated rerun (single fixture, 50 samples / 2s warmup / 3s measurement, 2026-02-16):
-      - `architecture_medium`: `layout 2.86x`, `render 2.48x`, `end_to_end 2.03x`
-      - Report: `target/bench/stage_spotcheck.architecture_medium.arch_view_2026-02-16.md` (local, not committed)
+    - `flowchart_medium end_to_end`: `1.23x` (render-heavy; `render 1.49x`)
+    - `mindmap_medium end_to_end`: `1.84x` (layout-heavy; `layout 1.70x`)
+    - `architecture_medium end_to_end`: `3.00x` (layout+render; `layout 2.95x`, `render 2.10x`)
     - Render fixed-cost remains a consistent theme:
-      - `render/flowchart_medium`: `1.62x`
-      - `render/class_medium`: `2.35x`
-      - `render/state_medium`: `2.64x`
+      - `render/flowchart_medium`: `1.49x`
+      - `render/class_medium`: `2.83x`
+      - `render/state_medium`: `1.88x`
+      - `render/architecture_medium`: `2.10x`
 
 ### Recently Landed (2026-02-16)
 

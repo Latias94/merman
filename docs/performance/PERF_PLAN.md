@@ -3,19 +3,19 @@
 This document is the **actionable performance plan** for `merman`.
 It is intentionally **fixture-driven** and **stage-attributed** (parse/layout/render/end-to-end).
 
-## Baseline (2026-02-16)
+## Baseline (2026-02-17)
 
 Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.baseline_2026-02-16.md`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md`
 - Report:
-  - `target/bench/stage_spotcheck.after_merge_main_2026-02-16.md` (local, not committed)
+  - `target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md` (local, not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.32x`
-  - `layout`: `0.87x`
-  - `render`: `1.61x`
-  - `end_to_end`: `0.90x`
+  - `parse`: `1.18x`
+  - `layout`: `0.78x`
+  - `render`: `1.53x`
+  - `end_to_end`: `1.01x`
 
 ## Latest Update (2026-02-16)
 
@@ -62,9 +62,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 
 Outliers worth optimizing:
 
-- `flowchart_medium end_to_end`: `1.42x` (`render 1.62x`, `layout 1.05x`)
-- `mindmap_medium end_to_end`: `1.60x` (`layout 2.02x`, `render 1.25x`)
-- `architecture_medium end_to_end`: `2.01x` (`layout 3.35x`, `render 1.97x`)
+- `flowchart_medium end_to_end`: `1.23x` (`render 1.49x`)
+- `mindmap_medium end_to_end`: `1.84x` (`layout 1.70x`)
+- `architecture_medium end_to_end`: `3.00x` (`layout 2.95x`, `render 2.10x`)
 - Render fixed-cost remains a consistent theme (even when end-to-end is competitive on other canaries).
 
 Architecture note (single-fixture rerun, 50 samples / 2s warmup / 3s measurement, 2026-02-16):
