@@ -114,7 +114,7 @@ pub(super) fn render_sankey_diagram_svg(
         );
     } else {
         let mut w_attr = max_w_attr.clone();
-        let mut h_attr = fmt(vb_h);
+        let mut h_attr = fmt_string(vb_h);
         let parts: Vec<&str> = viewbox_attr.split_whitespace().collect();
         if parts.len() == 4 {
             w_attr = parts[2].to_string();
