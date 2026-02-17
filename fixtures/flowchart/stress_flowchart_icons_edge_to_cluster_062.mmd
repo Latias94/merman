@@ -1,0 +1,11 @@
+flowchart LR
+
+%% Authored stress fixture (Mermaid@11.12.2): Edge labels + icons interacting with clusters.
+
+    subgraph Cluster["Cluster fa:fa-cubes"]
+        X["fa:fa-circle-xmark reject"]
+        Y["fa:fa-circle-check accept"]
+    end
+
+    Outside["fa:fa-right-to-bracket enter"] -->|fa:fa-arrow-right route| X
+    Outside -->|fa:fa-arrow-right route| Y
