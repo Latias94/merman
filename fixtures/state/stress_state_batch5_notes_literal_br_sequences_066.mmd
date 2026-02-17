@@ -1,0 +1,13 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: note text containing literal "<br/>" strings and backslash escapes.
+
+  [*] --> A
+  A --> B
+  B --> [*]
+
+  note left of A
+    literal <br/> should be treated as text
+    line2\\nline3 (escaped)
+  end note
+

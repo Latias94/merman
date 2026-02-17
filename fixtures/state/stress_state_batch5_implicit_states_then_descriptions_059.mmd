@@ -1,0 +1,13 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: implicit states via transitions, later descriptions, and labeled edges.
+
+  [*] --> s1
+  s1 --> s2: first hop
+  s2 --> s3: second hop
+  s3 --> [*]
+
+  s1 : Entering the system
+  s2 : Processing step (may take time)
+  s3 : Done
+

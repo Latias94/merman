@@ -1,0 +1,19 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: deep nesting + multiple exits; stress bounds + routing.
+
+  [*] --> L1
+
+  state L1 {
+    [*] --> L2
+    state L2 {
+      [*] --> Leaf
+      Leaf --> [*]
+    }
+    L2 --> Exit1
+    L2 --> Exit2
+  }
+
+  Exit1 --> [*]
+  Exit2 --> [*]
+

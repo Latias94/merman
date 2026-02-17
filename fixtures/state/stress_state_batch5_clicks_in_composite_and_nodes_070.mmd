@@ -1,0 +1,13 @@
+  stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: click directives on composite state labels.
+
+  [*] --> Top
+  Top --> [*]
+
+  click Top "https://example.com/top" "Top"
+
+  state Top {
+    [*] --> Inner
+    Inner --> [*]
+  }

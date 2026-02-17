@@ -1,0 +1,11 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: aliases and ids that contain dots/slashes.
+
+  state "pkg.module/v1" as pkg_mod
+  state "pkg.module/v2" as pkg_mod2
+
+  [*] --> pkg_mod
+  pkg_mod --> pkg_mod2: upgrade
+  pkg_mod2 --> [*]
+

@@ -13,7 +13,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: `docs/alignment/STATUS.md`.
-- Corpus size (2026-02-17): 1794 upstream SVG baselines across 23 diagrams.
+- Corpus size (2026-02-17): 1806 upstream SVG baselines across 23 diagrams.
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
 
 ## What you get

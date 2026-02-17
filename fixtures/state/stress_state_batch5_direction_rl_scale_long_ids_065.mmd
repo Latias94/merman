@@ -1,0 +1,10 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: direction + scale + long ids and long labels.
+
+  direction RL
+  scale 600 width
+
+  [*] --> a_very_long_state_identifier_name_1
+  a_very_long_state_identifier_name_1 --> a_very_long_state_identifier_name_2: a label that should wrap nicely
+  a_very_long_state_identifier_name_2 --> [*]
