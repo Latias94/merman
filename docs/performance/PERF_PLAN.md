@@ -75,6 +75,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - ClassDiagram edges encode `data-points` as Base64(JSON.stringify(points)). Switch from
       `serde_json::to_writer` to our parity-oriented `json_stringify_points_into` helper to reduce
       allocation + formatting overhead and better match upstream `JSON.stringify` number formatting.
+  - `perf(class): reduce render fixed-cost` (`6a5bd4c8`)
+    - Lazily build the note sanitizer config (only if notes exist), avoid a few per-node allocations,
+      and add finer-grained class render timings to guide future render work.
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`

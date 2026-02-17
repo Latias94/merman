@@ -71,6 +71,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 - `29a5bdaf` — `perf(class): speed up edge data-points encoding`
   - Uses `json_stringify_points_into` (parity helper) instead of `serde_json` when generating
     Base64-encoded `data-points` payloads for edges.
+- `6a5bd4c8` — `perf(class): reduce render fixed-cost`
+  - Avoids building the note sanitizer config unless needed and reduces a few per-node allocations
+    in the class renderer; adds finer-grained class render timing breakdown.
 
 ### Recently Landed (2026-02-16)
 
