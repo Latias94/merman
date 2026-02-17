@@ -1,4 +1,4 @@
-use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
 use merman_core::{Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
@@ -383,24 +383,20 @@ fn bench_end_to_end(c: &mut Criterion) {
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
-            b.iter_batched(
-                || data,
-                |text| {
-                    let svg = match merman::render::render_svg_sync(
-                        &engine,
-                        black_box(text),
-                        parse_opts,
-                        &layout,
-                        &svg_opts,
-                    ) {
-                        Ok(Some(v)) => v,
-                        Ok(None) => return,
-                        Err(_) => return,
-                    };
-                    black_box(svg.len());
-                },
-                BatchSize::SmallInput,
-            );
+            b.iter(|| {
+                let svg = match merman::render::render_svg_sync(
+                    &engine,
+                    black_box(data),
+                    parse_opts,
+                    &layout,
+                    &svg_opts,
+                ) {
+                    Ok(Some(v)) => v,
+                    Ok(None) => return,
+                    Err(_) => return,
+                };
+                black_box(svg.len());
+            });
         });
     }
     group.finish();
