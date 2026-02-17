@@ -1,0 +1,14 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: multiple parallel edges with distinct labels + classes/styles.
+
+  classDef hot fill:#ffdddd,stroke:#d33,stroke-width:2px,color:#222;
+
+  [*] --> A
+  A --> B: fast
+  A --> B: slow
+  A --> B: retry
+  B --> [*]
+
+  class A,B hot;
+

@@ -252,6 +252,24 @@ pub fn lookup_state_root_viewport_override(
             Some(("-51.8046875 -50 180.5703125 196", "180.57"))
         }
         "upstream_html_demos_state_you_can_add_notes_010" => Some(("0 0 908.75 470", "908.75")),
+        "stress_state_batch5_choice_fork_join_with_notes_markdown_062" => {
+            Some(("0 0 470.59375 794", "470.594"))
+        }
+        "stress_state_batch5_state_keyword_spaces_and_alias_064" => {
+            Some(("0 0 225.921875 298", "225.922"))
+        }
+        "stress_state_batch5_direction_rl_scale_long_ids_065" => {
+            Some(("0.006646156311035156 0 967.2566528320312 64", "967.257"))
+        }
+        "stress_state_batch5_aliases_with_dots_slashes_069" => {
+            Some(("0 0 140.484375 298", "140.484"))
+        }
+        "stress_state_batch5_clicks_in_composite_and_nodes_070" => {
+            Some(("0 0 138.890625 437", "138.891"))
+        }
+        "stress_state_batch5_concurrency_four_regions_long_titles_061" => {
+            Some(("0 0 1291.328125 484.5", "1291.33"))
+        }
         _ => None,
     }
 }

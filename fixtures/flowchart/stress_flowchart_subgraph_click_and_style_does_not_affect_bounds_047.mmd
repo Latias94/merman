@@ -1,0 +1,16 @@
+flowchart TB
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: click + classDef styling should not distort subgraph bounds.
+
+  classDef hot fill:#ffdddd,stroke:#d33,stroke-width:2px,color:#222;
+
+  subgraph sg["styled subgraph"]
+    direction TB
+    a["A"]
+    b["B"]
+    a --> b
+    class a,b hot;
+  end
+
+  click a "https://example.com" "A tooltip"
+

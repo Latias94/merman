@@ -1,0 +1,22 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: subgraph title measurement (spaces vs dashes) + nested boxes.
+
+  outside["outside"]
+
+  subgraph parent_sg["title wwith spaces"]
+    direction TB
+    a["A"]
+
+    subgraph child_sg["title-with-dashes"]
+      direction TB
+      b["B"]
+      c["C"]
+      b --> c
+    end
+
+    a --> child_sg
+  end
+
+  outside --> a
+

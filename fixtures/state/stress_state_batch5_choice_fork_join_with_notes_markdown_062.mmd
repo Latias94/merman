@@ -1,0 +1,29 @@
+stateDiagram-v2
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: choice + fork/join + notes + markdown in edge labels.
+
+  [*] --> Init
+  Init --> if_state: _check_
+
+  state if_state <<choice>>
+  if_state --> Fork: **yes**
+  if_state --> Fail: **no**
+
+  note right of if_state
+    Decision point.
+    Multiple lines.
+  end note
+
+  state Fork <<fork>>
+  Fork --> WorkA
+  Fork --> WorkB
+
+  WorkA --> Join
+  WorkB --> Join
+
+  state Join <<join>>
+  Join --> Done: _merge_
+
+  Fail --> [*]
+  Done --> [*]
+

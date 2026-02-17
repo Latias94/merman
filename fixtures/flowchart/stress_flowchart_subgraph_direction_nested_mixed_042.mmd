@@ -1,0 +1,19 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: nested subgraph directions (LR graph + TB subgraph + RL nested).
+
+  subgraph top["TOP"]
+    direction TB
+    t1["T1"]
+    t2["T2"]
+
+    subgraph inner["INNER (RL)"]
+      direction RL
+      i1["I1"]
+      i2["I2"]
+      i1 --> i2
+    end
+
+    t1 --> inner --> t2
+  end
+

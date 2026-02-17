@@ -1,0 +1,23 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: edges to/from a subgraph id + internal edges; direction inheritance edge cases.
+
+  outside["outside"]
+
+  subgraph sg_to["subgraph receiving external edge"]
+    direction TB
+    a["A"]
+    b["B"]
+    a --> b
+  end
+
+  subgraph sg_inherit["subgraph with internal-only edges"]
+    direction RL
+    c["C"]
+    d["D"]
+    c --> d
+  end
+
+  outside --> sg_to
+  b --> c
+

@@ -1,0 +1,15 @@
+flowchart LR
+  %% Authored stress fixture (Mermaid@11.12.2)
+  %% Focus: explicit subgraph id + title; edges target the subgraph id.
+
+  outside["outside"]
+
+  subgraph sg_id["explicit id title"]
+    direction TB
+    a["A"]
+    b["B"]
+    a --> b
+  end
+
+  outside --> sg_id
+

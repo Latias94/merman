@@ -3751,9 +3751,45 @@ fn render_state_cluster(
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
 
+    let mut link_open = String::new();
+    let mut link_close = String::new();
+    if let Some(links) = ctx.links.get(cluster_id) {
+        let mut push_link = |link: &StateSvgLink| {
+            let url = link.url.trim();
+            let tooltip = link.tooltip.trim();
+            let title_attr = if tooltip.is_empty() {
+                String::new()
+            } else {
+                format!(r#" title="{}""#, escape_attr(tooltip))
+            };
+
+            if !url.is_empty() && (ctx.security_level_loose || state_link_href_allowed(url)) {
+                link_open.push_str(&format!(
+                    r#"<a xlink:href="{}"{}>"#,
+                    escape_attr(url),
+                    title_attr
+                ));
+                link_close.push_str("</a>");
+                return;
+            }
+
+            link_open.push_str(&format!(r#"<a{}>"#, title_attr));
+            link_close.push_str("</a>");
+        };
+
+        match links {
+            StateSvgLinks::One(link) => push_link(link),
+            StateSvgLinks::Many(list) => {
+                for link in list {
+                    push_link(link);
+                }
+            }
+        }
+    }
+
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
         escape_attr(class),
         escape_attr(cluster_id),
         escape_attr(cluster_id),
@@ -3763,10 +3799,12 @@ fn render_state_cluster(
         fmt(cluster.width.max(1.0)),
         fmt(cluster.height.max(1.0)),
         escape_attr(data_look),
+        link_open,
         fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
         fmt(y + 1.0),
         fmt(cluster.title_label.width.max(0.0)),
         escape_xml(&title),
+        link_close,
         fmt(x),
         fmt(y + 21.0),
         fmt(cluster.width.max(1.0)),
