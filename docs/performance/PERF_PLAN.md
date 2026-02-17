@@ -101,8 +101,8 @@ Architecture note (single-fixture rerun, 50 samples / 2s warmup / 3s measurement
 
 Targets (spotcheck ratios):
 
-- `end_to_end/flowchart_medium`: `<= 1.15x` (from `1.42x`)
-- `render/flowchart_medium`: `<= 1.35x` (from `1.62x`)
+- `end_to_end/flowchart_medium`: `<= 1.05x` (from `1.23x`)
+- `render/flowchart_medium`: `<= 1.25x` (from `1.49x`)
 
 Work items:
 
@@ -121,10 +121,10 @@ Correctness gate:
 
 Targets:
 
-- `render` gmean: `<= 1.35x` (from `1.61x`)
-- `render/class_medium`: `<= 2.00x` (from `2.35x`)
-- `render/state_medium`: `<= 2.00x` (from `2.64x`)
-- `render/architecture_medium`: `<= 1.60x` (from `1.97x`)
+- `render` gmean: `<= 1.30x` (from `1.53x`)
+- `render/class_medium`: `<= 2.00x` (from `2.83x`)
+- `render/state_medium`: `<= 1.50x` (from `1.88x`)
+- `render/architecture_medium`: `<= 1.60x` (from `2.10x`)
 
 Work items:
 
@@ -138,8 +138,8 @@ Work items:
 
 Targets:
 
-- `layout/mindmap_medium <= 1.60x` (from `2.02x`)
-- `end_to_end/mindmap_medium <= 1.35x` (from `1.60x`)
+- `layout/mindmap_medium <= 1.40x` (from `1.70x`)
+- `end_to_end/mindmap_medium <= 1.40x` (from `1.84x`)
 
 Work items:
 
@@ -151,8 +151,8 @@ Work items:
 
 Targets:
 
-- `end_to_end/architecture_medium <= 1.50x` (from `~2.0x`)
-- `layout/architecture_medium <= 2.50x` (from `~2.9–3.35x`)
+- `end_to_end/architecture_medium <= 2.00x` (from `3.00x`)
+- `layout/architecture_medium <= 2.20x` (from `2.95x`)
 
 Work items:
 
@@ -163,8 +163,8 @@ Work items:
 
 Targets:
 
-- `parse/state_medium <= 1.80x` (from `2.09x`)
-- `parse/sequence_medium <= 1.40x` (from `1.66x`)
+- `parse/state_medium <= 1.80x` (from `2.47x`)
+- `parse/sequence_medium <= 1.15x` (from `1.23x`)
 
 Work items:
 
