@@ -792,24 +792,54 @@ impl SimGraph {
 
         let root_compound_start = timing_enabled.then(std::time::Instant::now);
         // Precompute root compound membership for each node.
-        let node_root_compound: Vec<Option<String>> = self
-            .nodes
-            .iter()
-            .map(|n| {
-                let mut cur = n.parent.as_deref()?;
-                while let Some(Some(p)) = self.compound_parent.get(cur) {
-                    cur = p.as_str();
+        //
+        // Most Mermaid Architecture fixtures have 0 or 1 top-level root compound; in those cases
+        // compound overlap separation is a no-op. Avoid allocating root maps unless we actually
+        // observe multiple distinct roots.
+        let root_to_nodes: Option<std::collections::BTreeMap<String, Vec<usize>>> =
+            if self.compound_parent.is_empty() || !self.nodes.iter().any(|n| n.parent.is_some()) {
+                None
+            } else {
+                fn root_of<'a>(
+                    n: &'a SimNode,
+                    compound_parent: &'a FxHashMap<String, Option<String>>,
+                ) -> Option<&'a str> {
+                    let mut cur = n.parent.as_deref()?;
+                    while let Some(Some(p)) = compound_parent.get(cur) {
+                        cur = p.as_str();
+                    }
+                    Some(cur)
                 }
-                Some(cur.to_string())
-            })
-            .collect();
-        let mut root_to_nodes: std::collections::BTreeMap<String, Vec<usize>> =
-            std::collections::BTreeMap::new();
-        for (idx, root) in node_root_compound.iter().enumerate() {
-            if let Some(r) = root {
-                root_to_nodes.entry(r.clone()).or_default().push(idx);
-            }
-        }
+
+                let mut first_root: Option<&str> = None;
+                let mut has_multiple_roots = false;
+                for n in &self.nodes {
+                    let Some(root) = root_of(n, &self.compound_parent) else {
+                        continue;
+                    };
+                    match first_root {
+                        Some(r0) if r0 != root => {
+                            has_multiple_roots = true;
+                            break;
+                        }
+                        None => first_root = Some(root),
+                        _ => {}
+                    }
+                }
+
+                if !has_multiple_roots {
+                    None
+                } else {
+                    let mut root_to_nodes: std::collections::BTreeMap<String, Vec<usize>> =
+                        std::collections::BTreeMap::new();
+                    for (idx, n) in self.nodes.iter().enumerate() {
+                        if let Some(root) = root_of(n, &self.compound_parent) {
+                            root_to_nodes.entry(root.to_string()).or_default().push(idx);
+                        }
+                    }
+                    Some(root_to_nodes)
+                }
+            };
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), root_compound_start) {
             t.root_compound = s.elapsed();
@@ -1076,14 +1106,16 @@ impl SimGraph {
             } else {
                 apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
             }
-            apply_root_compound_overlap_separation_to_displacements(
-                &self.nodes,
-                &root_to_nodes,
-                compound_padding,
-                half_default_edge_length,
-                max_d,
-                &mut disps,
-            );
+            if let Some(root_to_nodes) = root_to_nodes.as_ref() {
+                apply_root_compound_overlap_separation_to_displacements(
+                    &self.nodes,
+                    root_to_nodes,
+                    compound_padding,
+                    half_default_edge_length,
+                    max_d,
+                    &mut disps,
+                );
+            }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
                 let (mdx, mdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
