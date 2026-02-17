@@ -71,6 +71,10 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
       - pre-index group members and cache bboxes during separation iterations
     - Architecture stress bench (`cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`):
       - `layout_stress/architecture_reasonable_height_layout_x50`: ~`-33%` (local)
+  - `perf(class): speed up edge data-points encoding` (`29a5bdaf`)
+    - ClassDiagram edges encode `data-points` as Base64(JSON.stringify(points)). Switch from
+      `serde_json::to_writer` to our parity-oriented `json_stringify_points_into` helper to reduce
+      allocation + formatting overhead and better match upstream `JSON.stringify` number formatting.
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`

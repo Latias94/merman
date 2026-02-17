@@ -68,6 +68,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 - `9439199a` — `perf(architecture): speed up group separation`
   - Reduces fixed-cost overhead in Architecture `group_separation` (borrowed ids, `FxHash*`,
     member indexing + cached bboxes).
+- `29a5bdaf` — `perf(class): speed up edge data-points encoding`
+  - Uses `json_stringify_points_into` (parity helper) instead of `serde_json` when generating
+    Base64-encoded `data-points` payloads for edges.
 
 ### Recently Landed (2026-02-16)
 
