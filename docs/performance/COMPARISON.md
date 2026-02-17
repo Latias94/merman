@@ -4,7 +4,7 @@
 
 ## Environment
 
-- Timestamp: "2026-02-17 16:14:46 +0800"
+- Timestamp: "2026-02-17 17:34:19 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
@@ -12,7 +12,7 @@
 - Node: "v24.13.0"
 - Chromium: "HeadlessChrome/131.0.6778.204"
 - mermaid-cli: "11.12.0"
-- merman: `7cc41c8b4be5dda91e750380aa3cc7225756a254`
+- merman: `c5f37268acefb276b13256bb54811ae3b2f49f82`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: `mermaid@11.12.2`
 - Rust:
@@ -39,10 +39,10 @@ LLVM version: 21.1.8
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/architecture_medium | 32.90 µs | 16.23 µs | 8.80 ms | 2.0x | 0.00x |
-| end_to_end/class_medium | 868.67 µs | 1.67 ms | 68.45 ms | 0.5x | 0.01x |
-| end_to_end/flowchart_medium | 5.92 ms | 5.39 ms | 111.20 ms | 1.1x | 0.05x |
-| end_to_end/mindmap_medium | 127.31 µs | 84.88 µs | 24.25 ms | 1.5x | 0.01x |
+| end_to_end/architecture_medium | 45.30 µs | 18.25 µs | 9.80 ms | 2.5x | 0.00x |
+| end_to_end/class_medium | 1.01 ms | 2.70 ms | 51.10 ms | 0.4x | 0.02x |
+| end_to_end/flowchart_medium | 4.27 ms | 4.51 ms | 76.40 ms | 0.9x | 0.06x |
+| end_to_end/mindmap_medium | 206.91 µs | 103.00 µs | 18.00 ms | 2.0x | 0.01x |
 
 ## Notes
 
