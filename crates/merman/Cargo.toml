@@ -45,3 +45,13 @@ criterion = "0.5"
 name = "pipeline"
 harness = false
 required-features = ["render"]
+
+[[bench]]
+name = "flowchart_stress"
+harness = false
+required-features = ["render"]
+
+[[bench]]
+name = "architecture_stress"
+harness = false
+required-features = ["render"]
