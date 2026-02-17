@@ -71,16 +71,16 @@ impl std::fmt::Display for OptionalStyleXmlAttr<'_> {
 }
 
 pub(super) struct FlowchartRenderCtx<'a> {
-    pub(super) diagram_id: String,
+    pub(super) diagram_id: &'a str,
     #[allow(dead_code)]
-    pub(super) diagram_type: String,
+    pub(super) diagram_type: &'static str,
     pub(super) tx: f64,
     pub(super) ty: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
-    pub(super) config: merman_core::MermaidConfig,
+    pub(super) config: &'a merman_core::MermaidConfig,
     pub(super) node_html_labels: bool,
     pub(super) edge_html_labels: bool,
-    pub(super) class_defs: IndexMap<String, Vec<String>>,
+    pub(super) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(super) node_border_color: String,
     pub(super) node_fill_color: String,
     pub(super) default_edge_interpolate: String,
@@ -93,7 +93,7 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) nodes_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowNode>,
     pub(super) edges_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(super) subgraphs_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
-    pub(super) tooltips: FxHashMap<String, String>,
+    pub(super) tooltips: &'a FxHashMap<String, String>,
     pub(super) recursive_clusters: FxHashSet<&'a str>,
     pub(super) parent: FxHashMap<&'a str, &'a str>,
     pub(super) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
@@ -107,7 +107,7 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) edge_wrap_mode: crate::text::WrapMode,
     pub(super) text_style: crate::text::TextStyle,
     #[allow(dead_code)]
-    pub(super) diagram_title: Option<String>,
+    pub(super) diagram_title: Option<&'a str>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -896,7 +896,7 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
 
         if found.is_none() && !e.classes.is_empty() {
             if let Some(stroke) = flowchart_resolve_stroke_for_marker(
-                &ctx.class_defs,
+                ctx.class_defs,
                 &e.classes,
                 &ctx.default_edge_style,
                 &e.style,
@@ -1619,7 +1619,7 @@ pub(super) fn render_flowchart_cluster(
         return;
     }
 
-    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &sg.classes, &sg.styles, &[]);
+    let compiled_styles = flowchart_compile_styles(ctx.class_defs, &sg.classes, &sg.styles, &[]);
     let rect_style = compiled_styles.node_style.trim();
     let label_style = compiled_styles.label_style.trim();
 
@@ -1682,7 +1682,7 @@ pub(super) fn render_flowchart_cluster(
         return;
     }
 
-    let title_html = flowchart_label_html(&cluster.title, label_type, &ctx.config);
+    let title_html = flowchart_label_html(&cluster.title, label_type, ctx.config);
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;
@@ -4943,7 +4943,7 @@ fn flowchart_compute_edge_path_geom(
         }
 
         let trace = FlowchartEdgeTrace {
-            fixture_diagram_id: ctx.diagram_id.clone(),
+            fixture_diagram_id: ctx.diagram_id.to_string(),
             edge_id: edge.id.clone(),
             from: edge.from.clone(),
             to: edge.to.clone(),
@@ -5070,7 +5070,7 @@ fn render_flowchart_edge_path(
     // `stroke` value for the marker id suffix.
     let compiled_marker_color = if marker_color.is_none() && !edge.classes.is_empty() {
         flowchart_resolve_stroke_for_marker(
-            &ctx.class_defs,
+            ctx.class_defs,
             &edge.classes,
             &ctx.default_edge_style,
             &edge.style,
@@ -5123,12 +5123,12 @@ fn render_flowchart_edge_path(
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);
-        write_flowchart_marker_id_xml(out, &ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
         out.push_str(r#")""#);
     }
     if let Some(base) = flowchart_edge_marker_end_base(edge) {
         out.push_str(r#" marker-end="url(#"#);
-        write_flowchart_marker_id_xml(out, &ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
         out.push_str(r#")""#);
     }
     out.push_str(" />");
@@ -5145,7 +5145,7 @@ pub(super) fn render_flowchart_edge_label(
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
     let compiled_label_styles = flowchart_compile_styles(
-        &ctx.class_defs,
+        ctx.class_defs,
         &edge.classes,
         &ctx.default_edge_style,
         &edge.style,
@@ -5335,7 +5335,7 @@ pub(super) fn render_flowchart_edge_label(
     let label_html = if label_text.trim().is_empty() {
         String::new()
     } else {
-        flowchart_label_html(label_text, label_type, &ctx.config)
+        flowchart_label_html(label_text, label_type, ctx.config)
     };
 
     if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
@@ -5921,7 +5921,7 @@ fn render_flowchart_node(
             // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
             href = link
                 .filter(|u| *u != "about:blank")
-                .filter(|u| href_is_safe_in_strict_mode(u, &ctx.config));
+                .filter(|u| href_is_safe_in_strict_mode(u, ctx.config));
             // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
             // interactions (`click A someFn`) still mark the node as clickable, but do not
             // emit an anchor element in the SVG.
@@ -6023,7 +6023,7 @@ fn render_flowchart_node(
 
     let style_start = timing_enabled.then(std::time::Instant::now);
     let mut compiled_styles =
-        flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles, &[]);
+        flowchart_compile_styles(ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
@@ -6828,7 +6828,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -6940,7 +6940,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7072,7 +7072,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7146,7 +7146,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7238,7 +7238,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7337,7 +7337,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7428,7 +7428,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7518,7 +7518,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -7637,7 +7637,7 @@ fn render_flowchart_node(
                 flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
-                &ctx.class_defs,
+                ctx.class_defs,
                 node_classes,
                 node_styles,
             );
@@ -8225,7 +8225,7 @@ fn render_flowchart_node(
 
                 // Label group uses a background class in Mermaid's image/icon helpers.
                 let label_html =
-                    label_html_timed!(flowchart_label_html(label_text, label_type, &ctx.config));
+                    label_html_timed!(flowchart_label_html(label_text, label_type, ctx.config));
                 let label_dy = if top_label {
                     -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
                 } else {
@@ -9209,7 +9209,7 @@ fn render_flowchart_node(
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
         &ctx.text_style,
-        &ctx.class_defs,
+        ctx.class_defs,
         node_classes,
         node_styles,
     );
@@ -9275,7 +9275,7 @@ fn render_flowchart_node(
         out.push_str("</g></g></g>");
     } else {
         let label_html =
-            label_html_timed!(flowchart_label_html(label_text, label_type, &ctx.config));
+            label_html_timed!(flowchart_label_html(label_text, label_type, ctx.config));
         let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             let has_inline_style_tags = ctx.node_html_labels && label_type != "markdown" && {
@@ -10101,12 +10101,14 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
     // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
-    let mut render_edges: Vec<crate::flowchart::FlowEdge> = Vec::new();
+    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
+    let mut render_edges: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> =
+        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
     let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
     for e in &model.edges {
         if e.from != e.to {
-            render_edges.push(e.clone());
+            render_edges.push(std::borrow::Cow::Borrowed(e));
             continue;
         }
 
@@ -10139,9 +10141,9 @@ fn render_flowchart_v2_svg_with_config_inner(
         edge2.label = None;
         edge2.label_type = None;
 
-        render_edges.push(edge1);
-        render_edges.push(edge_mid);
-        render_edges.push(edge2);
+        render_edges.push(std::borrow::Cow::Owned(edge1));
+        render_edges.push(std::borrow::Cow::Owned(edge_mid));
+        render_edges.push(std::borrow::Cow::Owned(edge2));
     }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
@@ -10155,11 +10157,13 @@ fn render_flowchart_v2_svg_with_config_inner(
         .map(|sg| sg.id.as_str())
         .collect();
     if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
-        let mut normal: Vec<crate::flowchart::FlowEdge> = Vec::with_capacity(render_edges.len());
-        let mut cluster: Vec<crate::flowchart::FlowEdge> = Vec::new();
+        let mut normal: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> =
+            Vec::with_capacity(render_edges.len());
+        let mut cluster: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> = Vec::new();
         for e in render_edges {
-            if cluster_ids_with_children.contains(e.from.as_str())
-                || cluster_ids_with_children.contains(e.to.as_str())
+            let edge = e.as_ref();
+            if cluster_ids_with_children.contains(edge.from.as_str())
+                || cluster_ids_with_children.contains(edge.to.as_str())
             {
                 cluster.push(e);
             } else {
@@ -10261,11 +10265,15 @@ fn render_flowchart_v2_svg_with_config_inner(
         let _ = nodes_by_id.entry(n.id.as_str()).or_insert(n);
     }
 
-    let edge_order: Vec<&str> = render_edges.iter().map(|e| e.id.as_str()).collect();
+    let edge_order: Vec<&str> = render_edges
+        .iter()
+        .map(|e| e.as_ref().id.as_str())
+        .collect();
     let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
-        edges_by_id.insert(e.id.as_str(), e);
+        let edge = e.as_ref();
+        edges_by_id.insert(edge.id.as_str(), edge);
     }
 
     let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
@@ -10298,11 +10306,12 @@ fn render_flowchart_v2_svg_with_config_inner(
             continue;
         }
         let mut external = false;
-        for e in render_edges.iter() {
+        for e in &render_edges {
+            let e = e.as_ref();
             // Match Mermaid `adjustClustersAndEdges` / flowchart-v2 behavior: a cluster is
             // considered to have external connections when an edge crosses its descendant boundary.
-            let from_in = flowchart_is_strict_descendant(&parent, &e.from, &sg.id);
-            let to_in = flowchart_is_strict_descendant(&parent, &e.to, &sg.id);
+            let from_in = flowchart_is_strict_descendant(&parent, e.from.as_str(), sg.id.as_str());
+            let to_in = flowchart_is_strict_descendant(&parent, e.to.as_str(), sg.id.as_str());
             if from_in != to_in {
                 external = true;
                 break;
@@ -10357,15 +10366,15 @@ fn render_flowchart_v2_svg_with_config_inner(
     let node_fill_color = theme_color(effective_config_value, "mainBkg", "#ECECFF");
 
     let ctx = FlowchartRenderCtx {
-        diagram_id: diagram_id.to_string(),
+        diagram_id,
         tx,
         ty,
-        diagram_type: diagram_type.to_string(),
+        diagram_type,
         measurer,
-        config: effective_config.clone(),
+        config: effective_config,
         node_html_labels,
         edge_html_labels,
-        class_defs: model.class_defs.clone(),
+        class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
         default_edge_interpolate,
@@ -10377,7 +10386,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
-        tooltips: model.tooltips.clone(),
+        tooltips: &model.tooltips,
         recursive_clusters,
         parent,
         layout_nodes_by_id,
@@ -10390,7 +10399,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_wrap_mode,
         edge_wrap_mode,
         text_style,
-        diagram_title: diagram_title.map(|s| s.to_string()),
+        diagram_title,
     };
 
     let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =
@@ -10609,7 +10618,7 @@ fn render_flowchart_v2_svg_with_config_inner(
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_classes(
                                         &ctx.text_style,
-                                        &ctx.class_defs,
+                                        ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,
                                     );
@@ -10785,6 +10794,7 @@ fn render_flowchart_v2_svg_with_config_inner(
             },
         );
         for e in &render_edges {
+            let e = e.as_ref();
             let root_id = {
                 let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_lca);
                 lca_for_ids(
