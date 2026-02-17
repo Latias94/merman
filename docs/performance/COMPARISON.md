@@ -4,14 +4,17 @@
 
 ## Environment
 
-- Timestamp: "2026-02-15 18:39:28 +0800"
+- Timestamp: "2026-02-17 16:14:46 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
 - Python: "3.13.11"
-- merman: `e697f346c0de84d299c4b80a431e1a39d344edc8`
+- Node: "v24.13.0"
+- Chromium: "HeadlessChrome/131.0.6778.204"
+- mermaid-cli: "11.12.0"
+- merman: `7cc41c8b4be5dda91e750380aa3cc7225756a254`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
-- mermaid-js: unknown
+- mermaid-js: `mermaid@11.12.2`
 - Rust:
 
 ```
@@ -28,14 +31,18 @@ LLVM version: 21.1.8
 
 - `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
-- Filter: "end_to_end/flowchart_medium"
-- Sample size: 20, warm-up: 1s, measurement: 1s
+- Filter: "end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium)"
+- Exact benches: `end_to_end/flowchart_medium`, `end_to_end/class_medium`, `end_to_end/mindmap_medium`, `end_to_end/architecture_medium`
+- Sample size: 15, warm-up: 1s, measurement: 1s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/flowchart_medium | 5.75 ms | 4.81 ms | - | 1.2x | - |
+| end_to_end/architecture_medium | 32.90 µs | 16.23 µs | 8.80 ms | 2.0x | 0.00x |
+| end_to_end/class_medium | 868.67 µs | 1.67 ms | 68.45 ms | 0.5x | 0.01x |
+| end_to_end/flowchart_medium | 5.92 ms | 5.39 ms | 111.20 ms | 1.1x | 0.05x |
+| end_to_end/mindmap_medium | 127.31 µs | 84.88 µs | 24.25 ms | 1.5x | 0.01x |
 
 ## Notes
 

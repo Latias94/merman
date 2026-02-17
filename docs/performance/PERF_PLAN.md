@@ -1,203 +1,123 @@
-# Performance Plan (Targets → Milestones → Work Items)
+# Performance Plan (Targets -> Milestones -> Work Items)
 
-This document is the **actionable performance plan** for `merman`.
-It is intentionally **fixture-driven** and **stage-attributed** (parse/layout/render/end-to-end).
+This document is the actionable performance plan for `merman`.
+It is fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
 ## Baseline (2026-02-17)
 
-Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
+We track two complementary views against `repo-ref/mermaid-rs-renderer` (mmdr):
 
-- Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md`
-- Report:
-  - `target/bench/stage_spotcheck.after_merge_main_local_2026-02-17.md` (local, not committed)
-- Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.18x`
-  - `layout`: `0.78x`
-  - `render`: `1.53x`
-  - `end_to_end`: `1.01x`
+1) **End-to-end canaries** (throughput view)
+- Report: `docs/performance/COMPARISON.md`
+- Filter used in the latest report: `end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium)`
+- Observed ratios (`merman / mmdr`, mid estimate):
+  - `end_to_end/flowchart_medium`: `1.1x` (slower)
+  - `end_to_end/class_medium`: `0.5x` (faster)
+  - `end_to_end/mindmap_medium`: `1.5x` (slower)
+  - `end_to_end/architecture_medium`: `2.0x` (slower)
 
-## Latest Update (2026-02-17)
+2) **Stage attribution** (what moved view)
+- Report: `docs/performance/spotcheck_2026-02-17.md`
+- Stage gmeans (`merman / mmdr`, geometric mean over the fixture set):
+  - `parse`: `1.36x`
+  - `layout`: `1.42x`
+  - `render`: `1.94x`
+  - `end_to_end`: `1.24x`
 
-- Landed:
-  - `bench(merman): prevent layout bench elision` (`17e1ebbd`)
-    - The `layout/*` Criterion benches now compute a cheap, layout-dependent digest (read a small
-      subset of node/edge coordinates) to prevent LLVM from optimizing away expensive layout work.
-  - `bench(merman): add architecture layout stress` (`6c708c07`)
-    - Adds a layout-only stress bench for Architecture:
-      - `cargo bench -p merman --features render --bench architecture_layout_stress`
-    - Local baseline saved (not committed): `--save-baseline arch_layout_base`.
-  - `perf(manatee): use fxhash in graph+fcose` (`0f5fa791`)
-    - Swaps a few small-graph fixed-cost structures (`BTree*`) to `FxHash*` in validate/FCoSE.
-  - `perf(manatee): skip root compound map when noop` (`5d728ebf`)
-    - Avoids building the root-compound membership map unless we actually observe multiple root
-      compounds (compound separation is a no-op for 0/1 roots).
-  - `perf(manatee): avoid id clones in layout output` (`22a05bb4`)
-    - Moves node ids into the final `positions` map instead of cloning them (COSE + FCoSE).
-  - `perf(flowchart): reduce render hot-path overhead` (`d295a53`)
-    - Avoids per-label lowercase allocation when detecting `<img` in flowchart labels.
-    - Adds a fast-path in `maybe_snap_data_point_to_f32` to skip expensive bit-level checks for
-      the common case.
-  - `perf(manatee): cut small-graph repulsion overhead` (`7e68646`)
-    - Reduces COSE-Bilkent repulsion fixed-cost by reusing per-pair center/half-size deltas and
-      inlining the non-overlap force computation in the hot O(n^2) loop.
-    - Spotcheck (`mindmap_medium`):
-      - Report: `target/bench/stage_spotcheck.mindmap_medium.after_repulsion_inline_2026-02-16.md` (local, not committed)
-      - Ratio (`merman / mmdr`): `layout 1.79x` (from `2.02x` baseline)
-  - `perf(curve): specialize path emission` (`fe3aa4b`)
-    - Splits SVG path emission into `no-bounds` vs `with-bounds` fast paths so the hot render-only
-      case (no tight bounds needed) avoids per-command optional bound bookkeeping.
-    - Affects `curveBasis` / `curveLinear` emission used by flowchart/class/ER paths.
-  - `perf(manatee): cut COSE repulsion loop overhead` (`e24d9eb`)
-    - Caches per-node half sizes and reuses `abs(dx/dy)` inside the spring embedder's O(n^2)
-      repulsion loop.
-    - Local A/B (`layout/mindmap_medium`, `cargo bench` exact, 50 samples / 2s warmup / 3s measurement):
-      - `118.43µs` → `112.76µs` (~`-4.8%`)
-  - `perf(mindmap): avoid HashMap in edge build` (`17a18aa`)
-    - Builds mindmap `LayoutEdge` endpoints via `id -> index -> nodes[idx].(x,y)` instead of
-      allocating a `HashMap<&str, (f64,f64)>` each layout call.
-    - Spotcheck (`mindmap_medium`):
-      - Report: `target/bench/stage_spotcheck.mindmap_medium.after_edge_build_ix_2026-02-16.md` (local, not committed)
-      - Ratio (`merman / mmdr`): `layout 1.66x` (from `2.23x` in the prior rerun)
-  - `refactor(architecture): borrow model view for layout` (`dea7efb`)
-    - Unifies JSON vs typed architecture layout input behind a borrowed view (`&str` ids, `Option<char>` dirs).
-    - This is primarily a prerequisite for the next Architecture fixed-cost reductions (dense indices + fewer
-      string-keyed maps), not a standalone performance win.
-  - `perf(architecture): speed up group separation` (`9439199a`)
-    - Speeds up the Architecture post-layout `group_separation` step by reducing fixed-cost overhead:
-      - borrow ids (`&str`) instead of cloning `String`s in relations
-      - use `FxHash*` instead of `BTree*` for small fixed sets
-      - avoid debug-string based sorting/dedup
-      - pre-index group members and cache bboxes during separation iterations
-    - Architecture stress bench (`cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`):
-      - `layout_stress/architecture_reasonable_height_layout_x50`: ~`-33%` (local)
-  - `perf(class): speed up edge data-points encoding` (`29a5bdaf`)
-    - ClassDiagram edges encode `data-points` as Base64(JSON.stringify(points)). Switch from
-      `serde_json::to_writer` to our parity-oriented `json_stringify_points_into` helper to reduce
-      allocation + formatting overhead and better match upstream `JSON.stringify` number formatting.
-  - `perf(class): reduce render fixed-cost` (`6a5bd4c8`)
-    - Lazily build the note sanitizer config (only if notes exist), avoid a few per-node allocations,
-      and add finer-grained class render timings to guide future render work.
-- Latest canary (faster triage parameters):
-  - Command:
-    - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
-  - Report:
-    - `target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md` (local, not committed)
-  - Stage gmeans (ratios, `merman / mmdr`):
-    - `parse`: `1.56x`
-    - `layout`: `0.93x`
-    - `render`: `1.62x`
-    - `end_to_end`: `0.86x`
+### What is actually slow (root-cause map)
 
-Latest spotcheck (local, not committed, 2026-02-17):
+- **Render fixed-cost is consistently behind** (roughly ~`2x` on multiple medium fixtures).
+  This is the clearest cross-diagram opportunity.
+- **Layout is not uniformly slow**:
+  - `class_medium layout` is already faster than mmdr (large margin).
+  - `mindmap_medium` and `architecture_medium` are the main layout gaps.
+- **Parse is slower but not the top ROI** for medium fixtures (unless tiny fixtures are the goal).
 
-- Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 25 --warm-up 2 --measurement 2 --out target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
-- Report:
-  - `target/bench/stage_spotcheck.after_group_sep_opt_2026-02-17.md`
+## Operating constraints
 
-Outliers worth optimizing (from the spotcheck above):
+- Correctness gate: `cargo nextest run -p merman-render`
+- `manatee` forbids unsafe code (`#![forbid(unsafe_code)]`), so hot-loop wins must be safe Rust or
+  algorithmic/representation changes.
+- Prefer deterministic changes: benchmark stability and golden fixtures matter.
 
-- `architecture_medium end_to_end`: `1.88x` (`layout 2.08x`, `render 2.46x`)
-- `mindmap_medium end_to_end`: `1.42x` (`layout 1.74x`, `render 1.24x`)
-- `render/class_medium`: `2.36x`
-- `render/state_medium`: `2.42x`
-- `render/flowchart_medium`: `2.21x`
-- `parse/state_medium`: `3.29x`
+## Milestones (prioritized)
 
-## Root Cause Map (what is actually slow)
+### M0: Keep measurement honest (guardrails)
 
-1. **Manatee (COSE/FCoSE) fixed-cost + iteration cost**
-   - Medium fixtures are sensitive to avoidable per-call overhead (allocation + mapping).
-   - Compound/group handling can do no-op bookkeeping in the common 0/1-root cases.
-2. **SVG emission fixed-cost**
-   - Many hot paths still build intermediate `String`s (`format!`, `to_string`, joins) inside loops.
-   - Style compilation and attribute escaping are frequently repeated for identical payloads.
-   - Some renderers also pay for Mermaid-style metadata (e.g. `data-points` base64 JSON) which is
-     correctness-critical for strict parity but can dominate micro-bench render fixed cost.
-3. **Parse fixed-cost (targeted)**
-   - Still noticeable on a few fixtures (e.g. `state_medium`), but not the global priority.
+Goal: fast feedback without chasing noise.
 
-## Measurement Stack (use the right tool)
+- Use `tools/bench/stage_spotcheck.py` to decide *where* to optimize.
+- Use `tools/bench/compare_mermaid_renderers.py` to decide *whether* we improved end-to-end canaries.
+- For micro-scale work, prefer stress benches (batching work per iteration) and stable parameters:
+  - `--sample-size 50 --warm-up-time 2 --measurement-time 3`
 
-- Use `tools/bench/stage_spotcheck.py` for **stage attribution** (parse/layout/render/end-to-end).
-- Use `tools/bench/compare_mermaid_renderers.py` for **end-to-end regression tracking** over a
-  filtered set of fixtures.
-  - These two tools can legitimately disagree on “overall ratio” if the fixture set differs.
-  - Prefer `stage_spotcheck` when deciding *where* to optimize next; prefer `compare_*` when
-    deciding *whether* we materially improved a user-visible pipeline canary.
+Deliverables:
+- At least one committed spotcheck per major performance checkpoint (under `docs/performance/`).
 
-## Milestones (ordered by ROI)
+### M1: Reduce SVG emission overhead (multi-diagram, highest ROI)
 
-### P0 — Reduce SVG emission overhead (multi-diagram)
-
-Targets:
-
-- `render` gmean: `<= 1.50x` (from `1.97x`)
-- `render/class_medium`: `<= 2.00x` (from `2.36x`)
-- `render/state_medium`: `<= 1.80x` (from `2.42x`)
-- `render/architecture_medium`: `<= 2.00x` (from `2.46x`)
-- `render/flowchart_medium`: `<= 1.80x` (from `2.21x`)
+Targets (spotcheck ratios, medium fixtures):
+- `render` gmean: `<= 1.50x` (from `1.94x`)
+- Canaries: `render/flowchart_medium`, `render/class_medium`, `render/mindmap_medium`, `render/architecture_medium`
 
 Work items:
-
-- Introduce per-diagram render scratch (reused `String`s / small `Vec`s) and remove `format!`/temporary `String`s from node/edge loops.
-- Cache/derive once per render call:
-  - escaped `diagram_id`
-  - compiled marker ids
-  - class→style compilation results for common class sets
+- Remove per-node/per-edge temporary `String` creation in hot loops (`format!`, `to_string`, joins).
+- Introduce per-render scratch buffers (reused `String`s and small `Vec`s) for renderers with many loops.
+- Cache per-render derived values (escaped IDs, compiled style fragments, marker IDs).
+- Prefer write-into-buffer helpers over building intermediate strings.
 
 Correctness gate:
+- `cargo nextest run -p merman-render`
 
-- `cargo nextest run -p merman-render` (layout + svg parity tests must remain green).
+### M2: Mindmap layout (manatee COSE) - reduce the “small graph + many iters” cost
 
-### P1 — Manatee layout fixed-cost (Architecture + Mindmap)
+Targets (stage spotcheck):
+- `layout/mindmap_medium`: `<= 2.0x` (from `2.93x` in `docs/performance/spotcheck_2026-02-17.md`)
+- `end_to_end/mindmap_medium`: `<= 1.3x` (from `2.16x` in the same report)
 
-Targets (spotcheck ratios; validate with stable parameters):
+Work items (safe + deterministic):
+- Reduce fixed-cost around COSE calls (allocation and mapping) in `merman-render/src/mindmap.rs`.
+- Add/keep fine-grained timing toggles (`MANATEE_COSE_TIMING=1`, `MERMAN_MINDMAP_LAYOUT_TIMING=1`) to
+  confirm that changes hit repulsion/spring rather than shifting overhead.
+- Consider algorithmic changes only with strict gates:
+  - early-exit criteria, iteration caps, or specialized tree layout
+  - must preserve golden fixtures and deterministic placements
 
-- `end_to_end/architecture_medium`: `<= 1.50x` (from `1.88x`)
-- `layout/architecture_medium`: `<= 1.80x` (from `2.08x`)
-- `end_to_end/mindmap_medium`: `<= 1.30x` (from `1.42x`)
-- `layout/mindmap_medium`: `<= 1.50x` (from `1.74x`)
+### M3: Architecture layout - reduce fixed-cost and post-layout passes
+
+Targets (stage spotcheck):
+- `layout/architecture_medium`: `<= 2.5x` (from `3.86x`)
+- `render/architecture_medium`: `<= 2.0x` (from `2.45x`)
 
 Work items:
+- Keep pushing “dense indices + borrowed ids + fewer maps” through the layout pipeline.
+- Treat SVG emission as a first-class part of the architecture gap (stage spotcheck shows both layout and render).
+- Expand stress benches when a sub-step is too fast/noisy to move reliably.
 
-- Keep cutting no-op work in COSE/FCoSE (compound bookkeeping, maps/clones, output conversion).
-- Reduce FCoSE fixed-cost in constraints + spectral init (small graphs first; keep deterministic).
-- Reduce COSE iteration cost similarly (repulsion/transform/output).
-- Move the hottest loops toward dense indices + preallocated scratch where feasible.
-- Validate with dedicated benches:
-  - `python tools/bench/stage_spotcheck.py ...`
-  - `cargo bench -p merman --features render --bench architecture_layout_stress -- --baseline arch_layout_base`
-
-### P2 — Parse fixed-cost (targeted, not a blanket rewrite)
+### M4: Parse (targeted) - only when it wins canaries
 
 Targets:
-
-- `parse/state_medium <= 2.00x` (from `3.29x`)
-- `parse/sequence_medium <= 1.15x` (from `1.17x`)
+- Focus on fixtures where parse dominates at the µs scale (tiny fixtures, or known outliers).
 
 Work items:
+- Add micro-timing inside parsing only after the spotcheck shows parse as the limiting stage.
+- Prefer fast-path + fallback patterns rather than a full parser rewrite.
 
-- Add/extend parse micro-timing (`MERMAN_PARSE_TIMING=1`) and optimize the worst sub-stage.
-- Prefer fast-path + fallback patterns for a common subset only when it measurably moves spotcheck.
-
-## Design Decisions (avoid premature rewrites)
+## Design decisions (avoid premature rewrites)
 
 ### Should we adopt a parser crate (e.g. `nom`)?
 
 Not as a default performance move.
-`parse` is **not** the dominant global bottleneck in the baseline; most ROI is in **render + specific layouts**.
-Adopt a parser crate only if it improves correctness/maintainability and we can show measurable wins on canaries.
+Today’s biggest, cross-diagram gap is `render`, and the largest layout gaps are `mindmap` and
+`architecture`.
+
+We should consider a parser crate only if:
+- correctness/maintainability is a problem in the current parser, and
+- a prototype shows measurable wins on parse-heavy canaries.
 
 ### Should we switch graph crates?
 
 Not first.
-Most hotspots are about **algorithmic complexity** and **representation** (dense indices, fewer allocations).
-We should keep the current public graph surface stable and introduce internal dense representations where needed.
+The hot problems are dominated by algorithmic and representation choices (dense indices, fewer
+allocations, fewer string-keyed maps), and we can usually get the same wins without a public crate swap.
 
-## Operating Rules
-
-- Always keep a local spotcheck report under `target/bench/` for each milestone landing (do not commit).
-- Prefer fixture-driven changes: pick a canary, change one thing, re-run spotcheck.
-- Sync with local `main` frequently to avoid long-lived divergence.
