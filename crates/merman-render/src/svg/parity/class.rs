@@ -1030,7 +1030,8 @@ pub(super) fn render_class_diagram_v2_svg_model(
         out
     };
 
-    let mut edge_points_json_buf: Vec<u8> = Vec::new();
+    let mut edge_points_json_buf = String::new();
+    let mut edge_points_json_ryu = ryu_js::Buffer::new();
     let mut edge_points_b64_buf: String = String::new();
     let mut edge_raw_points: Vec<crate::model::LayoutPoint> = Vec::new();
     let mut edge_curve_points: Vec<crate::model::LayoutPoint> = Vec::new();
@@ -1118,13 +1119,19 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;
                 }
-                edge_points_json_buf.clear();
-                if serde_json::to_writer(&mut edge_points_json_buf, &edge_raw_points).is_err() {
-                    edge_points_json_buf.clear();
-                }
                 edge_points_b64_buf.clear();
-                base64::engine::general_purpose::STANDARD
-                    .encode_string(&edge_points_json_buf, &mut edge_points_b64_buf);
+                base64::engine::general_purpose::STANDARD.encode_string(
+                    {
+                        edge_points_json_buf.clear();
+                        json_stringify_points_into(
+                            &mut edge_points_json_buf,
+                            &edge_raw_points,
+                            &mut edge_points_json_ryu,
+                        );
+                        edge_points_json_buf.as_bytes()
+                    },
+                    &mut edge_points_b64_buf,
+                );
 
                 edge_class_buf.clear();
                 edge_class_buf.push_str("edge-thickness-normal ");
