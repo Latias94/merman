@@ -1,0 +1,114 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "todo",
+        "label": "Todo",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "todo",
+        "label": "Todo",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "a1",
+        "parentId": "todo",
+        "label": "Simple ticket",
+        "isGroup": false,
+        "ticket": "PROJ-1",
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "a2",
+        "parentId": "todo",
+        "label": "Ticket with dash",
+        "isGroup": false,
+        "ticket": "PROJ-12-34",
+        "priority": "High",
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "a3",
+        "parentId": "todo",
+        "label": "Ticket with slash",
+        "isGroup": false,
+        "ticket": "PROJ/567",
+        "priority": "Low",
+        "assigned": "bob",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "a4",
+        "parentId": "done",
+        "label": "No ticket should not link",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "carol",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

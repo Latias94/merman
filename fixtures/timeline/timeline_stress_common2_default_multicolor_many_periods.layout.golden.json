@@ -1,0 +1,615 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 3490.0,
+        "max_y": 415.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 2990.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P01 ",
+            "label_lines": [
+              "P01"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 117.8,
+            "x2": 295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 01",
+              "label_lines": [
+                "Event   01"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "P02 ",
+            "label_lines": [
+              "P02"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 117.8,
+            "x2": 495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Event 02",
+              "label_lines": [
+                "Event   02"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "P03 ",
+            "label_lines": [
+              "P03"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 695.0,
+            "y1": 117.8,
+            "x2": 695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-1",
+              "label": "Event 03",
+              "label_lines": [
+                "Event   03"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-2",
+            "label": "P04 ",
+            "label_lines": [
+              "P04"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 895.0,
+            "y1": 117.8,
+            "x2": 895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-2",
+              "label": "Event 04",
+              "label_lines": [
+                "Event   04"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-3",
+            "label": "P05 ",
+            "label_lines": [
+              "P05"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1095.0,
+            "y1": 117.8,
+            "x2": 1095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-3",
+              "label": "Event 05",
+              "label_lines": [
+                "Event   05"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-4",
+            "label": "P06 ",
+            "label_lines": [
+              "P06"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1295.0,
+            "y1": 117.8,
+            "x2": 1295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-4",
+              "label": "Event 06",
+              "label_lines": [
+                "Event   06"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-5",
+            "label": "P07 ",
+            "label_lines": [
+              "P07"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1495.0,
+            "y1": 117.8,
+            "x2": 1495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-5",
+              "label": "Event 07",
+              "label_lines": [
+                "Event   07"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-6",
+            "label": "P08 ",
+            "label_lines": [
+              "P08"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1695.0,
+            "y1": 117.8,
+            "x2": 1695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-6",
+              "label": "Event 08",
+              "label_lines": [
+                "Event   08"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-7",
+            "label": "P09 ",
+            "label_lines": [
+              "P09"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1895.0,
+            "y1": 117.8,
+            "x2": 1895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-7",
+              "label": "Event 09",
+              "label_lines": [
+                "Event   09"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-8",
+            "label": "P10 ",
+            "label_lines": [
+              "P10"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2095.0,
+            "y1": 117.8,
+            "x2": 2095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-8",
+              "label": "Event 10",
+              "label_lines": [
+                "Event   10"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-9",
+            "label": "P11 ",
+            "label_lines": [
+              "P11"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2295.0,
+            "y1": 117.8,
+            "x2": 2295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-9",
+              "label": "Event 11",
+              "label_lines": [
+                "Event   11"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-10",
+            "label": "P12 ",
+            "label_lines": [
+              "P12"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2495.0,
+            "y1": 117.8,
+            "x2": 2495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-10",
+              "label": "Event 12",
+              "label_lines": [
+                "Event   12"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P13 ",
+            "label_lines": [
+              "P13"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2695.0,
+            "y1": 117.8,
+            "x2": 2695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 13",
+              "label_lines": [
+                "Event   13"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "P14 ",
+            "label_lines": [
+              "P14"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2895.0,
+            "y1": 117.8,
+            "x2": 2895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Event 14",
+              "label_lines": [
+                "Event   14"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "P15 ",
+            "label_lines": [
+              "P15"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3095.0,
+            "y1": 117.8,
+            "x2": 3095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-1",
+              "label": "Event 15",
+              "label_lines": [
+                "Event   15"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 167.8,
+        "x2": 3440.0,
+        "y2": 167.8
+      },
+      "title": "Default multicolor + many periods (no sections)",
+      "title_x": 1345.0,
+      "title_y": 20.0
+    }
+  }
+}

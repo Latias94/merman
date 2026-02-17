@@ -1,0 +1,80 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "meta",
+        "label": "Metadata order variants",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "meta",
+        "label": "Metadata order variants",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "m1",
+        "parentId": "meta",
+        "label": "order 1",
+        "isGroup": false,
+        "ticket": "MC-1",
+        "priority": "High",
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "m2",
+        "parentId": "meta",
+        "label": "order 2",
+        "isGroup": false,
+        "ticket": "MC-2",
+        "priority": "High",
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "m3",
+        "parentId": "meta",
+        "label": "order 3",
+        "isGroup": false,
+        "ticket": "MC-3",
+        "priority": "High",
+        "assigned": "alice",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

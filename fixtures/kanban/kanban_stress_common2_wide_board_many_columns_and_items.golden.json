@@ -1,0 +1,301 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "backlog",
+        "label": "Backlog",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "todo",
+        "label": "Todo",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "doing",
+        "label": "Doing",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "review",
+        "label": "Review",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "test",
+        "label": "Test",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "deploy",
+        "label": "Deploy",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "archived",
+        "label": "Archived",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "backlog",
+        "label": "Backlog",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i1",
+        "parentId": "backlog",
+        "label": "Item 1",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "todo",
+        "label": "Todo",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i2",
+        "parentId": "todo",
+        "label": "Item 2",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "i3",
+        "parentId": "todo",
+        "label": "Item 3",
+        "isGroup": false,
+        "ticket": null,
+        "priority": "Low",
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "doing",
+        "label": "Doing",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i4",
+        "parentId": "doing",
+        "label": "Item 4",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": "bob",
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "review",
+        "label": "Review",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i5",
+        "parentId": "review",
+        "label": "Item 5",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "test",
+        "label": "Test",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i6",
+        "parentId": "test",
+        "label": "Item 6",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "deploy",
+        "label": "Deploy",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i7",
+        "parentId": "deploy",
+        "label": "Item 7",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i8",
+        "parentId": "done",
+        "label": "Item 8",
+        "isGroup": false,
+        "ticket": "REL-8",
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "archived",
+        "label": "Archived",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "i9",
+        "parentId": "archived",
+        "label": "Item 9",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}

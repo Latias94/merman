@@ -1,0 +1,94 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 310.0,
+        "max_y": -16.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "root",
+          "label": "Assignments",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 274.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 81.6
+        }
+      ],
+      "items": [
+        {
+          "id": "a1",
+          "label": "Quoted name",
+          "parent_id": "root",
+          "center_x": 200.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "Alice B.",
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "a2",
+          "label": "Unquoted token",
+          "parent_id": "root",
+          "center_x": 200.0,
+          "center_y": -186.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "knsv",
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "a3",
+          "label": "Quoted with spaces",
+          "parent_id": "root",
+          "center_x": 200.0,
+          "center_y": -125.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "Bob The Builder",
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "a4",
+          "label": "Quoted with punctuation",
+          "parent_id": "root",
+          "center_x": 200.0,
+          "center_y": -64.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": "carol@example.com",
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

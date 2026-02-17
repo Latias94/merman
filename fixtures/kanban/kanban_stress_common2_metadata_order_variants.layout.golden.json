@@ -1,0 +1,79 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 310.0,
+        "max_y": -77.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "meta",
+          "label": "Metadata order variants",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 213.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 155.36
+        }
+      ],
+      "items": [
+        {
+          "id": "m1",
+          "label": "order 1",
+          "parent_id": "meta",
+          "center_x": 200.0,
+          "center_y": -247.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "MC-1",
+          "assigned": "alice",
+          "priority": "High",
+          "icon": null
+        },
+        {
+          "id": "m2",
+          "label": "order 2",
+          "parent_id": "meta",
+          "center_x": 200.0,
+          "center_y": -186.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "MC-2",
+          "assigned": "alice",
+          "priority": "High",
+          "icon": null
+        },
+        {
+          "id": "m3",
+          "label": "order 3",
+          "parent_id": "meta",
+          "center_x": 200.0,
+          "center_y": -125.0,
+          "width": 185.0,
+          "height": 56.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": "MC-3",
+          "assigned": "alice",
+          "priority": "High",
+          "icon": null
+        }
+      ]
+    }
+  }
+}

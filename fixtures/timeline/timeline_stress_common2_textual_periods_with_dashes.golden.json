@@ -1,0 +1,46 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Textual periods with dashes/underscores",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Versions"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Versions",
+        "type": "Versions",
+        "task": "v0-1 ",
+        "score": 0,
+        "events": [
+          "alpha ",
+          "beta"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Versions",
+        "type": "Versions",
+        "task": "v0-2 ",
+        "score": 0,
+        "events": [
+          "rc_1",
+          "rc_2"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Versions",
+        "type": "Versions",
+        "task": "v1-0 ",
+        "score": 0,
+        "events": [
+          "ga"
+        ]
+      }
+    ]
+  }
+}

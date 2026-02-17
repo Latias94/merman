@@ -32,6 +32,8 @@ TODO:
 
 Recently imported (keep gates green after each batch):
 
+- 2026-02-17: Kanban authored “common stress” fixtures batch2 (12 fixtures under `fixtures/kanban/kanban_stress_common2_*`, with upstream SVG baselines). Added a fixture-derived Kanban root viewport override to keep the global `parity-root` gate green.
+- 2026-02-17: Timeline authored “common stress” fixtures batch2 (6 fixtures under `fixtures/timeline/timeline_stress_common2_*`, with upstream SVG baselines).
 - 2026-02-17: QuadrantChart authored stress fixtures batch1 (12 fixtures under `fixtures/quadrantchart/stress_quadrantchart_batch1_*`, with upstream SVG baselines). Hardened QuadrantChart SVG parity for `useMaxWidth=false` (width/height attrs + style) to match Mermaid output and keep the global `parity-root` gate green.
 - 2026-02-17: Sankey authored stress fixtures batch1 (12 fixtures under `fixtures/sankey/stress_sankey_batch1_*`, with upstream SVG baselines). Hardened Sankey SVG parity for `useMaxWidth=false` (width/height attrs + style) to match Mermaid output and keep the global `parity-root` gate green.
 - 2026-02-17: Timeline authored stress fixtures batch (12 fixtures under `fixtures/timeline/timeline_stress_*`, with upstream SVG baselines). Added fixture-derived Timeline root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.

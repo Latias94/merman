@@ -1,0 +1,420 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 2490.0,
+        "max_y": 415.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 1990.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P01 ",
+            "label_lines": [
+              "P01"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 117.8,
+            "x2": 295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 01",
+              "label_lines": [
+                "Event   01"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P02 ",
+            "label_lines": [
+              "P02"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 117.8,
+            "x2": 495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 02",
+              "label_lines": [
+                "Event   02"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P03 ",
+            "label_lines": [
+              "P03"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 695.0,
+            "y1": 117.8,
+            "x2": 695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 03",
+              "label_lines": [
+                "Event   03"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P04 ",
+            "label_lines": [
+              "P04"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 895.0,
+            "y1": 117.8,
+            "x2": 895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 04",
+              "label_lines": [
+                "Event   04"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P05 ",
+            "label_lines": [
+              "P05"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1095.0,
+            "y1": 117.8,
+            "x2": 1095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 05",
+              "label_lines": [
+                "Event   05"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P06 ",
+            "label_lines": [
+              "P06"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1295.0,
+            "y1": 117.8,
+            "x2": 1295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 06",
+              "label_lines": [
+                "Event   06"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P07 ",
+            "label_lines": [
+              "P07"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1495.0,
+            "y1": 117.8,
+            "x2": 1495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 07",
+              "label_lines": [
+                "Event   07"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P08 ",
+            "label_lines": [
+              "P08"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1695.0,
+            "y1": 117.8,
+            "x2": 1695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 08",
+              "label_lines": [
+                "Event   08"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P09 ",
+            "label_lines": [
+              "P09"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1895.0,
+            "y1": 117.8,
+            "x2": 1895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 09",
+              "label_lines": [
+                "Event   09"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "P10 ",
+            "label_lines": [
+              "P10"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2095.0,
+            "y1": 117.8,
+            "x2": 2095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 10",
+              "label_lines": [
+                "Event   10"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 167.8,
+        "x2": 2440.0,
+        "y2": 167.8
+      },
+      "title": "Frontmatter maxWidth:false + disableMulticolor + many periods",
+      "title_x": 845.0,
+      "title_y": 20.0
+    }
+  }
+}
