@@ -7,11 +7,11 @@ use crate::svg::parity::util;
 mod geom;
 mod helpers;
 mod roughjs;
+mod shapes;
 
 use geom::{arc_points, generate_circle_points, generate_full_sine_wave_points, path_from_points};
 use roughjs::{
-    roughjs_circle_path_d, roughjs_paths_for_polygon, roughjs_paths_for_rect,
-    roughjs_paths_for_svg_path, roughjs_stroke_path_for_svg_path,
+    roughjs_paths_for_polygon, roughjs_paths_for_svg_path, roughjs_stroke_path_for_svg_path,
 };
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
@@ -247,267 +247,46 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
+    if shapes::try_render_flowchart_v2_no_label(
+        out,
+        ctx,
+        shape,
+        layout_node,
+        fill_color,
+        stroke_color,
+        hand_drawn_seed,
+        timing_enabled,
+        details,
+    ) {
+        out.push_str("</g>");
+        if wrapped_in_a {
+            out.push_str("</a>");
+        }
+        return;
+    }
+
     match shape {
-        // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
-        // Mermaid ignores `node.label` for these shapes and does not emit a label group.
-        "sm-circ" | "small-circle" | "start" => {
-            out.push_str(r#"<circle class="state-start" r="7" width="14" height="14"/>"#);
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
-        "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = theme_color(ctx.config.as_value(), "lineColor", "#333333");
-            let inner_fill =
-                config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
-
-            let outer_d = rough_timed!(roughjs_circle_path_d(14.0, hand_drawn_seed))
-                .unwrap_or_else(|| "M0,0".to_string());
-            let inner_d = rough_timed!(roughjs_circle_path_d(5.0, hand_drawn_seed))
-                .unwrap_or_else(|| "M0,0".to_string());
-
-            let _ = write!(
-                out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
-                outer_d,
-                escape_attr(ctx.node_fill_color.as_str()),
-                outer_d,
-                escape_attr(&line_color),
-                inner_d,
-                escape_attr(&inner_fill),
-                inner_d,
-                escape_attr(&inner_fill),
-            );
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
-
-        // Flowchart v2 fork/join (no label; uses `lineColor` fill/stroke).
-        "fork" | "join" => {
-            // Mermaid inflates Dagre dimensions after `updateNodeBounds(...)` but does not
-            // re-render the bar at the inflated size. Render the canonical shape dimensions.
-            let (w, h) = if layout_node.width >= layout_node.height {
-                (70.0, 10.0)
-            } else {
-                (10.0, 70.0)
-            };
-            let line_color = theme_color(ctx.config.as_value(), "lineColor", "#333333");
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_rect(
-                -w / 2.0,
-                -h / 2.0,
-                w,
-                h,
-                &line_color,
-                &line_color,
-                1.3,
-                hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                fill_d,
-                escape_attr(&line_color),
-                stroke_d,
-                escape_attr(&line_color),
-            );
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
-
-        // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
-        // not emit a label group.
-        "bolt" => {
-            // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
-            // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
-            let width = layout_node.width.max(35.0);
-            let height = (layout_node.height / 2.0).max(35.0);
-            let gap = 7.0;
-
-            let points: Vec<(f64, f64)> = vec![
-                (width, 0.0),
-                (0.0, height + gap / 2.0),
-                (width - 2.0 * gap, height + gap / 2.0),
-                (0.0, 2.0 * height),
-                (width, height - gap / 2.0),
-                (2.0 * gap, height - gap / 2.0),
-            ];
-            let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
-                fill_color,
-                stroke_color,
-                1.3,
-                "0 0",
-                hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
-                fmt(-width / 2.0),
-                fmt(-height),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
-            );
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
-
-        // Flowchart v2 filled circle (junction). Mermaid clears `node.label` and does not emit a
-        // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
-        // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
-        "f-circ" => {
-            let border = config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
-                .unwrap_or_else(|| ctx.node_border_color.clone());
-
-            let d = rough_timed!(roughjs_circle_path_d(14.0, hand_drawn_seed))
-                .unwrap_or_else(|| "M0,0".into());
-            let _ = write!(
-                out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="fill: {} !important;"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill: {} !important;"/></g>"##,
-                escape_attr(&d),
-                escape_attr(fill_color),
-                escape_attr(&border),
-                escape_attr(&d),
-                escape_attr(stroke_color),
-                escape_attr(&border),
-            );
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
-
-        // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
-        // label group.
-        "cross-circ" => {
-            // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
-            // practice `node.width` is usually unset here, so radius=30.
-            let radius = 30.0;
-
-            let circle_d = rough_timed!(roughjs_circle_path_d(radius * 2.0, hand_drawn_seed))
-                .unwrap_or_else(|| "M0,0".into());
-
-            // Port of Mermaid `createLine(r)` in `crossedCircle.ts`.
-            let x_axis_45 = (std::f64::consts::PI / 4.0).cos();
-            let y_axis_45 = (std::f64::consts::PI / 4.0).sin();
-            let point_q1 = (radius * x_axis_45, radius * y_axis_45);
-            let point_q2 = (-radius * x_axis_45, radius * y_axis_45);
-            let point_q3 = (-radius * x_axis_45, -radius * y_axis_45);
-            let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
-            let line_path = format!(
-                "M {},{} L {},{} M {},{} L {},{}",
-                point_q2.0,
-                point_q2.1,
-                point_q4.0,
-                point_q4.1,
-                point_q1.0,
-                point_q1.1,
-                point_q3.0,
-                point_q3.1
-            );
-            let (line_fill_d, line_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &line_path,
-                fill_color,
-                stroke_color,
-                1.3,
-                "0 0",
-                hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("".to_string(), "M0,0".to_string()));
-
-            let _ = write!(
-                out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
-                escape_attr(&circle_d),
-                escape_attr(fill_color),
-                escape_attr(&circle_d),
-                escape_attr(stroke_color),
-                escape_attr(&line_fill_d),
-                escape_attr(fill_color),
-                escape_attr(&line_stroke_d),
-                escape_attr(stroke_color),
-            );
-            out.push_str("</g>");
-            if wrapped_in_a {
-                out.push_str("</a>");
-            }
-            return;
-        }
+        // Flowchart v2 shapes with no label group are handled above.
 
         // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
         // label group (via `labelHelper(...)`).
         "hourglass" | "collate" => {
             label_text = "";
             label_type = "text";
-            let w = layout_node.width.max(30.0);
-            let h = layout_node.height.max(30.0);
-            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
-            let path_data = path_from_points(&pts);
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_hourglass_collate(
+                out,
+                layout_node,
                 fill_color,
                 stroke_color,
-                1.3,
-                "0 0",
                 hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r##"<g class="basic label-container" transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                timing_enabled,
+                details,
             );
         }
 
         // Flowchart v2 card/notched-rectangle.
         "notch-rect" | "notched-rectangle" | "card" => {
-            let w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let notch = 12.0;
-            let pts: Vec<(f64, f64)> = vec![
-                (notch, -h),
-                (w, -h),
-                (w, 0.0),
-                (0.0, 0.0),
-                (0.0, -h + notch),
-                (notch, -h),
-            ];
-            let mut points_attr = String::new();
-            for (idx, (px, py)) in pts.iter().copied().enumerate() {
-                if idx > 0 {
-                    points_attr.push(' ');
-                }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
-            }
-            let _ = write!(
-                out,
-                r#"<polygon points="{}" class="label-container" transform="translate({},{})"/>"#,
-                points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0)
-            );
+            shapes::render_notched_rectangle(out, layout_node);
         }
 
         // Flowchart v2 delay / half-rounded rectangle.
