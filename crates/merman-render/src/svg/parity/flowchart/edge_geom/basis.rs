@@ -65,6 +65,36 @@ fn has_short_segment(input: &[crate::model::LayoutPoint], max_len: f64) -> bool 
     false
 }
 
+fn ensure_min_points(points: &mut Vec<crate::model::LayoutPoint>, min_len: usize) {
+    if points.len() >= min_len || points.len() < 2 {
+        return;
+    }
+    while points.len() < min_len {
+        let mut best_i = 0usize;
+        let mut best_d2 = -1.0f64;
+        for i in 0..points.len().saturating_sub(1) {
+            let a = &points[i];
+            let b = &points[i + 1];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let d2 = dx * dx + dy * dy;
+            if d2 > best_d2 {
+                best_d2 = d2;
+                best_i = i;
+            }
+        }
+        let a = points[best_i].clone();
+        let b = points[best_i + 1].clone();
+        points.insert(
+            best_i + 1,
+            crate::model::LayoutPoint {
+                x: (a.x + b.x) / 2.0,
+                y: (a.y + b.y) / 2.0,
+            },
+        );
+    }
+}
+
 pub(in crate::svg::parity::flowchart) fn maybe_collapse_straight_except_one_endpoint(
     points: &mut Vec<crate::model::LayoutPoint>,
 ) {
@@ -187,36 +217,18 @@ pub(in crate::svg::parity::flowchart) fn maybe_pad_cyclic_special_basis_route(
     // least 5 points (so `curveBasis` emits 4 `C` segments) only for the variants that Mermaid
     // expands.
 
-    fn ensure_min_points(points: &mut Vec<crate::model::LayoutPoint>, min_len: usize) {
-        if points.len() >= min_len || points.len() < 2 {
-            return;
-        }
-        while points.len() < min_len {
-            let mut best_i = 0usize;
-            let mut best_d2 = -1.0f64;
-            for i in 0..points.len().saturating_sub(1) {
-                let a = &points[i];
-                let b = &points[i + 1];
-                let dx = b.x - a.x;
-                let dy = b.y - a.y;
-                let d2 = dx * dx + dy * dy;
-                if d2 > best_d2 {
-                    best_d2 = d2;
-                    best_i = i;
-                }
-            }
-            let a = points[best_i].clone();
-            let b = points[best_i + 1].clone();
-            points.insert(
-                best_i + 1,
-                crate::model::LayoutPoint {
-                    x: (a.x + b.x) / 2.0,
-                    y: (a.y + b.y) / 2.0,
-                },
-            );
-        }
-    }
+    maybe_pad_cyclic_special_basis_route_for_layout_clusters(
+        &ctx.layout_clusters_by_id,
+        edge,
+        points,
+    );
+}
 
+pub(in crate::svg::parity::flowchart) fn maybe_pad_cyclic_special_basis_route_for_layout_clusters(
+    layout_clusters_by_id: &rustc_hash::FxHashMap<&str, &LayoutCluster>,
+    edge: &crate::flowchart::FlowEdge,
+    points: &mut Vec<crate::model::LayoutPoint>,
+) {
     let cyclic_variant = if edge.id.ends_with("-cyclic-special-1") {
         Some(1u8)
     } else if edge.id.ends_with("-cyclic-special-2") {
@@ -232,7 +244,7 @@ pub(in crate::svg::parity::flowchart) fn maybe_pad_cyclic_special_basis_route(
             .next()
             .unwrap_or(edge.id.as_str());
 
-        let should_expand = match ctx.layout_clusters_by_id.get(base_id) {
+        let should_expand = match layout_clusters_by_id.get(base_id) {
             Some(cluster) if cluster.effective_dir == "TB" || cluster.effective_dir == "TD" => {
                 variant == 1
             }

@@ -19,7 +19,8 @@ mod trace;
 
 pub(super) use basis::{
     maybe_collapse_straight_except_one_endpoint, maybe_insert_midpoint_for_basis,
-    maybe_pad_cyclic_special_basis_route, maybe_remove_redundant_cluster_run_point,
+    maybe_pad_cyclic_special_basis_route, maybe_pad_cyclic_special_basis_route_for_layout_clusters,
+    maybe_remove_redundant_cluster_run_point,
 };
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
