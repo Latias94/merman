@@ -9,6 +9,7 @@ mod basis;
 mod boundary;
 mod cyclic_special;
 mod data_points;
+mod fix_corners;
 mod intersect;
 mod rect_clip;
 mod trace;
@@ -22,6 +23,7 @@ pub(super) use boundary::{
 };
 pub(super) use cyclic_special::normalize_cyclic_special_data_points;
 pub(super) use data_points::{maybe_snap_data_point_to_f32, maybe_truncate_data_point};
+pub(super) use fix_corners::maybe_fix_corners;
 pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
 };

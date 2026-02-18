@@ -95,7 +95,7 @@ fn flowchart_compute_edge_path_geom_impl(
         cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, maybe_collapse_straight_except_one_endpoint,
-        maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
+        maybe_fix_corners, maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
         maybe_pad_cyclic_special_basis_route, maybe_remove_redundant_cluster_run_point,
         maybe_snap_data_point_to_f32, maybe_truncate_data_point,
         normalize_cyclic_special_data_points, write_flowchart_edge_trace,
@@ -338,103 +338,7 @@ fn flowchart_compute_edge_path_geom_impl(
 
     // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
     // round orthogonal corners before feeding into D3's line generator.
-    if !line_data.is_empty() {
-        const CORNER_DIST: f64 = 5.0;
-        let mut corner_positions: Vec<usize> = Vec::new();
-        for i in 1..line_data.len().saturating_sub(1) {
-            let prev = &line_data[i - 1];
-            let curr = &line_data[i];
-            let next = &line_data[i + 1];
-
-            let is_corner_xy = prev.x == curr.x
-                && curr.y == next.y
-                && (curr.x - next.x).abs() > CORNER_DIST
-                && (curr.y - prev.y).abs() > CORNER_DIST;
-            let is_corner_yx = prev.y == curr.y
-                && curr.x == next.x
-                && (curr.x - prev.x).abs() > CORNER_DIST
-                && (curr.y - next.y).abs() > CORNER_DIST;
-
-            if is_corner_xy || is_corner_yx {
-                corner_positions.push(i);
-            }
-        }
-
-        if !corner_positions.is_empty() {
-            fn find_adjacent_point(
-                point_a: &crate::model::LayoutPoint,
-                point_b: &crate::model::LayoutPoint,
-                distance: f64,
-            ) -> crate::model::LayoutPoint {
-                let x_diff = point_b.x - point_a.x;
-                let y_diff = point_b.y - point_a.y;
-                let len = (x_diff * x_diff + y_diff * y_diff).sqrt();
-                if len == 0.0 {
-                    return point_b.clone();
-                }
-                let ratio = distance / len;
-                crate::model::LayoutPoint {
-                    x: point_b.x - ratio * x_diff,
-                    y: point_b.y - ratio * y_diff,
-                }
-            }
-
-            let a = (2.0_f64).sqrt() * 2.0;
-            let mut new_line_data: Vec<crate::model::LayoutPoint> = Vec::new();
-            for i in 0..line_data.len() {
-                if !corner_positions.contains(&i) {
-                    new_line_data.push(line_data[i].clone());
-                    continue;
-                }
-
-                let prev = &line_data[i - 1];
-                let next = &line_data[i + 1];
-                let corner = &line_data[i];
-                let new_prev = find_adjacent_point(prev, corner, CORNER_DIST);
-                let new_next = find_adjacent_point(next, corner, CORNER_DIST);
-                let x_diff = new_next.x - new_prev.x;
-                let y_diff = new_next.y - new_prev.y;
-
-                new_line_data.push(new_prev.clone());
-
-                let mut new_corner = corner.clone();
-                if (next.x - prev.x).abs() > 10.0 && (next.y - prev.y).abs() >= 10.0 {
-                    let r = CORNER_DIST;
-                    if corner.x == new_prev.x {
-                        new_corner = crate::model::LayoutPoint {
-                            x: if x_diff < 0.0 {
-                                new_prev.x - r + a
-                            } else {
-                                new_prev.x + r - a
-                            },
-                            y: if y_diff < 0.0 {
-                                new_prev.y - a
-                            } else {
-                                new_prev.y + a
-                            },
-                        };
-                    } else {
-                        new_corner = crate::model::LayoutPoint {
-                            x: if x_diff < 0.0 {
-                                new_prev.x - a
-                            } else {
-                                new_prev.x + a
-                            },
-                            y: if y_diff < 0.0 {
-                                new_prev.y - r + a
-                            } else {
-                                new_prev.y + r - a
-                            },
-                        };
-                    }
-                }
-
-                new_line_data.push(new_corner);
-                new_line_data.push(new_next);
-            }
-            line_data = new_line_data;
-        }
-    }
+    maybe_fix_corners(&mut line_data);
 
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
