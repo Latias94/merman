@@ -23,7 +23,7 @@ pub(super) use style::*;
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
 use render::{render_flowchart_edge_path, render_flowchart_node, render_flowchart_root};
 use types::*;
-use util::{OptionalStyleAttr, OptionalStyleXmlAttr, flowchart_html_contains_img_tag};
+use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
