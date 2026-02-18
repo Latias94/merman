@@ -5,6 +5,10 @@
 
 use super::*;
 
+mod boundary;
+
+pub(super) use boundary::{BoundaryNode, boundary_for_node, maybe_normalize_selfedge_loop_points};
+
 pub(super) fn flowchart_compute_edge_path_geom(
     ctx: &FlowchartRenderCtx<'_>,
     edge: &crate::flowchart::FlowEdge,
