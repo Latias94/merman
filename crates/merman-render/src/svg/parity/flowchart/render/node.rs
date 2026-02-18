@@ -463,181 +463,42 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         // Flowchart v2 wave edged rectangle (Document).
         "doc" => {
             compact_label_translate = true;
-
-            let label_text_plain =
-                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                node_classes,
-                node_styles,
-            );
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                ctx.measurer,
+            shapes::render_wave_document(
+                out,
+                ctx,
+                layout_node,
                 label_text,
                 label_type,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                ctx.node_wrap_mode,
-            );
-            let span_css_height_parity = node_classes.iter().any(|c| {
-                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                    styles.iter().any(|s| {
-                        matches!(
-                            s.split_once(':').map(|p| p.0.trim()),
-                            Some("background" | "border")
-                        )
-                    })
-                })
-            });
-            if span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
-                || (label_type == "markdown" && label_text.contains("!["));
-            if label_text_plain.trim().is_empty() && !label_has_visual_content {
-                metrics.width = 0.0;
-                metrics.height = 0.0;
-            }
-
-            let p = ctx.node_padding;
-            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
-            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
-            let wave_amplitude = h / 8.0;
-            let final_h = h + wave_amplitude;
-
-            // Mermaid keeps a minimum width (70px) for wave edged rectangles.
-            let min_width = 70.0;
-            let extra_w = ((min_width - w).max(0.0)) / 2.0;
-
-            let mut points: Vec<(f64, f64)> = Vec::new();
-            points.push((-w / 2.0 - extra_w, final_h / 2.0));
-            points.extend(generate_full_sine_wave_points(
-                -w / 2.0 - extra_w,
-                final_h / 2.0,
-                w / 2.0 + extra_w,
-                final_h / 2.0,
-                wave_amplitude,
-                0.8,
-            ));
-            points.push((w / 2.0 + extra_w, -final_h / 2.0));
-            points.push((-w / 2.0 - extra_w, -final_h / 2.0));
-
-            let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+                node_classes,
+                node_styles,
                 fill_color,
                 stroke_color,
-                1.3,
-                "0 0",
                 hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                fmt(-wave_amplitude / 2.0),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                timing_enabled,
+                details,
+                &mut label_dx,
+                &mut label_dy,
             );
-
-            // Mirror Mermaid `waveEdgedRectangle.ts` label placement.
-            label_dx = -w / 2.0 + p + metrics.width / 2.0;
-            label_dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
         }
 
         // Flowchart v2 lined wave edged rectangle (Lined document).
         "lin-doc" => {
             compact_label_translate = true;
-
-            let label_text_plain =
-                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                node_classes,
-                node_styles,
-            );
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                ctx.measurer,
+            shapes::render_lined_wave_document(
+                out,
+                ctx,
+                layout_node,
                 label_text,
                 label_type,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                ctx.node_wrap_mode,
-            );
-            let span_css_height_parity = node_classes.iter().any(|c| {
-                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                    styles.iter().any(|s| {
-                        matches!(
-                            s.split_once(':').map(|p| p.0.trim()),
-                            Some("background" | "border")
-                        )
-                    })
-                })
-            });
-            if span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
-                || (label_type == "markdown" && label_text.contains("!["));
-            if label_text_plain.trim().is_empty() && !label_has_visual_content {
-                metrics.width = 0.0;
-                metrics.height = 0.0;
-            }
-
-            let p = ctx.node_padding;
-            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
-            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
-            let wave_amplitude = h / 4.0;
-            let final_h = h + wave_amplitude;
-            let ext = (w / 2.0) * 0.1;
-
-            // Mermaid nudges label by half the left extension, and shifts it up by waveAmplitude/2.
-            label_dx = ext / 2.0;
-            label_dy = -wave_amplitude / 2.0;
-
-            let mut points: Vec<(f64, f64)> = Vec::new();
-            points.push((-w / 2.0 - ext, -final_h / 2.0));
-            points.push((-w / 2.0 - ext, final_h / 2.0));
-            points.extend(generate_full_sine_wave_points(
-                -w / 2.0 - ext,
-                final_h / 2.0,
-                w / 2.0 + ext,
-                final_h / 2.0,
-                wave_amplitude,
-                0.8,
-            ));
-            points.push((w / 2.0 + ext, -final_h / 2.0));
-            points.push((-w / 2.0 - ext, -final_h / 2.0));
-            points.push((-w / 2.0, -final_h / 2.0));
-            points.push((-w / 2.0, (final_h / 2.0) * 1.1));
-            points.push((-w / 2.0, -final_h / 2.0));
-
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_polygon(
-                &points,
+                node_classes,
+                node_styles,
                 fill_color,
                 stroke_color,
-                1.3,
-                hand_drawn_seed
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                fmt(-wave_amplitude / 2.0),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                hand_drawn_seed,
+                timing_enabled,
+                details,
+                &mut label_dx,
+                &mut label_dy,
             );
         }
 
