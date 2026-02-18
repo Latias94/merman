@@ -91,7 +91,7 @@ fn flowchart_compute_edge_path_geom_impl(
     let local_points = scratch.local_points.as_slice();
 
     use edge_geom::{
-        TraceEndpointIntersection, boundary_for_cluster, boundary_for_node,
+        TraceEndpointIntersection, arrow_types_for_edge, boundary_for_cluster, boundary_for_node,
         cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, line_with_offset_points,
@@ -344,21 +344,7 @@ fn flowchart_compute_edge_path_geom_impl(
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-    let arrow_type_start = match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some("arrow_point"),
-        Some("double_arrow_circle") => Some("arrow_circle"),
-        Some("double_arrow_cross") => Some("arrow_cross"),
-        _ => None,
-    };
-    let arrow_type_end = match edge.edge_type.as_deref() {
-        Some("arrow_open") => None,
-        Some("arrow_cross") => Some("arrow_cross"),
-        Some("arrow_circle") => Some("arrow_circle"),
-        Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
-        Some("double_arrow_circle") => Some("arrow_circle"),
-        Some("double_arrow_cross") => Some("arrow_cross"),
-        _ => Some("arrow_point"),
-    };
+    let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge.edge_type.as_deref());
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
     let curve_is_basis = !matches!(
