@@ -17,10 +17,10 @@ Library code should not panic on user-controlled input.
   - degrading gracefully (best-effort output) when strictness would be counterproductive (e.g.
     layout on disconnected graphs)
 
-## Current status (2026-02-09)
+## Current status (2026-02-18)
 
 - `dugong` (Dagre port):
-  - Removed remaining `unwrap/expect` usage inside `crates/dugong/src/lib.rs`.
+  - No `unwrap/expect/panic!` usage in `crates/dugong/src` (production code).
   - Layout-related helpers are now defensive against:
     - empty graphs
     - disconnected graphs (build a forest instead of panicking)
