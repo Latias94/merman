@@ -12,7 +12,7 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn render_curved_trapezoid(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    layout_node: &crate::model::LayoutNode,
+    _layout_node: &crate::model::LayoutNode,
     label_text: &str,
     label_type: &str,
     node_classes: &[String],
