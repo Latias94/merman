@@ -1,5 +1,6 @@
 //! Flowchart node shape renderers.
 
+mod bow_tie_rect;
 mod curved_trapezoid;
 mod divided_rect;
 mod label_container;
@@ -8,6 +9,7 @@ mod no_label;
 mod notched_pentagon;
 mod tag_rect;
 
+pub(super) use bow_tie_rect::render_bow_tie_rect;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
 pub(super) use divided_rect::render_divided_rect;
 pub(super) use label_container::{render_hourglass_collate, render_notched_rectangle};

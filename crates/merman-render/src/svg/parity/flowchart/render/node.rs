@@ -427,93 +427,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
         // Flowchart v2 bow tie rectangle (Stored data).
         "bow-rect" => {
-            let label_text_plain =
-                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                node_classes,
-                node_styles,
-            );
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                ctx.measurer,
+            shapes::render_bow_tie_rect(
+                out,
+                ctx,
                 label_text,
                 label_type,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                ctx.node_wrap_mode,
-            );
-            let span_css_height_parity = node_classes.iter().any(|c| {
-                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                    styles.iter().any(|s| {
-                        matches!(
-                            s.split_once(':').map(|p| p.0.trim()),
-                            Some("background" | "border")
-                        )
-                    })
-                })
-            });
-            if span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
-                || (label_type == "markdown" && label_text.contains("!["));
-            if label_text_plain.trim().is_empty() && !label_has_visual_content {
-                metrics.width = 0.0;
-                metrics.height = 0.0;
-            }
-
-            let p = ctx.node_padding;
-            let w = metrics.width + p + 20.0;
-            let h = metrics.height + p;
-            let ry = h / 2.0;
-            let rx = ry / (2.5 + h / 50.0);
-
-            let mut points: Vec<(f64, f64)> = Vec::new();
-            points.push((w / 2.0, -h / 2.0));
-            points.push((-w / 2.0, -h / 2.0));
-            points.extend(arc_points(
-                -w / 2.0,
-                -h / 2.0,
-                -w / 2.0,
-                h / 2.0,
-                rx,
-                ry,
-                false,
-            ));
-            points.push((w / 2.0, h / 2.0));
-            points.extend(arc_points(
-                w / 2.0,
-                h / 2.0,
-                w / 2.0,
-                -h / 2.0,
-                rx,
-                ry,
-                true,
-            ));
-
-            let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+                node_classes,
+                node_styles,
                 fill_color,
                 stroke_color,
-                1.3,
-                "0 0",
                 hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-
-            let _ = write!(
-                out,
-                r##"<g class="basic label-container" transform="translate({}, 0)"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                fmt(rx / 2.0),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                timing_enabled,
+                details,
             );
         }
 
