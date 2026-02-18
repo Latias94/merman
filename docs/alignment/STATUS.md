@@ -131,6 +131,10 @@ layer `transform-origin` parity for timezone-shifted date-only inputs, keeping t
 Recent progress (2026-02-15): imported an additional batch of upstream syntax docs fixtures (Block/ER/GitGraph/Pie/
 Requirement) with upstream SVG baselines; added fixture-derived root viewport overrides to keep `parity-root` green.
 
+Recent progress (2026-02-18): migrated Flowchart edge bbox/path computation from
+`crates/merman-render/src/svg/parity/flowchart.rs` into `crates/merman-render/src/svg/parity/flowchart/edge_bbox.rs`,
+reducing the size of the flowchart module while keeping the global `parity-root` DOM gate green.
+
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
 
