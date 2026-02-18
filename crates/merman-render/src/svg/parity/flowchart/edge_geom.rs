@@ -6,6 +6,7 @@
 use super::*;
 
 mod boundary;
+mod cyclic_special;
 mod data_points;
 mod intersect;
 mod rect_clip;
@@ -14,6 +15,7 @@ mod trace;
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
 };
+pub(super) use cyclic_special::normalized_boundary_for_node;
 pub(super) use data_points::{maybe_snap_data_point_to_f32, maybe_truncate_data_point};
 pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
