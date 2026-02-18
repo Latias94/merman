@@ -979,143 +979,24 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             );
         }
         "cylinder" | "cyl" => {
-            // Mermaid `cylinder.ts` (non-handDrawn): a single `<path>` with arc commands and a
-            // `label-offset-y` attribute.
-            let w = layout_node.width.max(1.0);
-            let rx = w / 2.0;
-            let ry = rx / (2.5 + w / 50.0);
-            let total_h = layout_node.height.max(1.0);
-            let h = (total_h - 2.0 * ry).max(1.0);
-            // Mermaid applies an extra downward label shift of `node.padding / 1.5`.
-            label_dy = ctx.node_padding / 1.5;
-
-            let path_data = format!(
-                "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 {mw},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,{mh}",
-                ry = fmt(ry),
-                rx = fmt(rx),
-                w = fmt(w),
-                mw = fmt(-w),
-                h = fmt(h),
-                mh = fmt(-h),
-            );
-
-            let _ = write!(
-                out,
-                r#"<path d="{}" class="basic label-container" style="{}" transform="translate({}, {})"/>"#,
-                escape_attr(&path_data),
-                escape_attr(&style),
-                fmt(-w / 2.0),
-                fmt(-(h / 2.0 + ry))
-            );
+            shapes::render_cylinder(out, ctx, layout_node, &style, &mut label_dy);
         }
         "h-cyl" | "das" | "horizontal-cylinder" => {
-            // Mermaid `tiltedCylinder.ts` (non-handDrawn): a single `<path>` with arc commands.
-            //
-            // Mermaid first computes the *inner* path width `w` from the label bbox, then calls
-            // `updateNodeBounds(...)` which inflates the Dagre node bounds to include arc extents.
-            // Our `layout_node.width` is the inflated width, so we reconstruct the inner segment
-            // width by subtracting `2*rx`.
-            let out_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let ry = h / 2.0;
-            let rx = if ry == 0.0 {
-                0.0
-            } else {
-                ry / (2.5 + h / 50.0)
-            };
-            let w = (out_w - 2.0 * rx).max(1.0);
-
-            // Mermaid offsets the label left by `rx` for tilted cylinders.
-            label_dx = -rx;
-
-            let path_data = format!(
-                "M0,0 a{rx},{ry} 0,0,1 0,{neg_h} l{w},0 a{rx},{ry} 0,0,1 0,{h} M{w},{neg_h} a{rx},{ry} 0,0,0 0,{h} l{neg_w},0",
-                rx = fmt(rx),
-                ry = fmt(ry),
-                neg_h = fmt(-h),
-                w = fmt(w),
-                h = fmt(h),
-                neg_w = fmt(-w),
-            );
-
-            let _ = write!(
-                out,
-                r#"<path d="{}" class="basic label-container" style="{}" transform="translate({}, {} )"/>"#,
-                escape_attr(&path_data),
-                escape_attr(&style),
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
-            );
+            shapes::render_horizontal_cylinder(out, layout_node, &style, &mut label_dx);
         }
         "win-pane" | "internal-storage" | "window-pane" => {
-            // Mermaid `windowPane.ts` (non-handDrawn): RoughJS multi-subpath with `roughness=0` + a
-            // fixed `rectOffset=5` and a translation of `(+2.5, +2.5)`.
-            let rect_offset = 5.0;
-            let out_w = layout_node.width.max(1.0);
-            let out_h = layout_node.height.max(1.0);
-            let w = (out_w - rect_offset).max(1.0);
-            let h = (out_h - rect_offset).max(1.0);
-            let x = -w / 2.0;
-            let y = -h / 2.0;
-
-            // Label transform includes the same `rectOffset/2` shift as the container.
-            label_dx = rect_offset / 2.0;
-            label_dy = rect_offset / 2.0;
-
-            let path_data = format!(
-                "M{},{} L{},{} L{},{} L{},{} L{},{} M{},{} L{},{} M{},{} L{},{}",
-                fmt(x - rect_offset),
-                fmt(y - rect_offset),
-                fmt(x + w),
-                fmt(y - rect_offset),
-                fmt(x + w),
-                fmt(y + h),
-                fmt(x - rect_offset),
-                fmt(y + h),
-                fmt(x - rect_offset),
-                fmt(y - rect_offset),
-                fmt(x - rect_offset),
-                fmt(y),
-                fmt(x + w),
-                fmt(y),
-                fmt(x),
-                fmt(y - rect_offset),
-                fmt(x),
-                fmt(y + h),
-            );
-
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_window_pane(
+                out,
+                layout_node,
+                &style,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
-                let _ = write!(
-                    out,
-                    r#"<g transform="translate({}, {})" class="basic label-container">"#,
-                    fmt(rect_offset / 2.0),
-                    fmt(rect_offset / 2.0)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
-                );
-                out.push_str("</g>");
-            }
+                &mut label_dx,
+                &mut label_dy,
+            );
         }
         "diamond" | "question" | "diam" => {
             let w = layout_node.width.max(1.0);

@@ -3,6 +3,7 @@
 mod bow_tie_rect;
 mod curly_braces;
 mod curved_trapezoid;
+mod cylinders;
 mod divided_rect;
 mod icon_square;
 mod image_square;
@@ -17,10 +18,12 @@ mod tag_rect;
 mod tagged_wave_document;
 mod triangle;
 mod wave_document;
+mod window_pane;
 
 pub(super) use bow_tie_rect::render_bow_tie_rect;
 pub(super) use curly_braces::render_curly_brace_comment;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
+pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
 pub(super) use divided_rect::render_divided_rect;
 pub(super) use icon_square::try_render_icon_square;
 pub(super) use image_square::try_render_image_square;
@@ -35,3 +38,4 @@ pub(super) use tag_rect::render_tag_rect;
 pub(super) use tagged_wave_document::render_tagged_wave_document;
 pub(super) use triangle::render_triangle_extract;
 pub(super) use wave_document::render_wave_document;
+pub(super) use window_pane::render_window_pane;
