@@ -1,6 +1,7 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
 use crate::svg::parity::flowchart::types::FlowchartRenderCtx;
+use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use std::fmt::Write as _;
 
@@ -76,6 +77,73 @@ pub(super) fn write_class_attr(out: &mut String, base: &str, classes: &[String])
         out.push(' ');
         escape_xml_into(out, t);
     }
+}
+
+pub(super) fn open_node_wrapper(
+    out: &mut String,
+    node_id: &str,
+    dom_idx: Option<usize>,
+    class_attr_base: &str,
+    node_classes: &[String],
+    wrapped_in_a: bool,
+    href: Option<&str>,
+    x: f64,
+    y: f64,
+    tooltip_enabled: bool,
+    tooltip: &str,
+) {
+    if wrapped_in_a {
+        if let Some(href) = href {
+            out.push_str(r#"<a xlink:href=""#);
+            escape_xml_into(out, href);
+            out.push_str(r#"" transform="translate("#);
+            crate::svg::parity::util::fmt_into(out, x);
+            out.push_str(", ");
+            crate::svg::parity::util::fmt_into(out, y);
+            out.push_str(r#")">"#);
+        } else {
+            out.push_str(r#"<a transform="translate("#);
+            crate::svg::parity::util::fmt_into(out, x);
+            out.push_str(", ");
+            crate::svg::parity::util::fmt_into(out, y);
+            out.push_str(r#")">"#);
+        }
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, class_attr_base, node_classes);
+        if let Some(dom_idx) = dom_idx {
+            out.push_str(r#"" id="flowchart-"#);
+            escape_xml_into(out, node_id);
+            let _ = write!(out, "-{dom_idx}\"");
+        } else {
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, node_id);
+            out.push('"');
+        }
+    } else {
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, class_attr_base, node_classes);
+        if let Some(dom_idx) = dom_idx {
+            out.push_str(r#"" id="flowchart-"#);
+            escape_xml_into(out, node_id);
+            let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
+            crate::svg::parity::util::fmt_into(out, x);
+            out.push_str(", ");
+            crate::svg::parity::util::fmt_into(out, y);
+            out.push_str(r#")""#);
+        } else {
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, node_id);
+            out.push_str(r#"" transform="translate("#);
+            crate::svg::parity::util::fmt_into(out, x);
+            out.push_str(", ");
+            crate::svg::parity::util::fmt_into(out, y);
+            out.push_str(r#")""#);
+        }
+    }
+    if tooltip_enabled {
+        let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+    }
+    out.push('>');
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics(

@@ -1,7 +1,6 @@
 //! Flowchart node renderer.
 
 use super::super::*;
-use crate::svg::parity::util;
 
 mod geom;
 mod helpers;
@@ -125,58 +124,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
     }
 
-    if wrapped_in_a {
-        if let Some(href) = href {
-            out.push_str(r#"<a xlink:href=""#);
-            escape_xml_into(out, href);
-            out.push_str(r#"" transform="translate("#);
-            util::fmt_into(out, x);
-            out.push_str(", ");
-            util::fmt_into(out, y);
-            out.push_str(r#")">"#);
-        } else {
-            out.push_str(r#"<a transform="translate("#);
-            util::fmt_into(out, x);
-            out.push_str(", ");
-            util::fmt_into(out, y);
-            out.push_str(r#")">"#);
-        }
-        out.push_str(r#"<g class=""#);
-        helpers::write_class_attr(out, class_attr_base, node_classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id="flowchart-"#);
-            escape_xml_into(out, node_id);
-            let _ = write!(out, "-{dom_idx}\"");
-        } else {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, node_id);
-            out.push('"');
-        }
-    } else {
-        out.push_str(r#"<g class=""#);
-        helpers::write_class_attr(out, class_attr_base, node_classes);
-        if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id="flowchart-"#);
-            escape_xml_into(out, node_id);
-            let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
-            util::fmt_into(out, x);
-            out.push_str(", ");
-            util::fmt_into(out, y);
-            out.push_str(r#")""#);
-        } else {
-            out.push_str(r#"" id=""#);
-            escape_xml_into(out, node_id);
-            out.push_str(r#"" transform="translate("#);
-            util::fmt_into(out, x);
-            out.push_str(", ");
-            util::fmt_into(out, y);
-            out.push_str(r#")""#);
-        }
-    }
-    if tooltip_enabled {
-        let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
-    }
-    out.push('>');
+    helpers::open_node_wrapper(
+        out,
+        node_id,
+        dom_idx,
+        class_attr_base,
+        node_classes,
+        wrapped_in_a,
+        href,
+        x,
+        y,
+        tooltip_enabled,
+        tooltip,
+    );
 
     let style_start = timing_enabled.then(std::time::Instant::now);
     let mut compiled_styles =
