@@ -11,6 +11,7 @@ mod cyclic_special;
 mod data_points;
 mod fix_corners;
 mod intersect;
+mod line_with_offset;
 mod rect_clip;
 mod trace;
 
@@ -27,6 +28,7 @@ pub(super) use fix_corners::maybe_fix_corners;
 pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
 };
+pub(super) use line_with_offset::line_with_offset_points;
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
 pub(super) use trace::{TraceEndpointIntersection, tb, tp, write_flowchart_edge_trace};
 
