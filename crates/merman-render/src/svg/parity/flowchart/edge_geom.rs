@@ -10,6 +10,7 @@ mod boundary;
 mod curve_path;
 mod cyclic_special;
 mod data_points;
+mod degenerate_path;
 mod fix_corners;
 mod intersect;
 mod line_with_offset;
@@ -26,6 +27,7 @@ pub(super) use boundary::{
 pub(super) use curve_path::curve_path_d_and_bounds;
 pub(super) use cyclic_special::normalize_cyclic_special_data_points;
 pub(super) use data_points::{maybe_snap_data_point_to_f32, maybe_truncate_data_point};
+pub(super) use degenerate_path::maybe_override_degenerate_subgraph_edge_path_d;
 pub(super) use fix_corners::maybe_fix_corners;
 pub(super) use intersect::{
     force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,

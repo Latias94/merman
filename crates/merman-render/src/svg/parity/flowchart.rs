@@ -97,9 +97,10 @@ fn flowchart_compute_edge_path_geom_impl(
         is_rounded_intersect_shift_shape, line_with_offset_points,
         maybe_collapse_straight_except_one_endpoint, maybe_fix_corners,
         maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
-        maybe_pad_cyclic_special_basis_route, maybe_remove_redundant_cluster_run_point,
-        maybe_snap_data_point_to_f32, maybe_truncate_data_point,
-        normalize_cyclic_special_data_points, write_flowchart_edge_trace,
+        maybe_override_degenerate_subgraph_edge_path_d, maybe_pad_cyclic_special_basis_route,
+        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
+        maybe_truncate_data_point, normalize_cyclic_special_data_points,
+        write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -354,17 +355,10 @@ fn flowchart_compute_edge_path_geom_impl(
         abs_top_transform,
         viewbox_current_bounds,
     );
-    // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
-    // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
-    // renders these as a single-point path (`M..Z`) while preserving the original `data-points`.
-    if (ctx.subgraphs_by_id.contains_key(edge.from.as_str())
-        && flowchart_is_strict_descendant(&ctx.parent, edge.to.as_str(), edge.from.as_str()))
-        || (ctx.subgraphs_by_id.contains_key(edge.to.as_str())
-            && flowchart_is_strict_descendant(&ctx.parent, edge.from.as_str(), edge.to.as_str()))
+    if let Some(override_d) =
+        maybe_override_degenerate_subgraph_edge_path_d(ctx, edge, &points_for_data_points)
     {
-        if let Some(p) = points_for_data_points.last() {
-            d = format!("M{},{}Z", fmt_display(p.x + 4.0), fmt_display(p.y));
-        }
+        d = override_d;
     }
 
     if trace_enabled {
