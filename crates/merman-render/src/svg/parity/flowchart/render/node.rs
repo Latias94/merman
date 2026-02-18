@@ -373,32 +373,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
         // Flowchart v2 lined cylinder (Disk storage).
         "lin-cyl" => {
-            // Mirror Mermaid `linedCylinder.ts` (non-handDrawn) + translate.
-            let w = layout_node.width.max(1.0);
-            let rx = w / 2.0;
-            let ry = rx / (2.5 + w / 50.0);
-            let out_h = layout_node.height.max(1.0);
-            let h = (out_h - 2.0 * ry).max(0.0);
-            let outer_offset = h * 0.1;
-
-            // Mermaid moves the label down by `ry`.
-            label_dy = ry;
-
-            let path_data = format!(
-                "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 -{w},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,-{h} M0,{y2} a{rx},{ry} 0,0,0 {w},0",
-                ry = fmt(ry),
-                rx = fmt(rx),
-                w = fmt(w),
-                h = fmt(h),
-                y2 = fmt(ry + outer_offset),
-            );
-            let _ = write!(
-                out,
-                r#"<path d="{}" class="basic label-container" style="" transform="translate({}, {})"/>"#,
-                escape_attr(&path_data),
-                fmt(-w / 2.0),
-                fmt(-(h / 2.0 + ry))
-            );
+            shapes::render_lined_cylinder(out, layout_node, &mut label_dy);
         }
 
         // Flowchart v2 curved trapezoid (Display).
