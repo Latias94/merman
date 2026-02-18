@@ -95,8 +95,8 @@ fn flowchart_compute_edge_path_geom_impl(
         cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, maybe_normalize_selfedge_loop_points,
-        maybe_snap_data_point_to_f32, maybe_truncate_data_point, normalized_boundary_for_node, tb,
-        tp, write_flowchart_edge_trace,
+        maybe_snap_data_point_to_f32, maybe_truncate_data_point,
+        normalize_cyclic_special_data_points, write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -219,6 +219,9 @@ fn flowchart_compute_edge_path_geom_impl(
     }
 
     if is_cyclic_special {
+        // NOTE: the normalization logic lives in `edge_geom::cyclic_special` now; keep the old
+        // inlined version around (disabled) until the refactor settles.
+        #[cfg(any())]
         fn normalize_cyclic_special_data_points(
             ctx: &FlowchartRenderCtx<'_>,
             edge: &crate::flowchart::FlowEdge,
