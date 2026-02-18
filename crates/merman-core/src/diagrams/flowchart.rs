@@ -16,6 +16,7 @@ mod build;
 mod lex;
 mod lexer;
 mod lexer_iter;
+mod link;
 mod model;
 mod semantic;
 mod shape_data;
@@ -38,6 +39,7 @@ pub(crate) use tokens::{LexError, NodeLabelToken, Tok};
 use accessibility::extract_flowchart_accessibility_statements;
 use build::FlowchartBuildState;
 use lexer::Lexer;
+use link::{destruct_end_link, destruct_start_link};
 use semantic::apply_semantic_statements;
 use shape_data::{apply_shape_data_to_node, parse_shape_data_yaml, yaml_to_bool, yaml_to_string};
 use subgraph::SubgraphBuilder;
@@ -397,93 +399,6 @@ pub fn parse_flowchart_model_for_render(
             .collect::<Vec<_>>(),
         tooltips: tooltips.into_iter().collect(),
     })
-}
-
-fn count_char(ch: char, s: &str) -> usize {
-    s.chars().filter(|&c| c == ch).count()
-}
-
-fn destruct_start_link(s: &str) -> (&'static str, &'static str) {
-    let mut str = s.trim();
-    let mut edge_type = "arrow_open";
-    if let Some(first) = str.as_bytes().first().copied() {
-        match first {
-            b'<' => {
-                edge_type = "arrow_point";
-                str = &str[1..];
-            }
-            b'x' => {
-                edge_type = "arrow_cross";
-                str = &str[1..];
-            }
-            b'o' => {
-                edge_type = "arrow_circle";
-                str = &str[1..];
-            }
-            _ => {}
-        }
-    }
-
-    let mut stroke = "normal";
-    if str.contains('=') {
-        stroke = "thick";
-    }
-    if str.contains('.') {
-        stroke = "dotted";
-    }
-    (edge_type, stroke)
-}
-
-fn destruct_end_link(s: &str) -> (String, String, usize) {
-    let str = s.trim();
-    if str.len() < 2 {
-        return ("arrow_open".to_string(), "normal".to_string(), 1);
-    }
-    let mut line = &str[..str.len() - 1];
-    let mut edge_type = "arrow_open".to_string();
-
-    match str.as_bytes()[str.len() - 1] {
-        b'x' => {
-            edge_type = "arrow_cross".to_string();
-            if str.as_bytes().first().copied() == Some(b'x') {
-                edge_type = format!("double_{edge_type}");
-                line = &line[1..];
-            }
-        }
-        b'>' => {
-            edge_type = "arrow_point".to_string();
-            if str.as_bytes().first().copied() == Some(b'<') {
-                edge_type = format!("double_{edge_type}");
-                line = &line[1..];
-            }
-        }
-        b'o' => {
-            edge_type = "arrow_circle".to_string();
-            if str.as_bytes().first().copied() == Some(b'o') {
-                edge_type = format!("double_{edge_type}");
-                line = &line[1..];
-            }
-        }
-        _ => {}
-    }
-
-    let mut stroke = "normal".to_string();
-    let mut length = line.len().saturating_sub(1);
-
-    if line.starts_with('=') {
-        stroke = "thick".to_string();
-    }
-    if line.starts_with('~') {
-        stroke = "invisible".to_string();
-    }
-
-    let dots = count_char('.', line);
-    if dots > 0 {
-        stroke = "dotted".to_string();
-        length = dots;
-    }
-
-    (edge_type, stroke, length)
 }
 
 fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
