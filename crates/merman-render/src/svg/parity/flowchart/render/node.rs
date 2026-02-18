@@ -10,9 +10,7 @@ mod roughjs;
 mod shapes;
 
 use geom::{arc_points, generate_circle_points, generate_full_sine_wave_points, path_from_points};
-use roughjs::{
-    roughjs_paths_for_polygon, roughjs_paths_for_svg_path, roughjs_stroke_path_for_svg_path,
-};
+use roughjs::{roughjs_paths_for_svg_path, roughjs_stroke_path_for_svg_path};
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     out: &mut String,
@@ -525,112 +523,34 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
         // Flowchart v2 triangle (Extract).
         "tri" => {
-            let label_text_plain =
-                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-                &ctx.text_style,
-                ctx.class_defs,
-                node_classes,
-                node_styles,
-            );
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                ctx.measurer,
+            shapes::render_triangle_extract(
+                out,
+                ctx,
                 label_text,
                 label_type,
-                &node_text_style,
-                Some(ctx.wrapping_width),
-                ctx.node_wrap_mode,
-            );
-            let span_css_height_parity = node_classes.iter().any(|c| {
-                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                    styles.iter().any(|s| {
-                        matches!(
-                            s.split_once(':').map(|p| p.0.trim()),
-                            Some("background" | "border")
-                        )
-                    })
-                })
-            });
-            if span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
-                || (label_type == "markdown" && label_text.contains("!["));
-            if label_text_plain.trim().is_empty() && !label_has_visual_content {
-                metrics.width = 0.0;
-                metrics.height = 0.0;
-            }
-
-            let p = ctx.node_padding;
-            let w = metrics.width + p;
-            let h = w + metrics.height;
-            let tw = w + metrics.height;
-            let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
-            let path_data = path_from_points(&pts);
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+                node_classes,
+                node_styles,
                 fill_color,
                 stroke_color,
-                1.3,
-                "0 0",
                 hand_drawn_seed,
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-
-            let _ = write!(
-                out,
-                r#"<g transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
-                fmt(-h / 2.0),
-                fmt(h / 2.0),
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                timing_enabled,
+                details,
+                &mut label_dy,
             );
-
-            // Mermaid places the label near the base; in htmlLabels mode the padding term is /2.
-            label_dy = h / 2.0 - metrics.height / 2.0 - p / 2.0;
         }
 
         // Flowchart v2 shaded process / lined rectangle.
         "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" => {
-            // Mermaid `shadedProcess.ts`:
-            // - outer bbox includes an extra 8px on both sides (and an internal vertical line),
-            // - label is nudged +4px on x.
             label_dx = 4.0;
             compact_label_translate = true;
-            let out_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (out_w - 16.0).max(1.0);
-            let x = -out_w / 2.0 + 8.0;
-            let y = -h / 2.0;
-            let pts: Vec<(f64, f64)> = vec![
-                (x, y),
-                (x + w + 8.0, y),
-                (x + w + 8.0, y + h),
-                (x - 8.0, y + h),
-                (x - 8.0, y),
-                (x, y),
-                (x, y + h),
-            ];
-            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_polygon(
-                &pts,
+            shapes::render_shaded_process(
+                out,
+                layout_node,
                 fill_color,
                 stroke_color,
-                1.3,
-                hand_drawn_seed
-            ))
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
-            let _ = write!(
-                out,
-                r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
-                escape_attr(&fill_d),
-                escape_attr(fill_color),
-                escape_attr(&stroke_d),
-                escape_attr(stroke_color),
+                hand_drawn_seed,
+                timing_enabled,
+                details,
             );
         }
 
