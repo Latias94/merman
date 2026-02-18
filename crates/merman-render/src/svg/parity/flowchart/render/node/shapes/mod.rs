@@ -9,6 +9,7 @@ mod lined_wave_document;
 mod no_label;
 mod notched_pentagon;
 mod tag_rect;
+mod tagged_wave_document;
 mod wave_document;
 
 pub(super) use bow_tie_rect::render_bow_tie_rect;
@@ -20,4 +21,5 @@ pub(super) use lined_wave_document::render_lined_wave_document;
 pub(super) use no_label::try_render_flowchart_v2_no_label;
 pub(super) use notched_pentagon::render_notched_pentagon;
 pub(super) use tag_rect::render_tag_rect;
+pub(super) use tagged_wave_document::render_tagged_wave_document;
 pub(super) use wave_document::render_wave_document;
