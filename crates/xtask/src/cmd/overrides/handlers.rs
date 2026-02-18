@@ -1,8 +1,8 @@
+//! SVG parity override generators and inventories.
+
 use crate::XtaskError;
 use crate::util::*;
 use regex::Regex;
-use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
