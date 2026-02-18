@@ -95,7 +95,8 @@ fn flowchart_compute_edge_path_geom_impl(
         cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, maybe_collapse_straight_except_one_endpoint,
-        maybe_normalize_selfedge_loop_points, maybe_remove_redundant_cluster_run_point,
+        maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
+        maybe_pad_cyclic_special_basis_route, maybe_remove_redundant_cluster_run_point,
         maybe_snap_data_point_to_f32, maybe_truncate_data_point,
         normalize_cyclic_special_data_points, write_flowchart_edge_trace,
     };
@@ -308,14 +309,11 @@ fn flowchart_compute_edge_path_geom_impl(
         && interpolate != "linear"
         && (!is_cluster_edge || is_cyclic_special)
     {
-        let a = &points_for_render[0];
-        let b = &points_for_render[1];
-        points_for_render.insert(
-            1,
-            crate::model::LayoutPoint {
-                x: (a.x + b.x) / 2.0,
-                y: (a.y + b.y) / 2.0,
-            },
+        maybe_insert_midpoint_for_basis(
+            points_for_render,
+            interpolate,
+            is_cluster_edge,
+            is_cyclic_special,
         );
     }
 
@@ -329,68 +327,7 @@ fn flowchart_compute_edge_path_geom_impl(
     // least 5 points (so `curveBasis` emits 4 `C` segments) only for the variants that Mermaid
     // expands.
     if is_basis && is_cyclic_special {
-        fn ensure_min_points(points: &mut Vec<crate::model::LayoutPoint>, min_len: usize) {
-            if points.len() >= min_len || points.len() < 2 {
-                return;
-            }
-            while points.len() < min_len {
-                let mut best_i = 0usize;
-                let mut best_d2 = -1.0f64;
-                for i in 0..points.len().saturating_sub(1) {
-                    let a = &points[i];
-                    let b = &points[i + 1];
-                    let dx = b.x - a.x;
-                    let dy = b.y - a.y;
-                    let d2 = dx * dx + dy * dy;
-                    if d2 > best_d2 {
-                        best_d2 = d2;
-                        best_i = i;
-                    }
-                }
-                let a = points[best_i].clone();
-                let b = points[best_i + 1].clone();
-                points.insert(
-                    best_i + 1,
-                    crate::model::LayoutPoint {
-                        x: (a.x + b.x) / 2.0,
-                        y: (a.y + b.y) / 2.0,
-                    },
-                );
-            }
-        }
-
-        let cyclic_variant = if edge.id.ends_with("-cyclic-special-1") {
-            Some(1u8)
-        } else if edge.id.ends_with("-cyclic-special-2") {
-            Some(2u8)
-        } else {
-            None
-        };
-
-        if let Some(variant) = cyclic_variant {
-            let base_id = edge
-                .id
-                .split("-cyclic-special-")
-                .next()
-                .unwrap_or(edge.id.as_str());
-
-            let should_expand = match ctx.layout_clusters_by_id.get(base_id) {
-                Some(cluster) if cluster.effective_dir == "TB" || cluster.effective_dir == "TD" => {
-                    variant == 1
-                }
-                Some(_) => variant == 2,
-                None => variant == 2,
-            };
-
-            if should_expand {
-                ensure_min_points(points_for_render, 5);
-            } else if points_for_render.len() == 4 {
-                // For non-expanded cyclic helper edges, Mermaid's command sequence matches the
-                // 3-point `curveBasis` case (`C` count = 2). Avoid emitting the intermediate
-                // 4-point variant (`C` count = 3).
-                points_for_render.remove(1);
-            }
-        }
+        maybe_pad_cyclic_special_basis_route(ctx, edge, points_for_render);
     }
 
     let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
