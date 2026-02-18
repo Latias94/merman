@@ -5,6 +5,7 @@
 
 use super::*;
 
+mod basis;
 mod boundary;
 mod cyclic_special;
 mod data_points;
@@ -12,6 +13,9 @@ mod intersect;
 mod rect_clip;
 mod trace;
 
+pub(super) use basis::{
+    maybe_collapse_straight_except_one_endpoint, maybe_remove_redundant_cluster_run_point,
+};
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
 };
