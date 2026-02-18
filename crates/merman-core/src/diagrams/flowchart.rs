@@ -2,8 +2,6 @@ use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use indexmap::IndexMap;
-use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -13,271 +11,24 @@ lalrpop_util::lalrpop_mod!(
     "/diagrams/flowchart_grammar.rs"
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowchartV2Model {
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "classDefs")]
-    pub class_defs: IndexMap<String, Vec<String>>,
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default, rename = "edgeDefaults")]
-    pub edge_defaults: Option<FlowEdgeDefaults>,
-    #[serde(default, rename = "vertexCalls")]
-    pub vertex_calls: Vec<String>,
-    pub nodes: Vec<FlowNode>,
-    pub edges: Vec<FlowEdge>,
-    #[serde(default)]
-    pub subgraphs: Vec<FlowSubgraph>,
-    #[serde(default)]
-    pub tooltips: FxHashMap<String, String>,
-}
+mod ast;
+mod lex;
+mod lexer_iter;
+mod model;
+mod tokens;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowEdgeDefaults {
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-}
+pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartV2Model};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowNode {
-    pub id: String,
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(rename = "layoutShape")]
-    pub layout_shape: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub form: Option<String>,
-    #[serde(default)]
-    pub pos: Option<String>,
-    #[serde(default)]
-    pub img: Option<String>,
-    #[serde(default)]
-    pub constraint: Option<String>,
-    #[serde(default, rename = "assetWidth")]
-    pub asset_width: Option<f64>,
-    #[serde(default, rename = "assetHeight")]
-    pub asset_height: Option<f64>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub link: Option<String>,
-    #[serde(default, rename = "linkTarget")]
-    pub link_target: Option<String>,
-    #[serde(default, rename = "haveCallback")]
-    pub have_callback: bool,
-}
+pub(crate) use model::{
+    Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowEdge {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "type")]
-    pub edge_type: Option<String>,
-    #[serde(default)]
-    pub stroke: Option<String>,
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-    #[serde(default)]
-    pub animate: Option<bool>,
-    #[serde(default)]
-    pub animation: Option<String>,
-    pub length: usize,
-}
+pub(crate) use ast::{
+    ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, FlowchartAst, LinkStylePos,
+    LinkStyleStmt, Stmt, StyleStmt, SubgraphBlock,
+};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowSubgraph {
-    pub id: String,
-    pub title: String,
-    pub dir: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    pub nodes: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Node {
-    pub id: String,
-    pub label: Option<String>,
-    pub label_type: TitleKind,
-    pub shape: Option<String>,
-    pub shape_data: Option<String>,
-    pub icon: Option<String>,
-    pub form: Option<String>,
-    pub pos: Option<String>,
-    pub img: Option<String>,
-    pub constraint: Option<String>,
-    pub asset_width: Option<f64>,
-    pub asset_height: Option<f64>,
-    pub styles: Vec<String>,
-    pub classes: Vec<String>,
-    pub link: Option<String>,
-    pub link_target: Option<String>,
-    pub have_callback: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct Edge {
-    pub from: String,
-    pub to: String,
-    pub id: Option<String>,
-    pub link: LinkToken,
-    pub label: Option<String>,
-    pub label_type: TitleKind,
-    pub style: Vec<String>,
-    pub classes: Vec<String>,
-    pub interpolate: Option<String>,
-    pub is_user_defined_id: bool,
-    pub animate: Option<bool>,
-    pub animation: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LinkToken {
-    pub end: String,
-    pub edge_type: String,
-    pub stroke: String,
-    pub length: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct EdgeDefaults {
-    pub style: Vec<String>,
-    pub interpolate: Option<String>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum TitleKind {
-    Text,
-    String,
-    Markdown,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LabeledText {
-    pub text: String,
-    pub kind: TitleKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SubgraphHeader {
-    pub raw_id: String,
-    pub raw_title: String,
-    pub title_kind: TitleKind,
-    pub id_equals_title: bool,
-}
-
-impl Default for SubgraphHeader {
-    fn default() -> Self {
-        Self {
-            raw_id: String::new(),
-            raw_title: String::new(),
-            title_kind: TitleKind::Text,
-            id_equals_title: true,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct StyleStmt {
-    pub target: String,
-    pub styles: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClassDefStmt {
-    pub ids: Vec<String>,
-    pub styles: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClassAssignStmt {
-    pub targets: Vec<String>,
-    pub class_name: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub(crate) enum ClickAction {
-    Callback {
-        function_name: String,
-        function_args: Option<String>,
-    },
-    Link {
-        href: String,
-        target: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ClickStmt {
-    pub ids: Vec<String>,
-    pub tooltip: Option<String>,
-    pub action: ClickAction,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LinkStylePos {
-    Default,
-    Index(usize),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct LinkStyleStmt {
-    pub positions: Vec<LinkStylePos>,
-    pub interpolate: Option<String>,
-    pub styles: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct FlowchartAst {
-    pub keyword: String,
-    pub direction: Option<String>,
-    pub statements: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct SubgraphBlock {
-    pub header: SubgraphHeader,
-    pub statements: Vec<Stmt>,
-}
-
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone)]
-pub(crate) enum Stmt {
-    Chain { nodes: Vec<Node>, edges: Vec<Edge> },
-    Node(Node),
-    Subgraph(SubgraphBlock),
-    Direction(String),
-    Style(StyleStmt),
-    ClassDef(ClassDefStmt),
-    ClassAssign(ClassAssignStmt),
-    Click(ClickStmt),
-    LinkStyle(LinkStyleStmt),
-    ShapeData { target: String, yaml: String },
-}
+pub(crate) use tokens::{LexError, NodeLabelToken, Tok};
 
 #[derive(Debug, Clone)]
 pub(crate) struct FlowSubGraph {
@@ -288,48 +39,6 @@ pub(crate) struct FlowSubGraph {
     pub styles: Vec<String>,
     pub dir: Option<String>,
     pub label_type: String,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum Tok {
-    KwGraph,
-    KwFlowchart,
-    KwFlowchartElk,
-    KwSubgraph,
-    KwEnd,
-
-    Sep,
-    Amp,
-    StyleSep,
-    NodeLabel(NodeLabelToken),
-
-    Direction(String),
-    DirectionStmt(String),
-    Id(String),
-    Arrow(LinkToken),
-    EdgeLabel(LabeledText),
-    SubgraphHeader(SubgraphHeader),
-
-    StyleStmt(StyleStmt),
-    ClassDefStmt(ClassDefStmt),
-    ClassAssignStmt(ClassAssignStmt),
-    ClickStmt(ClickStmt),
-    LinkStyleStmt(LinkStyleStmt),
-
-    EdgeId(String),
-    ShapeData(String),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct NodeLabelToken {
-    pub shape: String,
-    pub text: LabeledText,
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
-pub(crate) struct LexError {
-    pub message: String,
 }
 
 struct Lexer<'input> {
@@ -706,7 +415,7 @@ impl<'input> Lexer<'input> {
         self.pos += "style".len();
         self.skip_ws();
         let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match parse_style_stmt(&rest) {
+        match lex::parse_style_stmt(&rest) {
             Ok(stmt) => Some(Ok((start, Tok::StyleStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -720,7 +429,7 @@ impl<'input> Lexer<'input> {
         self.pos += "classDef".len();
         self.skip_ws();
         let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match parse_classdef_stmt(&rest) {
+        match lex::parse_classdef_stmt(&rest) {
             Ok(stmt) => Some(Ok((start, Tok::ClassDefStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -736,7 +445,7 @@ impl<'input> Lexer<'input> {
         self.pos += "class".len();
         self.skip_ws();
         let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match parse_class_assign_stmt(&rest) {
+        match lex::parse_class_assign_stmt(&rest) {
             Ok(stmt) => Some(Ok((start, Tok::ClassAssignStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -750,7 +459,7 @@ impl<'input> Lexer<'input> {
         self.pos += "click".len();
         self.skip_ws();
         let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match parse_click_stmt(&rest) {
+        match lex::parse_click_stmt(&rest) {
             Ok(stmt) => Some(Ok((start, Tok::ClickStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -766,7 +475,7 @@ impl<'input> Lexer<'input> {
         self.pos += "linkStyle".len();
         self.skip_ws();
         let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match parse_link_style_stmt(&rest) {
+        match lex::parse_link_style_stmt(&rest) {
             Ok(stmt) => Some(Ok((start, Tok::LinkStyleStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -1215,8 +924,8 @@ impl<'input> Lexer<'input> {
         if rest.starts_with("[\\") {
             let open = "[\\";
             let content_start = self.pos + open.len();
-            let end_slash = find_unquoted_delim(self.input, content_start, "/]");
-            let end_backslash = find_unquoted_delim(self.input, content_start, "\\]");
+            let end_slash = lex::find_unquoted_delim(self.input, content_start, "/]");
+            let end_backslash = lex::find_unquoted_delim(self.input, content_start, "\\]");
 
             let (end_start, close, shape) = match (end_slash, end_backslash) {
                 (None, None) => {
@@ -1236,7 +945,7 @@ impl<'input> Lexer<'input> {
             };
 
             let raw = self.input[content_start..end_start].trim();
-            let lt = match parse_node_label_text(raw) {
+            let lt = match lex::parse_node_label_text(raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1254,8 +963,8 @@ impl<'input> Lexer<'input> {
         if rest.starts_with("[/") {
             let open = "[/";
             let content_start = self.pos + open.len();
-            let end_slash = find_unquoted_delim(self.input, content_start, "/]");
-            let end_backslash = find_unquoted_delim(self.input, content_start, "\\]");
+            let end_slash = lex::find_unquoted_delim(self.input, content_start, "/]");
+            let end_backslash = lex::find_unquoted_delim(self.input, content_start, "\\]");
 
             let (end_start, close, shape) = match (end_slash, end_backslash) {
                 (None, None) => {
@@ -1275,7 +984,7 @@ impl<'input> Lexer<'input> {
             };
 
             let raw = self.input[content_start..end_start].trim();
-            let lt = match parse_node_label_text(raw) {
+            let lt = match lex::parse_node_label_text(raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1306,13 +1015,13 @@ impl<'input> Lexer<'input> {
                 continue;
             }
             let content_start = self.pos + open.len();
-            let Some(end_start) = find_unquoted_delim(self.input, content_start, close) else {
+            let Some(end_start) = lex::find_unquoted_delim(self.input, content_start, close) else {
                 return Some(Err(LexError {
                     message: format!("Unterminated node label (missing `{close}`)"),
                 }));
             };
             let raw = self.input[content_start..end_start].trim();
-            let lt = match parse_node_label_text(raw) {
+            let lt = match lex::parse_node_label_text(raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1329,14 +1038,14 @@ impl<'input> Lexer<'input> {
 
         if rest.starts_with("[") {
             let content_start = self.pos + 1;
-            let Some(end_start) = find_unquoted_delim(self.input, content_start, "]") else {
+            let Some(end_start) = lex::find_unquoted_delim(self.input, content_start, "]") else {
                 return Some(Err(LexError {
                     message: "Unterminated node label (missing `]`)".to_string(),
                 }));
             };
             let raw = self.input[content_start..end_start].trim();
-            let (shape, label_raw) = parse_rect_border_label(raw);
-            let lt = match parse_node_label_text(label_raw) {
+            let (shape, label_raw) = lex::parse_rect_border_label(raw);
+            let lt = match lex::parse_node_label_text(label_raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1353,13 +1062,13 @@ impl<'input> Lexer<'input> {
 
         if rest.starts_with("{") {
             let content_start = self.pos + 1;
-            let Some(end_start) = find_unquoted_delim(self.input, content_start, "}") else {
+            let Some(end_start) = lex::find_unquoted_delim(self.input, content_start, "}") else {
                 return Some(Err(LexError {
                     message: "Unterminated node label (missing `}`)".to_string(),
                 }));
             };
             let raw = self.input[content_start..end_start].trim();
-            let lt = match parse_node_label_text(raw) {
+            let lt = match lex::parse_node_label_text(raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1376,13 +1085,13 @@ impl<'input> Lexer<'input> {
 
         if rest.starts_with("(") {
             let content_start = self.pos + 1;
-            let Some(end_start) = find_unquoted_delim(self.input, content_start, ")") else {
+            let Some(end_start) = lex::find_unquoted_delim(self.input, content_start, ")") else {
                 return Some(Err(LexError {
                     message: "Unterminated node label (missing `)`)".to_string(),
                 }));
             };
             let raw = self.input[content_start..end_start].trim();
-            let lt = match parse_node_label_text(raw) {
+            let lt = match lex::parse_node_label_text(raw) {
                 Ok(v) => v,
                 Err(e) => return Some(Err(e)),
             };
@@ -1398,125 +1107,6 @@ impl<'input> Lexer<'input> {
         }
 
         None
-    }
-}
-
-impl<'input> Iterator for Lexer<'input> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(tok) = self.pending.pop_front() {
-            return Some(Ok(tok));
-        }
-
-        if self.pos >= self.input.len() {
-            return None;
-        }
-
-        if let Some(sep) = self.lex_sep() {
-            self.allow_header_direction = false;
-            return Some(Ok(sep));
-        }
-        self.skip_ws();
-        if self.pos >= self.input.len() {
-            return None;
-        }
-        if let Some(sep) = self.lex_sep() {
-            self.allow_header_direction = false;
-            return Some(Ok(sep));
-        }
-        if let Some(sep) = self.lex_comment() {
-            self.allow_header_direction = false;
-            return Some(Ok(sep));
-        }
-        self.skip_ws();
-        if self.pos >= self.input.len() {
-            return None;
-        }
-
-        let start = self.pos;
-        if let Some(tok) = self.lex_direction_stmt() {
-            return Some(Ok(tok));
-        }
-        if let Some(res) = self.lex_style_stmt() {
-            return Some(res);
-        }
-        if let Some(res) = self.lex_classdef_stmt() {
-            return Some(res);
-        }
-        if let Some(res) = self.lex_class_assign_stmt() {
-            return Some(res);
-        }
-        if let Some(res) = self.lex_click_stmt() {
-            return Some(res);
-        }
-        if let Some(res) = self.lex_link_style_stmt() {
-            return Some(res);
-        }
-        if let Some(tok) = self.lex_shape_data() {
-            return Some(Ok(tok));
-        }
-        if self.starts_with_kw("flowchart-elk") {
-            self.pos += "flowchart-elk".len();
-            self.allow_header_direction = true;
-            return Some(Ok((start, Tok::KwFlowchartElk, self.pos)));
-        }
-        if self.starts_with_kw("flowchart") {
-            self.pos += "flowchart".len();
-            self.allow_header_direction = true;
-            return Some(Ok((start, Tok::KwFlowchart, self.pos)));
-        }
-        if self.starts_with_kw("graph") {
-            self.pos += "graph".len();
-            self.allow_header_direction = true;
-            return Some(Ok((start, Tok::KwGraph, self.pos)));
-        }
-        if self.starts_with_kw("subgraph") {
-            self.pos += "subgraph".len();
-            if let Some(header) = self.lex_subgraph_header_after_keyword() {
-                self.pending.push_back(header);
-            }
-            return Some(Ok((start, Tok::KwSubgraph, self.pos)));
-        }
-        if self.starts_with_kw("end") {
-            self.pos += "end".len();
-            return Some(Ok((start, Tok::KwEnd, self.pos)));
-        }
-
-        if let Some(tok) = self.lex_style_sep() {
-            return Some(Ok(tok));
-        }
-
-        if let Some(tok) = self.lex_direction() {
-            return Some(Ok(tok));
-        }
-        self.allow_header_direction = false;
-
-        if let Some(res) = self.lex_node_label() {
-            return Some(res);
-        }
-
-        if let Some(res) = self.lex_arrow_and_label() {
-            return Some(res);
-        }
-
-        if let Some(tok) = self.lex_edge_id() {
-            return Some(Ok(tok));
-        }
-
-        if let Some(tok) = self.lex_id() {
-            return Some(Ok(tok));
-        }
-
-        if let Some(tok) = self.lex_amp() {
-            return Some(Ok(tok));
-        }
-
-        // Skip unknown single byte to avoid infinite loops.
-        let _ = self.bump();
-        Some(Err(LexError {
-            message: format!("Unexpected character at {start}"),
-        }))
     }
 }
 
@@ -2797,123 +2387,6 @@ fn parse_label_text(raw: &str) -> (String, TitleKind) {
     (unquoted, TitleKind::Text)
 }
 
-fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
-    let trimmed = raw.trim();
-    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
-    let quote_char = trimmed.as_bytes().first().copied();
-
-    let (text, kind) = parse_label_text(raw);
-
-    match kind {
-        TitleKind::Text => {
-            // Mermaid Jison-based flowchart lexer treats these as structural tokens (PS/PE/SQE/etc)
-            // and will throw parse errors if they appear inside TEXT.
-            if text.contains('"')
-                || text.contains('(')
-                || text.contains(')')
-                || text.contains('[')
-                || text.contains(']')
-                || text.contains('{')
-                || text.contains('}')
-            {
-                return Err(LexError {
-                    message:
-                        "Invalid text label: contains structural characters; quote it to use them"
-                            .to_string(),
-                });
-            }
-        }
-        TitleKind::String => {
-            // Mermaid allows escaped quotes inside string labels (e.g. `["He said: \\\"hi\\\""]`).
-            // Reject only unescaped nested quotes.
-            if quoted {
-                if let Some(q) = quote_char {
-                    let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
-                    let q = q as char;
-                    let bytes = inner.as_bytes();
-                    let q = q as u8;
-                    let mut has_unescaped = false;
-                    for (i, &b) in bytes.iter().enumerate() {
-                        if b != q {
-                            continue;
-                        }
-                        let mut backslashes = 0usize;
-                        let mut j = i;
-                        while j > 0 && bytes[j - 1] == b'\\' {
-                            backslashes += 1;
-                            j -= 1;
-                        }
-                        if backslashes % 2 == 0 {
-                            has_unescaped = true;
-                            break;
-                        }
-                    }
-                    if has_unescaped {
-                        return Err(LexError {
-                            message: "Invalid string label: contains nested quotes".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-        TitleKind::Markdown => {}
-    }
-
-    Ok(LabeledText { text, kind })
-}
-
-fn parse_rect_border_label(raw: &str) -> (&'static str, &str) {
-    // Mermaid supports a special "rect" variant via `[|borders:...|Label]`.
-    // We only need the shape name and the actual label payload here.
-    let trimmed = raw.trim();
-    let Some(rest) = trimmed.strip_prefix('|') else {
-        return ("square", trimmed);
-    };
-    let Some((prefix, label)) = rest.split_once('|') else {
-        return ("square", trimmed);
-    };
-    if prefix.trim_start().starts_with("borders:") {
-        return ("rect", label);
-    }
-    ("square", trimmed)
-}
-
-fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Option<usize> {
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let delim_bytes = delim.as_bytes();
-    let mut pos = start;
-
-    while pos + delim_bytes.len() <= len {
-        if bytes[pos..pos + delim_bytes.len()] == *delim_bytes {
-            return Some(pos);
-        }
-
-        // Do not scan across statements.
-        if bytes[pos] == b';' || bytes[pos] == b'\n' {
-            return None;
-        }
-
-        match bytes[pos] {
-            b'"' | b'\'' | b'`' => {
-                let quote = bytes[pos];
-                pos += 1;
-                while pos < len {
-                    if bytes[pos] == quote && (pos == 0 || bytes[pos - 1] != b'\\') {
-                        pos += 1;
-                        break;
-                    }
-                    pos += 1;
-                }
-            }
-            _ => pos += 1,
-        }
-    }
-
-    None
-}
-
 fn strip_wrapping_backticks(s: &str) -> (String, bool) {
     let trimmed = s.trim();
     if trimmed.len() >= 2 && trimmed.starts_with('`') && trimmed.ends_with('`') {
@@ -3171,403 +2644,9 @@ fn ensure_node(nodes: &mut Vec<Node>, node_index: &mut HashMap<String, usize>, i
     idx
 }
 
-fn split_first_word(s: &str) -> Option<(&str, &str)> {
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let bytes = trimmed.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    let first = &trimmed[..i];
-    let rest = &trimmed[i..];
-    Some((first, rest))
-}
-
-fn parse_styles_list(s: &str) -> Vec<String> {
-    // Used by `classDef` / `style` statements. Mermaid normalizes these style tokens by trimming
-    // whitespace around each comma-separated entry.
-    let placeholder = "\u{0000}";
-    let replaced = s.replace("\\,", placeholder);
-    replaced
-        .split(',')
-        .map(|p| p.replace(placeholder, ","))
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect()
-}
-
-fn parse_linkstyle_styles_list(s: &str) -> Vec<String> {
-    // Mermaid's Jison grammar preserves whitespace inside each style token (e.g. `, stroke: ...`
-    // becomes `" stroke: ..."`) and downstream FlowDB joins the style list verbatim via
-    // `styles.join(';')` (see `flow.jison` + `flowDb.updateLink(...)`).
-    //
-    // Keep the raw spacing (except for filtering out all-whitespace entries).
-    let placeholder = "\u{0000}";
-    let replaced = s.replace("\\,", placeholder);
-    replaced
-        .split(',')
-        .map(|p| p.replace(placeholder, ","))
-        .filter(|p| !p.trim().is_empty())
-        .collect()
-}
-
-fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, LexError> {
-    let Some((target, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid style statement".to_string(),
-        });
-    };
-    let styles = parse_styles_list(styles_raw);
-    Ok(StyleStmt {
-        target: target.trim().to_string(),
-        styles,
-    })
-}
-
-fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStmt, LexError> {
-    let Some((ids_raw, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid classDef statement".to_string(),
-        });
-    };
-    let ids = ids_raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>();
-    let styles = parse_styles_list(styles_raw);
-    Ok(ClassDefStmt { ids, styles })
-}
-
-fn parse_class_assign_stmt(rest: &str) -> std::result::Result<ClassAssignStmt, LexError> {
-    let Some((targets_raw, class_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
-    };
-    let targets = targets_raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>();
-    let class_name = class_raw.trim().to_string();
-    if class_name.is_empty() {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
-    }
-    Ok(ClassAssignStmt {
-        targets,
-        class_name,
-    })
-}
-
-#[derive(Clone)]
-struct ClickParse<'a> {
-    s: &'a str,
-    i: usize,
-}
-
-impl<'a> ClickParse<'a> {
-    fn new(s: &'a str) -> Self {
-        Self { s, i: 0 }
-    }
-
-    fn skip_ws(&mut self) {
-        while self.i < self.s.len() && self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
-        }
-    }
-
-    fn peek(&self) -> Option<u8> {
-        self.s.as_bytes().get(self.i).copied()
-    }
-
-    fn take_word(&mut self) -> Option<String> {
-        self.skip_ws();
-        let start = self.i;
-        while self.i < self.s.len() && !self.s.as_bytes()[self.i].is_ascii_whitespace() {
-            self.i += 1;
-        }
-        if self.i == start {
-            return None;
-        }
-        Some(self.s[start..self.i].to_string())
-    }
-
-    fn take_quoted(&mut self) -> Option<String> {
-        self.skip_ws();
-        if self.peek()? != b'"' {
-            return None;
-        }
-        self.i += 1;
-        let start = self.i;
-        while self.i < self.s.len() && self.s.as_bytes()[self.i] != b'"' {
-            self.i += 1;
-        }
-        let out = self.s[start..self.i].to_string();
-        if self.i < self.s.len() && self.s.as_bytes()[self.i] == b'"' {
-            self.i += 1;
-        }
-        Some(out)
-    }
-
-    fn rest(&self) -> &str {
-        &self.s[self.i..]
-    }
-}
-
-fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
-    let mut p = ClickParse::new(rest);
-    let Some(id) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
-    };
-    let ids = vec![id];
-
-    p.skip_ws();
-    let tooltip: Option<String>;
-    let action: ClickAction;
-
-    if p.rest().starts_with("href")
-        && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
-    {
-        let _ = p.take_word();
-        let Some(link) = p.take_quoted() else {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
-        };
-        let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
-        tooltip = maybe_tt;
-        action = ClickAction::Link {
-            href: link,
-            target: maybe_target,
-        };
-        return Ok(ClickStmt {
-            ids,
-            tooltip,
-            action,
-        });
-    }
-
-    if p.rest().starts_with("call")
-        && p.rest()
-            .as_bytes()
-            .get(4)
-            .is_none_or(|b| b.is_ascii_whitespace())
-    {
-        let _ = p.take_word();
-        p.skip_ws();
-        let start = p.i;
-        while p.i < p.s.len() {
-            let b = p.s.as_bytes()[p.i];
-            if b.is_ascii_whitespace() || b == b'(' {
-                break;
-            }
-            p.i += 1;
-        }
-        if p.i == start {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
-        }
-        let function_name = p.s[start..p.i].to_string();
-
-        let mut function_args: Option<String> = None;
-        p.skip_ws();
-        if p.peek() == Some(b'(') {
-            p.i += 1;
-            let args_start = p.i;
-            while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
-                p.i += 1;
-            }
-            let args = p.s[args_start..p.i].to_string();
-            if p.peek() == Some(b')') {
-                p.i += 1;
-            }
-            if !args.trim().is_empty() {
-                function_args = Some(args);
-            }
-        }
-
-        tooltip = p.take_quoted();
-        action = ClickAction::Callback {
-            function_name,
-            function_args,
-        };
-        return Ok(ClickStmt {
-            ids,
-            tooltip,
-            action,
-        });
-    }
-
-    if let Some(link) = p.take_quoted() {
-        let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
-        tooltip = maybe_tt;
-        action = ClickAction::Link {
-            href: link,
-            target: maybe_target,
-        };
-        return Ok(ClickStmt {
-            ids,
-            tooltip,
-            action,
-        });
-    }
-
-    let Some(function_name) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
-    };
-    tooltip = p.take_quoted();
-    action = ClickAction::Callback {
-        function_name,
-        function_args: None,
-    };
-    Ok(ClickStmt {
-        ids,
-        tooltip,
-        action,
-    })
-}
-
-fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexError> {
-    let mut p = ClickParse::new(rest);
-    let Some(pos_raw) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid linkStyle statement".to_string(),
-        });
-    };
-
-    let positions = if pos_raw == "default" {
-        vec![LinkStylePos::Default]
-    } else {
-        pos_raw
-            .split(',')
-            .map(|s| {
-                let idx = s.trim().parse::<usize>().map_err(|_| LexError {
-                    message: "Invalid linkStyle statement".to_string(),
-                })?;
-                Ok(LinkStylePos::Index(idx))
-            })
-            .collect::<std::result::Result<Vec<_>, LexError>>()?
-    };
-
-    p.skip_ws();
-    let mut interpolate: Option<String> = None;
-    if p.rest().starts_with("interpolate")
-        && p.rest()
-            .as_bytes()
-            .get("interpolate".len())
-            .is_none_or(|b| b.is_ascii_whitespace())
-    {
-        let _ = p.take_word();
-        interpolate = p.take_word();
-    }
-
-    // Mermaid's `linkStyle ... interpolate <curve> ...` still tokenizes the styles list without the
-    // leading whitespace between the curve name and the first style token. Keep the whitespace
-    // inside comma-separated tokens (handled by `parse_linkstyle_styles_list`), but drop the
-    // leading separator spaces at the list boundary.
-    p.skip_ws();
-    let styles = parse_linkstyle_styles_list(p.rest());
-    Ok(LinkStyleStmt {
-        positions,
-        interpolate,
-        styles,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_click_stmt_parses_callback() {
-        let stmt = parse_click_stmt("A callback").unwrap();
-        assert_eq!(stmt.ids, vec!["A"]);
-        assert!(stmt.tooltip.is_none());
-        match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert!(function_args.is_none());
-            }
-            _ => panic!("expected callback action"),
-        }
-    }
-
-    #[test]
-    fn parse_click_stmt_parses_call_callback_empty_args() {
-        let stmt = parse_click_stmt("A call callback()").unwrap();
-        assert_eq!(stmt.ids, vec!["A"]);
-        assert!(stmt.tooltip.is_none());
-        match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert!(function_args.is_none());
-            }
-            _ => panic!("expected callback action"),
-        }
-    }
-
-    #[test]
-    fn parse_click_stmt_parses_call_callback_with_args() {
-        let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)").unwrap();
-        match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert_eq!(function_args.as_deref(), Some("\"test0\", test1, test2"));
-            }
-            _ => panic!("expected callback action"),
-        }
-    }
-
-    #[test]
-    fn parse_click_stmt_parses_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A \"click.html\" \"tooltip\" _blank").unwrap();
-        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
-        match stmt.action {
-            ClickAction::Link { href, target } => {
-                assert_eq!(href, "click.html");
-                assert_eq!(target.as_deref(), Some("_blank"));
-            }
-            _ => panic!("expected link action"),
-        }
-    }
-
-    #[test]
-    fn parse_click_stmt_parses_href_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A href \"click.html\" \"tooltip\" _blank").unwrap();
-        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
-        match stmt.action {
-            ClickAction::Link { href, target } => {
-                assert_eq!(href, "click.html");
-                assert_eq!(target.as_deref(), Some("_blank"));
-            }
-            _ => panic!("expected link action"),
-        }
-    }
 
     #[test]
     fn flowchart_subgraphs_exist_matches_mermaid_flowdb_spec() {
