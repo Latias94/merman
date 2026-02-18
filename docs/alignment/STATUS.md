@@ -137,8 +137,9 @@ reducing the size of the flowchart module while keeping the global `parity-root`
 
 Recent progress (2026-02-18): started migrating Flowchart edge geometry helpers out of the monolithic
 `flowchart_compute_edge_path_geom_impl` by extracting boundary/self-loop normalization helpers into
-`crates/merman-render/src/svg/parity/flowchart/edge_geom/boundary.rs` and rect clipping + point dedup helpers into
-`crates/merman-render/src/svg/parity/flowchart/edge_geom/rect_clip.rs`.
+`crates/merman-render/src/svg/parity/flowchart/edge_geom/boundary.rs`, rect clipping + point dedup helpers into
+`crates/merman-render/src/svg/parity/flowchart/edge_geom/rect_clip.rs`, and shape intersection helpers into
+`crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs`.
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
