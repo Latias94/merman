@@ -8,7 +8,9 @@ use super::*;
 mod boundary;
 mod rect_clip;
 
-pub(super) use boundary::{BoundaryNode, boundary_for_node, maybe_normalize_selfedge_loop_points};
+pub(super) use boundary::{
+    BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
+};
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
 
 pub(super) fn flowchart_compute_edge_path_geom(

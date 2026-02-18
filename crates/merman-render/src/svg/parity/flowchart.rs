@@ -91,24 +91,9 @@ fn flowchart_compute_edge_path_geom_impl(
     let local_points = scratch.local_points.as_slice();
 
     use edge_geom::{
-        BoundaryNode, boundary_for_node, cut_path_at_intersect_into, dedup_consecutive_points_into,
-        maybe_normalize_selfedge_loop_points,
+        BoundaryNode, boundary_for_cluster, boundary_for_node, cut_path_at_intersect_into,
+        dedup_consecutive_points_into, maybe_normalize_selfedge_loop_points,
     };
-
-    fn boundary_for_cluster(
-        ctx: &FlowchartRenderCtx<'_>,
-        cluster_id: &str,
-        origin_x: f64,
-        origin_y: f64,
-    ) -> Option<BoundaryNode> {
-        let n = ctx.layout_clusters_by_id.get(cluster_id)?;
-        Some(BoundaryNode {
-            x: n.x + ctx.tx - origin_x,
-            y: n.y + ctx.ty - origin_y,
-            width: n.width,
-            height: n.height,
-        })
-    }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
     dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
