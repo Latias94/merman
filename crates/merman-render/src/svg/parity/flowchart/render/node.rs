@@ -615,80 +615,32 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             }
         }
         "manual-file" | "flipped-triangle" | "flip-tri" => {
-            let h = layout_node.height.max(1.0);
-            let pts = vec![(0.0, -h), (h, -h), (h / 2.0, 0.0)];
-            let path_data = path_from_points(&pts);
-            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_manual_file(
+                out,
+                layout_node,
+                &style,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            )) {
-                let _ = write!(
-                    out,
-                    r#"<g transform="translate({}, {})">"#,
-                    fmt_display(-h / 2.0),
-                    fmt_display(h / 2.0)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_xml_display(&fill_d),
-                    escape_xml_display(fill_color),
-                    escape_xml_display(&style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_xml_display(&stroke_d),
-                    escape_xml_display(stroke_color),
-                    fmt_display(stroke_width as f64),
-                    escape_xml_display(stroke_dasharray),
-                    escape_xml_display(&style)
-                );
-                out.push_str("</g>");
-            }
+                timing_enabled,
+                details,
+            );
         }
         "manual-input" | "sloped-rectangle" | "sl-rect" => {
-            let w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let x = -w / 2.0;
-            let y = -h / 2.0;
-            let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
-            let path_data = path_from_points(&points);
-            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_manual_input(
+                out,
+                layout_node,
+                &style,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            )) {
-                let _ = write!(
-                    out,
-                    r#"<g class="basic label-container" transform="translate(0, {})">"#,
-                    fmt(h / 4.0)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_xml_display(&fill_d),
-                    escape_xml_display(fill_color),
-                    escape_xml_display(&style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_xml_display(&stroke_d),
-                    escape_xml_display(stroke_color),
-                    fmt_display(stroke_width as f64),
-                    escape_xml_display(stroke_dasharray),
-                    escape_xml_display(&style)
-                );
-                out.push_str("</g>");
-            }
+                timing_enabled,
+                details,
+            );
         }
         "docs" | "documents" | "st-doc" | "stacked-document" => {
             let w = layout_node.width.max(1.0);

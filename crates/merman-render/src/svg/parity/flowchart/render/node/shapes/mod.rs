@@ -13,6 +13,7 @@ mod label_container;
 mod lean_trapezoids;
 mod lined_cylinder;
 mod lined_wave_document;
+mod manuals;
 mod no_label;
 mod notched_pentagon;
 mod rounded_rect;
@@ -39,6 +40,7 @@ pub(super) use lean_trapezoids::{
 };
 pub(super) use lined_cylinder::render_lined_cylinder;
 pub(super) use lined_wave_document::render_lined_wave_document;
+pub(super) use manuals::{render_manual_file, render_manual_input};
 pub(super) use no_label::try_render_flowchart_v2_no_label;
 pub(super) use notched_pentagon::render_notched_pentagon;
 pub(super) use rounded_rect::render_rounded_rect;
