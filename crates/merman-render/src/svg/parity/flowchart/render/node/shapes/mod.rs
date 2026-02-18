@@ -5,6 +5,7 @@ mod divided_rect;
 mod label_container;
 mod lined_cylinder;
 mod no_label;
+mod notched_pentagon;
 mod tag_rect;
 
 pub(super) use curved_trapezoid::render_curved_trapezoid;
@@ -12,4 +13,5 @@ pub(super) use divided_rect::render_divided_rect;
 pub(super) use label_container::{render_hourglass_collate, render_notched_rectangle};
 pub(super) use lined_cylinder::render_lined_cylinder;
 pub(super) use no_label::try_render_flowchart_v2_no_label;
+pub(super) use notched_pentagon::render_notched_pentagon;
 pub(super) use tag_rect::render_tag_rect;
