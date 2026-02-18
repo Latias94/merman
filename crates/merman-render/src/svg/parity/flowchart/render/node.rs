@@ -1073,168 +1073,30 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             );
         }
         "hexagon" | "hex" => {
-            let w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let half_width = w / 2.0;
-            let half_height = h / 2.0;
-            let fixed_length = half_height / 2.0;
-            let deduced_width = half_width - fixed_length;
-
-            let pts: Vec<(f64, f64)> = vec![
-                (-deduced_width, -half_height),
-                (0.0, -half_height),
-                (deduced_width, -half_height),
-                (half_width, 0.0),
-                (deduced_width, half_height),
-                (0.0, half_height),
-                (-deduced_width, half_height),
-                (-half_width, 0.0),
-            ];
-            let path_data = path_from_points(&pts);
-
-            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_hexagon(
+                out,
+                layout_node,
+                &style,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            )) {
-                out.push_str(r#"<g class="basic label-container">"#);
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt_display(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
-                );
-                out.push_str("</g>");
-            } else {
-                let _ = write!(
-                    out,
-                    r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
-                    fmt_display(-deduced_width),
-                    fmt_display(-half_height),
-                    fmt_display(0.0),
-                    fmt_display(-half_height),
-                    fmt_display(deduced_width),
-                    fmt_display(-half_height),
-                    fmt_display(half_width),
-                    fmt_display(0.0),
-                    fmt_display(deduced_width),
-                    fmt_display(half_height),
-                    fmt_display(0.0),
-                    fmt_display(half_height),
-                    fmt_display(-deduced_width),
-                    fmt_display(half_height),
-                    fmt_display(-half_width),
-                    fmt_display(0.0),
-                    fmt_display(0.0),
-                    fmt_display(0.0),
-                    OptionalStyleAttr(style.as_str())
-                );
-            }
+                timing_enabled,
+                details,
+            );
         }
         "lean_right" | "lean-r" | "lean-right" => {
-            // Mermaid `leanRight.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-            let total_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            let pts: Vec<(f64, f64)> = vec![(-dx, 0.0), (w, 0.0), (w + dx, -h), (0.0, -h)];
-            let mut points_attr = String::new();
-            for (idx, (px, py)) in pts.iter().copied().enumerate() {
-                if idx > 0 {
-                    points_attr.push(' ');
-                }
-                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
-            }
-            let _ = write!(
-                out,
-                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
-                points_attr,
-                fmt_display(-w / 2.0),
-                fmt_display(h / 2.0),
-                OptionalStyleAttr(style.as_str())
-            );
+            shapes::render_lean_right(out, layout_node, style.as_str());
         }
         "lean_left" | "lean-l" | "lean-left" => {
-            // Mermaid `leanLeft.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-            let total_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w + dx, 0.0), (w, -h), (-dx, -h)];
-            let mut points_attr = String::new();
-            for (idx, (px, py)) in pts.iter().copied().enumerate() {
-                if idx > 0 {
-                    points_attr.push(' ');
-                }
-                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
-            }
-            let _ = write!(
-                out,
-                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
-                points_attr,
-                fmt_display(-w / 2.0),
-                fmt_display(h / 2.0),
-                OptionalStyleAttr(style.as_str())
-            );
+            shapes::render_lean_left(out, layout_node, style.as_str());
         }
         "trapezoid" | "trap-b" => {
-            // Mermaid `trapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-            let total_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            let pts: Vec<(f64, f64)> = vec![(-dx, 0.0), (w + dx, 0.0), (w, -h), (0.0, -h)];
-            let mut points_attr = String::new();
-            for (idx, (px, py)) in pts.iter().copied().enumerate() {
-                if idx > 0 {
-                    points_attr.push(' ');
-                }
-                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
-            }
-            let _ = write!(
-                out,
-                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
-                points_attr,
-                fmt_display(-w / 2.0),
-                fmt_display(h / 2.0),
-                OptionalStyleAttr(style.as_str())
-            );
+            shapes::render_trapezoid(out, layout_node, style.as_str());
         }
         "inv_trapezoid" | "inv-trapezoid" | "trap-t" => {
-            // Mermaid `invertedTrapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-            let total_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (total_w - h).max(1.0);
-            let dx = (3.0 * h) / 6.0;
-            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (w + dx, -h), (-dx, -h)];
-            let mut points_attr = String::new();
-            for (idx, (px, py)) in pts.iter().copied().enumerate() {
-                if idx > 0 {
-                    points_attr.push(' ');
-                }
-                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
-            }
-            let _ = write!(
-                out,
-                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
-                points_attr,
-                fmt_display(-w / 2.0),
-                fmt_display(h / 2.0),
-                OptionalStyleAttr(style.as_str())
-            );
+            shapes::render_inv_trapezoid(out, layout_node, style.as_str());
         }
         "odd" => {
             let total_w = layout_node.width.max(1.0);
