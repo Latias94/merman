@@ -1,5 +1,6 @@
 //! Flowchart node shape renderers.
 
+mod basic_geoms;
 mod bow_tie_rect;
 mod curly_braces;
 mod curved_trapezoid;
@@ -23,6 +24,7 @@ mod triangle;
 mod wave_document;
 mod window_pane;
 
+pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bow_tie_rect::render_bow_tie_rect;
 pub(super) use curly_braces::render_curly_brace_comment;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
