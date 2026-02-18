@@ -623,19 +623,8 @@ fn flowchart_edge_path_d_for_bbox_impl(
     let line_data =
         super::edge_geom::line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());
 
-    let (d, pb) = match interpolate {
-        "linear" => parity::curve::curve_linear_path_d_and_bounds(&line_data),
-        "natural" => parity::curve::curve_natural_path_d_and_bounds(&line_data),
-        "bumpY" => parity::curve::curve_bump_y_path_d_and_bounds(&line_data),
-        "catmullRom" => parity::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
-        "step" => parity::curve::curve_step_path_d_and_bounds(&line_data),
-        "stepAfter" => parity::curve::curve_step_after_path_d_and_bounds(&line_data),
-        "stepBefore" => parity::curve::curve_step_before_path_d_and_bounds(&line_data),
-        "cardinal" => parity::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
-        "monotoneX" => parity::curve::curve_monotone_path_d_and_bounds(&line_data, false),
-        "monotoneY" => parity::curve::curve_monotone_path_d_and_bounds(&line_data, true),
-        _ => parity::curve::curve_basis_path_d_and_bounds(&line_data),
-    };
+    let (d, pb, _skipped_bounds_for_viewbox) =
+        super::edge_geom::curve_path_d_and_bounds(&line_data, interpolate, 0.0, 0.0, None);
     let pb = pb?;
     Some((d, pb))
 }
