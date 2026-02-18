@@ -805,68 +805,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             shapes::render_inv_trapezoid(out, layout_node, style.as_str());
         }
         "odd" => {
-            let total_w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let w = (total_w - h / 4.0).max(1.0);
-            let x = -w / 2.0;
-            let y = -h / 2.0;
-            let notch = y / 2.0;
-            let dx = -notch / 2.0;
-            label_dx = dx;
-
-            let pts: Vec<(f64, f64)> =
-                vec![(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)];
-            let path_data = path_from_points(&pts);
-
-            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
-                &path_data,
+            shapes::render_odd(
+                out,
+                layout_node,
+                &style,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            )) {
-                let _ = write!(
-                    out,
-                    r#"<g class="basic label-container" transform="translate({},0)">"#,
-                    fmt(dx)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt_display(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
-                );
-                out.push_str("</g>");
-            } else {
-                let _ = write!(
-                    out,
-                    r#"<polygon points="{},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
-                    fmt(x + notch),
-                    fmt(y),
-                    fmt(x),
-                    fmt(0.0),
-                    fmt(x + notch),
-                    fmt(-y),
-                    fmt(-x),
-                    fmt(-y),
-                    fmt(-x),
-                    fmt(y),
-                    fmt(dx),
-                    fmt(0.0),
-                    OptionalStyleAttr(style.as_str())
-                );
-            }
+                timing_enabled,
+                details,
+                &mut label_dx,
+            );
         }
         "text" => {
             // Mermaid `text.ts`: invisible rect used only to size/position the label.
