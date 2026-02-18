@@ -4,6 +4,16 @@ use super::super::*;
 use super::root::flowchart_wrap_svg_text_lines;
 use crate::svg::parity::util;
 
+mod geom;
+mod helpers;
+mod roughjs;
+
+use geom::{arc_points, generate_circle_points, generate_full_sine_wave_points, path_from_points};
+use roughjs::{
+    roughjs_circle_path_d, roughjs_paths_for_polygon, roughjs_paths_for_rect,
+    roughjs_paths_for_svg_path, roughjs_stroke_path_for_svg_path,
+};
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -20,57 +30,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
-    fn is_self_loop_label_node_id(id: &str) -> bool {
-        let mut parts = id.split("---");
-        let Some(a) = parts.next() else {
-            return false;
-        };
-        let Some(b) = parts.next() else {
-            return false;
-        };
-        let Some(n) = parts.next() else {
-            return false;
-        };
-        parts.next().is_none() && a == b && (n == "1" || n == "2")
-    }
-
-    if is_self_loop_label_node_id(node_id) {
-        let _ = write!(
-            out,
-            r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-            escape_xml_display(node_id),
-            fmt_display(x),
-            fmt_display(y)
-        );
+    if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y) {
         return;
-    }
-
-    fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::MermaidConfig) -> bool {
-        if config.get_str("securityLevel") == Some("loose") {
-            return true;
-        }
-
-        let href = href.trim();
-        if href.is_empty() {
-            return false;
-        }
-
-        let lower = href.to_ascii_lowercase();
-        if lower.starts_with('#')
-            || lower.starts_with("mailto:")
-            || lower.starts_with("http://")
-            || lower.starts_with("https://")
-            || lower.starts_with("//")
-            || lower.starts_with('/')
-            || lower.starts_with("./")
-            || lower.starts_with("../")
-        {
-            return true;
-        }
-
-        // In Mermaid's browser pipeline, the rendered SVG is further sanitized in strict mode.
-        // This strips unknown deep-link schemes (e.g. `notes://...`) from `xlink:href`.
-        !lower.contains("://")
     }
 
     enum RenderNodeKind<'a> {
@@ -133,7 +94,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
             href = link
                 .filter(|u| *u != "about:blank")
-                .filter(|u| href_is_safe_in_strict_mode(u, ctx.config));
+                .filter(|u| helpers::href_is_safe_in_strict_mode(u, ctx.config));
             // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
             // interactions (`click A someFn`) still mark the node as clickable, but do not
             // emit an anchor element in the SVG.
@@ -169,18 +130,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
     }
 
-    fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
-        escape_xml_into(out, base);
-        for c in classes {
-            let t = c.trim();
-            if t.is_empty() {
-                continue;
-            }
-            out.push(' ');
-            escape_xml_into(out, t);
-        }
-    }
-
     if wrapped_in_a {
         if let Some(href) = href {
             out.push_str(r#"<a xlink:href=""#);
@@ -198,7 +147,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             out.push_str(r#")">"#);
         }
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
+        helpers::write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id="flowchart-"#);
             escape_xml_into(out, node_id);
@@ -210,7 +159,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
     } else {
         out.push_str(r#"<g class=""#);
-        write_class_attr(out, class_attr_base, node_classes);
+        helpers::write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id="flowchart-"#);
             escape_xml_into(out, node_id);
@@ -262,480 +211,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .as_deref()
         .unwrap_or("0 0")
         .trim();
-
-    fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
-        let s = s.trim();
-        let hex = s.strip_prefix('#')?;
-        let (r, g, b) = match hex.len() {
-            6 => {
-                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-                (r, g, b)
-            }
-            3 => {
-                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-                (r, g, b)
-            }
-            _ => return None,
-        };
-        Some(roughr::Srgba::new(
-            r as f32 / 255.0,
-            g as f32 / 255.0,
-            b as f32 / 255.0,
-            1.0,
-        ))
-    }
-
-    fn path_from_points(points: &[(f64, f64)]) -> String {
-        let mut out = String::new();
-        for (i, (x, y)) in points.iter().copied().enumerate() {
-            let cmd = if i == 0 { 'M' } else { 'L' };
-            let _ = write!(&mut out, "{cmd}{x},{y} ");
-        }
-        out.push('Z');
-        out
-    }
-
-    fn generate_circle_points(
-        center_x: f64,
-        center_y: f64,
-        radius: f64,
-        num_points: usize,
-        start_angle_deg: f64,
-        end_angle_deg: f64,
-    ) -> Vec<(f64, f64)> {
-        // Ported from Mermaid `generateCirclePoints(...)` in
-        // `packages/mermaid/src/rendering-util/rendering-elements/shapes/util.ts`.
-        //
-        // Note: Mermaid pushes negated coordinates (`{ x: -x, y: -y }`).
-        let start = start_angle_deg.to_radians();
-        let end = end_angle_deg.to_radians();
-        let angle_range = end - start;
-        let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
-        let mut pts: Vec<(f64, f64)> = Vec::with_capacity(num_points);
-        for i in 0..num_points {
-            let angle = start + (i as f64) * step;
-            let x = center_x + radius * angle.cos();
-            let y = center_y + radius * angle.sin();
-            pts.push((-x, -y));
-        }
-        pts
-    }
-
-    fn generate_full_sine_wave_points(
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-        amplitude: f64,
-        num_cycles: f64,
-    ) -> Vec<(f64, f64)> {
-        // Ported from Mermaid `generateFullSineWavePoints` (50 segments).
-        let steps: usize = 50;
-        let delta_x = x2 - x1;
-        let delta_y = y2 - y1;
-        let cycle_length = delta_x / num_cycles;
-        let frequency = (2.0 * std::f64::consts::PI) / cycle_length;
-        let mid_y = y1 + delta_y / 2.0;
-
-        let mut points: Vec<(f64, f64)> = Vec::with_capacity(steps + 1);
-        for i in 0..=steps {
-            let t = (i as f64) / (steps as f64);
-            let x = x1 + t * delta_x;
-            let y = mid_y + amplitude * (frequency * (x - x1)).sin();
-            points.push((x, y));
-        }
-        points
-    }
-
-    fn arc_points(
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-        rx: f64,
-        ry: f64,
-        clockwise: bool,
-    ) -> Vec<(f64, f64)> {
-        // Port of Mermaid `@11.12.2` `generateArcPoints(...)` in
-        // `packages/mermaid/src/rendering-util/rendering-elements/shapes/roundedRect.ts`.
-        let num_points: usize = 20;
-
-        let mid_x = (x1 + x2) / 2.0;
-        let mid_y = (y1 + y2) / 2.0;
-        let angle = (y2 - y1).atan2(x2 - x1);
-
-        let dx = (x2 - x1) / 2.0;
-        let dy = (y2 - y1) / 2.0;
-        let transformed_x = dx / rx;
-        let transformed_y = dy / ry;
-        let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
-        if distance > 1.0 {
-            return vec![(x1, y1), (x2, y2)];
-        }
-
-        let scaled_center_distance = (1.0 - distance * distance).sqrt();
-        let sign = if clockwise { -1.0 } else { 1.0 };
-        let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
-        let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
-
-        let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
-        let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
-
-        let mut angle_range = end_angle - start_angle;
-        if clockwise && angle_range < 0.0 {
-            angle_range += 2.0 * std::f64::consts::PI;
-        }
-        if !clockwise && angle_range > 0.0 {
-            angle_range -= 2.0 * std::f64::consts::PI;
-        }
-
-        let mut points: Vec<(f64, f64)> = Vec::with_capacity(num_points);
-        for i in 0..num_points {
-            let t = i as f64 / (num_points - 1) as f64;
-            let a = start_angle + t * angle_range;
-            let x = center_x + rx * a.cos();
-            let y = center_y + ry * a.sin();
-            points.push((x, y));
-        }
-        points
-    }
-
-    fn roughjs_paths_for_svg_path(
-        svg_path_data: &str,
-        fill: &str,
-        stroke: &str,
-        stroke_width: f32,
-        stroke_dasharray: &str,
-        seed: u64,
-    ) -> Option<(String, String)> {
-        let fill = parse_hex_color_to_srgba(fill)?;
-        let stroke = parse_hex_color_to_srgba(stroke)?;
-        let dash = stroke_dasharray.trim().replace(',', " ");
-        let nums: Vec<f32> = dash
-            .split_whitespace()
-            .filter_map(|t| t.parse::<f32>().ok())
-            .collect();
-        let (dash0, dash1) = match nums.as_slice() {
-            [a] => (*a, *a),
-            [a, b, ..] => (*a, *b),
-            _ => (0.0, 0.0),
-        };
-        let base_options = roughr::core::OptionsBuilder::default()
-            .seed(seed)
-            .roughness(0.0)
-            .bowing(1.0)
-            .fill(fill)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .stroke(stroke)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
-            .stroke_line_dash_offset(0.0)
-            .fill_line_dash(vec![0.0, 0.0])
-            .fill_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-
-        // Rough.js' generator emits path data via `opsToPath(...)`, which uses `Number.toString()`
-        // precision (not Mermaid's usual 3-decimal `fmt(...)` formatting). Avoid quantization here.
-        fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-            let mut out = String::new();
-            for op in &opset.ops {
-                match op.op {
-                    roughr::core::OpType::Move => {
-                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                    }
-                    roughr::core::OpType::BCurveTo => {
-                        let _ = write!(
-                            &mut out,
-                            "C{} {}, {} {}, {} {} ",
-                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                        );
-                    }
-                    roughr::core::OpType::LineTo => {
-                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                    }
-                }
-            }
-            out.trim_end().to_string()
-        }
-
-        // Rough.js `generator.path(...)`:
-        // - `sets = pointsOnPath(d, 1, distance)`
-        // - for solid fill, if `sets.length === 1`: fill path from `svgPath(...)` with
-        //   `disableMultiStroke: true`, then drop subsequent `move` ops (`_mergedShape`).
-        // - otherwise for solid fill: `solidFillPolygon(sets, o)`
-        let distance = (1.0 + base_options.roughness.unwrap_or(1.0) as f64) / 2.0;
-        let sets = roughr::points_on_path::points_on_path::<f64>(
-            svg_path_data.to_string(),
-            Some(1.0),
-            Some(distance),
-        );
-
-        // Rough.js `generator.path(...)` builds the stroke opset first (`shape = svgPath(d, o)`),
-        // which initializes and advances `o.randomizer`. For the solid-fill special-case
-        // (`sets.length === 1`), it then calls `svgPath(d, Object.assign({}, o, ...))`, which
-        // copies the *existing* `randomizer` by reference and therefore continues the PRNG stream.
-        //
-        // In headless Rust we model that by emitting the stroke opset first (advancing the
-        // in-options PRNG state), then cloning the mutated options for the fill pass.
-        let mut stroke_opts = base_options.clone();
-        let stroke_opset =
-            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
-
-        let fill_opset = if sets.len() == 1 {
-            let mut fill_opts = stroke_opts.clone();
-            fill_opts.disable_multi_stroke = Some(true);
-            let base_rough = fill_opts.roughness.unwrap_or(1.0);
-            fill_opts.roughness = Some(if base_rough != 0.0 {
-                base_rough + 0.8
-            } else {
-                0.0
-            });
-
-            let mut opset =
-                roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
-            opset.ops = opset
-                .ops
-                .iter()
-                .cloned()
-                .enumerate()
-                .filter_map(|(idx, op)| {
-                    if idx != 0 && op.op == roughr::core::OpType::Move {
-                        return None;
-                    }
-                    Some(op)
-                })
-                .collect();
-            opset
-        } else {
-            let mut fill_opts = stroke_opts.clone();
-            roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
-        };
-
-        Some((
-            ops_to_svg_path_d(&fill_opset),
-            ops_to_svg_path_d(&stroke_opset),
-        ))
-    }
-
-    fn roughjs_stroke_path_for_svg_path(
-        svg_path_data: &str,
-        stroke: &str,
-        stroke_width: f32,
-        stroke_dasharray: &str,
-        seed: u64,
-    ) -> Option<String> {
-        let stroke = parse_hex_color_to_srgba(stroke)?;
-        let dash = stroke_dasharray.trim().replace(',', " ");
-        let nums: Vec<f32> = dash
-            .split_whitespace()
-            .filter_map(|t| t.parse::<f32>().ok())
-            .collect();
-        let (dash0, dash1) = match nums.as_slice() {
-            [a] => (*a, *a),
-            [a, b, ..] => (*a, *b),
-            _ => (0.0, 0.0),
-        };
-        let mut options = roughr::core::OptionsBuilder::default()
-            .seed(seed)
-            .roughness(0.0)
-            .bowing(1.0)
-            .stroke(stroke)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
-            .stroke_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .build()
-            .ok()?;
-
-        fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-            let mut out = String::new();
-            for op in &opset.ops {
-                match op.op {
-                    roughr::core::OpType::Move => {
-                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                    }
-                    roughr::core::OpType::BCurveTo => {
-                        let _ = write!(
-                            &mut out,
-                            "C{} {}, {} {}, {} {} ",
-                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                        );
-                    }
-                    roughr::core::OpType::LineTo => {
-                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                    }
-                }
-            }
-            out.trim_end().to_string()
-        }
-
-        let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
-        Some(ops_to_svg_path_d(&opset))
-    }
-
-    fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
-        // Port of Mermaid `stateEnd.ts`/`stateStart.ts` which use RoughJS even for classic look
-        // (roughness=0). Use RoughJS `opsToPath(...)` formatting (no `fmt(...)` quantization).
-        let mut opts = roughr::core::OptionsBuilder::default()
-            .seed(seed)
-            .roughness(0.0)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-        let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        Some(out.trim_end().to_string())
-    }
-
-    fn roughjs_paths_for_rect(
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-        fill: &str,
-        stroke: &str,
-        stroke_width: f32,
-        seed: u64,
-    ) -> Option<(String, String)> {
-        // Port of Mermaid `forkJoin.ts` generation order: outline first (advancing PRNG), then fill;
-        // SVG emission order is fill first, stroke second.
-        let fill = parse_hex_color_to_srgba(fill)?;
-        let stroke = parse_hex_color_to_srgba(stroke)?;
-        let mut opts = roughr::core::OptionsBuilder::default()
-            .seed(seed)
-            .roughness(0.0)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .fill(fill)
-            .stroke(stroke)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![0.0, 0.0])
-            .stroke_line_dash_offset(0.0)
-            .fill_line_dash(vec![0.0, 0.0])
-            .fill_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-
-        let fill_poly = vec![vec![
-            roughr::Point2D::new(x, y),
-            roughr::Point2D::new(x + w, y),
-            roughr::Point2D::new(x + w, y + h),
-            roughr::Point2D::new(x, y + h),
-        ]];
-        let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
-        let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
-
-        fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
-            let mut out = String::new();
-            for op in &opset.ops {
-                match op.op {
-                    roughr::core::OpType::Move => {
-                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                    }
-                    roughr::core::OpType::BCurveTo => {
-                        let _ = write!(
-                            &mut out,
-                            "C{} {}, {} {}, {} {} ",
-                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                        );
-                    }
-                    roughr::core::OpType::LineTo => {
-                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                    }
-                }
-            }
-            out.trim_end().to_string()
-        }
-
-        Some((ops_to_d(&fill_opset), ops_to_d(&stroke_opset)))
-    }
-
-    fn roughjs_paths_for_polygon(
-        points: &[(f64, f64)],
-        fill: &str,
-        stroke: &str,
-        stroke_width: f32,
-        seed: u64,
-    ) -> Option<(String, String)> {
-        // Mirror RoughJS `generator.polygon(...)` generation order: outline first, then fill, then
-        // emit fill before outline.
-        let fill = parse_hex_color_to_srgba(fill)?;
-        let stroke = parse_hex_color_to_srgba(stroke)?;
-        let mut opts = roughr::core::OptionsBuilder::default()
-            .seed(seed)
-            .roughness(0.0)
-            .fill_style(roughr::core::FillStyle::Solid)
-            .fill(fill)
-            .stroke(stroke)
-            .stroke_width(stroke_width)
-            .stroke_line_dash(vec![0.0, 0.0])
-            .stroke_line_dash_offset(0.0)
-            .fill_line_dash(vec![0.0, 0.0])
-            .fill_line_dash_offset(0.0)
-            .disable_multi_stroke(false)
-            .disable_multi_stroke_fill(false)
-            .build()
-            .ok()?;
-
-        let pts: Vec<_> = points
-            .iter()
-            .copied()
-            .map(|(x, y)| roughr::Point2D::new(x, y))
-            .collect();
-        let outline_opset = roughr::renderer::polygon::<f64>(&pts, &mut opts);
-        let fill_opset = roughr::renderer::solid_fill_polygon(&vec![pts.clone()], &mut opts);
-
-        fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
-            let mut out = String::new();
-            for op in &opset.ops {
-                match op.op {
-                    roughr::core::OpType::Move => {
-                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                    }
-                    roughr::core::OpType::BCurveTo => {
-                        let _ = write!(
-                            &mut out,
-                            "C{} {}, {} {}, {} {} ",
-                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                        );
-                    }
-                    roughr::core::OpType::LineTo => {
-                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                    }
-                }
-            }
-            out.trim_end().to_string()
-        }
-
-        Some((ops_to_d(&fill_opset), ops_to_d(&outline_opset)))
-    }
 
     macro_rules! rough_timed {
         ($expr:expr) => {{
