@@ -146,6 +146,110 @@ pub(super) fn open_node_wrapper(
     out.push('>');
 }
 
+pub(super) struct ResolvedNodeRenderInfo<'a> {
+    pub(super) dom_idx: Option<usize>,
+    pub(super) class_attr_base: &'static str,
+    pub(super) wrapped_in_a: bool,
+    pub(super) href: Option<&'a str>,
+    pub(super) label_text: &'a str,
+    pub(super) label_text_is_node_id: bool,
+    pub(super) label_type: &'a str,
+    pub(super) shape: &'a str,
+    pub(super) node_icon: Option<&'a str>,
+    pub(super) node_img: Option<&'a str>,
+    pub(super) node_pos: Option<&'a str>,
+    pub(super) node_constraint: Option<&'a str>,
+    pub(super) node_asset_width: Option<f64>,
+    pub(super) node_asset_height: Option<f64>,
+    pub(super) node_styles: &'a [String],
+    pub(super) node_classes: &'a [String],
+}
+
+pub(super) fn resolve_node_render_info<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
+    node_id: &str,
+) -> Option<ResolvedNodeRenderInfo<'a>> {
+    if let Some(node) = ctx.nodes_by_id.get(node_id) {
+        let dom_idx = Some(ctx.node_dom_index.get(node_id).copied().unwrap_or(0));
+        let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
+
+        // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
+        let class_attr_base = if shape == "imageSquare" {
+            "image-shape default"
+        } else if shape == "icon" || shape.starts_with("icon") {
+            "icon-shape default"
+        } else {
+            "node default"
+        };
+
+        let link = node
+            .link
+            .as_deref()
+            .map(|u| u.trim())
+            .filter(|u| !u.is_empty());
+        let link_present = link.is_some();
+        // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
+        // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
+        let href = link
+            .filter(|u| *u != "about:blank")
+            .filter(|u| href_is_safe_in_strict_mode(u, ctx.config));
+        // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
+        // interactions (`click A someFn`) still mark the node as clickable, but do not
+        // emit an anchor element in the SVG.
+        let wrapped_in_a = link_present;
+
+        let (label_text, label_text_is_node_id) = if let Some(v) = node.label.as_deref() {
+            (v, false)
+        } else {
+            ("", true)
+        };
+
+        Some(ResolvedNodeRenderInfo {
+            dom_idx,
+            class_attr_base,
+            wrapped_in_a,
+            href,
+            label_text,
+            label_text_is_node_id,
+            label_type: node.label_type.as_deref().unwrap_or("text"),
+            shape,
+            node_icon: node.icon.as_deref(),
+            node_img: node.img.as_deref(),
+            node_pos: node.pos.as_deref(),
+            node_constraint: node.constraint.as_deref(),
+            node_asset_width: node.asset_width,
+            node_asset_height: node.asset_height,
+            node_styles: &node.styles,
+            node_classes: &node.classes,
+        })
+    } else if let Some(sg) = ctx.subgraphs_by_id.get(node_id) {
+        if !sg.nodes.is_empty() {
+            return None;
+        }
+        let empty_styles: &'a [String] = &[];
+        Some(ResolvedNodeRenderInfo {
+            dom_idx: None,
+            class_attr_base: "node",
+            wrapped_in_a: false,
+            href: None,
+            label_text: sg.title.as_str(),
+            label_text_is_node_id: false,
+            label_type: sg.label_type.as_deref().unwrap_or("text"),
+            shape: "squareRect",
+            node_icon: None,
+            node_img: None,
+            node_pos: None,
+            node_constraint: None,
+            node_asset_width: None,
+            node_asset_height: None,
+            node_styles: empty_styles,
+            node_classes: &sg.classes,
+        })
+    } else {
+        None
+    }
+}
+
 pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
     label_text: &str,

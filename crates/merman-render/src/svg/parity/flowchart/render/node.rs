@@ -28,101 +28,32 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         return;
     }
 
-    enum RenderNodeKind<'a> {
-        Normal(&'a crate::flowchart::FlowNode),
-        EmptySubgraph(&'a crate::flowchart::FlowSubgraph),
-    }
-
-    let node_kind = if let Some(node) = ctx.nodes_by_id.get(node_id) {
-        RenderNodeKind::Normal(node)
-    } else if let Some(sg) = ctx.subgraphs_by_id.get(node_id) {
-        if sg.nodes.is_empty() {
-            RenderNodeKind::EmptySubgraph(sg)
-        } else {
-            return;
-        }
-    } else {
+    let Some(resolved) = helpers::resolve_node_render_info(ctx, node_id) else {
         return;
     };
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
     let tooltip_enabled = !tooltip.trim().is_empty();
 
-    let dom_idx: Option<usize>;
-    let class_attr_base: &str;
-    let wrapped_in_a: bool;
-    let href: Option<&str>;
-    let mut label_text: &str;
-    let mut label_type: &str;
-    let shape: &str;
-    let node_icon: Option<&str>;
-    let node_img: Option<&str>;
-    let node_pos: Option<&str>;
-    let node_constraint: Option<&str>;
-    let node_asset_width: Option<f64>;
-    let node_asset_height: Option<f64>;
-    let node_styles: &[String];
-    let node_classes: &[String];
-
-    match node_kind {
-        RenderNodeKind::Normal(node) => {
-            dom_idx = Some(ctx.node_dom_index.get(node_id).copied().unwrap_or(0));
-            shape = node.layout_shape.as_deref().unwrap_or("squareRect");
-
-            // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
-            class_attr_base = if shape == "imageSquare" {
-                "image-shape default"
-            } else if shape == "icon" || shape.starts_with("icon") {
-                "icon-shape default"
-            } else {
-                "node default"
-            };
-
-            let link = node
-                .link
-                .as_deref()
-                .map(|u| u.trim())
-                .filter(|u| !u.is_empty());
-            let link_present = link.is_some();
-            // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
-            // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
-            href = link
-                .filter(|u| *u != "about:blank")
-                .filter(|u| helpers::href_is_safe_in_strict_mode(u, ctx.config));
-            // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
-            // interactions (`click A someFn`) still mark the node as clickable, but do not
-            // emit an anchor element in the SVG.
-            wrapped_in_a = link_present;
-
-            label_text = node.label.as_deref().unwrap_or(node_id);
-            label_type = node.label_type.as_deref().unwrap_or("text");
-            node_icon = node.icon.as_deref();
-            node_img = node.img.as_deref();
-            node_pos = node.pos.as_deref();
-            node_constraint = node.constraint.as_deref();
-            node_asset_width = node.asset_width;
-            node_asset_height = node.asset_height;
-            node_styles = &node.styles;
-            node_classes = &node.classes;
-        }
-        RenderNodeKind::EmptySubgraph(sg) => {
-            dom_idx = None;
-            shape = "squareRect";
-            wrapped_in_a = false;
-            href = None;
-            class_attr_base = "node";
-            label_text = sg.title.as_str();
-            label_type = sg.label_type.as_deref().unwrap_or("text");
-            node_icon = None;
-            node_img = None;
-            node_pos = None;
-            node_constraint = None;
-            node_asset_width = None;
-            node_asset_height = None;
-            node_styles = &[];
-            node_classes = &sg.classes;
-        }
-    }
+    let dom_idx = resolved.dom_idx;
+    let class_attr_base = resolved.class_attr_base;
+    let wrapped_in_a = resolved.wrapped_in_a;
+    let href = resolved.href;
+    let mut label_text: &str = if resolved.label_text_is_node_id {
+        node_id
+    } else {
+        resolved.label_text
+    };
+    let mut label_type: &str = resolved.label_type;
+    let shape: &str = resolved.shape;
+    let node_icon = resolved.node_icon;
+    let node_img = resolved.node_img;
+    let node_pos = resolved.node_pos;
+    let node_constraint = resolved.node_constraint;
+    let node_asset_width = resolved.node_asset_width;
+    let node_asset_height = resolved.node_asset_height;
+    let node_styles = resolved.node_styles;
+    let node_classes = resolved.node_classes;
 
     helpers::open_node_wrapper(
         out,
