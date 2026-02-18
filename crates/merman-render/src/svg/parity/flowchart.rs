@@ -92,7 +92,7 @@ fn flowchart_compute_edge_path_geom_impl(
 
     use edge_geom::{
         TraceEndpointIntersection, arrow_types_for_edge, boundary_for_cluster, boundary_for_node,
-        cut_path_at_intersect_into, dedup_consecutive_points_into,
+        curve_path_d_and_bounds, cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, line_with_offset_points,
         maybe_collapse_straight_except_one_endpoint, maybe_fix_corners,
@@ -347,72 +347,13 @@ fn flowchart_compute_edge_path_geom_impl(
     let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge.edge_type.as_deref());
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
-    let curve_is_basis = !matches!(
+    let (mut d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
+        &line_data,
         interpolate,
-        "linear"
-            | "natural"
-            | "bumpY"
-            | "catmullRom"
-            | "step"
-            | "stepAfter"
-            | "stepBefore"
-            | "cardinal"
-            | "monotoneX"
-            | "monotoneY"
+        origin_x,
+        abs_top_transform,
+        viewbox_current_bounds,
     );
-    let mut skipped_bounds_for_viewbox = false;
-    let (mut d, pb) = if curve_is_basis {
-        // For `basis`, D3's curve stays inside the convex hull of the input points, so if the
-        // polyline bbox is already inside the current viewBox bbox we can skip the expensive
-        // cubic extrema solving used for tight bounds.
-        let should_try_skip = viewbox_current_bounds.is_some();
-        if should_try_skip && !line_data.is_empty() {
-            let mut min_x = f64::INFINITY;
-            let mut min_y = f64::INFINITY;
-            let mut max_x = f64::NEG_INFINITY;
-            let mut max_y = f64::NEG_INFINITY;
-            for p in &line_data {
-                min_x = min_x.min(p.x);
-                min_y = min_y.min(p.y);
-                max_x = max_x.max(p.x);
-                max_y = max_y.max(p.y);
-            }
-            let (cur_min_x, cur_min_y, cur_max_x, cur_max_y) =
-                viewbox_current_bounds.expect("checked");
-            let eps = 1e-9;
-            let gx0 = min_x + origin_x;
-            let gy0 = min_y + abs_top_transform;
-            let gx1 = max_x + origin_x;
-            let gy1 = max_y + abs_top_transform;
-            if gx0 >= cur_min_x - eps
-                && gy0 >= cur_min_y - eps
-                && gx1 <= cur_max_x + eps
-                && gy1 <= cur_max_y + eps
-            {
-                skipped_bounds_for_viewbox = true;
-                (super::curve::curve_basis_path_d(&line_data), None)
-            } else {
-                super::curve::curve_basis_path_d_and_bounds(&line_data)
-            }
-        } else {
-            super::curve::curve_basis_path_d_and_bounds(&line_data)
-        }
-    } else {
-        match interpolate {
-            "linear" => super::curve::curve_linear_path_d_and_bounds(&line_data),
-            "natural" => super::curve::curve_natural_path_d_and_bounds(&line_data),
-            "bumpY" => super::curve::curve_bump_y_path_d_and_bounds(&line_data),
-            "catmullRom" => super::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
-            "step" => super::curve::curve_step_path_d_and_bounds(&line_data),
-            "stepAfter" => super::curve::curve_step_after_path_d_and_bounds(&line_data),
-            "stepBefore" => super::curve::curve_step_before_path_d_and_bounds(&line_data),
-            "cardinal" => super::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
-            "monotoneX" => super::curve::curve_monotone_path_d_and_bounds(&line_data, false),
-            "monotoneY" => super::curve::curve_monotone_path_d_and_bounds(&line_data, true),
-            // Mermaid defaults to `basis` for flowchart edges.
-            _ => super::curve::curve_basis_path_d_and_bounds(&line_data),
-        }
-    };
     // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
     // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
     // renders these as a single-point path (`M..Z`) while preserving the original `data-points`.

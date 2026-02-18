@@ -7,6 +7,7 @@ use super::*;
 
 mod basis;
 mod boundary;
+mod curve_path;
 mod cyclic_special;
 mod data_points;
 mod fix_corners;
@@ -22,6 +23,7 @@ pub(super) use basis::{
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
 };
+pub(super) use curve_path::curve_path_d_and_bounds;
 pub(super) use cyclic_special::normalize_cyclic_special_data_points;
 pub(super) use data_points::{maybe_snap_data_point_to_f32, maybe_truncate_data_point};
 pub(super) use fix_corners::maybe_fix_corners;
