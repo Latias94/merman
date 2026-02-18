@@ -91,9 +91,12 @@ fn flowchart_compute_edge_path_geom_impl(
     let local_points = scratch.local_points.as_slice();
 
     use edge_geom::{
-        BoundaryNode, boundary_for_cluster, boundary_for_node, cut_path_at_intersect_into,
-        dedup_consecutive_points_into, intersect_for_layout_shape, is_polygon_layout_shape,
+        BoundaryNode, TraceEndpointIntersection, boundary_for_cluster, boundary_for_node,
+        cut_path_at_intersect_into, dedup_consecutive_points_into,
+        force_intersect_for_layout_shape, intersect_for_layout_shape,
         is_rounded_intersect_shift_shape, maybe_normalize_selfedge_loop_points,
+        maybe_snap_data_point_to_f32, maybe_truncate_data_point, tb, tp,
+        write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -126,24 +129,6 @@ fn flowchart_compute_edge_path_geom_impl(
         ) {
             let interior = &base_points[1..base_points.len() - 1];
             if !interior.is_empty() {
-                fn force_intersect(layout_shape: Option<&str>) -> bool {
-                    matches!(
-                        layout_shape,
-                        Some(
-                            "circle"
-                                | "diamond"
-                                | "diam"
-                                | "roundedRect"
-                                | "rounded"
-                                | "cylinder"
-                                | "cyl"
-                                | "h-cyl"
-                                | "das"
-                                | "horizontal-cylinder",
-                        ) | Some("stadium")
-                    ) || is_polygon_layout_shape(layout_shape)
-                }
-
                 let mut start = base_points[0].clone();
                 let mut end = base_points[base_points.len() - 1].clone();
 
@@ -152,7 +137,7 @@ fn flowchart_compute_edge_path_geom_impl(
                     (start.x - tail.x).abs() < eps && (start.y - tail.y).abs() < eps;
                 let end_is_center = (end.x - head.x).abs() < eps && (end.y - head.y).abs() < eps;
 
-                if start_is_center || force_intersect(tail_shape) {
+                if start_is_center || force_intersect_for_layout_shape(tail_shape) {
                     start = intersect_for_layout_shape(
                         ctx,
                         edge.from.as_str(),
@@ -166,7 +151,7 @@ fn flowchart_compute_edge_path_geom_impl(
                     }
                 }
 
-                if end_is_center || force_intersect(head_shape) {
+                if end_is_center || force_intersect_for_layout_shape(head_shape) {
                     end = intersect_for_layout_shape(
                         ctx,
                         edge.to.as_str(),
@@ -186,109 +171,6 @@ fn flowchart_compute_edge_path_geom_impl(
                 points_after_intersect.extend(interior.iter().cloned());
                 points_after_intersect.push(end);
             }
-        }
-    }
-
-    // Mermaid encodes `data-points` as Base64(JSON.stringify(points)). In strict SVG XML parity
-    // mode we keep the raw coordinates, but a subset of upstream baselines consistently land on
-    // values with a `1/3` or `2/3` remainder at a 2^18 fixed-point scale, and upstream output is
-    // slightly smaller (matching a truncation to that grid). Apply that adjustment only when we
-    // are extremely close to those remainders, so we do not perturb general geometry.
-    fn maybe_truncate_data_point(v: f64) -> f64 {
-        if !v.is_finite() {
-            return 0.0;
-        }
-
-        let scale = 262_144.0; // 2^18
-        let scaled = v * scale;
-        let floor = scaled.floor();
-        let frac = scaled - floor;
-
-        // Keep this extremely conservative: legitimate Dagre self-loop points frequently land
-        // near 1/3 multiples at this scale (e.g. `...45833333333334`), and upstream Mermaid does
-        // not truncate those. Only truncate when we're effectively on the boundary.
-        let eps = 1e-12;
-        let one_third = 1.0 / 3.0;
-        let two_thirds = 2.0 / 3.0;
-        let should_truncate = (frac - one_third).abs() < eps || (frac - two_thirds).abs() < eps;
-        if !should_truncate {
-            return v;
-        }
-
-        let out = floor / scale;
-        if out == -0.0 { 0.0 } else { out }
-    }
-
-    fn maybe_snap_data_point_to_f32(v: f64) -> f64 {
-        if !v.is_finite() {
-            return 0.0;
-        }
-
-        // Upstream Mermaid (V8) frequently ends up with coordinates that are effectively
-        // f32-rounded due to DOM/layout measurement pipelines. When our headless math lands
-        // extremely close to those f32 values, snap to that lattice so `data-points`
-        // Base64(JSON.stringify(...)) matches bit-for-bit.
-        fn next_up(v: f64) -> f64 {
-            if !v.is_finite() {
-                return v;
-            }
-            if v == 0.0 {
-                return f64::from_bits(1);
-            }
-            let bits = v.to_bits();
-            if v > 0.0 {
-                f64::from_bits(bits + 1)
-            } else {
-                f64::from_bits(bits - 1)
-            }
-        }
-
-        fn next_down(v: f64) -> f64 {
-            if !v.is_finite() {
-                return v;
-            }
-            if v == 0.0 {
-                return -f64::from_bits(1);
-            }
-            let bits = v.to_bits();
-            if v > 0.0 {
-                f64::from_bits(bits - 1)
-            } else {
-                f64::from_bits(bits + 1)
-            }
-        }
-
-        let snapped = (v as f32) as f64;
-        if !snapped.is_finite() {
-            return v;
-        }
-
-        // Common case: we're nowhere near the f32 lattice. Avoid the heavier bit-level checks.
-        let diff = (v - snapped).abs();
-        if diff > 1e-12 {
-            return if v == -0.0 { 0.0 } else { v };
-        }
-
-        // Preserve exact 1-ULP offsets around the snapped value. Upstream Mermaid frequently
-        // produces values like `761.5937500000001` (next_up of `761.59375`) and
-        // `145.49999999999997` (next_down of `145.5`) due to floating-point rounding, and
-        // snapping those back to the f32 lattice would *reduce* strict parity.
-        let v_bits = v.to_bits();
-        let snapped_bits = snapped.to_bits();
-        if v_bits == snapped_bits
-            || v_bits == next_up(snapped).to_bits()
-            || v_bits == next_down(snapped).to_bits()
-        {
-            return if v == -0.0 { 0.0 } else { v };
-        }
-
-        // Keep the snapping extremely tight: upstream `data-points` frequently include tiny
-        // non-f32 artifacts (several f64 ulps away from the f32-rounded value), and snapping too
-        // aggressively erases those strict-parity baselines.
-        if diff < 1e-14 {
-            if snapped == -0.0 { 0.0 } else { snapped }
-        } else {
-            v
         }
     }
 
@@ -328,55 +210,6 @@ fn flowchart_compute_edge_path_geom_impl(
     // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
     let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
     let points_for_data_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
-
-    #[derive(serde::Serialize)]
-    struct TracePoint {
-        x: f64,
-        y: f64,
-    }
-
-    #[derive(serde::Serialize)]
-    struct TraceBoundaryNode {
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    }
-
-    #[derive(serde::Serialize)]
-    struct TraceEndpointIntersection {
-        tail_node: String,
-        head_node: String,
-        tail_shape: Option<String>,
-        head_shape: Option<String>,
-        tail_boundary: Option<TraceBoundaryNode>,
-        head_boundary: Option<TraceBoundaryNode>,
-        dir_start: TracePoint,
-        dir_end: TracePoint,
-        new_start: TracePoint,
-        new_end: TracePoint,
-        start_before: TracePoint,
-        end_before: TracePoint,
-        start_after: TracePoint,
-        end_after: TracePoint,
-        applied_start_x: bool,
-        applied_start_y: bool,
-        applied_end_x: bool,
-        applied_end_y: bool,
-    }
-
-    fn tp(p: &crate::model::LayoutPoint) -> TracePoint {
-        TracePoint { x: p.x, y: p.y }
-    }
-
-    fn tb(n: &BoundaryNode) -> TraceBoundaryNode {
-        TraceBoundaryNode {
-            x: n.x,
-            y: n.y,
-            width: n.width,
-            height: n.height,
-        }
-    }
 
     let mut trace_points_before_norm: Option<Vec<crate::model::LayoutPoint>> = None;
     let mut trace_points_after_norm: Option<Vec<crate::model::LayoutPoint>> = None;
@@ -1577,68 +1410,20 @@ fn flowchart_compute_edge_path_geom_impl(
     }
 
     if trace_enabled {
-        #[derive(serde::Serialize)]
-        struct FlowchartEdgeTrace {
-            fixture_diagram_id: String,
-            edge_id: String,
-            from: String,
-            to: String,
-            layout_from: String,
-            layout_to: String,
-            from_cluster: Option<String>,
-            to_cluster: Option<String>,
-            origin_x: f64,
-            origin_y: f64,
-            tx: f64,
-            ty: f64,
-            base_points: Vec<TracePoint>,
-            points_after_intersect: Vec<TracePoint>,
-            points_for_render: Vec<TracePoint>,
-            points_for_data_points_before_norm: Option<Vec<TracePoint>>,
-            points_for_data_points_after_norm: Option<Vec<TracePoint>>,
-            points_for_data_points_final: Vec<TracePoint>,
-            endpoint_intersection: Option<TraceEndpointIntersection>,
-        }
-
-        let trace = FlowchartEdgeTrace {
-            fixture_diagram_id: ctx.diagram_id.to_string(),
-            edge_id: edge.id.clone(),
-            from: edge.from.clone(),
-            to: edge.to.clone(),
-            layout_from: le.from.clone(),
-            layout_to: le.to.clone(),
-            from_cluster: le.from_cluster.clone(),
-            to_cluster: le.to_cluster.clone(),
+        write_flowchart_edge_trace(
+            ctx,
+            edge,
+            le,
             origin_x,
             origin_y,
-            tx: ctx.tx,
-            ty: ctx.ty,
-            base_points: base_points.iter().map(tp).collect(),
-            points_after_intersect: points_after_intersect_for_trace
-                .as_deref()
-                .unwrap_or(points_for_data_points)
-                .iter()
-                .map(tp)
-                .collect(),
-            points_for_render: points_for_render.iter().map(tp).collect(),
-            points_for_data_points_before_norm: trace_points_before_norm
-                .as_deref()
-                .map(|v| v.iter().map(tp).collect()),
-            points_for_data_points_after_norm: trace_points_after_norm
-                .as_deref()
-                .map(|v| v.iter().map(tp).collect()),
-            points_for_data_points_final: points_for_data_points.iter().map(tp).collect(),
-            endpoint_intersection: trace_endpoint,
-        };
-
-        let out_path = std::env::var_os("MERMAN_TRACE_FLOWCHART_OUT")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::path::PathBuf::from(format!("merman_flowchart_edge_trace_{}.json", edge.id))
-            });
-        if let Ok(json) = serde_json::to_string_pretty(&trace) {
-            let _ = std::fs::write(out_path, json);
-        }
+            base_points,
+            points_after_intersect_for_trace.as_deref(),
+            points_for_render,
+            trace_points_before_norm.as_deref(),
+            trace_points_after_norm.as_deref(),
+            points_for_data_points,
+            trace_endpoint,
+        );
     }
 
     scratch.json.clear();

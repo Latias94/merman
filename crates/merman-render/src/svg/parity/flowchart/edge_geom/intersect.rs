@@ -34,6 +34,27 @@ pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
     )
 }
 
+pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
+    layout_shape: Option<&str>,
+) -> bool {
+    matches!(
+        layout_shape,
+        Some(
+            "circle"
+                | "diamond"
+                | "diam"
+                | "roundedRect"
+                | "rounded"
+                | "cylinder"
+                | "cyl"
+                | "h-cyl"
+                | "das"
+                | "horizontal-cylinder"
+                | "stadium",
+        )
+    ) || is_polygon_layout_shape(layout_shape)
+}
+
 fn intersect_rect(
     node: &BoundaryNode,
     point: &crate::model::LayoutPoint,

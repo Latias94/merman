@@ -6,16 +6,20 @@
 use super::*;
 
 mod boundary;
+mod data_points;
 mod intersect;
 mod rect_clip;
+mod trace;
 
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
 };
+pub(super) use data_points::{maybe_snap_data_point_to_f32, maybe_truncate_data_point};
 pub(super) use intersect::{
-    intersect_for_layout_shape, is_polygon_layout_shape, is_rounded_intersect_shift_shape,
+    force_intersect_for_layout_shape, intersect_for_layout_shape, is_rounded_intersect_shift_shape,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
+pub(super) use trace::{TraceEndpointIntersection, tb, tp, write_flowchart_edge_trace};
 
 pub(super) fn flowchart_compute_edge_path_geom(
     ctx: &FlowchartRenderCtx<'_>,
