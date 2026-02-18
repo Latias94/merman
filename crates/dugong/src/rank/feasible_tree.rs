@@ -26,8 +26,8 @@ pub fn feasible_tree(
         return t;
     };
     let size = g.node_count();
-    t.set_node(start, tree::TreeNodeLabel::default());
-    if let Some(ix) = g.node_ix(t.nodes().next().expect("start node should exist")) {
+    t.set_node(start.clone(), tree::TreeNodeLabel::default());
+    if let Some(ix) = g.node_ix(&start) {
         if ix >= in_tree_by_ix.len() {
             in_tree_by_ix.resize(ix + 1, false);
             rank_by_ix.resize(ix + 1, 0);

@@ -266,7 +266,9 @@ fn sweep<N, E, G>(
 
     for &rank in ranks {
         let build_lg_start = timing_enabled.then(std::time::Instant::now);
-        let lg = layer_graphs.get_mut(rank as usize).expect("rank in range");
+        let Some(lg) = layer_graphs.get_mut(rank as usize) else {
+            continue;
+        };
         if let Some(s) = build_lg_start {
             timings.sweep_build_layer_graph += s.elapsed();
         }
