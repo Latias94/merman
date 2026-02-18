@@ -2,12 +2,10 @@
 
 use std::fmt::Write as _;
 
-use crate::flowchart::flowchart_label_metrics_for_layout;
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::flowchart::flowchart_label_plain_text;
-use crate::svg::parity::flowchart::util::flowchart_html_contains_img_tag;
 
 use super::super::geom::path_from_points;
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
@@ -40,43 +38,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         }
     }
 
-    let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
-        &ctx.text_style,
-        ctx.class_defs,
-        node_classes,
-        node_styles,
-    );
-    let mut metrics = flowchart_label_metrics_for_layout(
-        ctx.measurer,
-        label_text,
-        label_type,
-        &node_text_style,
-        Some(ctx.wrapping_width),
-        ctx.node_wrap_mode,
-    );
-    let span_css_height_parity = node_classes.iter().any(|c| {
-        ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-            styles.iter().any(|s| {
-                matches!(
-                    s.split_once(':').map(|p| p.0.trim()),
-                    Some("background" | "border")
-                )
-            })
-        })
-    });
-    if span_css_height_parity {
-        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-            &mut metrics,
-            &node_text_style,
-        );
-    }
-    let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
-        || (label_type == "markdown" && label_text.contains("!["));
-    if label_text_plain.trim().is_empty() && !label_has_visual_content {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
-    }
+    let metrics =
+        helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
 
     let p = ctx.node_padding;
     let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));

@@ -1,5 +1,6 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
+use crate::svg::parity::flowchart::types::FlowchartRenderCtx;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use std::fmt::Write as _;
 
@@ -75,4 +76,62 @@ pub(super) fn write_class_attr(out: &mut String, base: &str, classes: &[String])
         out.push(' ');
         escape_xml_into(out, t);
     }
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics(
+    ctx: &FlowchartRenderCtx<'_>,
+    label_text: &str,
+    label_type: &str,
+    node_classes: &[String],
+    node_styles: &[String],
+) -> crate::text::TextMetrics {
+    // Shared across many Flowchart v2 shape renderers.
+    //
+    // Keep behavior identical to the inlined implementations to preserve Mermaid SVG parity.
+    let label_text_plain = crate::svg::parity::flowchart::flowchart_label_plain_text(
+        label_text,
+        label_type,
+        ctx.node_html_labels,
+    );
+    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+        &ctx.text_style,
+        ctx.class_defs,
+        node_classes,
+        node_styles,
+    );
+    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        ctx.measurer,
+        label_text,
+        label_type,
+        &node_text_style,
+        Some(ctx.wrapping_width),
+        ctx.node_wrap_mode,
+    );
+
+    let span_css_height_parity = node_classes.iter().any(|c| {
+        ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+            styles.iter().any(|s| {
+                matches!(
+                    s.split_once(':').map(|p| p.0.trim()),
+                    Some("background" | "border")
+                )
+            })
+        })
+    });
+    if span_css_height_parity {
+        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+            &mut metrics,
+            &node_text_style,
+        );
+    }
+
+    let label_has_visual_content =
+        super::super::super::util::flowchart_html_contains_img_tag(label_text)
+            || (label_type == "markdown" && label_text.contains("!["));
+    if label_text_plain.trim().is_empty() && !label_has_visual_content {
+        metrics.width = 0.0;
+        metrics.height = 0.0;
+    }
+
+    metrics
 }
