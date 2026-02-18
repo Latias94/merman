@@ -91,10 +91,10 @@ fn flowchart_compute_edge_path_geom_impl(
     let local_points = scratch.local_points.as_slice();
 
     use edge_geom::{
-        TraceEndpointIntersection, arrow_types_for_edge, boundary_for_cluster, boundary_for_node,
+        TraceEndpointIntersection, boundary_for_cluster, boundary_for_node,
         curve_path_d_and_bounds, cut_path_at_intersect_into, dedup_consecutive_points_into,
         force_intersect_for_layout_shape, intersect_for_layout_shape,
-        is_rounded_intersect_shift_shape, line_with_offset_points,
+        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
         maybe_collapse_straight_except_one_endpoint, maybe_fix_corners,
         maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
         maybe_override_degenerate_subgraph_edge_path_d, maybe_pad_cyclic_special_basis_route,
@@ -345,8 +345,7 @@ fn flowchart_compute_edge_path_geom_impl(
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-    let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge.edge_type.as_deref());
-    let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
+    let line_data = line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());
 
     let (mut d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,

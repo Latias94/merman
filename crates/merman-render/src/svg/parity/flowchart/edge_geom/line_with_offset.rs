@@ -130,3 +130,11 @@ pub(in crate::svg::parity::flowchart) fn arrow_types_for_edge(
 
     (arrow_type_start, arrow_type_end)
 }
+
+pub(in crate::svg::parity::flowchart) fn line_with_offset_for_edge_type(
+    input: &[crate::model::LayoutPoint],
+    edge_type: Option<&str>,
+) -> Vec<crate::model::LayoutPoint> {
+    let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge_type);
+    line_with_offset_points(input, arrow_type_start, arrow_type_end)
+}
