@@ -112,7 +112,22 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-    let engine = merman::Engine::new();
+
+    // Mermaid Gantt uses JavaScript local-time semantics. Upstream SVG baselines are therefore
+    // timezone-dependent unless the renderer is pinned. Our fixture corpus was generated under
+    // a fixed UTC+08:00 environment, so pin the local offset here to keep CI deterministic across
+    // runners.
+    //
+    // Override via `MERMAN_GANTT_BASELINE_LOCAL_OFFSET_MINUTES` if the baseline corpus is ever
+    // regenerated under a different timezone.
+    let baseline_local_offset_minutes: i32 =
+        std::env::var("MERMAN_GANTT_BASELINE_LOCAL_OFFSET_MINUTES")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(480);
+
+    let engine =
+        merman::Engine::new().with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
 
     let mut report = String::new();
     let _ = writeln!(
@@ -122,226 +137,229 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     );
 
     let mut failures: Vec<String> = Vec::new();
-    for mmd_path in mmd_files {
-        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-            continue;
-        };
-        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
-        let upstream_svg = match fs::read_to_string(&upstream_path) {
-            Ok(v) => v,
-            Err(err) => {
+
+    merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
+        for mmd_path in mmd_files {
+            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+                continue;
+            };
+            let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+            let upstream_svg = match fs::read_to_string(&upstream_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!(
+                        "missing upstream svg {}: {err}",
+                        upstream_path.display()
+                    ));
+                    continue;
+                }
+            };
+
+            let text = match fs::read_to_string(&mmd_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
+
+            let parsed = match futures::executor::block_on(
+                engine.parse_diagram(&text, merman::ParseOptions::default()),
+            ) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
+
+            let layout_opts = svg_compare_layout_opts();
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
+
+            let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout else {
                 failures.push(format!(
-                    "missing upstream svg {}: {err}",
-                    upstream_path.display()
+                    "unexpected layout type for {}: {}",
+                    mmd_path.display(),
+                    layouted.meta.diagram_type
                 ));
                 continue;
-            }
-        };
+            };
 
-        let text = match fs::read_to_string(&mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
+            let now_ms_override = (|| {
+                let doc = roxmltree::Document::parse(&upstream_svg).ok()?;
+                let x1 = doc
+                    .descendants()
+                    .filter(|n| n.has_tag_name("line"))
+                    .find(|n| {
+                        n.attribute("class")
+                            .unwrap_or_default()
+                            .split_whitespace()
+                            .any(|t| t == "today")
+                    })
+                    .and_then(|n| n.attribute("x1"))
+                    .and_then(|v| v.parse::<f64>().ok())?;
+                if !x1.is_finite() {
+                    return None;
+                }
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let layout_opts = svg_compare_layout_opts();
-        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
-        let now_ms_override = (|| {
-            let doc = roxmltree::Document::parse(&upstream_svg).ok()?;
-            let x1 = doc
-                .descendants()
-                .filter(|n| n.has_tag_name("line"))
-                .find(|n| {
-                    n.attribute("class")
-                        .unwrap_or_default()
-                        .split_whitespace()
-                        .any(|t| t == "today")
-                })
-                .and_then(|n| n.attribute("x1"))
-                .and_then(|v| v.parse::<f64>().ok())?;
-            if !x1.is_finite() {
-                return None;
-            }
-
-            let min_ms = layout.tasks.iter().map(|t| t.start_ms).min()?;
-            let max_ms = layout.tasks.iter().map(|t| t.end_ms).max()?;
-            if max_ms <= min_ms {
-                return None;
-            }
-            let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
-
-            fn gantt_today_x(
-                now_ms: i64,
-                min_ms: i64,
-                max_ms: i64,
-                range: f64,
-                left_padding: f64,
-            ) -> f64 {
+                let min_ms = layout.tasks.iter().map(|t| t.start_ms).min()?;
+                let max_ms = layout.tasks.iter().map(|t| t.end_ms).max()?;
                 if max_ms <= min_ms {
-                    return left_padding + (range / 2.0).round();
+                    return None;
                 }
-                let t = (now_ms - min_ms) as f64 / (max_ms - min_ms) as f64;
-                left_padding + (t * range).round()
-            }
+                let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
 
-            let target_x = x1;
-            let span = (max_ms - min_ms) as f64;
-            let scaled = target_x - layout.left_padding;
-            if !(span.is_finite() && scaled.is_finite() && range.is_finite()) {
-                return None;
-            }
-            let est = (min_ms as f64) + span * (scaled / range);
-            if !est.is_finite() {
-                return None;
-            }
-            let mut lo = est.round() as i64;
-            let mut hi = lo;
-            let mut step: i64 = 1;
+                fn gantt_today_x(
+                    now_ms: i64,
+                    min_ms: i64,
+                    max_ms: i64,
+                    range: f64,
+                    left_padding: f64,
+                ) -> f64 {
+                    if max_ms <= min_ms {
+                        return left_padding + (range / 2.0).round();
+                    }
+                    let t = (now_ms - min_ms) as f64 / (max_ms - min_ms) as f64;
+                    left_padding + (t * range).round()
+                }
 
-            let mut guard = 0;
-            while guard < 80 {
-                guard += 1;
+                let target_x = x1;
+                let span = (max_ms - min_ms) as f64;
+                let scaled = target_x - layout.left_padding;
+                if !(span.is_finite() && scaled.is_finite() && range.is_finite()) {
+                    return None;
+                }
+                let est = (min_ms as f64) + span * (scaled / range);
+                if !est.is_finite() {
+                    return None;
+                }
+                let mut lo = est.round() as i64;
+                let mut hi = lo;
+                let mut step: i64 = 1;
+
+                let mut guard = 0;
+                while guard < 80 {
+                    guard += 1;
+                    let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+                    if x_lo.is_nan() {
+                        return None;
+                    }
+                    if x_lo <= target_x {
+                        break;
+                    }
+                    hi = lo;
+                    lo = lo.saturating_sub(step);
+                    step = step.saturating_mul(2);
+                }
+
+                guard = 0;
+                step = 1;
+                while guard < 80 {
+                    guard += 1;
+                    let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
+                    if x_hi.is_nan() {
+                        return None;
+                    }
+                    if x_hi >= target_x {
+                        break;
+                    }
+                    lo = hi;
+                    hi = hi.saturating_add(step);
+                    step = step.saturating_mul(2);
+                }
+
                 let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-                if x_lo.is_nan() {
-                    return None;
-                }
-                if x_lo <= target_x {
-                    break;
-                }
-                hi = lo;
-                lo = lo.saturating_sub(step);
-                step = step.saturating_mul(2);
-            }
-
-            guard = 0;
-            step = 1;
-            while guard < 80 {
-                guard += 1;
                 let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
-                if x_hi.is_nan() {
+                if !(x_lo <= target_x && target_x <= x_hi) {
                     return None;
                 }
-                if x_hi >= target_x {
-                    break;
+
+                while lo < hi {
+                    let mid = lo + (hi - lo) / 2;
+                    let x_mid = gantt_today_x(mid, min_ms, max_ms, range, layout.left_padding);
+                    if x_mid < target_x {
+                        lo = mid.saturating_add(1);
+                    } else {
+                        hi = mid;
+                    }
                 }
-                lo = hi;
-                hi = hi.saturating_add(step);
-                step = step.saturating_mul(2);
-            }
+                let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+                if x == target_x { Some(lo) } else { None }
+            })();
 
-            let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-            let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
-            if !(x_lo <= target_x && target_x <= x_hi) {
-                return None;
-            }
+            let diagram_id: String = stem
+                .chars()
+                .map(|ch| {
+                    if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                        ch
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
 
-            while lo < hi {
-                let mid = lo + (hi - lo) / 2;
-                let x_mid = gantt_today_x(mid, min_ms, max_ms, range, layout.left_padding);
-                if x_mid < target_x {
-                    lo = mid.saturating_add(1);
-                } else {
-                    hi = mid;
-                }
-            }
-            let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-            if x == target_x { Some(lo) } else { None }
-        })();
+            let svg_opts = merman_render::svg::SvgRenderOptions {
+                diagram_id: Some(diagram_id),
+                now_ms_override,
+                ..Default::default()
+            };
 
-        let diagram_id: String = stem
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-                    ch
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-
-        let svg_opts = merman_render::svg::SvgRenderOptions {
-            diagram_id: Some(diagram_id),
-            now_ms_override,
-            ..Default::default()
-        };
-
-        let local_svg = match merman_render::svg::render_gantt_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            &svg_opts,
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
-        let _ = fs::write(&local_out_path, &local_svg);
-
-        if check_dom {
-            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+            let local_svg = match merman_render::svg::render_gantt_diagram_svg(
+                layout,
+                &layouted.semantic,
+                &layouted.meta.effective_config,
+                &svg_opts,
+            ) {
                 Ok(v) => v,
                 Err(err) => {
-                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                    failures.push(format!("render failed for {}: {err}", mmd_path.display()));
                     continue;
                 }
             };
-            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!("local dom parse failed for {stem}: {err}"));
-                    continue;
+
+            let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
+            let _ = fs::write(&local_out_path, &local_svg);
+
+            if check_dom {
+                let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                        continue;
+                    }
+                };
+                let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        failures.push(format!("local dom parse failed for {stem}: {err}"));
+                        continue;
+                    }
+                };
+                if a != b {
+                    let detail = svgdom::dom_diff(&a, &b)
+                        .map(|d| format!(" ({d})"))
+                        .unwrap_or_default();
+                    failures.push(format!(
+                        "dom mismatch for {stem}: upstream={} local={}{}",
+                        upstream_path.display(),
+                        local_out_path.display(),
+                        detail
+                    ));
                 }
-            };
-            if a != b {
-                let detail = svgdom::dom_diff(&a, &b)
-                    .map(|d| format!(" ({d})"))
-                    .unwrap_or_default();
-                failures.push(format!(
-                    "dom mismatch for {stem}: upstream={} local={}{}",
-                    upstream_path.display(),
-                    local_out_path.display(),
-                    detail
-                ));
             }
         }
-    }
+    });
 
     if !check_dom {
         let _ = writeln!(
