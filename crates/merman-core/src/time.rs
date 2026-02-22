@@ -1,31 +1,34 @@
 use chrono::{DateTime, FixedOffset, NaiveDateTime};
 
-/// 在当前线程内覆盖“本地时区偏移”（分钟）。
+/// Overrides the "local timezone offset" (in minutes) for the current thread.
 ///
-/// Mermaid（尤其是 Gantt）在若干地方遵循 JavaScript 的本地时间语义，这会导致同一份 fixture
-/// 在不同时区的 CI runner 上产生不同的快照输出。
+/// Mermaid (notably Gantt) follows JavaScript local-time semantics in several places, which can
+/// make fixtures produce different snapshot outputs on CI runners in different timezones.
 ///
-/// 该函数提供一个最小侵入的方式：在闭包执行期间把“本地时区”固定为一个 `FixedOffset`，
-/// 以获得可复现的结果。`None` 表示使用系统 `chrono::Local`。
+/// This helper provides a minimally invasive mechanism: during the closure, treat "local time" as
+/// a fixed `FixedOffset` for deterministic, reproducible snapshots. `None` uses the system
+/// `chrono::Local` timezone.
 pub fn with_fixed_local_offset_minutes<R>(offset_minutes: Option<i32>, f: impl FnOnce() -> R) -> R {
     crate::runtime::with_fixed_local_offset_minutes(offset_minutes, f)
 }
 
-/// 将一个“本地时间”的 `NaiveDateTime` 解释为某个本地时区下的绝对时间点。
+/// Interprets a local `NaiveDateTime` as an absolute instant in the active local timezone.
 ///
-/// 当 `with_fixed_local_offset_minutes(Some(x))` 生效时，使用固定偏移；否则使用系统本地时区。
+/// When `with_fixed_local_offset_minutes(Some(x))` is active, the fixed offset is used. Otherwise,
+/// the system local timezone is used.
 pub fn datetime_from_naive_local(naive: NaiveDateTime) -> DateTime<FixedOffset> {
     crate::runtime::datetime_from_naive_local(naive)
 }
 
-/// 把一个绝对时间点映射到“本地时间”（以 `FixedOffset` 表示）。
+/// Maps an absolute instant to the active local timezone (as a `FixedOffset`).
 ///
-/// 当 `with_fixed_local_offset_minutes(Some(x))` 生效时，使用固定偏移；否则使用系统本地时区。
+/// When `with_fixed_local_offset_minutes(Some(x))` is active, the fixed offset is used. Otherwise,
+/// the system local timezone is used.
 pub fn datetime_to_local_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
     crate::runtime::datetime_to_local_fixed(dt)
 }
 
-/// 获取一个绝对时间点在“本地时间”语义下对应的 `NaiveDateTime`。
+/// Returns the `NaiveDateTime` for an absolute instant under the active local-time semantics.
 pub fn datetime_to_naive_local(dt: DateTime<FixedOffset>) -> NaiveDateTime {
     crate::runtime::datetime_to_naive_local(dt)
 }

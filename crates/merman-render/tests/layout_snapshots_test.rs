@@ -143,7 +143,7 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    // 固定时区偏移，避免 Gantt（以及相关布局逻辑）在不同 CI runner 时区下产生差异。
+    // Pin a fixed local timezone offset so Gantt (and related layout logic) stays deterministic on CI.
     merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
         let fixtures_root = workspace_root().join("fixtures");
         let mmd_files = collect_mmd_files(&fixtures_root);
