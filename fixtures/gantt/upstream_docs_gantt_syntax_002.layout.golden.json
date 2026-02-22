@@ -223,8 +223,8 @@
           "section": "A section",
           "task_type": "A section",
           "order": 0.0,
-          "start_ms": 1388937600000.0,
-          "end_ms": 1389110400000.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1389139200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -254,9 +254,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 4.0,
-          "start_ms": 1388937600000.0,
-          "end_ms": 1389024000000.0,
-          "render_end_ms": 1389024000000.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1389052800000.0,
+          "render_end_ms": 1389052800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -285,9 +285,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 5.0,
-          "start_ms": 1389110400000.0,
-          "end_ms": 1389283200000.0,
-          "render_end_ms": 1389283200000.0,
+          "start_ms": 1389139200000.0,
+          "end_ms": 1389312000000.0,
+          "render_end_ms": 1389312000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -316,9 +316,9 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 11.0,
-          "start_ms": 1389110400000.0,
-          "end_ms": 1389542400000.0,
-          "render_end_ms": 1389369600000.0,
+          "start_ms": 1389139200000.0,
+          "end_ms": 1389571200000.0,
+          "render_end_ms": 1389398400000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -347,9 +347,9 @@
           "section": "A section",
           "task_type": "A section",
           "order": 1.0,
-          "start_ms": 1389196800000.0,
-          "end_ms": 1389628800000.0,
-          "render_end_ms": 1389628800000.0,
+          "start_ms": 1389225600000.0,
+          "end_ms": 1389657600000.0,
+          "render_end_ms": 1389657600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -378,9 +378,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 6.0,
-          "start_ms": 1389283200000.0,
-          "end_ms": 1389715200000.0,
-          "render_end_ms": 1389715200000.0,
+          "start_ms": 1389312000000.0,
+          "end_ms": 1389744000000.0,
+          "render_end_ms": 1389744000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -409,8 +409,8 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 12.0,
-          "start_ms": 1389542400000.0,
-          "end_ms": 1389614400000.0,
+          "start_ms": 1389571200000.0,
+          "end_ms": 1389643200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -440,9 +440,9 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 13.0,
-          "start_ms": 1389542400000.0,
-          "end_ms": 1389715200000.0,
-          "render_end_ms": 1389715200000.0,
+          "start_ms": 1389571200000.0,
+          "end_ms": 1389744000000.0,
+          "render_end_ms": 1389744000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -471,9 +471,9 @@
           "section": "A section",
           "task_type": "A section",
           "order": 2.0,
-          "start_ms": 1389628800000.0,
-          "end_ms": 1390233600000.0,
-          "render_end_ms": 1390233600000.0,
+          "start_ms": 1389657600000.0,
+          "end_ms": 1390262400000.0,
+          "render_end_ms": 1390262400000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -502,9 +502,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 7.0,
-          "start_ms": 1389715200000.0,
-          "end_ms": 1390320000000.0,
-          "render_end_ms": 1390320000000.0,
+          "start_ms": 1389744000000.0,
+          "end_ms": 1390348800000.0,
+          "render_end_ms": 1390348800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -533,9 +533,9 @@
           "section": "Last section",
           "task_type": "Last section",
           "order": 14.0,
-          "start_ms": 1389715200000.0,
-          "end_ms": 1390147200000.0,
-          "render_end_ms": 1389974400000.0,
+          "start_ms": 1389744000000.0,
+          "end_ms": 1390176000000.0,
+          "render_end_ms": 1390003200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -564,8 +564,8 @@
           "section": "Last section",
           "task_type": "Last section",
           "order": 15.0,
-          "start_ms": 1390147200000.0,
-          "end_ms": 1390219200000.0,
+          "start_ms": 1390176000000.0,
+          "end_ms": 1390248000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -595,9 +595,9 @@
           "section": "Last section",
           "task_type": "Last section",
           "order": 16.0,
-          "start_ms": 1390219200000.0,
-          "end_ms": 1390392000000.0,
-          "render_end_ms": 1390392000000.0,
+          "start_ms": 1390248000000.0,
+          "end_ms": 1390420800000.0,
+          "render_end_ms": 1390420800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -626,9 +626,9 @@
           "section": "A section",
           "task_type": "A section",
           "order": 3.0,
-          "start_ms": 1390233600000.0,
-          "end_ms": 1390838400000.0,
-          "render_end_ms": 1390838400000.0,
+          "start_ms": 1390262400000.0,
+          "end_ms": 1390867200000.0,
+          "render_end_ms": 1390867200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -657,9 +657,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 8.0,
-          "start_ms": 1390320000000.0,
-          "end_ms": 1390492800000.0,
-          "render_end_ms": 1390492800000.0,
+          "start_ms": 1390348800000.0,
+          "end_ms": 1390521600000.0,
+          "render_end_ms": 1390521600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -688,9 +688,9 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 9.0,
-          "start_ms": 1390492800000.0,
-          "end_ms": 1390752000000.0,
-          "render_end_ms": 1390579200000.0,
+          "start_ms": 1390521600000.0,
+          "end_ms": 1390780800000.0,
+          "render_end_ms": 1390608000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -719,8 +719,8 @@
           "section": "Critical tasks",
           "task_type": "Critical tasks",
           "order": 10.0,
-          "start_ms": 1390579200000.0,
-          "end_ms": 1390579200000.0,
+          "start_ms": 1390608000000.0,
+          "end_ms": 1390608000000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -750,7 +750,7 @@
           "id": "exclude-2014-01-11",
           "start_ms": 1389369600000.0,
           "end_ms": 1389542399999.0,
-          "x": 310.0,
+          "x": 294.0,
           "y": 35.0,
           "width": 94.0,
           "height": 423.0
@@ -759,7 +759,7 @@
           "id": "exclude-2014-01-18",
           "start_ms": 1389974400000.0,
           "end_ms": 1390147199999.0,
-          "x": 639.0,
+          "x": 623.0,
           "y": 35.0,
           "width": 94.0,
           "height": 423.0
@@ -768,7 +768,7 @@
           "id": "exclude-2014-01-25",
           "start_ms": 1390579200000.0,
           "end_ms": 1390751999999.0,
-          "x": 968.0,
+          "x": 952.0,
           "y": 35.0,
           "width": 94.0,
           "height": 423.0
@@ -778,57 +778,57 @@
       "bottom_ticks": [
         {
           "time_ms": 1389024000000.0,
-          "x": 122.0,
+          "x": 106.0,
           "label": "2014-01-07"
         },
         {
           "time_ms": 1389196800000.0,
-          "x": 216.0,
+          "x": 200.0,
           "label": "2014-01-09"
         },
         {
           "time_ms": 1389369600000.0,
-          "x": 310.0,
+          "x": 294.0,
           "label": "2014-01-11"
         },
         {
           "time_ms": 1389542400000.0,
-          "x": 404.0,
+          "x": 388.0,
           "label": "2014-01-13"
         },
         {
           "time_ms": 1389715200000.0,
-          "x": 498.0,
+          "x": 482.0,
           "label": "2014-01-15"
         },
         {
           "time_ms": 1389888000000.0,
-          "x": 592.0,
+          "x": 576.0,
           "label": "2014-01-17"
         },
         {
           "time_ms": 1390060800000.0,
-          "x": 686.0,
+          "x": 670.0,
           "label": "2014-01-19"
         },
         {
           "time_ms": 1390233600000.0,
-          "x": 780.0,
+          "x": 764.0,
           "label": "2014-01-21"
         },
         {
           "time_ms": 1390406400000.0,
-          "x": 874.0,
+          "x": 858.0,
           "label": "2014-01-23"
         },
         {
           "time_ms": 1390579200000.0,
-          "x": 968.0,
+          "x": 952.0,
           "label": "2014-01-25"
         },
         {
           "time_ms": 1390752000000.0,
-          "x": 1062.0,
+          "x": 1046.0,
           "label": "2014-01-27"
         }
       ],

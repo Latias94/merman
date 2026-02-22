@@ -61,8 +61,8 @@
             "data": "2014-01-08"
           }
         },
-        "startTime": "2014-01-06T08:00:00.000",
-        "endTime": "2014-01-06T08:00:00.000"
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-06T00:00:00.000"
       },
       {
         "section": "A section",
@@ -79,7 +79,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-12T08:00:00.000",
+        "renderEndTime": "2014-01-12T00:00:00.000",
         "raw": {
           "data": ":active,  des2, 2014-01-09, 3d",
           "startTime": {
@@ -90,8 +90,8 @@
             "data": "3d"
           }
         },
-        "startTime": "2014-01-09T08:00:00.000",
-        "endTime": "2014-01-12T08:00:00.000"
+        "startTime": "2014-01-09T00:00:00.000",
+        "endTime": "2014-01-12T00:00:00.000"
       },
       {
         "section": "A section",
@@ -108,7 +108,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-17T08:00:00.000",
+        "renderEndTime": "2014-01-17T00:00:00.000",
         "raw": {
           "data": ":         des3, after des2, 5d",
           "startTime": {
@@ -119,8 +119,8 @@
             "data": "5d"
           }
         },
-        "startTime": "2014-01-12T08:00:00.000",
-        "endTime": "2014-01-17T08:00:00.000"
+        "startTime": "2014-01-12T00:00:00.000",
+        "endTime": "2014-01-17T00:00:00.000"
       },
       {
         "section": "A section",
@@ -137,7 +137,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-22T08:00:00.000",
+        "renderEndTime": "2014-01-22T00:00:00.000",
         "raw": {
           "data": ":         des4, after des3, 5d",
           "startTime": {
@@ -148,8 +148,8 @@
             "data": "5d"
           }
         },
-        "startTime": "2014-01-17T08:00:00.000",
-        "endTime": "2014-01-22T08:00:00.000"
+        "startTime": "2014-01-17T00:00:00.000",
+        "endTime": "2014-01-22T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -166,7 +166,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-07T08:00:00.000",
+        "renderEndTime": "2014-01-07T00:00:00.000",
         "raw": {
           "data": ":crit, done, 2014-01-06,24h",
           "startTime": {
@@ -177,8 +177,8 @@
             "data": "24h"
           }
         },
-        "startTime": "2014-01-06T08:00:00.000",
-        "endTime": "2014-01-07T08:00:00.000"
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-07T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -195,7 +195,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-08T08:00:00.000",
+        "renderEndTime": "2014-01-08T00:00:00.000",
         "raw": {
           "data": ":crit, done, after des1, 2d",
           "startTime": {
@@ -206,8 +206,8 @@
             "data": "2d"
           }
         },
-        "startTime": "2014-01-06T08:00:00.000",
-        "endTime": "2014-01-08T08:00:00.000"
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-08T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -224,7 +224,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-11T08:00:00.000",
+        "renderEndTime": "2014-01-11T00:00:00.000",
         "raw": {
           "data": ":crit, active, 3d",
           "startTime": {
@@ -235,8 +235,8 @@
             "data": "3d"
           }
         },
-        "startTime": "2014-01-08T08:00:00.000",
-        "endTime": "2014-01-11T08:00:00.000"
+        "startTime": "2014-01-08T00:00:00.000",
+        "endTime": "2014-01-11T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -253,7 +253,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-16T08:00:00.000",
+        "renderEndTime": "2014-01-16T00:00:00.000",
         "raw": {
           "data": ":crit, 5d",
           "startTime": {
@@ -264,8 +264,8 @@
             "data": "5d"
           }
         },
-        "startTime": "2014-01-11T08:00:00.000",
-        "endTime": "2014-01-16T08:00:00.000"
+        "startTime": "2014-01-11T00:00:00.000",
+        "endTime": "2014-01-16T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -282,7 +282,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-18T08:00:00.000",
+        "renderEndTime": "2014-01-18T00:00:00.000",
         "raw": {
           "data": ":2d",
           "startTime": {
@@ -293,8 +293,8 @@
             "data": "2d"
           }
         },
-        "startTime": "2014-01-16T08:00:00.000",
-        "endTime": "2014-01-18T08:00:00.000"
+        "startTime": "2014-01-16T00:00:00.000",
+        "endTime": "2014-01-18T00:00:00.000"
       },
       {
         "section": "Critical tasks",
@@ -311,7 +311,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-19T08:00:00.000",
+        "renderEndTime": "2014-01-19T00:00:00.000",
         "raw": {
           "data": ":1d",
           "startTime": {
@@ -322,8 +322,8 @@
             "data": "1d"
           }
         },
-        "startTime": "2014-01-18T08:00:00.000",
-        "endTime": "2014-01-19T08:00:00.000"
+        "startTime": "2014-01-18T00:00:00.000",
+        "endTime": "2014-01-19T00:00:00.000"
       },
       {
         "section": "Documentation",
@@ -340,7 +340,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-09T08:00:00.000",
+        "renderEndTime": "2014-01-09T00:00:00.000",
         "raw": {
           "data": ":active, a1, after des1, 3d",
           "startTime": {
@@ -351,8 +351,8 @@
             "data": "3d"
           }
         },
-        "startTime": "2014-01-06T08:00:00.000",
-        "endTime": "2014-01-09T08:00:00.000"
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-09T00:00:00.000"
       },
       {
         "section": "Documentation",
@@ -380,8 +380,8 @@
             "data": "20h"
           }
         },
-        "startTime": "2014-01-09T08:00:00.000",
-        "endTime": "2014-01-10T04:00:00.000"
+        "startTime": "2014-01-09T00:00:00.000",
+        "endTime": "2014-01-09T20:00:00.000"
       },
       {
         "section": "Documentation",
@@ -398,7 +398,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-11T08:00:00.000",
+        "renderEndTime": "2014-01-11T00:00:00.000",
         "raw": {
           "data": ":doc1, after a1  , 48h",
           "startTime": {
@@ -409,8 +409,8 @@
             "data": "48h"
           }
         },
-        "startTime": "2014-01-09T08:00:00.000",
-        "endTime": "2014-01-11T08:00:00.000"
+        "startTime": "2014-01-09T00:00:00.000",
+        "endTime": "2014-01-11T00:00:00.000"
       },
       {
         "section": "Last section",
@@ -427,7 +427,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-14T08:00:00.000",
+        "renderEndTime": "2014-01-14T00:00:00.000",
         "raw": {
           "data": ":after doc1, 3d",
           "startTime": {
@@ -438,8 +438,8 @@
             "data": "3d"
           }
         },
-        "startTime": "2014-01-11T08:00:00.000",
-        "endTime": "2014-01-14T08:00:00.000"
+        "startTime": "2014-01-11T00:00:00.000",
+        "endTime": "2014-01-14T00:00:00.000"
       },
       {
         "section": "Last section",
@@ -467,8 +467,8 @@
             "data": "20h"
           }
         },
-        "startTime": "2014-01-14T08:00:00.000",
-        "endTime": "2014-01-15T04:00:00.000"
+        "startTime": "2014-01-14T00:00:00.000",
+        "endTime": "2014-01-14T20:00:00.000"
       },
       {
         "section": "Last section",
@@ -485,7 +485,7 @@
         "milestone": false,
         "vert": false,
         "manualEndTime": false,
-        "renderEndTime": "2014-01-17T04:00:00.000",
+        "renderEndTime": "2014-01-16T20:00:00.000",
         "raw": {
           "data": ":48h",
           "startTime": {
@@ -496,8 +496,8 @@
             "data": "48h"
           }
         },
-        "startTime": "2014-01-15T04:00:00.000",
-        "endTime": "2014-01-17T04:00:00.000"
+        "startTime": "2014-01-14T20:00:00.000",
+        "endTime": "2014-01-16T20:00:00.000"
       }
     ],
     "links": {},

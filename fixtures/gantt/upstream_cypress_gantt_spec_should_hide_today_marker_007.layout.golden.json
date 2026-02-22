@@ -67,8 +67,8 @@
           "section": "Section1",
           "task_type": "Section1",
           "order": 0.0,
-          "start_ms": -30270441600000.0,
-          "end_ms": -30270355200000.0,
+          "start_ms": -30270412800000.0,
+          "end_ms": -30270326400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -98,8 +98,8 @@
           "section": "Section1",
           "task_type": "Section1",
           "order": 1.0,
-          "start_ms": -30270355200000.0,
-          "end_ms": -30270268800000.0,
+          "start_ms": -30270326400000.0,
+          "end_ms": -30270240000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -128,48 +128,43 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": -30270441600000.0,
-          "x": 75.0,
-          "label": "09"
-        },
-        {
-          "time_ms": -30270420000000.0,
-          "x": 204.0,
-          "label": "09"
-        },
-        {
           "time_ms": -30270398400000.0,
-          "x": 334.0,
+          "x": 161.0,
           "label": "09"
         },
         {
           "time_ms": -30270376800000.0,
-          "x": 463.0,
+          "x": 290.0,
           "label": "09"
         },
         {
           "time_ms": -30270355200000.0,
-          "x": 592.0,
+          "x": 420.0,
           "label": "10"
         },
         {
           "time_ms": -30270333600000.0,
-          "x": 721.0,
+          "x": 549.0,
           "label": "10"
         },
         {
           "time_ms": -30270312000000.0,
-          "x": 851.0,
+          "x": 678.0,
           "label": "10"
         },
         {
           "time_ms": -30270290400000.0,
-          "x": 980.0,
+          "x": 807.0,
           "label": "10"
         },
         {
           "time_ms": -30270268800000.0,
-          "x": 1109.0,
+          "x": 937.0,
+          "label": "11"
+        },
+        {
+          "time_ms": -30270247200000.0,
+          "x": 1066.0,
           "label": "11"
         }
       ],

@@ -59,8 +59,8 @@
           "section": "Network Request",
           "task_type": "Network Request",
           "order": 0.0,
-          "start_ms": 946656000000.0,
-          "end_ms": 1771084820000.0,
+          "start_ms": 946684800000.0,
+          "end_ms": 1771113620000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -89,11 +89,6 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 946656000000.0,
-          "x": 75.0,
-          "label": "946656000"
-        },
-        {
           "time_ms": 1009814400000.0,
           "x": 154.0,
           "label": "1009814400"
@@ -105,7 +100,7 @@
         },
         {
           "time_ms": 1136044800000.0,
-          "x": 313.0,
+          "x": 312.0,
           "label": "1136044800"
         },
         {

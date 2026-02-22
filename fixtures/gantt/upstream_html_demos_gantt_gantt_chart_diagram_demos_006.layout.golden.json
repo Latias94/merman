@@ -59,8 +59,8 @@
           "section": "Section1",
           "task_type": "Section1",
           "order": 0.0,
-          "start_ms": 1249664400000.0,
-          "end_ms": 1249664400000.0,
+          "start_ms": 1249693200000.0,
+          "end_ms": 1249693200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -89,7 +89,7 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1249664400000.0,
+          "time_ms": 1249693200000.0,
           "x": 592.0,
           "label": "08/08"
         }

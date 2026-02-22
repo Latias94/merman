@@ -95,8 +95,8 @@
           "section": "#;Section",
           "task_type": "#;Section",
           "order": 0.0,
-          "start_ms": 1388505600000.0,
-          "end_ms": 1391097600000.0,
+          "start_ms": 1388534400000.0,
+          "end_ms": 1391126400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -126,8 +126,8 @@
           "section": "#;Another",
           "task_type": "#;Another",
           "order": 2.0,
-          "start_ms": 1389456000000.0,
-          "end_ms": 1390492800000.0,
+          "start_ms": 1389484800000.0,
+          "end_ms": 1390521600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -157,8 +157,8 @@
           "section": "#;Another",
           "task_type": "#;Another",
           "order": 3.0,
-          "start_ms": 1390492800000.0,
-          "end_ms": 1392566400000.0,
+          "start_ms": 1390521600000.0,
+          "end_ms": 1392595200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -188,8 +188,8 @@
           "section": "#;Section",
           "task_type": "#;Section",
           "order": 1.0,
-          "start_ms": 1391097600000.0,
-          "end_ms": 1392825600000.0,
+          "start_ms": 1391126400000.0,
+          "end_ms": 1392854400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -219,37 +219,37 @@
       "bottom_ticks": [
         {
           "time_ms": 1388851200000.0,
-          "x": 158.0,
+          "x": 151.0,
           "label": "2014-01-05"
         },
         {
           "time_ms": 1389456000000.0,
-          "x": 302.0,
+          "x": 296.0,
           "label": "2014-01-12"
         },
         {
           "time_ms": 1390060800000.0,
-          "x": 447.0,
+          "x": 440.0,
           "label": "2014-01-19"
         },
         {
           "time_ms": 1390665600000.0,
-          "x": 592.0,
+          "x": 585.0,
           "label": "2014-01-26"
         },
         {
           "time_ms": 1391270400000.0,
-          "x": 737.0,
+          "x": 730.0,
           "label": "2014-02-02"
         },
         {
           "time_ms": 1391875200000.0,
-          "x": 882.0,
+          "x": 875.0,
           "label": "2014-02-09"
         },
         {
           "time_ms": 1392480000000.0,
-          "x": 1026.0,
+          "x": 1019.0,
           "label": "2014-02-16"
         }
       ],

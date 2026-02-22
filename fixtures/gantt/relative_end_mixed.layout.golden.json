@@ -83,8 +83,8 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 2.0,
-          "start_ms": 1705680000000.0,
-          "end_ms": 1706284800000.0,
+          "start_ms": 1705708800000.0,
+          "end_ms": 1706313600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -114,8 +114,8 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 0.0,
-          "start_ms": 1706284800000.0,
-          "end_ms": 1706371200000.0,
+          "start_ms": 1706313600000.0,
+          "end_ms": 1706400000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -145,8 +145,8 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 3.0,
-          "start_ms": 1706284800000.0,
-          "end_ms": 1706371200000.0,
+          "start_ms": 1706313600000.0,
+          "end_ms": 1706400000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -176,8 +176,8 @@
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 1.0,
-          "start_ms": 1706371200000.0,
-          "end_ms": 1706544000000.0,
+          "start_ms": 1706400000000.0,
+          "end_ms": 1706572800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -206,58 +206,53 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1705680000000.0,
-          "x": 75.0,
-          "label": "2024-01-20"
-        },
-        {
           "time_ms": 1705766400000.0,
-          "x": 178.0,
+          "x": 144.0,
           "label": "2024-01-21"
         },
         {
           "time_ms": 1705852800000.0,
-          "x": 282.0,
+          "x": 247.0,
           "label": "2024-01-22"
         },
         {
           "time_ms": 1705939200000.0,
-          "x": 385.0,
+          "x": 351.0,
           "label": "2024-01-23"
         },
         {
           "time_ms": 1706025600000.0,
-          "x": 489.0,
+          "x": 454.0,
           "label": "2024-01-24"
         },
         {
           "time_ms": 1706112000000.0,
-          "x": 592.0,
+          "x": 558.0,
           "label": "2024-01-25"
         },
         {
           "time_ms": 1706198400000.0,
-          "x": 695.0,
+          "x": 661.0,
           "label": "2024-01-26"
         },
         {
           "time_ms": 1706284800000.0,
-          "x": 799.0,
+          "x": 764.0,
           "label": "2024-01-27"
         },
         {
           "time_ms": 1706371200000.0,
-          "x": 902.0,
+          "x": 868.0,
           "label": "2024-01-28"
         },
         {
           "time_ms": 1706457600000.0,
-          "x": 1006.0,
+          "x": 971.0,
           "label": "2024-01-29"
         },
         {
           "time_ms": 1706544000000.0,
-          "x": 1109.0,
+          "x": 1075.0,
           "label": "2024-01-30"
         }
       ],

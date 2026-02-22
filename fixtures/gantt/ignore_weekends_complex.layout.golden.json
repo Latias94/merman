@@ -119,9 +119,9 @@
           "section": "weekends skip test",
           "task_type": "weekends skip test",
           "order": 0.0,
-          "start_ms": 1548950400000.0,
-          "end_ms": 1549209600000.0,
-          "render_end_ms": 1549036800000.0,
+          "start_ms": 1548979200000.0,
+          "end_ms": 1549238400000.0,
+          "render_end_ms": 1549065600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -150,8 +150,8 @@
           "section": "weekends skip test",
           "task_type": "weekends skip test",
           "order": 3.0,
-          "start_ms": 1548950400000.0,
-          "end_ms": 1550592000000.0,
+          "start_ms": 1548979200000.0,
+          "end_ms": 1550620800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -181,9 +181,9 @@
           "section": "weekends skip test",
           "task_type": "weekends skip test",
           "order": 1.0,
-          "start_ms": 1549209600000.0,
-          "end_ms": 1549468800000.0,
-          "render_end_ms": 1549382400000.0,
+          "start_ms": 1549238400000.0,
+          "end_ms": 1549497600000.0,
+          "render_end_ms": 1549411200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -212,9 +212,9 @@
           "section": "weekends skip test",
           "task_type": "weekends skip test",
           "order": 2.0,
-          "start_ms": 1549468800000.0,
-          "end_ms": 1550592000000.0,
-          "render_end_ms": 1550592000000.0,
+          "start_ms": 1549497600000.0,
+          "end_ms": 1550620800000.0,
+          "render_end_ms": 1550620800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -243,9 +243,9 @@
           "section": "full ending task on last day",
           "task_type": "full ending task on last day",
           "order": 5.0,
-          "start_ms": 1549987200000.0,
-          "end_ms": 1550419200000.0,
-          "render_end_ms": 1550160000000.0,
+          "start_ms": 1550016000000.0,
+          "end_ms": 1550448000000.0,
+          "render_end_ms": 1550188800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -274,9 +274,9 @@
           "section": "full ending task on last day",
           "task_type": "full ending task on last day",
           "order": 6.0,
-          "start_ms": 1550419200000.0,
-          "end_ms": 1550505600000.0,
-          "render_end_ms": 1550505600000.0,
+          "start_ms": 1550448000000.0,
+          "end_ms": 1550534400000.0,
+          "render_end_ms": 1550534400000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -305,9 +305,9 @@
           "section": "weekends skip test",
           "task_type": "weekends skip test",
           "order": 4.0,
-          "start_ms": 1550592000000.0,
-          "end_ms": 1550678400000.0,
-          "render_end_ms": 1550678400000.0,
+          "start_ms": 1550620800000.0,
+          "end_ms": 1550707200000.0,
+          "render_end_ms": 1550707200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -336,7 +336,7 @@
           "id": "exclude-2019-02-01",
           "start_ms": 1548950400000.0,
           "end_ms": 1549209599999.0,
-          "x": 75.0,
+          "x": 58.0,
           "y": 35.0,
           "width": 155.0,
           "height": 183.0
@@ -345,16 +345,16 @@
           "id": "exclude-2019-02-06",
           "start_ms": 1549382400000.0,
           "end_ms": 1549468799999.0,
-          "x": 334.0,
+          "x": 316.0,
           "y": 35.0,
-          "width": 51.0,
+          "width": 52.0,
           "height": 183.0
         },
         {
           "id": "exclude-2019-02-08",
           "start_ms": 1549555200000.0,
           "end_ms": 1549814399999.0,
-          "x": 437.0,
+          "x": 420.0,
           "y": 35.0,
           "width": 155.0,
           "height": 183.0
@@ -363,7 +363,7 @@
           "id": "exclude-2019-02-15",
           "start_ms": 1550160000000.0,
           "end_ms": 1550419199999.0,
-          "x": 799.0,
+          "x": 782.0,
           "y": 35.0,
           "width": 155.0,
           "height": 183.0
@@ -372,58 +372,53 @@
       "has_excludes_layer": true,
       "bottom_ticks": [
         {
-          "time_ms": 1548950400000.0,
-          "x": 75.0,
-          "label": "2019-02-01"
-        },
-        {
           "time_ms": 1549123200000.0,
-          "x": 178.0,
+          "x": 161.0,
           "label": "2019-02-03"
         },
         {
           "time_ms": 1549296000000.0,
-          "x": 282.0,
+          "x": 265.0,
           "label": "2019-02-05"
         },
         {
           "time_ms": 1549468800000.0,
-          "x": 385.0,
+          "x": 368.0,
           "label": "2019-02-07"
         },
         {
           "time_ms": 1549641600000.0,
-          "x": 489.0,
+          "x": 471.0,
           "label": "2019-02-09"
         },
         {
           "time_ms": 1549814400000.0,
-          "x": 592.0,
+          "x": 575.0,
           "label": "2019-02-11"
         },
         {
           "time_ms": 1549987200000.0,
-          "x": 695.0,
+          "x": 678.0,
           "label": "2019-02-13"
         },
         {
           "time_ms": 1550160000000.0,
-          "x": 799.0,
+          "x": 782.0,
           "label": "2019-02-15"
         },
         {
           "time_ms": 1550332800000.0,
-          "x": 902.0,
+          "x": 885.0,
           "label": "2019-02-17"
         },
         {
           "time_ms": 1550505600000.0,
-          "x": 1006.0,
+          "x": 988.0,
           "label": "2019-02-19"
         },
         {
           "time_ms": 1550678400000.0,
-          "x": 1109.0,
+          "x": 1092.0,
           "label": "2019-02-21"
         }
       ],

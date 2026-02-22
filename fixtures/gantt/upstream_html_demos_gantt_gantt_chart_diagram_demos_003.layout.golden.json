@@ -103,9 +103,9 @@
           "section": "Airworks 3.4.1",
           "task_type": "Airworks 3.4.1",
           "order": 0.0,
-          "start_ms": 1633536000000.0,
-          "end_ms": 1634054400000.0,
-          "render_end_ms": 1634054400000.0,
+          "start_ms": 1633564800000.0,
+          "end_ms": 1634083200000.0,
+          "render_end_ms": 1634083200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -134,9 +134,9 @@
           "section": "Airworks 3.4.2",
           "task_type": "Airworks 3.4.2",
           "order": 3.0,
-          "start_ms": 1633708800000.0,
-          "end_ms": 1634140800000.0,
-          "render_end_ms": 1634140800000.0,
+          "start_ms": 1633737600000.0,
+          "end_ms": 1634169600000.0,
+          "render_end_ms": 1634169600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -165,9 +165,9 @@
           "section": "Airworks 3.4.1",
           "task_type": "Airworks 3.4.1",
           "order": 1.0,
-          "start_ms": 1634054400000.0,
-          "end_ms": 1634572800000.0,
-          "render_end_ms": 1634572800000.0,
+          "start_ms": 1634083200000.0,
+          "end_ms": 1634601600000.0,
+          "render_end_ms": 1634601600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -196,9 +196,9 @@
           "section": "Airworks 3.4.2",
           "task_type": "Airworks 3.4.2",
           "order": 4.0,
-          "start_ms": 1634140800000.0,
-          "end_ms": 1634659200000.0,
-          "render_end_ms": 1634659200000.0,
+          "start_ms": 1634169600000.0,
+          "end_ms": 1634688000000.0,
+          "render_end_ms": 1634688000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -227,8 +227,8 @@
           "section": "Airworks 3.4.1",
           "task_type": "Airworks 3.4.1",
           "order": 2.0,
-          "start_ms": 1634572800000.0,
-          "end_ms": 1634572800000.0,
+          "start_ms": 1634601600000.0,
+          "end_ms": 1634601600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -258,7 +258,7 @@
           "id": "exclude-2021-10-07",
           "start_ms": 1633536000000.0,
           "end_ms": 1633622399999.0,
-          "x": 75.0,
+          "x": 48.0,
           "y": 35.0,
           "width": 80.0,
           "height": 135.0
@@ -267,16 +267,16 @@
           "id": "exclude-2021-10-10",
           "start_ms": 1633795200000.0,
           "end_ms": 1633881599999.0,
-          "x": 314.0,
+          "x": 287.0,
           "y": 35.0,
-          "width": 79.0,
+          "width": 80.0,
           "height": 135.0
         },
         {
           "id": "exclude-2021-10-16",
           "start_ms": 1634313600000.0,
           "end_ms": 1634486399999.0,
-          "x": 791.0,
+          "x": 764.0,
           "y": 35.0,
           "width": 159.0,
           "height": 135.0
@@ -285,73 +285,68 @@
       "has_excludes_layer": true,
       "bottom_ticks": [
         {
-          "time_ms": 1633536000000.0,
-          "x": 75.0,
-          "label": "10-07 Thu"
-        },
-        {
           "time_ms": 1633622400000.0,
-          "x": 155.0,
+          "x": 128.0,
           "label": "10-08 Fri"
         },
         {
           "time_ms": 1633708800000.0,
-          "x": 234.0,
+          "x": 208.0,
           "label": "10-09 Sat"
         },
         {
           "time_ms": 1633795200000.0,
-          "x": 314.0,
+          "x": 287.0,
           "label": "10-10 Sun"
         },
         {
           "time_ms": 1633881600000.0,
-          "x": 393.0,
+          "x": 367.0,
           "label": "10-11 Mon"
         },
         {
           "time_ms": 1633968000000.0,
-          "x": 473.0,
+          "x": 446.0,
           "label": "10-12 Tue"
         },
         {
           "time_ms": 1634054400000.0,
-          "x": 552.0,
+          "x": 526.0,
           "label": "10-13 Wed"
         },
         {
           "time_ms": 1634140800000.0,
-          "x": 632.0,
+          "x": 605.0,
           "label": "10-14 Thu"
         },
         {
           "time_ms": 1634227200000.0,
-          "x": 711.0,
+          "x": 685.0,
           "label": "10-15 Fri"
         },
         {
           "time_ms": 1634313600000.0,
-          "x": 791.0,
+          "x": 764.0,
           "label": "10-16 Sat"
         },
         {
           "time_ms": 1634400000000.0,
-          "x": 870.0,
+          "x": 844.0,
           "label": "10-17 Sun"
         },
         {
           "time_ms": 1634486400000.0,
-          "x": 950.0,
+          "x": 923.0,
           "label": "10-18 Mon"
         },
         {
           "time_ms": 1634572800000.0,
-          "x": 1029.0,
+          "x": 1003.0,
           "label": "10-19 Tue"
         },
         {
           "time_ms": 1634659200000.0,
-          "x": 1109.0,
+          "x": 1082.0,
           "label": "10-20 Wed"
         }
       ],
