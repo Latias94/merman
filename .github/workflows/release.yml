@@ -42,7 +42,11 @@ on:
   pull_request:
   push:
     tags:
-      - '**[0-9]+.[0-9]+.[0-9]+*'
+      # GitHub Actions tag filters are globs (not regex). Prefer explicit SemVer-ish globs.
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+      - '[0-9]*.[0-9]*.[0-9]*'
+      - '*/*v[0-9]*.[0-9]*.[0-9]*'
+      - '*/*[0-9]*.[0-9]*.[0-9]*'
 
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
