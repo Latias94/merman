@@ -189,7 +189,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             ))
             .with_fixed_today(Some(
                 chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-            ));
+            ))
+            .with_fixed_local_offset_minutes(Some(0));
         let layout_opts = merman_render::LayoutOptions::default();
         let mut failures = Vec::new();
 

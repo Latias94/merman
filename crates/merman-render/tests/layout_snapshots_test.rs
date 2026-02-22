@@ -154,9 +154,11 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         );
 
         // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-        let engine = Engine::new().with_fixed_today(Some(
-            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ));
+        let engine = Engine::new()
+            .with_fixed_today(Some(
+                NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+            ))
+            .with_fixed_local_offset_minutes(Some(0));
         let layout_opts = LayoutOptions::default();
         let mut failures: Vec<String> = Vec::new();
 
