@@ -1,5 +1,5 @@
-use crate::cmd;
 use crate::XtaskError;
+use crate::cmd;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -30,7 +30,10 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     println!("\n== cargo fmt ==");
     let mut fmt_cmd = Command::new("cargo");
-    fmt_cmd.arg("fmt").arg("--check").current_dir(&workspace_root);
+    fmt_cmd
+        .arg("fmt")
+        .arg("--check")
+        .current_dir(&workspace_root);
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
 
     println!("\n== cargo nextest ==");
@@ -50,4 +53,3 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     Ok(())
 }
-
