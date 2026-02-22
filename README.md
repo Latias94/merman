@@ -7,13 +7,20 @@ Think of `merman` as Mermaid's headless twin: same language, same diagrams, no b
 `merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
 The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-parity-policy.md`).
 
+## TL;DR
+
+- 想要“直接渲染 SVG/PNG/JPG/PDF”：用 `merman-cli`（发布后可 `cargo install merman-cli`）。
+- 想要“嵌入到应用里”：用 `merman`（`render`=SVG，`raster`=PNG/JPG/PDF）。
+- 只要“解析/语义 JSON”：用 `merman-core`。
+- 质量闸门：`cargo run -p xtask -- verify`（`fmt` + `nextest` + DOM parity 全量扫）。
+
 ## Status
 
 - Baseline: Mermaid `@11.12.2`.
 - Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: `docs/alignment/STATUS.md`.
-- Corpus size (2026-02-17): 1842 upstream SVG baselines across 23 diagrams.
+- Corpus size: 1800+ upstream SVG baselines across 23 diagrams.
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
 
 ## What you get
@@ -26,6 +33,23 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Render PDF (SVG → PDF conversion via `svg2pdf`)
 
 Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
+
+## Install
+
+After publishing `0.1.0`, you can:
+
+```sh
+# CLI
+cargo install merman-cli
+
+# Library (SVG)
+cargo add merman --features render
+
+# Library (SVG + PNG/JPG/PDF)
+cargo add merman --features raster
+```
+
+MSRV is `rust-version = 1.87`.
 
 ## Quickstart (library)
 
@@ -98,8 +122,7 @@ The goal is not “it looks similar”, but “it stays aligned”.
 Quick “confidence check”:
 
 ```sh
-cargo nextest run
-cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+cargo run -p xtask -- verify
 ```
 
 ## CLI
