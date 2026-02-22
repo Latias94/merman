@@ -2,6 +2,8 @@
 
 Mermaid, but headless, in Rust.
 
+![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)
+
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
 `merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
@@ -9,10 +11,23 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 
 ## TL;DR
 
-- 想要“直接渲染 SVG/PNG/JPG/PDF”：用 `merman-cli`（发布后可 `cargo install merman-cli`）。
-- 想要“嵌入到应用里”：用 `merman`（`render`=SVG，`raster`=PNG/JPG/PDF）。
-- 只要“解析/语义 JSON”：用 `merman-core`。
-- 质量闸门：`cargo run -p xtask -- verify`（`fmt` + `nextest` + DOM parity 全量扫）。
+- Want an executable? Use `merman-cli` (render SVG/PNG/JPG/PDF).
+- Want a library? Use `merman` (`render` for SVG; `raster` for PNG/JPG/PDF).
+- Only need parsing / semantic JSON? Use `merman-core`.
+- Quality gate: `cargo run -p xtask -- verify` (fmt + nextest + DOM parity sweep).
+
+## Contents
+
+- [Status](#status)
+- [Install](#install)
+- [Quickstart (CLI)](#quickstart-cli)
+- [Quickstart (library)](#quickstart-library)
+- [Quality gates](#quality-gates)
+- [Limitations](#limitations)
+- [Crates](#crates)
+- [Development](#development)
+- [Changelog](#changelog)
+- [License](#license)
 
 ## Status
 
@@ -50,6 +65,27 @@ cargo add merman --features raster
 ```
 
 MSRV is `rust-version = 1.87`.
+
+## Quickstart (CLI)
+
+```sh
+# Detect diagram type
+merman-cli detect path/to/diagram.mmd
+
+# Parse -> semantic JSON
+merman-cli parse path/to/diagram.mmd --pretty
+
+# Layout -> layout JSON
+merman-cli layout path/to/diagram.mmd --pretty
+
+# Render SVG
+merman-cli render path/to/diagram.mmd --out out.svg
+
+# Render raster formats
+merman-cli render --format png --out out.png path/to/diagram.mmd
+merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
+merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
+```
 
 ## Quickstart (library)
 
@@ -100,9 +136,9 @@ If your downstream renderer does not support SVG `<foreignObject>` (common for r
 prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
 overlay extracted from Mermaid labels.
 
-## Parity & goldens
+## Quality gates
 
-This repo is built around reproducible alignment layers:
+This repo is built around reproducible alignment layers and CI-friendly gates:
 
 - Semantic snapshots: `fixtures/**/*.golden.json`
 - Layout snapshots: `fixtures/**/*.layout.golden.json`
@@ -111,35 +147,22 @@ This repo is built around reproducible alignment layers:
 
 The goal is not “it looks similar”, but “it stays aligned”.
 
-## Why trust it?
-
-`merman` is intentionally **golden-driven**:
-
-- Every imported fixture is backed by semantic + layout snapshots (`fixtures/**/*.golden.json`, `fixtures/**/*.layout.golden.json`).
-- End-to-end SVG output is validated against **official Mermaid CLI** baselines (`fixtures/upstream-svgs/**`).
-- CI/local gates make regressions loud: if a change breaks parity, tests fail.
-
-Quick “confidence check”:
+Quick confidence check:
 
 ```sh
 cargo run -p xtask -- verify
 ```
 
-## CLI
-
-- Detect diagram type: `cargo run -p merman-cli -- detect path/to/diagram.mmd`
-- Parse → semantic JSON: `cargo run -p merman-cli -- parse path/to/diagram.mmd --pretty`
-- Layout → layout JSON: `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
-- Render SVG: `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
-- Render PNG: `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
-- Render JPG: `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
-- Render PDF: `cargo run -p merman-cli -- render --format pdf --out out.pdf path/to/diagram.mmd`
-
-For a quick “does raster output look sane?” sweep across fixtures:
+For a quick “does raster output look sane?” sweep across fixtures (dev-only):
 
 - `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/preview/export-fixtures-png.ps1 -BuildReleaseCli -CleanOutDir`
 
-## Library
+## Limitations
+
+- SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_readable_sync()`.
+- Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
+
+## Crates
 
 - Headless parsing: `merman-core`
 - Convenience API: `merman` (enable `render` for layout + SVG)
