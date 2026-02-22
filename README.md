@@ -22,6 +22,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - [Install](#install)
 - [Quickstart (CLI)](#quickstart-cli)
 - [Quickstart (library)](#quickstart-library)
+- [Showcase](#showcase)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
 - [Crates](#crates)
@@ -87,6 +88,30 @@ merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
 ```
 
+Minimal end-to-end example:
+
+```bash
+cat > example.mmd <<'EOF'
+flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Do thing]
+  B -->|No| D[Do other thing]
+EOF
+
+merman-cli render example.mmd --out example.svg
+```
+
+```powershell
+@'
+flowchart TD
+  A[Start] --> B{Decision}
+  B -->|Yes| C[Do thing]
+  B -->|No| D[Do other thing]
+'@ | Set-Content -Encoding utf8 example.mmd
+
+merman-cli render example.mmd --out example.svg
+```
+
 ## Quickstart (library)
 
 The `merman` crate is a convenience wrapper around `merman-core` (parsing) + `merman-render` (layout + SVG).
@@ -135,6 +160,51 @@ If you already know the diagram type (e.g. from a Markdown fence info string), p
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
 prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
 overlay extracted from Mermaid labels.
+
+## Showcase
+
+<img align="right" width="420" alt="Showcase screenshot (replace me)" src="docs/assets/showcase/placeholder.svg" />
+
+This section is intentionally screenshot-friendly. Drop your real screenshots into `docs/assets/showcase/`
+and replace the placeholder `src` above (or add more images per example).
+
+### Flowchart (clusters + styled edges)
+
+```mermaid
+flowchart LR
+  subgraph "Frontend"
+    A[Web] -->|JSON| B(API)
+  end
+
+  subgraph "Backend"
+    B --> C[(DB)]
+    B --> D[Workers]
+  end
+
+  A -. cached .-> C
+  D -->|events| B
+```
+
+### Sequence (notes + alt/else)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant W as Web
+  participant S as Service
+
+  U->>W: Click
+  Note over U,W: UI stays responsive
+  W->>S: POST /do-thing
+
+  alt Success
+    S-->>W: 200 OK
+    W-->>U: Done
+  else Failure
+    S-->>W: 500 Error
+    W-->>U: Try again
+  end
+```
 
 ## Quality gates
 

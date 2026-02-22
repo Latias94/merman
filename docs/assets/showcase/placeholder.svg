@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="520" viewBox="0 0 840 520">
+  <rect x="12" y="12" width="816" height="496" rx="18" fill="#0b0f19" stroke="#2b3245" stroke-width="2"/>
+  <g fill="#cbd5e1" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" text-anchor="middle">
+    <text x="420" y="235" font-size="34" font-weight="700">Screenshot Placeholder</text>
+    <text x="420" y="285" font-size="18" opacity="0.85">Replace with a real diagram screenshot</text>
+    <text x="420" y="315" font-size="16" opacity="0.75">docs/assets/showcase/&lt;your-image&gt;.png</text>
+  </g>
+</svg>
