@@ -163,48 +163,125 @@ overlay extracted from Mermaid labels.
 
 ## Showcase
 
-<img align="right" width="420" alt="Showcase screenshot (replace me)" src="docs/assets/showcase/placeholder.svg" />
+All screenshots below are produced by `merman-cli` (headless) and committed under `docs/assets/showcase/`.
+Each example links to an existing fixture so the README stays honest and reproducible.
 
-This section is intentionally screenshot-friendly. Drop your real screenshots into `docs/assets/showcase/`
-and replace the placeholder `src` above (or add more images per example).
+### Architecture (nested junction routing)
 
-### Flowchart (clusters + styled edges)
+<img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.png" />
 
-```mermaid
-flowchart LR
-  subgraph "Frontend"
-    A[Web] -->|JSON| B(API)
-  end
-
-  subgraph "Backend"
-    B --> C[(DB)]
-    B --> D[Workers]
-  end
-
-  A -. cached .-> C
-  D -->|events| B
-```
-
-### Sequence (notes + alt/else)
+Source: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd`](fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd)
 
 ```mermaid
-sequenceDiagram
-  participant U as User
-  participant W as Web
-  participant S as Service
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): nested junctions + multi-hop routing.
 
-  U->>W: Click
-  Note over U,W: UI stays responsive
-  W->>S: POST /do-thing
+group core(cloud)[Core]
+group data(cloud)[Data] in core
 
-  alt Success
-    S-->>W: 200 OK
-    W-->>U: Done
-  else Failure
-    S-->>W: 500 Error
-    W-->>U: Try again
-  end
+service api(server)[API] in core
+service worker(server)[Worker] in core
+service db(database)[DB] in data
+service cache(disk)[Cache] in data
+
+junction j1 in core
+junction j2 in data
+
+api:R --> L:j1
+worker:T --> B:j1
+
+j1{group}:B --> T:j2{group}
+j2:L --> R:db
+j2:R --> L:cache
 ```
+
+### Mindmap (line breaks in labels)
+
+<img width="900" alt="Mindmap diagram: label line break variants" src="docs/assets/showcase/mindmap.png" />
+
+Source: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
+
+```mermaid
+mindmap
+  %% Authored stress fixture (Mermaid@11.12.2): <br> variants inside labels.
+  root((Root))
+    n1["line 1<br>line 2"]
+    n2["line 1<br/>line 2"]
+    n3["line 1<br />line 2"]
+    %% plus whitespace variants (see the fixture for the full set)
+```
+
+### Sankey (dense shared nodes)
+
+<img width="900" alt="Sankey diagram: dense shared nodes" src="docs/assets/showcase/sankey.png" />
+
+Source: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
+
+```mermaid
+%%{init: {"sankey": {"width": 900, "height": 420, "useMaxWidth": true, "showValues": false, "linkColor": "source", "nodeAlignment": "justify"}}}%%
+sankey
+
+%% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/sankey.md (dense graphs) + authored stress
+In,A,10
+In,B,8
+In,C,6
+A,X,5
+A,Y,5
+B,Y,3
+B,Z,5
+C,X,2
+C,Z,4
+X,Out 1,7
+X,Out 2,0.5
+Y,Out 1,6
+Y,Out 3,2
+Z,Out 2,7
+Z,Loss,2
+```
+
+### Gantt (date math + excludes)
+
+<img width="900" alt="Gantt diagram: date math + excludes" src="docs/assets/showcase/gantt.png" />
+
+Source: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
+
+<details>
+  <summary>Mermaid source</summary>
+
+```mermaid
+gantt
+    dateFormat  YYYY-MM-DD
+    title       Adding GANTT diagram functionality to mermaid
+    excludes    weekends
+    %% (`excludes` accepts specific dates in YYYY-MM-DD format, days of the week ("sunday") or "weekends", but not the word "weekdays".)
+
+    section A section
+    Completed task            :done,    des1, 2014-01-06,2014-01-08
+    Active task               :active,  des2, 2014-01-09, 3d
+    Future task               :         des3, after des2, 5d
+    Future task2              :         des4, after des3, 5d
+
+    section Critical tasks
+    Completed task in the critical line :crit, done, 2014-01-06,24h
+    Implement parser and jison          :crit, done, after des1, 2d
+    Create tests for parser             :crit, active, 3d
+    Future task in critical line        :crit, 5d
+    Create tests for renderer           :2d
+    Add to mermaid                      :until isadded
+    Functionality added                 :milestone, isadded, 2014-01-25, 0d
+
+    section Documentation
+    Describe gantt syntax               :active, a1, after des1, 3d
+    Add gantt diagram to demo page      :after a1  , 20h
+    Add another diagram to demo page    :doc1, after a1  , 48h
+
+    section Last section
+    Describe gantt syntax               :after doc1, 3d
+    Add gantt diagram to demo page      :20h
+    Add another diagram to demo page    :48h
+```
+
+</details>
 
 ## Quality gates
 
