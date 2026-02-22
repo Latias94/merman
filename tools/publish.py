@@ -121,6 +121,7 @@ class PackageInfo:
     version: str
     publish: bool
     manifest_path: Path
+    internal_deps: tuple[str, ...]
 
 
 def cargo_metadata(repo_root: Path) -> dict:
@@ -137,17 +138,23 @@ def cargo_metadata(repo_root: Path) -> dict:
 def get_workspace_packages(repo_root: Path) -> dict[str, PackageInfo]:
     md = cargo_metadata(repo_root)
     out: dict[str, PackageInfo] = {}
+    publish_set = set(PUBLISH_ORDER)
     for pkg in md.get("packages", []):
         name = pkg["name"]
         version = pkg["version"]
         publish_raw = pkg.get("publish", None)
         publish = publish_raw is None or publish_raw is True or publish_raw == []
         manifest_path = Path(pkg["manifest_path"])
+        deps = pkg.get("dependencies", []) or []
+        internal_deps = sorted(
+            {d.get("name") for d in deps if d.get("name") in publish_set and d.get("name") != name}
+        )
         out[name] = PackageInfo(
             name=name,
             version=version,
             publish=publish,
             manifest_path=manifest_path,
+            internal_deps=tuple(internal_deps),
         )
     return out
 
@@ -344,6 +351,8 @@ def main() -> int:
             return 0
 
     failures: list[str] = []
+    ok: list[str] = []
+    skipped: list[str] = []
     for c in crates:
         p = packages[c]
         if args.preflight_only:
@@ -356,16 +365,26 @@ def main() -> int:
                 print_warning(f"{p.name} v{p.version} appears already published.")
                 if confirm("Skip this crate?", default=True):
                     print_info(f"Skipping {p.name}")
+                    skipped.append(p.name)
                     continue
 
         if args.preflight_publish_dry_run:
+            if args.preflight_only and p.internal_deps:
+                missing_internal: list[str] = []
+                for dep in p.internal_deps:
+                    dep_ver = packages[dep].version if dep in packages else "(unknown)"
+                    if dep_ver == "(unknown)" or not check_crate_published(dep, dep_ver):
+                        missing_internal.append(f"{dep} v{dep_ver}")
+                if missing_internal:
+                    print_warning(
+                        "Skipping preflight: internal workspace dependencies are not published yet: "
+                        + ", ".join(missing_internal)
+                    )
+                    skipped.append(p.name)
+                    continue
+
             pre = ["cargo", "publish", "-p", p.name, "--dry-run"]
-            if args.preflight_only and not args.no_verify:
-                print_warning(
-                    "Preflight-only mode forces --no-verify because registry "
-                    "dependencies may not be published yet."
-                )
-            if args.no_verify or args.preflight_only:
+            if args.no_verify:
                 pre.append("--no-verify")
             cp = run_command(pre, cwd=repo_root, dry_run=args.dry_run)
             if cp.returncode != 0:
@@ -374,6 +393,7 @@ def main() -> int:
                 break
             if args.preflight_only:
                 print_success(f"Preflight ok for {p.name} v{p.version}")
+                ok.append(p.name)
                 continue
 
         cmd = ["cargo", "publish", "-p", p.name]
@@ -388,6 +408,7 @@ def main() -> int:
                     break
         else:
             print_success(f"Published {p.name} v{p.version}")
+            ok.append(p.name)
             if not args.dry_run and args.wait > 0:
                 print_info(f"Waiting {args.wait}s for crates.io indexing...")
                 time.sleep(args.wait)
@@ -411,9 +432,13 @@ def main() -> int:
             print_info(f"Next: git push origin {tag}")
 
     if args.preflight_only:
-        print_success(f"Preflight succeeded for {len(crates)} crate(s).")
+        if skipped:
+            print_warning(f"Skipped {len(skipped)} crate(s): {', '.join(skipped)}")
+        print_success(f"Preflight ok for {len(ok)} crate(s).")
     else:
-        print_success(f"Published {len(crates)} crate(s).")
+        if skipped:
+            print_warning(f"Skipped {len(skipped)} crate(s): {', '.join(skipped)}")
+        print_success(f"Published {len(ok)} crate(s).")
     return 0
 
 
