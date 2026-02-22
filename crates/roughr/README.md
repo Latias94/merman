@@ -34,7 +34,7 @@ output of [rough_piet](https://github.com/orhanbalci/rough-rs/tree/main/rough_pi
 
 ```toml
 [dependencies]
-roughr-merman = "0.12.0"
+roughr = { package = "roughr-merman", version = "0.12.0" }
 ```
 
 ## 🔧 Example
