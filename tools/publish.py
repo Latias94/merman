@@ -4,6 +4,7 @@ Publish merman workspace crates to crates.io in dependency order.
 
 This is intentionally boring and explicit: a small helper around `cargo publish` that:
 - optionally runs `cargo run -p xtask -- verify` once up-front (parity gate)
+- optionally runs `cargo publish --dry-run` per crate before uploading
 - publishes crates in a fixed order
 - waits between publishes for crates.io indexing
 
@@ -12,6 +13,7 @@ Usage:
   python tools/publish.py
   python tools/publish.py --crates dugong-graphlib,dugong
   python tools/publish.py --start-from merman-core
+  python tools/publish.py --tag v0.1.0
 """
 
 from __future__ import annotations
@@ -162,6 +164,20 @@ def check_crate_published(crate_name: str, version: str) -> bool:
     needle = f'{crate_name} = "{version}"'
     return needle in (cp.stdout or "")
 
+def git_tag_exists(repo_root: Path, tag: str) -> bool:
+    cp = run_command(["git", "tag", "--list", tag], cwd=repo_root, capture=True)
+    if cp.returncode != 0:
+        raise RuntimeError("Failed to list git tags")
+    return (cp.stdout or "").strip() == tag
+
+
+def git_create_annotated_tag(repo_root: Path, tag: str, message: str, *, dry_run: bool) -> None:
+    if git_tag_exists(repo_root, tag):
+        raise RuntimeError(f"git tag already exists: {tag}")
+    cp = run_command(["git", "tag", "-a", tag, "-m", message], cwd=repo_root, dry_run=dry_run)
+    if cp.returncode != 0:
+        raise RuntimeError(f"Failed to create git tag: {tag}")
+
 
 def iter_publish_list(
     *,
@@ -201,6 +217,11 @@ def main() -> int:
         help="Pass --no-verify to cargo publish (not recommended)",
     )
     parser.add_argument(
+        "--preflight-publish-dry-run",
+        action="store_true",
+        help="Run `cargo publish --dry-run` per crate before uploading (slower, safer)",
+    )
+    parser.add_argument(
         "--skip-xtask-verify",
         action="store_true",
         help="Skip `cargo run -p xtask -- verify` preflight (not recommended)",
@@ -214,6 +235,10 @@ def main() -> int:
         "--no-check-published",
         action="store_true",
         help="Do not check crates.io for already-published versions",
+    )
+    parser.add_argument(
+        "--tag",
+        help="Create an annotated git tag after publishing (e.g. v0.1.0). Does not push.",
     )
 
     args = parser.parse_args()
@@ -268,6 +293,8 @@ def main() -> int:
     print_info(f"Wait time: {args.wait}s")
     print_info(f"Preflight xtask verify: {not args.skip_xtask_verify}")
     print_info(f"cargo publish --no-verify: {args.no_verify}")
+    print_info(f"Preflight publish --dry-run: {args.preflight_publish_dry_run}")
+    print_info(f"Tag after publish: {args.tag or '(none)'}")
     print()
     for i, c in enumerate(crates, 1):
         p = packages[c]
@@ -299,6 +326,16 @@ def main() -> int:
                     print_info(f"Skipping {p.name}")
                     continue
 
+        if args.preflight_publish_dry_run:
+            pre = ["cargo", "publish", "-p", p.name, "--dry-run"]
+            if args.no_verify:
+                pre.append("--no-verify")
+            cp = run_command(pre, cwd=repo_root, dry_run=args.dry_run)
+            if cp.returncode != 0:
+                print_error(f"Preflight failed for {p.name}")
+                failures.append(p.name)
+                break
+
         cmd = ["cargo", "publish", "-p", p.name]
         if args.no_verify:
             cmd.append("--no-verify")
@@ -320,10 +357,23 @@ def main() -> int:
     if failures:
         print_error(f"Failed crates: {', '.join(failures)}")
         return 1
+
+    if args.tag:
+        tag = args.tag.strip()
+        if tag:
+            msg = f"Release {tag}"
+            print_header(f"Tagging {tag}")
+            try:
+                git_create_annotated_tag(repo_root, tag, msg, dry_run=args.dry_run)
+            except Exception as e:
+                print_error(str(e))
+                return 1
+            print_success(f"Created git tag {tag}")
+            print_info(f"Next: git push origin {tag}")
+
     print_success(f"Published {len(crates)} crate(s).")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
