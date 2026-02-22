@@ -3,6 +3,11 @@
 This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
 parity stable and deterministic across platforms.
 
+## Differences from upstream `roughr`
+
+- PRNG / seeding semantics are aligned with Rough.js (used by Mermaid) to keep generated ops stable.
+- Some defaults are adjusted for Mermaid parity; treat this as an implementation dependency rather than a drop-in replacement.
+
 If you want to use it under the crate name `roughr`, depend on it like this:
 
 ```toml
