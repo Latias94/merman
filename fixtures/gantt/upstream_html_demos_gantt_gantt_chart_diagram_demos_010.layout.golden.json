@@ -95,8 +95,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771156800000.0,
-          "end_ms": 1771157400000.0,
+          "start_ms": 1771128000000.0,
+          "end_ms": 1771128600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -126,8 +126,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771156800000.0,
-          "end_ms": 1771160580000.0,
+          "start_ms": 1771128000000.0,
+          "end_ms": 1771131780000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -157,8 +157,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771158600000.0,
-          "end_ms": 1771159320000.0,
+          "start_ms": 1771129800000.0,
+          "end_ms": 1771130520000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -188,8 +188,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 2.0,
-          "start_ms": 1771158600000.0,
-          "end_ms": 1771159320000.0,
+          "start_ms": 1771129800000.0,
+          "end_ms": 1771130520000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -219,8 +219,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771160400000.0,
-          "end_ms": 1771160880000.0,
+          "start_ms": 1771131600000.0,
+          "end_ms": 1771132080000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -250,8 +250,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771160700000.0,
-          "end_ms": 1771161420000.0,
+          "start_ms": 1771131900000.0,
+          "end_ms": 1771132620000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -281,8 +281,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 2.0,
-          "start_ms": 1771160760000.0,
-          "end_ms": 1771162740000.0,
+          "start_ms": 1771131960000.0,
+          "end_ms": 1771133940000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -312,8 +312,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 3.0,
-          "start_ms": 1771161300000.0,
-          "end_ms": 1771164600000.0,
+          "start_ms": 1771132500000.0,
+          "end_ms": 1771135800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -343,8 +343,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771161600000.0,
-          "end_ms": 1771162320000.0,
+          "start_ms": 1771132800000.0,
+          "end_ms": 1771133520000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -374,8 +374,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771162200000.0,
-          "end_ms": 1771162740000.0,
+          "start_ms": 1771133400000.0,
+          "end_ms": 1771133940000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -405,8 +405,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771162320000.0,
-          "end_ms": 1771163400000.0,
+          "start_ms": 1771133520000.0,
+          "end_ms": 1771134600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -436,8 +436,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771163400000.0,
-          "end_ms": 1771164600000.0,
+          "start_ms": 1771134600000.0,
+          "end_ms": 1771135800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -467,8 +467,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771164000000.0,
-          "end_ms": 1771164780000.0,
+          "start_ms": 1771135200000.0,
+          "end_ms": 1771135980000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -498,8 +498,8 @@
           "section": "Sessions",
           "task_type": "Sessions",
           "order": 1.0,
-          "start_ms": 1771164600000.0,
-          "end_ms": 1771165200000.0,
+          "start_ms": 1771135800000.0,
+          "end_ms": 1771136400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -529,8 +529,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771165800000.0,
-          "end_ms": 1771166400000.0,
+          "start_ms": 1771137000000.0,
+          "end_ms": 1771137600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -560,8 +560,8 @@
           "section": "DB Clean",
           "task_type": "DB Clean",
           "order": 0.0,
-          "start_ms": 1771167600000.0,
-          "end_ms": 1771168260000.0,
+          "start_ms": 1771138800000.0,
+          "end_ms": 1771139460000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -590,69 +590,69 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1771156800000.0,
+          "time_ms": 1771128000000.0,
           "x": 75.0,
-          "label": " 20h00"
+          "label": " 04h00"
         },
         {
-          "time_ms": 1771157700000.0,
+          "time_ms": 1771128900000.0,
           "x": 156.0,
-          "label": " 20h15"
+          "label": " 04h15"
         },
         {
-          "time_ms": 1771158600000.0,
+          "time_ms": 1771129800000.0,
           "x": 237.0,
-          "label": " 20h30"
+          "label": " 04h30"
         },
         {
-          "time_ms": 1771159500000.0,
+          "time_ms": 1771130700000.0,
           "x": 319.0,
-          "label": " 20h45"
+          "label": " 04h45"
         },
         {
-          "time_ms": 1771160400000.0,
+          "time_ms": 1771131600000.0,
           "x": 400.0,
-          "label": " 21h00"
+          "label": " 05h00"
         },
         {
-          "time_ms": 1771161300000.0,
+          "time_ms": 1771132500000.0,
           "x": 481.0,
-          "label": " 21h15"
+          "label": " 05h15"
         },
         {
-          "time_ms": 1771162200000.0,
+          "time_ms": 1771133400000.0,
           "x": 562.0,
-          "label": " 21h30"
+          "label": " 05h30"
         },
         {
-          "time_ms": 1771163100000.0,
+          "time_ms": 1771134300000.0,
           "x": 643.0,
-          "label": " 21h45"
+          "label": " 05h45"
         },
         {
-          "time_ms": 1771164000000.0,
+          "time_ms": 1771135200000.0,
           "x": 725.0,
-          "label": " 22h00"
+          "label": " 06h00"
         },
         {
-          "time_ms": 1771164900000.0,
+          "time_ms": 1771136100000.0,
           "x": 806.0,
-          "label": " 22h15"
+          "label": " 06h15"
         },
         {
-          "time_ms": 1771165800000.0,
+          "time_ms": 1771137000000.0,
           "x": 887.0,
-          "label": " 22h30"
+          "label": " 06h30"
         },
         {
-          "time_ms": 1771166700000.0,
+          "time_ms": 1771137900000.0,
           "x": 968.0,
-          "label": " 22h45"
+          "label": " 06h45"
         },
         {
-          "time_ms": 1771167600000.0,
+          "time_ms": 1771138800000.0,
           "x": 1049.0,
-          "label": " 23h00"
+          "label": " 07h00"
         }
       ],
       "top_ticks": [],

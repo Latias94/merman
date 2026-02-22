@@ -95,9 +95,9 @@
           "section": "Another",
           "task_type": "Another",
           "order": 2.0,
-          "start_ms": 1666224000000.0,
-          "end_ms": 1667779200000.0,
-          "render_end_ms": 1667606400000.0,
+          "start_ms": 1666195200000.0,
+          "end_ms": 1667750400000.0,
+          "render_end_ms": 1667577600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -126,9 +126,9 @@
           "section": "Another",
           "task_type": "Another",
           "order": 3.0,
-          "start_ms": 1667779200000.0,
-          "end_ms": 1670544000000.0,
-          "render_end_ms": 1670544000000.0,
+          "start_ms": 1667750400000.0,
+          "end_ms": 1670515200000.0,
+          "render_end_ms": 1670515200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -157,9 +157,9 @@
           "section": "Section",
           "task_type": "Section",
           "order": 0.0,
-          "start_ms": 253394352000000.0,
-          "end_ms": 253397980800000.0,
-          "render_end_ms": 253397980800000.0,
+          "start_ms": 253394323200000.0,
+          "end_ms": 253397952000000.0,
+          "render_end_ms": 253397952000000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -188,9 +188,9 @@
           "section": "Section",
           "task_type": "Section",
           "order": 1.0,
-          "start_ms": 253397980800000.0,
-          "end_ms": 253400400000000.0,
-          "render_end_ms": 253400400000000.0,
+          "start_ms": 253397952000000.0,
+          "end_ms": 253400371200000.0,
+          "render_end_ms": 253400371200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -218,37 +218,37 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 32503651200000.0,
+          "time_ms": 32503680000000.0,
           "x": 202.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 64060560000000.0,
+          "time_ms": 64060588800000.0,
           "x": 331.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 95617555200000.0,
+          "time_ms": 95617584000000.0,
           "x": 461.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 127174464000000.0,
+          "time_ms": 127174492800000.0,
           "x": 591.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 158731459200000.0,
+          "time_ms": 158731488000000.0,
           "x": 720.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 190288368000000.0,
+          "time_ms": 190288396800000.0,
           "x": 850.0,
           "label": "  01-01"
         },
         {
-          "time_ms": 221845363200000.0,
+          "time_ms": 221845392000000.0,
           "x": 979.0,
           "label": "  01-01"
         }

@@ -59,8 +59,8 @@
           "section": "testa1",
           "task_type": "testa1",
           "order": 0.0,
-          "start_ms": 1356998400000.0,
-          "end_ms": 1356998400001.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1356969600001.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -89,14 +89,14 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1356998400000.0,
+          "time_ms": 1356969600000.0,
           "x": 75.0,
-          "label": "2013-01-01"
+          "label": "2012-12-31"
         },
         {
-          "time_ms": 1356998400001.0,
+          "time_ms": 1356969600001.0,
           "x": 1109.0,
-          "label": "2013-01-01"
+          "label": "2012-12-31"
         }
       ],
       "top_ticks": [],

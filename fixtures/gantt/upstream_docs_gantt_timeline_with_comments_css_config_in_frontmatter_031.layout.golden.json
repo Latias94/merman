@@ -107,8 +107,8 @@
           "section": "Issue19062",
           "task_type": "Issue19062",
           "order": 0.0,
-          "start_ms": -2208988800000.0,
-          "end_ms": -1262304000000.0,
+          "start_ms": -2209017600000.0,
+          "end_ms": -1262332800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -138,8 +138,8 @@
           "section": "Issue1300",
           "task_type": "Issue1300",
           "order": 2.0,
-          "start_ms": -2019686400000.0,
-          "end_ms": -2019686400000.0,
+          "start_ms": -2019715200000.0,
+          "end_ms": -2019715200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": true,
@@ -169,8 +169,8 @@
           "section": "Issue1300",
           "task_type": "Issue1300",
           "order": 2.0,
-          "start_ms": -1893456000000.0,
-          "end_ms": -1735689600000.0,
+          "start_ms": -1893484800000.0,
+          "end_ms": -1735718400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -200,8 +200,8 @@
           "section": "Issue19401",
           "task_type": "Issue19401",
           "order": 1.0,
-          "start_ms": -1798761600000.0,
-          "end_ms": -1104537600000.0,
+          "start_ms": -1798790400000.0,
+          "end_ms": -1104566400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -231,8 +231,8 @@
           "section": "Issue1300",
           "task_type": "Issue1300",
           "order": 2.0,
-          "start_ms": -1640995200000.0,
-          "end_ms": -1640995199000.0,
+          "start_ms": -1641024000000.0,
+          "end_ms": -1641023999000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -262,8 +262,8 @@
           "section": "Issue1300",
           "task_type": "Issue1300",
           "order": 2.0,
-          "start_ms": -1577923200000.0,
-          "end_ms": -1420070400000.0,
+          "start_ms": -1577952000000.0,
+          "end_ms": -1420099200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -293,8 +293,8 @@
           "section": "Issue1300",
           "task_type": "Issue1300",
           "order": 3.0,
-          "start_ms": -1483228800000.0,
-          "end_ms": -1483228800000.0,
+          "start_ms": -1483257600000.0,
+          "end_ms": -1483257600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -323,76 +323,76 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": -2051251200000.0,
+          "time_ms": -2208988800000.0,
+          "x": 75.0,
+          "label": "00"
+        },
+        {
+          "time_ms": -2051222400000.0,
           "x": 121.0,
           "label": "05"
         },
         {
-          "time_ms": -1893484800000.0,
+          "time_ms": -1893456000000.0,
           "x": 168.0,
           "label": "10"
         },
         {
-          "time_ms": -1735718400000.0,
+          "time_ms": -1735689600000.0,
           "x": 214.0,
           "label": "15"
         },
         {
-          "time_ms": -1577952000000.0,
+          "time_ms": -1577923200000.0,
           "x": 261.0,
           "label": "20"
         },
         {
-          "time_ms": -1420099200000.0,
+          "time_ms": -1420070400000.0,
           "x": 307.0,
           "label": "25"
         },
         {
-          "time_ms": -1262332800000.0,
+          "time_ms": -1262304000000.0,
           "x": 354.0,
           "label": "30"
-        },
-        {
-          "time_ms": -1104566400000.0,
-          "x": 400.0,
-          "label": "35"
         }
       ],
       "top_ticks": [
         {
-          "time_ms": -2051251200000.0,
+          "time_ms": -2208988800000.0,
+          "x": 75.0,
+          "label": "00"
+        },
+        {
+          "time_ms": -2051222400000.0,
           "x": 121.0,
           "label": "05"
         },
         {
-          "time_ms": -1893484800000.0,
+          "time_ms": -1893456000000.0,
           "x": 168.0,
           "label": "10"
         },
         {
-          "time_ms": -1735718400000.0,
+          "time_ms": -1735689600000.0,
           "x": 214.0,
           "label": "15"
         },
         {
-          "time_ms": -1577952000000.0,
+          "time_ms": -1577923200000.0,
           "x": 261.0,
           "label": "20"
         },
         {
-          "time_ms": -1420099200000.0,
+          "time_ms": -1420070400000.0,
           "x": 307.0,
           "label": "25"
         },
         {
-          "time_ms": -1262332800000.0,
+          "time_ms": -1262304000000.0,
           "x": 354.0,
           "label": "30"
-        },
-        {
-          "time_ms": -1104566400000.0,
-          "x": 400.0,
-          "label": "35"
         }
       ],
       "title": "Timeline - Gantt Sampler",

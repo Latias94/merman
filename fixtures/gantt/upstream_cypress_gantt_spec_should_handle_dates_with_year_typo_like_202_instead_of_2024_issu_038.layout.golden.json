@@ -67,8 +67,8 @@
           "section": "Vacation",
           "task_type": "Vacation",
           "order": 1.0,
-          "start_ms": -55763856000000.0,
-          "end_ms": -55763251200000.0,
+          "start_ms": -55763884800000.0,
+          "end_ms": -55763280000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -98,8 +98,8 @@
           "section": "Vacation",
           "task_type": "Vacation",
           "order": 0.0,
-          "start_ms": 1733011200000.0,
-          "end_ms": 1733616000000.0,
+          "start_ms": 1732982400000.0,
+          "end_ms": 1733587200000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -128,47 +128,47 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": -49544467200000.0,
+          "time_ms": -49544438400000.0,
           "x": 187.0,
           "label": "01-01"
         },
         {
-          "time_ms": -43233033600000.0,
+          "time_ms": -43233004800000.0,
           "x": 300.0,
           "label": "01-01"
         },
         {
-          "time_ms": -36921686400000.0,
+          "time_ms": -36921657600000.0,
           "x": 414.0,
           "label": "01-01"
         },
         {
-          "time_ms": -30610252800000.0,
+          "time_ms": -30610224000000.0,
           "x": 527.0,
           "label": "01-01"
         },
         {
-          "time_ms": -24298905600000.0,
+          "time_ms": -24298876800000.0,
           "x": 641.0,
           "label": "01-01"
         },
         {
-          "time_ms": -17987472000000.0,
+          "time_ms": -17987443200000.0,
           "x": 754.0,
           "label": "01-01"
         },
         {
-          "time_ms": -11676124800000.0,
+          "time_ms": -11676096000000.0,
           "x": 868.0,
           "label": "01-01"
         },
         {
-          "time_ms": -5364691200000.0,
+          "time_ms": -5364662400000.0,
           "x": 981.0,
           "label": "01-01"
         },
         {
-          "time_ms": 946656000000.0,
+          "time_ms": 946684800000.0,
           "x": 1095.0,
           "label": "01-01"
         }

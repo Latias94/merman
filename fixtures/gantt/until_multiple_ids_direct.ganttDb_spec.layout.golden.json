@@ -83,8 +83,8 @@
           "section": "sec1",
           "task_type": "sec1",
           "order": 0.0,
-          "start_ms": 1356998400000.0,
-          "end_ms": 1357862400000.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1357833600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -114,8 +114,8 @@
           "section": "sec1",
           "task_type": "sec1",
           "order": 1.0,
-          "start_ms": 1357862400000.0,
-          "end_ms": 1357948800000.0,
+          "start_ms": 1357833600000.0,
+          "end_ms": 1357920000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -145,8 +145,8 @@
           "section": "sec1",
           "task_type": "sec1",
           "order": 2.0,
-          "start_ms": 1360454400000.0,
-          "end_ms": 1360540800000.0,
+          "start_ms": 1360425600000.0,
+          "end_ms": 1360512000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -176,8 +176,8 @@
           "section": "sec1",
           "task_type": "sec1",
           "order": 3.0,
-          "start_ms": 1360627200000.0,
-          "end_ms": 1360713600000.0,
+          "start_ms": 1360598400000.0,
+          "end_ms": 1360684800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -206,33 +206,33 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1357401600000.0,
-          "x": 187.0,
+          "time_ms": 1357430400000.0,
+          "x": 203.0,
           "label": "2013-01-06"
         },
         {
-          "time_ms": 1358006400000.0,
-          "x": 356.0,
+          "time_ms": 1358035200000.0,
+          "x": 372.0,
           "label": "2013-01-13"
         },
         {
-          "time_ms": 1358611200000.0,
-          "x": 524.0,
+          "time_ms": 1358640000000.0,
+          "x": 540.0,
           "label": "2013-01-20"
         },
         {
-          "time_ms": 1359216000000.0,
-          "x": 692.0,
+          "time_ms": 1359244800000.0,
+          "x": 708.0,
           "label": "2013-01-27"
         },
         {
-          "time_ms": 1359820800000.0,
-          "x": 861.0,
+          "time_ms": 1359849600000.0,
+          "x": 877.0,
           "label": "2013-02-03"
         },
         {
-          "time_ms": 1360425600000.0,
-          "x": 1029.0,
+          "time_ms": 1360454400000.0,
+          "x": 1045.0,
           "label": "2013-02-10"
         }
       ],

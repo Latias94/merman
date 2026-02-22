@@ -127,9 +127,9 @@
           "section": "new intern",
           "task_type": "new intern",
           "order": 3.0,
-          "start_ms": 1704153600000.0,
-          "end_ms": 1704758400000.0,
-          "render_end_ms": 1704758400000.0,
+          "start_ms": 1704124800000.0,
+          "end_ms": 1704729600000.0,
+          "render_end_ms": 1704729600000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -158,9 +158,9 @@
           "section": "new intern",
           "task_type": "new intern",
           "order": 4.0,
-          "start_ms": 1704153600000.0,
-          "end_ms": 1705017600000.0,
-          "render_end_ms": 1705017600000.0,
+          "start_ms": 1704124800000.0,
+          "end_ms": 1704988800000.0,
+          "render_end_ms": 1704988800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -189,9 +189,9 @@
           "section": "new intern",
           "task_type": "new intern",
           "order": 5.0,
-          "start_ms": 1705017600000.0,
-          "end_ms": 1706400000000.0,
-          "render_end_ms": 1706400000000.0,
+          "start_ms": 1704988800000.0,
+          "end_ms": 1706371200000.0,
+          "render_end_ms": 1706371200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -220,8 +220,8 @@
           "section": "team's critical event",
           "task_type": "team's critical event",
           "order": 2.0,
-          "start_ms": 1706400000000.0,
-          "end_ms": 1707609600000.0,
+          "start_ms": 1706371200000.0,
+          "end_ms": 1707580800000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -251,9 +251,9 @@
           "section": "new intern",
           "task_type": "new intern",
           "order": 6.0,
-          "start_ms": 1706400000000.0,
-          "end_ms": 1706745600000.0,
-          "render_end_ms": 1706745600000.0,
+          "start_ms": 1706371200000.0,
+          "end_ms": 1706716800000.0,
+          "render_end_ms": 1706716800000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -282,8 +282,8 @@
           "section": "team's critical event",
           "task_type": "team's critical event",
           "order": 0.0,
-          "start_ms": 1706745600000.0,
-          "end_ms": 1706745600000.0,
+          "start_ms": 1706716800000.0,
+          "end_ms": 1706716800000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -313,9 +313,9 @@
           "section": "new intern",
           "task_type": "new intern",
           "order": 7.0,
-          "start_ms": 1706745600000.0,
-          "end_ms": 1707955200000.0,
-          "render_end_ms": 1707955200000.0,
+          "start_ms": 1706716800000.0,
+          "end_ms": 1707926400000.0,
+          "render_end_ms": 1707926400000.0,
           "milestone": false,
           "vert": false,
           "bar": {
@@ -344,8 +344,8 @@
           "section": "team's critical event",
           "task_type": "team's critical event",
           "order": 1.0,
-          "start_ms": 1707955200000.0,
-          "end_ms": 1707955200000.0,
+          "start_ms": 1707926400000.0,
+          "end_ms": 1707926400000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -374,33 +374,33 @@
       "has_excludes_layer": true,
       "bottom_ticks": [
         {
-          "time_ms": 1704556800000.0,
-          "x": 185.0,
+          "time_ms": 1704585600000.0,
+          "x": 200.0,
           "label": " 07/01"
         },
         {
-          "time_ms": 1705161600000.0,
-          "x": 349.0,
+          "time_ms": 1705190400000.0,
+          "x": 365.0,
           "label": " 14/01"
         },
         {
-          "time_ms": 1705766400000.0,
-          "x": 514.0,
+          "time_ms": 1705795200000.0,
+          "x": 529.0,
           "label": " 21/01"
         },
         {
-          "time_ms": 1706371200000.0,
-          "x": 678.0,
+          "time_ms": 1706400000000.0,
+          "x": 694.0,
           "label": " 28/01"
         },
         {
-          "time_ms": 1706976000000.0,
-          "x": 843.0,
+          "time_ms": 1707004800000.0,
+          "x": 858.0,
           "label": " 04/02"
         },
         {
-          "time_ms": 1707580800000.0,
-          "x": 1007.0,
+          "time_ms": 1707609600000.0,
+          "x": 1023.0,
           "label": " 11/02"
         }
       ],

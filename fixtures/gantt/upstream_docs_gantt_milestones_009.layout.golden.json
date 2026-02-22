@@ -83,8 +83,8 @@
           "section": "",
           "task_type": "",
           "order": 0.0,
-          "start_ms": 1771177740000.0,
-          "end_ms": 1771177860000.0,
+          "start_ms": 1771148940000.0,
+          "end_ms": 1771149060000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -114,8 +114,8 @@
           "section": "",
           "task_type": "",
           "order": 1.0,
-          "start_ms": 1771177860000.0,
-          "end_ms": 1771178460000.0,
+          "start_ms": 1771149060000.0,
+          "end_ms": 1771149660000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -145,8 +145,8 @@
           "section": "",
           "task_type": "",
           "order": 2.0,
-          "start_ms": 1771178460000.0,
-          "end_ms": 1771178760000.0,
+          "start_ms": 1771149660000.0,
+          "end_ms": 1771149960000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -176,8 +176,8 @@
           "section": "",
           "task_type": "",
           "order": 3.0,
-          "start_ms": 1771178880000.0,
-          "end_ms": 1771179120000.0,
+          "start_ms": 1771150080000.0,
+          "end_ms": 1771150320000.0,
           "render_end_ms": null,
           "milestone": true,
           "vert": false,
@@ -206,29 +206,29 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1771177800000.0,
+          "time_ms": 1771149000000.0,
           "x": 120.0,
-          "label": "01:50"
+          "label": "09:50"
         },
         {
-          "time_ms": 1771178100000.0,
+          "time_ms": 1771149300000.0,
           "x": 345.0,
-          "label": "01:55"
+          "label": "09:55"
         },
         {
-          "time_ms": 1771178400000.0,
+          "time_ms": 1771149600000.0,
           "x": 570.0,
-          "label": "02:00"
+          "label": "10:00"
         },
         {
-          "time_ms": 1771178700000.0,
+          "time_ms": 1771149900000.0,
           "x": 794.0,
-          "label": "02:05"
+          "label": "10:05"
         },
         {
-          "time_ms": 1771179000000.0,
+          "time_ms": 1771150200000.0,
           "x": 1019.0,
-          "label": "02:10"
+          "label": "10:10"
         }
       ],
       "top_ticks": [],

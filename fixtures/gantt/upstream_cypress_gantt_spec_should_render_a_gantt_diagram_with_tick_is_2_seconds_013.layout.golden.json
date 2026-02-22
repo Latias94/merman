@@ -95,8 +95,8 @@
           "section": "Section",
           "task_type": "Section",
           "order": 0.0,
-          "start_ms": 1771113600000.0,
-          "end_ms": 1771113606000.0,
+          "start_ms": 1771084800000.0,
+          "end_ms": 1771084806000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -126,8 +126,8 @@
           "section": "Section",
           "task_type": "Section",
           "order": 1.0,
-          "start_ms": 1771113606000.0,
-          "end_ms": 1771113612000.0,
+          "start_ms": 1771084806000.0,
+          "end_ms": 1771084812000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -157,8 +157,8 @@
           "section": "Another",
           "task_type": "Another",
           "order": 2.0,
-          "start_ms": 1771113606000.0,
-          "end_ms": 1771113609000.0,
+          "start_ms": 1771084806000.0,
+          "end_ms": 1771084809000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -188,8 +188,8 @@
           "section": "Another",
           "task_type": "Another",
           "order": 3.0,
-          "start_ms": 1771113609000.0,
-          "end_ms": 1771113612000.0,
+          "start_ms": 1771084809000.0,
+          "end_ms": 1771084812000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -218,37 +218,37 @@
       "has_excludes_layer": true,
       "bottom_ticks": [
         {
-          "time_ms": 1771113600000.0,
+          "time_ms": 1771084800000.0,
           "x": 75.0,
           "label": "  00s"
         },
         {
-          "time_ms": 1771113602000.0,
+          "time_ms": 1771084802000.0,
           "x": 247.0,
           "label": "  02s"
         },
         {
-          "time_ms": 1771113604000.0,
+          "time_ms": 1771084804000.0,
           "x": 420.0,
           "label": "  04s"
         },
         {
-          "time_ms": 1771113606000.0,
+          "time_ms": 1771084806000.0,
           "x": 592.0,
           "label": "  06s"
         },
         {
-          "time_ms": 1771113608000.0,
+          "time_ms": 1771084808000.0,
           "x": 764.0,
           "label": "  08s"
         },
         {
-          "time_ms": 1771113610000.0,
+          "time_ms": 1771084810000.0,
           "x": 937.0,
           "label": "  10s"
         },
         {
-          "time_ms": 1771113612000.0,
+          "time_ms": 1771084812000.0,
           "x": 1109.0,
           "label": "  12s"
         }

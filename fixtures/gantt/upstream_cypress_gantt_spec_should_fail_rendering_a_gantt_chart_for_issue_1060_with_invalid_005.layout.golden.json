@@ -506,14 +506,14 @@
           "section": "DEX",
           "task_type": "DEX",
           "order": 8.0,
-          "start_ms": 1567296000000.0,
-          "end_ms": 1569024000000.0,
-          "render_end_ms": 1569024000000.0,
+          "start_ms": 1567267200000.0,
+          "end_ms": 1568995200000.0,
+          "render_end_ms": 1568995200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
             "id": "ps",
-            "x": 689.0,
+            "x": 687.0,
             "y": 242.0,
             "width": 108.0,
             "height": 20.0,
@@ -526,7 +526,7 @@
             "text": "PredicateSpec          ",
             "font_size": 11.0,
             "width": 63.58,
-            "x": 743.0,
+            "x": 741.0,
             "y": 255.5,
             "class": "taskText taskText2 width-63.57999999999999"
           }
@@ -661,14 +661,14 @@
           "section": "DEX",
           "task_type": "DEX",
           "order": 9.0,
-          "start_ms": 1569024000000.0,
-          "end_ms": 1572480000000.0,
-          "render_end_ms": 1572480000000.0,
+          "start_ms": 1568995200000.0,
+          "end_ms": 1572451200000.0,
+          "render_end_ms": 1572451200000.0,
           "milestone": false,
           "vert": false,
           "bar": {
             "id": "pi",
-            "x": 797.0,
+            "x": 795.0,
             "y": 266.0,
             "width": 215.0,
             "height": 20.0,
@@ -681,7 +681,7 @@
             "text": "PlasmaIntegration     ",
             "font_size": 11.0,
             "width": 81.4,
-            "x": 904.5,
+            "x": 902.5,
             "y": 279.5,
             "class": "taskText taskText2 width-81.39999999999998"
           }
@@ -722,33 +722,33 @@
       "has_excludes_layer": true,
       "bottom_ticks": [
         {
-          "time_ms": 1559318400000.0,
-          "x": 192.0,
+          "time_ms": 1559347200000.0,
+          "x": 193.0,
           "label": "2019-06-01"
         },
         {
-          "time_ms": 1561910400000.0,
-          "x": 353.0,
+          "time_ms": 1561939200000.0,
+          "x": 355.0,
           "label": "2019-07-01"
         },
         {
-          "time_ms": 1564588800000.0,
-          "x": 520.0,
+          "time_ms": 1564617600000.0,
+          "x": 522.0,
           "label": "2019-08-01"
         },
         {
-          "time_ms": 1567267200000.0,
-          "x": 687.0,
+          "time_ms": 1567296000000.0,
+          "x": 689.0,
           "label": "2019-09-01"
         },
         {
-          "time_ms": 1569859200000.0,
-          "x": 849.0,
+          "time_ms": 1569888000000.0,
+          "x": 851.0,
           "label": "2019-10-01"
         },
         {
-          "time_ms": 1572537600000.0,
-          "x": 1016.0,
+          "time_ms": 1572566400000.0,
+          "x": 1017.0,
           "label": "2019-11-01"
         }
       ],
