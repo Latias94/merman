@@ -1697,7 +1697,7 @@ dependencies = [
  "merman-core",
  "pulldown-cmark",
  "regex",
- "roughr",
+ "roughr-merman",
  "rustc-hash",
  "ryu-js",
  "serde",
@@ -2445,7 +2445,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "roughr"
+name = "roughr-merman"
 version = "0.12.0"
 dependencies = [
  "derive_builder",

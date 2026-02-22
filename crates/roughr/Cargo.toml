@@ -11,18 +11,18 @@
 
 [package]
 edition = "2021"
-name = "roughr"
+name = "roughr-merman"
 version = "0.12.0"
 authors = ["orhanbalci@gmail.com <orhanbalci@gmail.com>"]
 build = false
-publish = false
+publish = true
 autolib = false
 autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "Generate Hand Sketched 2D Drawings"
-homepage = "https://github.com/orhanbalci"
+description = "Fork of roughr (roughjs port) used by merman for Mermaid parity"
+homepage = "https://github.com/Latias94/merman"
 readme = "README.md"
 keywords = [
     "graphics",
@@ -32,7 +32,7 @@ keywords = [
 ]
 categories = ["graphics"]
 license = "MIT"
-repository = "https://github.com/orhanbalci/rough-rs.git"
+repository = "https://github.com/Latias94/merman"
 
 [lib]
 name = "roughr"

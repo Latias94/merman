@@ -36,8 +36,8 @@ regex = "1.11.1"
 roxmltree = "0.20.0"
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
-roughr = "0.12.0"
-serde = { version = "1.0.217", features = ["derive"] }
+roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.0" }
+serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = { version = "1.0.138", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
 json5 = "0.4.1"
@@ -65,9 +65,6 @@ merman-cli = { path = "crates/merman-cli", version = "0.1.0" }
 dugong = { path = "crates/dugong", version = "0.1.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.1.0" }
 manatee = { path = "crates/manatee", version = "0.1.0" }
-
-[patch.crates-io]
-roughr = { path = "crates/roughr" }
 
 # The profile that 'dist' will build with
 [profile.dist]
