@@ -786,6 +786,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let diagram_id_esc = escape_xml(diagram_id);
+    let css = super::css::architecture_css(diagram_id);
 
     let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size_px = icon_size_px.max(1.0);
@@ -1394,7 +1395,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let max_width_style = fmt(vb_w);
         let _ = write!(
             &mut out,
-            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
+            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style>{css}</style><g/><g class="architecture-edges">"#,
             id = diagram_id_esc,
             w_attr = if use_max_width { r#"width="100%""# } else { "" },
             style = if use_max_width {
@@ -1407,12 +1408,13 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             vw = fmt(vb_w),
             vh = fmt(vb_h),
             aria = aria_attrs,
-            a11y = a11y_nodes
+            a11y = a11y_nodes,
+            css = css.as_str(),
         );
     } else {
         let _ = write!(
             &mut out,
-            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
+            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style>{css}</style><g/><g class="architecture-edges">"#,
             id = diagram_id_esc,
             w_attr = if use_max_width { r#"width="100%""# } else { "" },
             style = if use_max_width {
@@ -1422,7 +1424,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             },
             viewbox = VIEWBOX_PLACEHOLDER,
             aria = aria_attrs,
-            a11y = a11y_nodes
+            a11y = a11y_nodes,
+            css = css.as_str(),
         );
     }
 

@@ -208,6 +208,7 @@ mindmap
     n1["line 1<br>line 2"]
     n2["line 1<br/>line 2"]
     n3["line 1<br />line 2"]
+    n4["line 1<br \t/>line 2"]
     %% plus whitespace variants (see the fixture for the full set)
 ```
 
