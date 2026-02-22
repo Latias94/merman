@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use chrono::{Datelike, Local, TimeZone, Timelike};
+use chrono::{Datelike, FixedOffset, Timelike};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -14,6 +14,14 @@ use std::collections::HashMap;
 // width of 1184px for a 1200px viewport, which matches our upstream SVG baselines.
 const DEFAULT_WIDTH: f64 = 1184.0;
 const MS_PER_DAY: i64 = 86_400_000;
+
+fn utc_offset() -> FixedOffset {
+    FixedOffset::east_opt(0).expect("UTC offset must be valid")
+}
+
+fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
+    merman_core::time::datetime_to_local_fixed(dt_utc.with_timezone(&utc_offset()))
+}
 
 #[derive(Debug, Clone, Deserialize)]
 struct GanttTaskModel {
@@ -171,7 +179,7 @@ fn ordinal_suffix(n: u32) -> &'static str {
 
 fn format_dayjs_like(ms: i64, fmt: &str) -> Option<String> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let fmt = fmt.trim();
 
     let mut out = String::new();
@@ -297,7 +305,7 @@ fn is_invalid_date(
     let Some(dt_utc) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) else {
         return false;
     };
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let iso_weekday = dt.weekday().number_from_monday();
 
     if excludes.iter().any(|t| t == "weekends") {
@@ -319,12 +327,10 @@ fn is_invalid_date(
 
 fn start_of_day_ms(ms: i64) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let d = dt.date_naive();
-    let local = Local
-        .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)
-        .single()?;
-    Some(local.with_timezone(&chrono::Utc).timestamp_millis())
+    let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
+    Some(local_midnight.timestamp_millis())
 }
 
 fn end_of_day_ms(ms: i64) -> Option<i64> {
@@ -506,7 +512,7 @@ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
 
 fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let naive = dt.naive_local();
 
     let next = match unit {
@@ -549,8 +555,8 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
         _ => return None,
     };
 
-    let out = Local.from_local_datetime(&next).single()?;
-    Some(out.with_timezone(&chrono::Utc).timestamp_millis())
+    let out = merman_core::time::datetime_from_naive_local(next);
+    Some(out.timestamp_millis())
 }
 
 fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
@@ -568,7 +574,7 @@ fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
 
 fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(min_ms)?;
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let naive = dt.naive_local();
 
     let start = match unit {
@@ -736,13 +742,13 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
         _ => return None,
     };
 
-    let out = Local.from_local_datetime(&start).single()?;
-    Some(out.with_timezone(&chrono::Utc).timestamp_millis())
+    let out = merman_core::time::datetime_from_naive_local(start);
+    Some(out.timestamp_millis())
 }
 
 fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc.with_timezone(&Local);
+    let dt = dt_utc_to_local_fixed(dt_utc);
     let naive = dt.naive_local();
 
     let e = every.max(1);
@@ -780,8 +786,8 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
         naive.time().second(),
     )?;
 
-    let out = Local.from_local_datetime(&next).single()?;
-    Some(out.with_timezone(&chrono::Utc).timestamp_millis())
+    let out = merman_core::time::datetime_from_naive_local(next);
+    Some(out.timestamp_millis())
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
@@ -845,8 +851,8 @@ fn is_chrono_strftime_directive(directive: char) -> bool {
     )
 }
 
-fn format_axis_tick_label(d: chrono::DateTime<Local>, axis_format: &str) -> String {
-    fn flush(out: &mut String, buf: &mut String, d: chrono::DateTime<Local>) {
+fn format_axis_tick_label(d: chrono::DateTime<FixedOffset>, axis_format: &str) -> String {
+    fn flush(out: &mut String, buf: &mut String, d: chrono::DateTime<FixedOffset>) {
         if buf.is_empty() {
             return;
         }
@@ -1015,7 +1021,7 @@ fn build_ticks(
         }
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
         let label = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cur)
-            .map(|d| format_axis_tick_label(d.with_timezone(&Local), axis_format))
+            .map(|d| format_axis_tick_label(dt_utc_to_local_fixed(d), axis_format))
             .unwrap_or_default();
         ticks.push(GanttAxisTickLayout {
             time_ms: cur,

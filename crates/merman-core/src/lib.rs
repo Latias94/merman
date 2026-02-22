@@ -25,6 +25,7 @@ pub mod preprocess;
 mod runtime;
 pub mod sanitize;
 mod theme;
+pub mod time;
 pub mod utils;
 
 pub use config::MermaidConfig;

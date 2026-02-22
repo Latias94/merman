@@ -143,109 +143,108 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    let fixtures_root = workspace_root().join("fixtures");
-    let mmd_files = collect_mmd_files(&fixtures_root);
-    assert!(
-        !mmd_files.is_empty(),
-        "no .mmd fixtures found under {}",
-        fixtures_root.display()
-    );
+    // 固定时区偏移，避免 Gantt（以及相关布局逻辑）在不同 CI runner 时区下产生差异。
+    merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
+        let fixtures_root = workspace_root().join("fixtures");
+        let mmd_files = collect_mmd_files(&fixtures_root);
+        assert!(
+            !mmd_files.is_empty(),
+            "no .mmd fixtures found under {}",
+            fixtures_root.display()
+        );
 
-    // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-    let engine = Engine::new()
-        .with_fixed_today(Some(
+        // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
+        let engine = Engine::new().with_fixed_today(Some(
             NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ))
-        // Gantt date handling follows JavaScript local-time semantics, which varies by runner timezone.
-        // Pin a fixed offset so layout goldens are stable across CI environments.
-        .with_fixed_local_offset_minutes(Some(0));
-    let layout_opts = LayoutOptions::default();
-    let mut failures: Vec<String> = Vec::new();
+        ));
+        let layout_opts = LayoutOptions::default();
+        let mut failures: Vec<String> = Vec::new();
 
-    for mmd_path in mmd_files {
-        let golden_path = mmd_path.with_extension("layout.golden.json");
-        if !golden_path.is_file() {
-            continue;
-        }
-
-        let text = match fs::read_to_string(&mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+        for mmd_path in mmd_files {
+            let golden_path = mmd_path.with_extension("layout.golden.json");
+            if !golden_path.is_file() {
                 continue;
             }
-        };
 
-        let parsed = match futures::executor::block_on(engine.parse_diagram(
-            &text,
-            ParseOptions {
-                suppress_errors: true,
-            },
-        )) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
+            let text = match fs::read_to_string(&mmd_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
-        let layouted = match layout_parsed(&parsed, &layout_opts) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
+            let parsed = match futures::executor::block_on(engine.parse_diagram(
+                &text,
+                ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
-        let mut layout_json =
-            serde_json::to_value(&layouted.layout).expect("serialize layout to JSON");
-        round_json_numbers(&mut layout_json, 3);
+            let layouted = match layout_parsed(&parsed, &layout_opts) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
-        let mut actual = serde_json::json!({
-            "diagramType": parsed.meta.diagram_type,
-            "layout": layout_json,
-        });
-        normalize_dynamic_fields(&parsed.meta.diagram_type, &mut actual);
+            let mut layout_json =
+                serde_json::to_value(&layouted.layout).expect("serialize layout to JSON");
+            round_json_numbers(&mut layout_json, 3);
 
-        let expected_text = match fs::read_to_string(&golden_path) {
-            Ok(v) => v,
-            Err(err) => {
+            let mut actual = serde_json::json!({
+                "diagramType": parsed.meta.diagram_type,
+                "layout": layout_json,
+            });
+            normalize_dynamic_fields(&parsed.meta.diagram_type, &mut actual);
+
+            let expected_text = match fs::read_to_string(&golden_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!(
+                        "failed to read golden {}: {err}",
+                        golden_path.display()
+                    ));
+                    continue;
+                }
+            };
+
+            let mut expected: JsonValue = match serde_json::from_str(&expected_text) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!(
+                        "failed to parse golden {}: {err}",
+                        golden_path.display()
+                    ));
+                    continue;
+                }
+            };
+            normalize_dynamic_fields(&parsed.meta.diagram_type, &mut expected);
+
+            if actual != expected {
                 failures.push(format!(
-                    "failed to read golden {}: {err}",
-                    golden_path.display()
-                ));
-                continue;
-            }
-        };
-
-        let mut expected: JsonValue = match serde_json::from_str(&expected_text) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!(
-                    "failed to parse golden {}: {err}",
-                    golden_path.display()
-                ));
-                continue;
-            }
-        };
-        normalize_dynamic_fields(&parsed.meta.diagram_type, &mut expected);
-
-        if actual != expected {
-            failures.push(format!(
                 "layout snapshot mismatch for {}\n  expected: {}\n  actual:   {}\n  hint: regenerate via `cargo run -p xtask -- update-layout-snapshots --filter {}`",
                 mmd_path.display(),
                 golden_path.display(),
                 "<computed>",
                 mmd_path.file_stem().and_then(|s| s.to_str()).unwrap_or("")
             ));
+            }
         }
-    }
 
-    if !failures.is_empty() {
-        panic!("{}", failures.join("\n\n"));
-    }
+        if !failures.is_empty() {
+            panic!("{}", failures.join("\n\n"));
+        }
+    });
 }
