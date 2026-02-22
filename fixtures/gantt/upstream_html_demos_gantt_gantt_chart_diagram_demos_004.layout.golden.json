@@ -67,8 +67,8 @@
           "section": "Section1",
           "task_type": "Section1",
           "order": 0.0,
-          "start_ms": 1546272000000.0,
-          "end_ms": 1546444800000.0,
+          "start_ms": 1546300800000.0,
+          "end_ms": 1546473600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -98,8 +98,8 @@
           "section": "Section1",
           "task_type": "Section1",
           "order": 1.0,
-          "start_ms": 1546272000000.0,
-          "end_ms": 1546444800000.0,
+          "start_ms": 1546300800000.0,
+          "end_ms": 1546473600000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -128,44 +128,49 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1546279200000.0,
-          "x": 118.0,
-          "label": "31"
-        },
-        {
           "time_ms": 1546300800000.0,
-          "x": 247.0,
+          "x": 75.0,
           "label": "01"
         },
         {
           "time_ms": 1546322400000.0,
-          "x": 377.0,
+          "x": 204.0,
           "label": "01"
         },
         {
           "time_ms": 1546344000000.0,
-          "x": 506.0,
+          "x": 334.0,
           "label": "01"
         },
         {
           "time_ms": 1546365600000.0,
-          "x": 635.0,
+          "x": 463.0,
           "label": "01"
         },
         {
           "time_ms": 1546387200000.0,
-          "x": 764.0,
+          "x": 592.0,
           "label": "02"
         },
         {
           "time_ms": 1546408800000.0,
-          "x": 894.0,
+          "x": 721.0,
           "label": "02"
         },
         {
           "time_ms": 1546430400000.0,
-          "x": 1023.0,
+          "x": 851.0,
           "label": "02"
+        },
+        {
+          "time_ms": 1546452000000.0,
+          "x": 980.0,
+          "label": "02"
+        },
+        {
+          "time_ms": 1546473600000.0,
+          "x": 1109.0,
+          "label": "03"
         }
       ],
       "top_ticks": [],

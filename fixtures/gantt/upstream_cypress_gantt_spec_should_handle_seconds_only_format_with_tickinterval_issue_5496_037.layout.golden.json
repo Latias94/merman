@@ -59,8 +59,8 @@
           "section": "Network Request",
           "task_type": "Network Request",
           "order": 0.0,
-          "start_ms": 946656000000.0,
-          "end_ms": 1771084820000.0,
+          "start_ms": 946684800000.0,
+          "end_ms": 1771113620000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -135,7 +135,7 @@
         },
         {
           "time_ms": 1514764800000.0,
-          "x": 788.0,
+          "x": 787.0,
           "label": "1514764800"
         },
         {

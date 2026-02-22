@@ -67,8 +67,8 @@
           "section": "Section",
           "task_type": "Section",
           "order": 0.0,
-          "start_ms": 1388505600000.0,
-          "end_ms": 1391097600000.0,
+          "start_ms": 1388534400000.0,
+          "end_ms": 1391126400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -98,8 +98,8 @@
           "section": "Section",
           "task_type": "Section",
           "order": 1.0,
-          "start_ms": 1390147200000.0,
-          "end_ms": 1392307200000.0,
+          "start_ms": 1390176000000.0,
+          "end_ms": 1392336000000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -129,8 +129,8 @@
           "section": "Section",
           "task_type": "Section",
           "order": 0.0,
-          "start_ms": 1391961600000.0,
-          "end_ms": 1393689600000.0,
+          "start_ms": 1391990400000.0,
+          "end_ms": 1393718400000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -160,43 +160,48 @@
       "bottom_ticks": [
         {
           "time_ms": 1388880000000.0,
-          "x": 150.0,
+          "x": 144.0,
           "label": "2014-01-05"
         },
         {
           "time_ms": 1389484800000.0,
-          "x": 270.0,
+          "x": 265.0,
           "label": "2014-01-12"
         },
         {
           "time_ms": 1390089600000.0,
-          "x": 391.0,
+          "x": 385.0,
           "label": "2014-01-19"
         },
         {
           "time_ms": 1390694400000.0,
-          "x": 512.0,
+          "x": 506.0,
           "label": "2014-01-26"
         },
         {
           "time_ms": 1391299200000.0,
-          "x": 632.0,
+          "x": 626.0,
           "label": "2014-02-02"
         },
         {
           "time_ms": 1391904000000.0,
-          "x": 753.0,
+          "x": 747.0,
           "label": "2014-02-09"
         },
         {
           "time_ms": 1392508800000.0,
-          "x": 873.0,
+          "x": 868.0,
           "label": "2014-02-16"
         },
         {
           "time_ms": 1393113600000.0,
-          "x": 994.0,
+          "x": 988.0,
           "label": "2014-02-23"
+        },
+        {
+          "time_ms": 1393718400000.0,
+          "x": 1109.0,
+          "label": "2014-03-02"
         }
       ],
       "top_ticks": [],
