@@ -351,7 +351,7 @@ def main() -> int:
         else:
             print_header(f"Publishing {p.name} v{p.version}")
 
-        if not args.no_check_published and not args.dry_run:
+        if not args.no_check_published and not args.dry_run and not args.preflight_only:
             if check_crate_published(p.name, p.version):
                 print_warning(f"{p.name} v{p.version} appears already published.")
                 if confirm("Skip this crate?", default=True):
@@ -360,7 +360,12 @@ def main() -> int:
 
         if args.preflight_publish_dry_run:
             pre = ["cargo", "publish", "-p", p.name, "--dry-run"]
-            if args.no_verify:
+            if args.preflight_only and not args.no_verify:
+                print_warning(
+                    "Preflight-only mode forces --no-verify because registry "
+                    "dependencies may not be published yet."
+                )
+            if args.no_verify or args.preflight_only:
                 pre.append("--no-verify")
             cp = run_command(pre, cwd=repo_root, dry_run=args.dry_run)
             if cp.returncode != 0:
