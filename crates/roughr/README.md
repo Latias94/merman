@@ -12,7 +12,7 @@ roughr = { package = "roughr-merman", version = "0.12.0" }
 
 [![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
 [![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman)
-[![License](https://img.shields.io/github/license/orhanbalci/rough-rs.svg)](https://github.com/orhanbalci/rough-rs/LICENSE)
+[![License](https://img.shields.io/crates/l/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
 
 <!-- cargo-sync-readme start -->
 
