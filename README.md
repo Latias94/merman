@@ -283,6 +283,13 @@ gantt
 
 </details>
 
+### Stress gallery (more fixtures)
+
+| Architecture (dense services + cross edges) | Mindmap (deep + wide) |
+| --- | --- |
+| <img width="430" alt="Architecture diagram: dense services + cross edges" src="docs/assets/showcase/architecture_dense.png" /> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /> |
+| Source: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | Source: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+
 ## Quality gates
 
 This repo is built around reproducible alignment layers and CI-friendly gates:
