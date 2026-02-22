@@ -1,7 +1,5 @@
 use crate::{Error, ParseMetadata, Result, utils};
-use chrono::{
-    Datelike, Duration, FixedOffset, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike,
-};
+use chrono::{Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Timelike};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -43,13 +41,15 @@ fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool
             "friday" => 5u32,
             _ => 6u32,
         };
-        let iso = date.with_timezone(&Local).weekday().number_from_monday(); // 1..=7
+        let local = crate::runtime::datetime_to_local_fixed(date);
+        let iso = local.weekday().number_from_monday(); // 1..=7
         if iso == weekend_start || iso == weekend_start + 1 {
             return true;
         }
     }
 
-    let weekday = weekday_full_name(date.with_timezone(&Local).weekday()).to_lowercase();
+    let weekday =
+        weekday_full_name(crate::runtime::datetime_to_local_fixed(date).weekday()).to_lowercase();
     if db.excludes.iter().any(|v| v == &weekday) {
         return true;
     }

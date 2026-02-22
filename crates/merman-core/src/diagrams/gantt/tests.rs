@@ -1,6 +1,6 @@
 use super::*;
 use crate::{Engine, ParseOptions};
-use chrono::TimeZone;
+use chrono::{Local, TimeZone};
 use futures::executor::block_on;
 
 fn parse(text: &str) -> Value {

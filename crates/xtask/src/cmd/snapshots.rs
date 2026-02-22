@@ -188,7 +188,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         ))
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ));
+        ))
+        .with_fixed_local_offset_minutes(Some(0));
     let layout_opts = merman_render::LayoutOptions::default();
     let mut failures = Vec::new();
 
@@ -641,13 +642,14 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         ))
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ));
+        ))
+        .with_fixed_local_offset_minutes(Some(0));
     let mut failures = Vec::new();
 
     fn ms_to_local_iso(ms: i64) -> Option<String> {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
         Some(
-            dt.with_timezone(&chrono::Local)
+            dt.with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset must be valid"))
                 .format("%Y-%m-%dT%H:%M:%S%.3f")
                 .to_string(),
         )

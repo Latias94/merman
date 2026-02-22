@@ -73,6 +73,7 @@ pub struct Engine {
     diagram_registry: DiagramRegistry,
     site_config: MermaidConfig,
     fixed_today_local: Option<chrono::NaiveDate>,
+    fixed_local_offset_minutes: Option<i32>,
 }
 
 impl Default for Engine {
@@ -84,6 +85,7 @@ impl Default for Engine {
             diagram_registry: DiagramRegistry::default_mermaid_11_12_2(),
             site_config,
             fixed_today_local: None,
+            fixed_local_offset_minutes: None,
         }
     }
 }
@@ -107,6 +109,16 @@ impl Engine {
     /// current local date.
     pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
         self.fixed_today_local = today;
+        self
+    }
+
+    /// Overrides the local timezone offset (in minutes) used by diagrams that depend on local time
+    /// semantics (notably Gantt).
+    ///
+    /// This exists primarily to make fixture snapshots deterministic across CI runners. When
+    /// `None`, the system local timezone is used.
+    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
+        self.fixed_local_offset_minutes = offset_minutes;
         self
     }
 
@@ -228,7 +240,14 @@ impl Engine {
 
         let parse_start = timing_enabled.then(std::time::Instant::now);
         let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
-            diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, &code, &meta)
+            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
+                diagram::parse_or_unsupported(
+                    &self.diagram_registry,
+                    &meta.diagram_type,
+                    &code,
+                    &meta,
+                )
+            })
         });
 
         let mut model = match parse {
@@ -686,7 +705,14 @@ impl Engine {
         };
 
         let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
-            diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, &code, &meta)
+            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
+                diagram::parse_or_unsupported(
+                    &self.diagram_registry,
+                    &meta.diagram_type,
+                    &code,
+                    &meta,
+                )
+            })
         });
 
         let mut model = match parse {

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 fn ms_to_local_iso(ms: i64) -> Option<String> {
     let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
     Some(
-        dt.with_timezone(&chrono::Local)
+        dt.with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset must be valid"))
             .format("%Y-%m-%dT%H:%M:%S%.3f")
             .to_string(),
     )
@@ -189,9 +189,13 @@ fn fixtures_match_golden_snapshots() {
     );
 
     // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
-    let engine = Engine::new().with_fixed_today(Some(
-        NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-    ));
+    let engine = Engine::new()
+        .with_fixed_today(Some(
+            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ))
+        // Gantt date handling follows JavaScript local-time semantics, which varies by runner timezone.
+        // Pin a fixed offset so snapshots are stable across CI environments.
+        .with_fixed_local_offset_minutes(Some(0));
     for mmd_path in fixtures {
         let text = std::fs::read_to_string(&mmd_path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));

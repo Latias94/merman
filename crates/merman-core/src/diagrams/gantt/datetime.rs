@@ -12,19 +12,11 @@ pub(super) fn today_midnight_local() -> DateTimeFixed {
 }
 
 pub(super) fn local_from_naive(naive: NaiveDateTime) -> DateTimeFixed {
-    match Local.from_local_datetime(&naive) {
-        chrono::LocalResult::Single(dt) => dt.fixed_offset(),
-        chrono::LocalResult::Ambiguous(a, _b) => a.fixed_offset(),
-        chrono::LocalResult::None => chrono::DateTime::<FixedOffset>::from_naive_utc_and_offset(
-            naive,
-            FixedOffset::east_opt(0).unwrap(),
-        ),
-    }
+    crate::runtime::datetime_from_naive_local(naive)
 }
 
 pub(super) fn add_days_local(dt: DateTimeFixed, days: i64) -> Option<DateTimeFixed> {
-    let local = dt.with_timezone(&Local);
-    let naive = local.naive_local();
+    let naive = crate::runtime::datetime_to_naive_local(dt);
     let date = naive.date();
     let time = naive.time();
 
@@ -37,8 +29,7 @@ pub(super) fn add_days_local(dt: DateTimeFixed, days: i64) -> Option<DateTimeFix
 }
 
 pub(super) fn add_months_local(dt: DateTimeFixed, months: i64) -> Option<DateTimeFixed> {
-    let local = dt.with_timezone(&Local);
-    let naive = local.naive_local();
+    let naive = crate::runtime::datetime_to_naive_local(dt);
     let mut year = naive.year();
     let mut month0 = naive.month0() as i64; // 0..=11
 
@@ -53,8 +44,7 @@ pub(super) fn add_months_local(dt: DateTimeFixed, months: i64) -> Option<DateTim
 }
 
 pub(super) fn add_years_local(dt: DateTimeFixed, years: i64) -> Option<DateTimeFixed> {
-    let local = dt.with_timezone(&Local);
-    let naive = local.naive_local();
+    let naive = crate::runtime::datetime_to_naive_local(dt);
     let year = naive.year().checked_add(years as i32)?;
     let month = naive.month();
     let day = naive.day().min(last_day_of_month(year, month));

@@ -1160,7 +1160,7 @@ pub(super) fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
     }
 
     let items = tokenize_dayjs_format(fmt);
-    let local = dt.with_timezone(&Local);
+    let local = crate::runtime::datetime_to_local_fixed(dt);
     let naive = local.naive_local();
 
     let mut out = String::new();
