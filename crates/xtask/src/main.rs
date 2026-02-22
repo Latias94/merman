@@ -61,6 +61,7 @@ fn print_help(topic: Option<&str>) {
     println!("usage: xtask <command> ...");
     println!();
     println!("Common commands:");
+    println!("  verify");
     println!("  check-alignment");
     println!("  import-upstream-docs");
     println!("  import-upstream-html");
@@ -108,6 +109,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-xychart-svgs");
     println!();
     println!("Tips:");
+    println!("  - `cargo run -p xtask -- verify`");
     println!("  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`");
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
     println!();
@@ -133,6 +135,7 @@ fn main() -> Result<(), XtaskError> {
     match cmd_name.as_str() {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
+        "verify" => cmd::verify(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),
