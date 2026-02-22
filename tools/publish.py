@@ -201,6 +201,11 @@ def main() -> int:
     )
     parser.add_argument("--dry-run", action="store_true", help="Print actions without publishing")
     parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Assume 'yes' for confirmation prompts (required for non-interactive runs)",
+    )
+    parser.add_argument(
         "--crates",
         help="Comma-separated subset of crates to publish (default: all in order)",
     )
@@ -220,6 +225,11 @@ def main() -> int:
         "--preflight-publish-dry-run",
         action="store_true",
         help="Run `cargo publish --dry-run` per crate before uploading (slower, safer)",
+    )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Only run preflight checks (xtask verify + cargo publish --dry-run), do not upload",
     )
     parser.add_argument(
         "--skip-xtask-verify",
@@ -244,6 +254,18 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
+
+    def confirm(prompt: str, *, default: bool) -> bool:
+        if args.yes:
+            print_info(f"--yes: auto-confirmed: {prompt}")
+            return True
+        if not sys.stdin.isatty():
+            raise RuntimeError(f"Non-interactive session; rerun with --yes to confirm: {prompt}")
+        suffix = " [Y/n]: " if default else " [y/N]: "
+        resp = input(prompt + suffix).strip().lower()
+        if not resp:
+            return default
+        return resp in ("y", "yes")
 
     try:
         require_tool("cargo")
@@ -287,6 +309,10 @@ def main() -> int:
         print_error(f"Crates are marked publish=false and cannot be published: {', '.join(not_publishable)}")
         return 2
 
+    if args.preflight_only and not args.preflight_publish_dry_run:
+        print_error("--preflight-only requires --preflight-publish-dry-run")
+        return 2
+
     print_header("Publish Plan")
     print_info(f"Repo: {repo_root}")
     print_info(f"Dry run: {args.dry_run}")
@@ -308,21 +334,27 @@ def main() -> int:
             return 1
 
     if not args.dry_run:
-        resp = input("Continue with publishing? [y/N]: ").strip().lower()
-        if resp not in ("y", "yes"):
+        if not confirm(
+            "Continue with publishing?"
+            if not args.preflight_only
+            else "Continue with preflight (no upload)?",
+            default=False,
+        ):
             print_info("Cancelled.")
             return 0
 
     failures: list[str] = []
     for c in crates:
         p = packages[c]
-        print_header(f"Publishing {p.name} v{p.version}")
+        if args.preflight_only:
+            print_header(f"Preflight {p.name} v{p.version}")
+        else:
+            print_header(f"Publishing {p.name} v{p.version}")
 
         if not args.no_check_published and not args.dry_run:
             if check_crate_published(p.name, p.version):
                 print_warning(f"{p.name} v{p.version} appears already published.")
-                resp = input("Skip this crate? [Y/n]: ").strip().lower()
-                if resp in ("", "y", "yes"):
+                if confirm("Skip this crate?", default=True):
                     print_info(f"Skipping {p.name}")
                     continue
 
@@ -335,6 +367,9 @@ def main() -> int:
                 print_error(f"Preflight failed for {p.name}")
                 failures.append(p.name)
                 break
+            if args.preflight_only:
+                print_success(f"Preflight ok for {p.name} v{p.version}")
+                continue
 
         cmd = ["cargo", "publish", "-p", p.name]
         if args.no_verify:
@@ -344,8 +379,7 @@ def main() -> int:
             print_error(f"Failed to publish {p.name}")
             failures.append(p.name)
             if not args.dry_run:
-                resp = input("Continue with remaining crates? [y/N]: ").strip().lower()
-                if resp not in ("y", "yes"):
+                if not confirm("Continue with remaining crates?", default=False):
                     break
         else:
             print_success(f"Published {p.name} v{p.version}")
@@ -371,7 +405,10 @@ def main() -> int:
             print_success(f"Created git tag {tag}")
             print_info(f"Next: git push origin {tag}")
 
-    print_success(f"Published {len(crates)} crate(s).")
+    if args.preflight_only:
+        print_success(f"Preflight succeeded for {len(crates)} crate(s).")
+    else:
+        print_success(f"Published {len(crates)} crate(s).")
     return 0
 
 
