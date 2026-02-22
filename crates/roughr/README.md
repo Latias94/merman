@@ -1,7 +1,17 @@
-# roughr
+# roughr-merman
 
-[![Crates.io](https://img.shields.io/crates/v/roughr.svg)](https://crates.io/crates/roughr)
-[![Documentation](https://docs.rs/roughr/badge.svg)](https://docs.rs/roughr)
+This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
+parity stable and deterministic across platforms.
+
+If you want to use it under the crate name `roughr`, depend on it like this:
+
+```toml
+[dependencies]
+roughr = { package = "roughr-merman", version = "0.12.0" }
+```
+
+[![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
+[![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman)
 [![License](https://img.shields.io/github/license/orhanbalci/rough-rs.svg)](https://github.com/orhanbalci/rough-rs/LICENSE)
 
 <!-- cargo-sync-readme start -->
@@ -24,7 +34,7 @@ output of [rough_piet](https://github.com/orhanbalci/rough-rs/tree/main/rough_pi
 
 ```toml
 [dependencies]
-roughr = "0.1"
+roughr-merman = "0.12.0"
 ```
 
 ## 🔧 Example
