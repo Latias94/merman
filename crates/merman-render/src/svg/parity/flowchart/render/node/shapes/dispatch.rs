@@ -58,7 +58,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 delay / half-rounded rectangle.
-        "delay" => {
+        "delay" | "half-rounded-rectangle" => {
             super::render_delay(
                 out,
                 ctx,
@@ -75,12 +75,12 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 lined cylinder (Disk storage).
-        "lin-cyl" => {
+        "lin-cyl" | "disk" | "lined-cylinder" => {
             super::render_lined_cylinder(out, layout_node, label_dy);
         }
 
         // Flowchart v2 curved trapezoid (Display).
-        "curv-trap" => {
+        "curv-trap" | "display" | "curved-trapezoid" => {
             super::render_curved_trapezoid(
                 out,
                 ctx,
@@ -98,7 +98,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 divided rectangle (Divided process).
-        "div-rect" => {
+        "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => {
             super::render_divided_rect(
                 out,
                 layout_node,
@@ -112,7 +112,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 notched pentagon (Loop limit).
-        "notch-pent" => {
+        "notch-pent" | "loop-limit" | "notched-pentagon" => {
             super::render_notched_pentagon(
                 out,
                 ctx,
@@ -129,7 +129,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 bow tie rectangle (Stored data).
-        "bow-rect" => {
+        "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
             super::render_bow_tie_rect(
                 out,
                 ctx,
@@ -146,7 +146,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 tagged rectangle (Tagged process).
-        "tag-rect" => {
+        "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => {
             super::render_tag_rect(
                 out,
                 ctx,
@@ -164,7 +164,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 wave edged rectangle (Document).
-        "doc" => {
+        "doc" | "document" => {
             *compact_label_translate = true;
             super::render_wave_document(
                 out,
@@ -185,7 +185,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 lined wave edged rectangle (Lined document).
-        "lin-doc" => {
+        "lin-doc" | "lined-document" => {
             *compact_label_translate = true;
             super::render_lined_wave_document(
                 out,
@@ -206,7 +206,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 tagged wave edged rectangle (Tagged document).
-        "tag-doc" => {
+        "tag-doc" | "tagged-document" => {
             *compact_label_translate = true;
             super::render_tagged_wave_document(
                 out,
@@ -227,7 +227,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 triangle (Extract).
-        "tri" => {
+        "tri" | "extract" | "triangle" => {
             super::render_triangle_extract(
                 out,
                 ctx,
@@ -245,7 +245,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         }
 
         // Flowchart v2 shaded process / lined rectangle.
-        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" => {
+        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
             *label_dx = 4.0;
             *compact_label_translate = true;
             super::render_shaded_process(
@@ -392,10 +392,10 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 details,
             );
         }
-        "subroutine" | "fr-rect" | "subproc" | "subprocess" => {
+        "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             super::render_subroutine(out, layout_node, style);
         }
-        "cylinder" | "cyl" => {
+        "cylinder" | "cyl" | "db" | "database" => {
             super::render_cylinder(out, ctx, layout_node, style, label_dy);
         }
         "h-cyl" | "das" | "horizontal-cylinder" => {
@@ -415,7 +415,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 label_dy,
             );
         }
-        "diamond" | "question" | "diam" => {
+        "diamond" | "question" | "diam" | "decision" => {
             super::render_diamond(out, layout_node, style);
         }
         "circle" => {
@@ -424,7 +424,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
         "doublecircle" | "dbl-circ" | "double-circle" => {
             super::render_double_circle(out, layout_node, style);
         }
-        "roundedRect" | "rounded" => {
+        "roundedRect" | "rounded" | "event" => {
             super::render_rounded_rect(
                 out,
                 layout_node,
@@ -451,7 +451,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 details,
             );
         }
-        "stadium" => {
+        "stadium" | "terminal" | "pill" => {
             super::render_stadium(
                 out,
                 ctx,
@@ -468,7 +468,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 details,
             );
         }
-        "hexagon" | "hex" => {
+        "hexagon" | "hex" | "prepare" => {
             super::render_hexagon(
                 out,
                 layout_node,
@@ -482,16 +482,16 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 details,
             );
         }
-        "lean_right" | "lean-r" | "lean-right" => {
+        "lean_right" | "lean-r" | "lean-right" | "in-out" => {
             super::render_lean_right(out, layout_node, style);
         }
-        "lean_left" | "lean-l" | "lean-left" => {
+        "lean_left" | "lean-l" | "lean-left" | "out-in" => {
             super::render_lean_left(out, layout_node, style);
         }
-        "trapezoid" | "trap-b" => {
+        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
             super::render_trapezoid(out, layout_node, style);
         }
-        "inv_trapezoid" | "inv-trapezoid" | "trap-t" => {
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
             super::render_inv_trapezoid(out, layout_node, style);
         }
         "odd" => {

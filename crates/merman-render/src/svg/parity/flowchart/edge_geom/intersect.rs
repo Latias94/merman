@@ -4,7 +4,7 @@ use super::BoundaryNode;
 pub(in crate::svg::parity::flowchart) fn is_rounded_intersect_shift_shape(
     layout_shape: Option<&str>,
 ) -> bool {
-    matches!(layout_shape, Some("roundedRect" | "rounded"))
+    matches!(layout_shape, Some("roundedRect" | "rounded" | "event"))
 }
 
 pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
@@ -15,21 +15,34 @@ pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
         Some(
             "hexagon"
                 | "hex"
+                | "prepare"
                 | "odd"
                 | "rect_left_inv_arrow"
                 | "stadium"
+                | "terminal"
+                | "pill"
                 | "subroutine"
+                | "fr-rect"
                 | "subproc"
                 | "subprocess"
+                | "framed-rectangle"
                 | "lean_right"
                 | "lean-r"
                 | "lean-right"
+                | "in-out"
                 | "lean_left"
                 | "lean-l"
                 | "lean-left"
+                | "out-in"
                 | "trapezoid"
+                | "trap-b"
+                | "priority"
+                | "trapezoid-bottom"
                 | "inv_trapezoid"
                 | "inv-trapezoid"
+                | "trap-t"
+                | "manual"
+                | "trapezoid-top"
         )
     )
 }
@@ -43,14 +56,20 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
             "circle"
                 | "diamond"
                 | "diam"
+                | "question"
+                | "decision"
                 | "roundedRect"
                 | "rounded"
                 | "cylinder"
                 | "cyl"
+                | "db"
+                | "database"
                 | "h-cyl"
                 | "das"
                 | "horizontal-cylinder"
-                | "stadium",
+                | "stadium"
+                | "terminal"
+                | "pill",
         )
     ) || is_polygon_layout_shape(layout_shape)
 }
@@ -366,7 +385,7 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: -x, y },
             ])
         }
-        "subroutine" | "subproc" | "subprocess" => {
+        "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             // Port of Mermaid@11.12.2 `subroutine.ts` points used for polygon intersection.
             //
             // Mermaid's insertPolygonShape(...) uses `w = bbox.width + padding` but the
@@ -391,7 +410,7 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: -8.0, y: 0.0 },
             ])
         }
-        "hexagon" | "hex" => {
+        "hexagon" | "hex" | "prepare" => {
             let half_width = w / 2.0;
             let half_height = h / 2.0;
             let fixed_length = half_height / 2.0;
@@ -431,7 +450,7 @@ fn polygon_points_for_layout_shape(
                 },
             ])
         }
-        "lean_right" | "lean-r" | "lean-right" => {
+        "lean_right" | "lean-r" | "lean-right" | "in-out" => {
             let total_w = w;
             let w = (total_w - h).max(1.0);
             let dx = (3.0 * h) / 6.0;
@@ -442,7 +461,7 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: 0.0, y: -h },
             ])
         }
-        "lean_left" | "lean-l" | "lean-left" => {
+        "lean_left" | "lean-l" | "lean-left" | "out-in" => {
             let total_w = w;
             let w = (total_w - h).max(1.0);
             let dx = (3.0 * h) / 6.0;
@@ -453,7 +472,7 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: -dx, y: -h },
             ])
         }
-        "trapezoid" => {
+        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
             let total_w = w;
             let w = (total_w - h).max(1.0);
             let dx = (3.0 * h) / 6.0;
@@ -464,7 +483,7 @@ fn polygon_points_for_layout_shape(
                 crate::model::LayoutPoint { x: 0.0, y: -h },
             ])
         }
-        "inv_trapezoid" | "inv-trapezoid" => {
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
             let total_w = w;
             let w = (total_w - h).max(1.0);
             let dx = (3.0 * h) / 6.0;
@@ -695,11 +714,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
 
     match layout_shape {
         Some("circle") => intersect_circle(node, point),
-        Some("cylinder" | "cyl") => intersect_cylinder(node, point),
+        Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
         Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, point),
-        Some("diamond" | "diam") => intersect_diamond(node, point),
-        Some("stadium") => intersect_stadium(ctx, node_id, node, point),
-        Some("hexagon" | "hex") => intersect_hexagon(ctx, node_id, node, point),
+        Some("diamond" | "diam" | "question" | "decision") => intersect_diamond(node, point),
+        Some("stadium" | "terminal" | "pill") => intersect_stadium(ctx, node_id, node, point),
+        Some("hexagon" | "hex" | "prepare") => intersect_hexagon(ctx, node_id, node, point),
         Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
             .map(|pts| intersect_polygon(node, &pts, point))
             .unwrap_or_else(|| intersect_rect(node, point)),

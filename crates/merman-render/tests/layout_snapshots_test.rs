@@ -133,6 +133,13 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
                 continue;
             }
             if path.extension().is_some_and(|e| e == "mmd") {
+                if path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
+                {
+                    continue;
+                }
                 out.push(path);
             }
         }

@@ -143,7 +143,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
         }
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
         // not emit a label group.
-        "bolt" => {
+        "bolt" | "com-link" | "lightning-bolt" => {
             // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
             // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
             let width = layout_node.width.max(35.0);
@@ -185,7 +185,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
         // Flowchart v2 filled circle (junction). Mermaid clears `node.label` and does not emit a
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
         // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
-        "f-circ" => {
+        "f-circ" | "junction" | "filled-circle" => {
             let border =
                 util::config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
                     .unwrap_or_else(|| ctx.node_border_color.clone());
@@ -208,7 +208,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
         }
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
-        "cross-circ" => {
+        "cross-circ" | "summary" | "crossed-circle" => {
             // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
             // practice `node.width` is usually unset here, so radius=30.
             let radius = 30.0;

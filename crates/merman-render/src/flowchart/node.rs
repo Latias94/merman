@@ -120,13 +120,13 @@ fn node_render_dimensions(
 
         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.
-        "roundedRect" | "rounded" => (text_w + 2.0 * p, text_h + 2.0 * p),
+        "roundedRect" | "rounded" | "event" => (text_w + 2.0 * p, text_h + 2.0 * p),
 
         // Note (rendering-elements/state note box).
         "note" => (text_w + 2.0 * p, text_h + 2.0 * p),
 
         // Diamond (decision/question).
-        "diamond" | "question" | "diam" => {
+        "diamond" | "question" | "diam" | "decision" => {
             let w = text_w + p;
             let h = text_h + p;
             let s = w + h;
@@ -134,7 +134,7 @@ fn node_render_dimensions(
         }
 
         // Hexagon.
-        "hexagon" | "hex" => {
+        "hexagon" | "hex" | "prepare" => {
             let h = text_h + p;
             let w0 = text_w + 2.5 * p;
             // Match Mermaid@11.12.2 evaluation order:
@@ -146,21 +146,21 @@ fn node_render_dimensions(
         }
 
         // Stadium/terminator.
-        "stadium" => {
+        "stadium" | "terminal" | "pill" => {
             let h = text_h + p;
             let w = text_w + h / 4.0 + p;
             (w, h)
         }
 
         // Subroutine/subprocess (framed rectangle): adds an 8px "frame" on both sides.
-        "subroutine" | "fr-rect" | "subproc" | "subprocess" => {
+        "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             let w = text_w + p;
             let h = text_h + p;
             (w + 16.0, h)
         }
 
         // Cylinder/database.
-        "cylinder" | "cyl" => {
+        "cylinder" | "cyl" | "db" | "database" => {
             let w = text_w + p;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
@@ -200,18 +200,18 @@ fn node_render_dimensions(
         "choice" => (28.0, 28.0),
 
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label`.
-        "bolt" => (35.0, 70.0),
+        "bolt" | "com-link" | "lightning-bolt" => (35.0, 70.0),
 
         // Flowchart v2 filled circle (junction). Mermaid clears `node.label`.
         // Width comes from RoughJS `circle` bbox at 11.12.2.
-        "f-circ" => (14.013_293_266_296_387, 14.0),
+        "f-circ" | "junction" | "filled-circle" => (14.013_293_266_296_387, 14.0),
 
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label`.
         // Width comes from RoughJS `circle` bbox at 11.12.2 with radius=30.
-        "cross-circ" => (60.056_972_503_662_11, 60.0),
+        "cross-circ" | "summary" | "crossed-circle" => (60.056_972_503_662_11, 60.0),
 
         // Flowchart v2 delay / halfRoundedRectangle (rendering-elements).
-        "delay" => {
+        "delay" | "half-rounded-rectangle" => {
             let min_width = 80.0;
             let min_height = 50.0;
             let w = (text_w + 2.0 * p).max(min_width);
@@ -237,7 +237,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 lined cylinder (Disk storage).
-        "lin-cyl" => {
+        "lin-cyl" | "disk" | "lined-cylinder" => {
             let w = text_w + p;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
@@ -246,7 +246,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 curved trapezoid (Display).
-        "curv-trap" => {
+        "curv-trap" | "display" | "curved-trapezoid" => {
             let min_width = 80.0;
             let min_height = 20.0;
             let w = (text_w + 2.0 * p).mul_add(1.25, 0.0).max(min_width);
@@ -279,7 +279,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 divided rectangle (Divided process).
-        "div-rect" => {
+        "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => {
             let w = text_w + p;
             let h = text_h + p;
             let rect_offset = h * 0.2;
@@ -299,7 +299,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 triangle (Extract).
-        "tri" => {
+        "tri" | "extract" | "triangle" => {
             let w = text_w + p;
             let h = w + text_h;
             f32_dims(h, h)
@@ -320,7 +320,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 document (wave-edged rectangle).
-        "doc" => {
+        "doc" | "document" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let wave_amplitude = h / 8.0;
@@ -393,6 +393,16 @@ fn node_render_dimensions(
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
+        // Flowchart v2 stacked rectangle (multi-process).
+        "st-rect" | "procs" | "processes" | "stacked-rectangle" => {
+            // Mermaid `multiRect.ts`: base `w/h` uses `2 * padding` and the final bbox expands by
+            // `2 * rectOffset` in both dimensions.
+            let w = (text_w + 2.0 * p).max(0.0);
+            let h = (text_h + 2.0 * p).max(0.0);
+            let rect_offset = 5.0;
+            f32_dims(w + 2.0 * rect_offset, h + 2.0 * rect_offset)
+        }
+
         // Flowchart v2 paper-tape / wave rectangle.
         "paper-tape" | "flag" => {
             let min_width = 100.0;
@@ -431,7 +441,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 lined document.
-        "lin-doc" => {
+        "lin-doc" | "lined-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let wave_amplitude = h / 4.0;
@@ -465,7 +475,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 tagged rectangle.
-        "tag-rect" => {
+        "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let x = -w / 2.0;
@@ -490,7 +500,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 tagged document.
-        "tag-doc" => {
+        "tag-doc" | "tagged-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let wave_amplitude = h / 4.0;
@@ -538,7 +548,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 trapezoidal pentagon (Loop limit).
-        "notch-pent" => {
+        "notch-pent" | "loop-limit" | "notched-pentagon" => {
             let min_width = 60.0;
             let min_height = 20.0;
             let w = (text_w + 2.0 * p).max(min_width);
@@ -547,7 +557,7 @@ fn node_render_dimensions(
         }
 
         // Flowchart v2 bow-tie rect (Stored data).
-        "bow-rect" => {
+        "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
             let w = text_w + p + 20.0;
             let h = text_h + p;
             f32_dims(w, h)
@@ -560,7 +570,7 @@ fn node_render_dimensions(
         "notch-rect" | "notched-rectangle" | "card" => (text_w + p + 12.0, text_h + p),
 
         // Shaded process / lined rectangle: adds 8px on both sides (total +16).
-        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" => {
+        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
             (text_w + 2.0 * p + 16.0, text_h + 2.0 * p)
         }
 
@@ -790,15 +800,15 @@ fn node_render_dimensions(
         }
 
         // Lean and trapezoid variants (parallelograms/trapezoids).
-        "lean_right" | "lean-r" | "lean-right" | "lean_left" | "lean-l" | "lean-left"
-        | "trapezoid" | "trap-b" => {
+        "lean_right" | "lean-r" | "lean-right" | "in-out" | "lean_left" | "lean-l"
+        | "lean-left" | "out-in" | "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
             let w = text_w + p;
             let h = text_h + p;
             (w + h, h)
         }
 
         // Inverted trapezoid uses `2 * padding` on both axes in Mermaid.
-        "inv_trapezoid" | "inv-trapezoid" | "trap-t" => {
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
             let w = text_w + 2.0 * p;
             let h = text_h + 2.0 * p;
             (w + h, h)
@@ -854,7 +864,7 @@ pub(super) fn node_layout_dimensions(
     // 50 points over 180deg) and the resulting path bbox is slightly narrower than the theoretical
     // `w = bbox.width + h/4 + padding` used to generate the points. That bbox width is what Dagre
     // uses for spacing, which affects node x-positions and ultimately the root `viewBox`.
-    if shape == "stadium" {
+    if matches!(shape, "stadium" | "terminal" | "pill") {
         fn include_circle_points(
             center_x: f64,
             center_y: f64,
@@ -944,7 +954,7 @@ pub(super) fn node_layout_dimensions(
     // over an SVG `<path>` with arc commands. On Chromium this tends to round the bbox height to
     // the next representable f32 value above the theoretical height, which affects Dagre spacing
     // and therefore edge points (`data-points`) in strict parity mode.
-    if matches!(shape, "cylinder" | "cyl") {
+    if matches!(shape, "cylinder" | "cyl" | "db" | "database") {
         let h_f32 = render_h as f32;
         if h_f32.is_finite() && h_f32.is_sign_positive() {
             let bits = h_f32.to_bits();
