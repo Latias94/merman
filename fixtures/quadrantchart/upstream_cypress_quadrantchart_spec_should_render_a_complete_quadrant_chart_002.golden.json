@@ -1,0 +1,96 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Reach and engagement of campaigns",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "We should expand",
+      "quadrant2Text": "Need to promote",
+      "quadrant3Text": "Re-evaluate",
+      "quadrant4Text": "May be improved"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Reach",
+      "xAxisRightText": "High Reach",
+      "yAxisBottomText": "Low Engagement",
+      "yAxisTopText": "High Engagement"
+    },
+    "points": [
+      {
+        "text": "Campaign F",
+        "x": 0.35,
+        "y": 0.78,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign E",
+        "x": 0.4,
+        "y": 0.34,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign D",
+        "x": 0.78,
+        "y": 0.34,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign C",
+        "x": 0.57,
+        "y": 0.69,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign B",
+        "x": 0.45,
+        "y": 0.23,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign A",
+        "x": 0.3,
+        "y": 0.6,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "diagramType": "quadrantChart",
+  "layout": {
+    "QuadrantChartDiagram": {
+      "width": 500.0,
+      "height": 500.0,
+      "title": {
+        "text": "Reach and engagement of campaigns",
+        "x": 250.0,
+        "y": 10.0,
+        "fill": "#00ea19",
+        "fontSize": 20.0,
+        "rotation": 0.0,
+        "verticalPos": "center",
+        "horizontalPos": "top"
+      },
+      "quadrants": [
+        {
+          "x": 263.0,
+          "y": 45.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#b4dcff",
+          "text": {
+            "text": "We should expand",
+            "x": 379.0,
+            "y": 50.0,
+            "fill": "#ff0000",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 45.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#fef0ff",
+          "text": {
+            "text": "Need to promote",
+            "x": 147.0,
+            "y": 50.0,
+            "fill": "#2d00df",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 257.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#fffaf0",
+          "text": {
+            "text": "Re-evaluate",
+            "x": 147.0,
+            "y": 262.0,
+            "fill": "#00ffda",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 263.0,
+          "y": 257.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#f0fff2",
+          "text": {
+            "text": "May be improved",
+            "x": 379.0,
+            "y": 262.0,
+            "fill": "#e68300",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        }
+      ],
+      "borderLines": [
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "#ff1010",
+          "x1": 30.0,
+          "y1": 45.0,
+          "x2": 496.0,
+          "y2": 45.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "#ff1010",
+          "x1": 495.0,
+          "y1": 46.0,
+          "x2": 495.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "#ff1010",
+          "x1": 30.0,
+          "y1": 469.0,
+          "x2": 496.0,
+          "y2": 469.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "#ff1010",
+          "x1": 31.0,
+          "y1": 46.0,
+          "x2": 31.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "#3636f2",
+          "x1": 263.0,
+          "y1": 46.0,
+          "x2": 263.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "#3636f2",
+          "x1": 32.0,
+          "y1": 257.0,
+          "x2": 494.0,
+          "y2": 257.0
+        }
+      ],
+      "points": [
+        {
+          "x": 193.4,
+          "y": 138.28,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign F",
+            "x": 193.4,
+            "y": 143.28,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 216.6,
+          "y": 324.84,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign E",
+            "x": 216.6,
+            "y": 329.84,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 392.92,
+          "y": 324.84,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign D",
+            "x": 392.92,
+            "y": 329.84,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 295.48,
+          "y": 176.44,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign C",
+            "x": 295.48,
+            "y": 181.44,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 239.8,
+          "y": 371.48,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign B",
+            "x": 239.8,
+            "y": 376.48,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 170.2,
+          "y": 214.6,
+          "fill": "#0149ff",
+          "radius": 5.0,
+          "strokeColor": "#0149ff",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Campaign A",
+            "x": 170.2,
+            "y": 219.6,
+            "fill": "#dc00ff",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        }
+      ],
+      "axisLabels": [
+        {
+          "text": "Low Reach",
+          "x": 147.0,
+          "y": 479.0,
+          "fill": "#ffb500",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "High Reach",
+          "x": 379.0,
+          "y": 479.0,
+          "fill": "#ffb500",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "Low Engagement",
+          "x": 5.0,
+          "y": 363.0,
+          "fill": "#fae604",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "High Engagement",
+          "x": 5.0,
+          "y": 151.0,
+          "fill": "#fae604",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        }
+      ]
+    }
+  }
+}
