@@ -9,8 +9,17 @@ pub fn c4_type_text_length_px_11_12_2(type_c4_shape: &str) -> Option<f64> {
         "component" => Some(73.0),
         "component_db" => Some(93.0),
         "container" => Some(63.0),
+        "container_db" => Some(83.0),
+        "external_container" => Some(112.0),
+        "external_container_db" => Some(132.0),
+        "external_person" => Some(99.0),
+        "external_system" => Some(101.0),
+        "external_system_db" => Some(121.0),
+        "external_system_queue" => Some(141.0),
         "person" => Some(50.0),
-        "system" => Some(52.0),
+        "system" => Some(51.0),
+        "system_db" => Some(71.0),
+        "system_queue" => Some(91.0),
         _ => None,
     }
 }

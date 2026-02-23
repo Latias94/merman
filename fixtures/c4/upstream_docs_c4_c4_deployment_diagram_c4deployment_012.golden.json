@@ -1,0 +1,412 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Deployment",
+    "title": "Deployment Diagram for Internet Banking System - Live",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "mobile",
+        "label": {
+          "text": "Mobile App"
+        },
+        "techn": {
+          "text": "Xamarin"
+        },
+        "descr": {
+          "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "mob",
+        "wrap": false
+      },
+      {
+        "alias": "spa",
+        "label": {
+          "text": "Single Page Application"
+        },
+        "techn": {
+          "text": "JavaScript and Angular"
+        },
+        "descr": {
+          "text": "Provides all of the Internet Banking functionality to customers via their web browser."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "browser",
+        "wrap": false
+      },
+      {
+        "alias": "api",
+        "label": {
+          "text": "API Application"
+        },
+        "techn": {
+          "text": "Java and Spring MVC"
+        },
+        "descr": {
+          "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "apache",
+        "wrap": false
+      },
+      {
+        "alias": "web",
+        "label": {
+          "text": "Web Application"
+        },
+        "techn": {
+          "text": "Java and Spring MVC"
+        },
+        "descr": {
+          "text": "Delivers the static content and the Internet Banking single page application."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "apache2",
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "Database"
+        },
+        "techn": {
+          "text": "Relational Database Schema"
+        },
+        "descr": {
+          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "parentBoundary": "oracle",
+        "wrap": false
+      },
+      {
+        "alias": "db2",
+        "label": {
+          "text": "Database"
+        },
+        "techn": {
+          "text": "Relational Database Schema"
+        },
+        "descr": {
+          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "parentBoundary": "oracle2",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "mob",
+        "label": {
+          "text": "Customer's mobile device"
+        },
+        "type": {
+          "text": "Apple IOS or Android"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "comp",
+        "label": {
+          "text": "Customer's computer"
+        },
+        "type": {
+          "text": "Microsoft Windows or Apple macOS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "browser",
+        "label": {
+          "text": "Web Browser"
+        },
+        "type": {
+          "text": "Google Chrome, Mozilla Firefox,<br/> Apple Safari or Microsoft Edge"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "comp",
+        "wrap": false
+      },
+      {
+        "alias": "plc",
+        "label": {
+          "text": "Big Bank plc"
+        },
+        "type": {
+          "text": "Big Bank plc data center"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "dn",
+        "label": {
+          "text": "bigbank-api*** x8"
+        },
+        "type": {
+          "text": "Ubuntu 16.04 LTS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "plc",
+        "wrap": false
+      },
+      {
+        "alias": "apache",
+        "label": {
+          "text": "Apache Tomcat"
+        },
+        "type": {
+          "text": "Apache Tomcat 8.x"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "dn",
+        "wrap": false
+      },
+      {
+        "alias": "bb2",
+        "label": {
+          "text": "bigbank-web*** x4"
+        },
+        "type": {
+          "text": "Ubuntu 16.04 LTS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "plc",
+        "wrap": false
+      },
+      {
+        "alias": "apache2",
+        "label": {
+          "text": "Apache Tomcat"
+        },
+        "type": {
+          "text": "Apache Tomcat 8.x"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "bb2",
+        "wrap": false
+      },
+      {
+        "alias": "bigbankdb01",
+        "label": {
+          "text": "bigbank-db01"
+        },
+        "type": {
+          "text": "Ubuntu 16.04 LTS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "plc",
+        "wrap": false
+      },
+      {
+        "alias": "oracle",
+        "label": {
+          "text": "Oracle - Primary"
+        },
+        "type": {
+          "text": "Oracle 12c"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "bigbankdb01",
+        "wrap": false
+      },
+      {
+        "alias": "bigbankdb02",
+        "label": {
+          "text": "bigbank-db02"
+        },
+        "type": {
+          "text": "Ubuntu 16.04 LTS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "plc",
+        "wrap": false
+      },
+      {
+        "alias": "oracle2",
+        "label": {
+          "text": "Oracle - Secondary"
+        },
+        "type": {
+          "text": "Oracle 12c"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "bigbankdb02",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "mobile",
+        "to": "api",
+        "label": {
+          "text": "Makes API calls to"
+        },
+        "techn": {
+          "text": "json/HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      },
+      {
+        "type": "rel",
+        "from": "spa",
+        "to": "api",
+        "label": {
+          "text": "Makes API calls to"
+        },
+        "techn": {
+          "text": "json/HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetY": -40
+      },
+      {
+        "type": "rel_u",
+        "from": "web",
+        "to": "spa",
+        "label": {
+          "text": "Delivers to the customer's web browser"
+        },
+        "techn": {
+          "text": ""
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetY": -40
+      },
+      {
+        "type": "rel",
+        "from": "api",
+        "to": "db",
+        "label": {
+          "text": "Reads from and writes to"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetY": -20,
+        "offsetX": 5
+      },
+      {
+        "type": "rel",
+        "from": "api",
+        "to": "db2",
+        "label": {
+          "text": "Reads from and writes to"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetX": -40,
+        "offsetY": -20
+      },
+      {
+        "type": "rel_r",
+        "from": "db",
+        "to": "db2",
+        "label": {
+          "text": "Replicates data to"
+        },
+        "techn": {
+          "text": ""
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetY": -10
+      }
+    ]
+  }
+}
