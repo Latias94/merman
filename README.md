@@ -168,9 +168,14 @@ Each example links to an existing fixture so the README stays honest and reprodu
 
 ### Architecture (nested junction routing)
 
-<img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.png" />
+<p align="center">
+  <img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.png" />
+</p>
 
-Source: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd`](fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd)
+Fixture: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd`](fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd)
+
+<details>
+  <summary>Mermaid source</summary>
 
 ```mermaid
 architecture-beta
@@ -195,11 +200,18 @@ j2:L --> R:db
 j2:R --> L:cache
 ```
 
+</details>
+
 ### Mindmap (line breaks in labels)
 
-<img width="900" alt="Mindmap diagram: label line break variants" src="docs/assets/showcase/mindmap.png" />
+<p align="center">
+  <img width="900" alt="Mindmap diagram: label line break variants" src="docs/assets/showcase/mindmap.png" />
+</p>
 
-Source: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
+Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
+
+<details>
+  <summary>Mermaid source</summary>
 
 ```mermaid
 mindmap
@@ -212,11 +224,18 @@ mindmap
     %% plus whitespace variants (see the fixture for the full set)
 ```
 
+</details>
+
 ### Sankey (dense shared nodes)
 
-<img width="900" alt="Sankey diagram: dense shared nodes" src="docs/assets/showcase/sankey.png" />
+<p align="center">
+  <img width="900" alt="Sankey diagram: dense shared nodes" src="docs/assets/showcase/sankey.png" />
+</p>
 
-Source: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
+Fixture: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
+
+<details>
+  <summary>Mermaid source</summary>
 
 ```mermaid
 %%{init: {"sankey": {"width": 900, "height": 420, "useMaxWidth": true, "showValues": false, "linkColor": "source", "nodeAlignment": "justify"}}}%%
@@ -240,11 +259,15 @@ Z,Out 2,7
 Z,Loss,2
 ```
 
+</details>
+
 ### Gantt (date math + excludes)
 
-<img width="900" alt="Gantt diagram: date math + excludes" src="docs/assets/showcase/gantt.png" />
+<p align="center">
+  <img width="900" alt="Gantt diagram: date math + excludes" src="docs/assets/showcase/gantt.png" />
+</p>
 
-Source: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
+Fixture: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
 
 <details>
   <summary>Mermaid source</summary>
@@ -288,8 +311,7 @@ gantt
 
 | Architecture (dense services + cross edges) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: dense services + cross edges" src="docs/assets/showcase/architecture_dense.png" /> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /> |
-| Source: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | Source: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: dense services + cross edges" src="docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
 
 ## Quality gates
 
