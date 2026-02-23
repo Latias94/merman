@@ -3,6 +3,7 @@ use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use ryu_js::Buffer;
 use serde::Deserialize;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Deserialize)]
 struct PieSection {
@@ -319,54 +320,74 @@ pub fn layout_pie_diagram(
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
 
-    let positive_sections: Vec<&PieSection> = model
+    let total: f64 = model
         .sections
         .iter()
-        .filter(|s| s.value.is_finite() && s.value > 0.0)
-        .collect();
-    let total: f64 = positive_sections.iter().map(|s| s.value).sum();
+        .filter(|s| s.value.is_finite() && s.value >= 0.0)
+        .map(|s| s.value)
+        .sum();
 
     let mut color_scale = ColorScale::new_default();
 
     let mut slices: Vec<PieSliceLayout> = Vec::new();
-    if !positive_sections.is_empty() && total.is_finite() && total > 0.0 {
-        if positive_sections.len() == 1 {
-            let s = positive_sections[0];
-            let fill = color_scale.color_for(&s.label);
-            let (tx, ty) = polar_xy(label_radius, std::f64::consts::PI);
-            slices.push(PieSliceLayout {
-                label: s.label.clone(),
-                value: s.value,
-                start_angle: 0.0,
-                end_angle: std::f64::consts::TAU,
-                is_full_circle: true,
-                percent: 100,
-                text_x: tx,
-                text_y: ty,
-                fill,
-            });
-        } else {
-            let mut start = 0.0;
-            for s in positive_sections {
-                let frac = (s.value / total).max(0.0);
-                let delta = frac * std::f64::consts::TAU;
-                let end = start + delta;
-                let mid = (start + end) / 2.0;
-                let (tx, ty) = polar_xy(label_radius, mid);
+    if total.is_finite() && total > 0.0 {
+        // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
+        //
+        // - filter out values < 1% (based on the original total)
+        // - sort remaining values by descending value before D3 pie() computes angles
+        // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
+        // - percentage labels are still computed using the original total
+        let mut pie_sections: Vec<&PieSection> = model
+            .sections
+            .iter()
+            .filter(|s| s.value.is_finite() && s.value > 0.0)
+            .filter(|s| (s.value / total) * 100.0 >= 1.0)
+            .collect();
+        pie_sections.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));
+
+        let pie_total: f64 = pie_sections.iter().map(|s| s.value).sum();
+        if !pie_sections.is_empty() && pie_total.is_finite() && pie_total > 0.0 {
+            if pie_sections.len() == 1 {
+                let s = pie_sections[0];
                 let fill = color_scale.color_for(&s.label);
-                let percent = (100.0 * frac).round() as i64;
+                let (tx, ty) = polar_xy(label_radius, std::f64::consts::PI);
+                let percent = ((100.0 * (s.value / total)).max(0.0)).round() as i64;
                 slices.push(PieSliceLayout {
                     label: s.label.clone(),
                     value: s.value,
-                    start_angle: start,
-                    end_angle: end,
-                    is_full_circle: false,
+                    start_angle: 0.0,
+                    end_angle: std::f64::consts::TAU,
+                    is_full_circle: true,
                     percent,
                     text_x: tx,
                     text_y: ty,
                     fill,
                 });
-                start = end;
+            } else {
+                let mut start = 0.0;
+                for s in pie_sections {
+                    let frac = (s.value / pie_total).max(0.0);
+                    let delta = (frac * std::f64::consts::TAU).max(0.0);
+                    let end = start + delta;
+                    let mid = (start + end) / 2.0;
+                    let (tx, ty) = polar_xy(label_radius, mid);
+                    let fill = color_scale.color_for(&s.label);
+                    let percent = ((100.0 * (s.value / total)).max(0.0)).round() as i64;
+                    if percent != 0 {
+                        slices.push(PieSliceLayout {
+                            label: s.label.clone(),
+                            value: s.value,
+                            start_angle: start,
+                            end_angle: end,
+                            is_full_circle: false,
+                            percent,
+                            text_x: tx,
+                            text_y: ty,
+                            fill,
+                        });
+                    }
+                    start = end;
+                }
             }
         }
     }
