@@ -87,30 +87,34 @@ fn c4_write_text_by_tspan(
         font_family
     );
 
-    let _ = write!(
-        out,
-        r#"<text x="{}" y="{}" dominant-baseline="middle""#,
-        fmt(x),
-        fmt(y)
-    );
-    for (k, v) in attrs {
-        let _ = write!(out, r#" {k}="{v}""#);
-    }
-    let _ = write!(out, r#" style="{}">"#, escape_attr(&style));
-
-    let lines: Vec<&str> = content.split('\n').collect();
+    let normalized = content
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<br>", "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
     let n = lines.len().max(1) as f64;
+
     for (i, line) in lines.iter().enumerate() {
         let dy = (i as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
         let dy_s = fmt(dy);
+
         let _ = write!(
             out,
-            r#"<tspan dy="{}" alignment-baseline="mathematical">{}</tspan>"#,
+            r#"<text x="{}" y="{}" dominant-baseline="middle""#,
+            fmt(x),
+            fmt(y)
+        );
+        for (k, v) in attrs {
+            let _ = write!(out, r#" {k}="{v}""#);
+        }
+        let _ = write!(
+            out,
+            r#" style="{}"><tspan dy="{}" alignment-baseline="mathematical">{}</tspan></text>"#,
+            escape_attr(&style),
             dy_s,
             escape_xml(line)
         );
     }
-    out.push_str("</text>");
 }
 
 pub(super) fn render_c4_diagram_svg(
@@ -287,11 +291,16 @@ pub(super) fn render_c4_diagram_svg(
 
     for s in &layout.shapes {
         let meta = shape_meta.get(s.alias.as_str()).copied();
+        let (default_bg_color, default_border_color) = if s.type_c4_shape.starts_with("external_") {
+            ("#999999", "#8A8A8A")
+        } else {
+            ("#08427B", "#073B6F")
+        };
         let bg_color = meta.and_then(|m| m.bg_color.clone()).unwrap_or_else(|| {
             c4_config_color(
                 effective_config,
                 &format!("{}_bg_color", s.type_c4_shape),
-                "#08427B",
+                default_bg_color,
             )
         });
         let border_color = meta
@@ -300,7 +309,7 @@ pub(super) fn render_c4_diagram_svg(
                 c4_config_color(
                     effective_config,
                     &format!("{}_border_color", s.type_c4_shape),
-                    "#073B6F",
+                    default_border_color,
                 )
             });
         let font_color = meta
