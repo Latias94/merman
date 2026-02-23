@@ -8,8 +8,8 @@ small ZenUML subset into Mermaid `sequenceDiagram` syntax.
 
 Baseline references:
 
-- Mermaid: `@11.12.2` (`repo-ref/mermaid`, see `repo-ref/REPOS.lock.json`)
-- ZenUML core: `v3.45.4` (`repo-ref/zenuml-core`, see `repo-ref/REPOS.lock.json`)
+- Mermaid: `@11.12.2` (`repo-ref/mermaid`, see `tools/upstreams/REPOS.lock.json`)
+- ZenUML core: `v3.45.4` (`repo-ref/zenuml-core`, see `tools/upstreams/REPOS.lock.json`)
 
 ## Supported (current)
 
@@ -45,4 +45,3 @@ Phase 1 is an incremental compatibility slice. The long-term goal is either:
 1. A broader translation layer (still rendering via the existing Mermaid `sequenceDiagram` stack),
    or
 2. A full headless ZenUML port (semantics + layout + rendering) behind an explicit feature flag.
-

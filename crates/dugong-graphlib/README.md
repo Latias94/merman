@@ -9,5 +9,4 @@ This crate is intentionally small and focused:
 - multigraph edge keys
 - helper algorithms (`dugong_graphlib::alg`)
 
-Baseline revisions are tracked in `repo-ref/REPOS.lock.json` in the repository.
-
+Baseline revisions are tracked in `tools/upstreams/REPOS.lock.json` in the repository.

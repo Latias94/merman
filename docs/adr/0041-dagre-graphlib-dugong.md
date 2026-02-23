@@ -20,7 +20,7 @@ bit-for-bit where required.
 - Add two new workspace crates:
   - `dugong`: a Rust port of `dagre` (layout pipeline + routing output).
   - `dugong-graphlib`: a Rust port of `graphlib` (graph representation + traversal utilities).
-- Baseline upstream references (tracked in `repo-ref/REPOS.lock.json`, not git submodules):
+- Baseline upstream references (tracked in `tools/upstreams/REPOS.lock.json`, not git submodules):
   - `dagre@v2.0.2` (`ba9866623`)
   - `graphlib@v2.2.4` (`380d5efa1`)
 - Scope and boundaries:
@@ -42,4 +42,3 @@ bit-for-bit where required.
 - Cons:
   - Higher maintenance cost (upstream changes require periodic re-alignment).
   - Care is required to match JS iteration/tie-breaking behavior and floating-point corner cases.
-

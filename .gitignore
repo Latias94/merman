@@ -3,8 +3,6 @@
 /package-lock.json
 /package.json
 /repo-ref/*
-!/repo-ref/README.md
-!/repo-ref/REPOS.lock.json
 /tools/mermaid-cli/node_modules
 /tools/mermaid-cli/.cache
 /dist/

@@ -28,7 +28,7 @@ To avoid subjective drift, we need:
 - `dugong-graphlib` baseline is `@dagrejs/graphlib@2.2.4` (required by Dagre).
   - commit: `380d5efa1f4ab0904539f046bdba583d14ac2add`
   - if a local checkout is used, it lives under `repo-ref/graphlib` and is pinned in
-    `repo-ref/REPOS.lock.json` (not a git submodule).
+    `tools/upstreams/REPOS.lock.json` (not a git submodule).
 
 ### Public API compatibility
 

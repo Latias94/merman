@@ -1,6 +1,6 @@
 # Dugong: Dagre Upstream Test Coverage
 
-Scope: `@dagrejs/dagre@2.0.2` (see `repo-ref/REPOS.lock.json`).
+Scope: `@dagrejs/dagre@2.0.2` (see `tools/upstreams/REPOS.lock.json`).
 
 Source: `repo-ref/dagre/test/layout-test.js`
 

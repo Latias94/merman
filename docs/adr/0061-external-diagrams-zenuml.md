@@ -16,8 +16,8 @@ is registered. Upstream Mermaid’s ZenUML integration renders via `@zenuml/core
 
 Reference repos (pinned in this repository for traceability):
 
-- Mermaid external diagram renderer: `repo-ref/mermaid` (see `repo-ref/REPOS.lock.json`)
-- ZenUML implementation: `repo-ref/zenuml-core` (see `repo-ref/REPOS.lock.json`)
+- Mermaid external diagram renderer: `repo-ref/mermaid` (see `tools/upstreams/REPOS.lock.json`)
+- ZenUML implementation: `repo-ref/zenuml-core` (see `tools/upstreams/REPOS.lock.json`)
 
 ## Decision
 

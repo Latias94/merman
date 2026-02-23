@@ -1,6 +1,6 @@
 //! Dagre-compatible graph layout algorithms.
 //!
-//! Baseline: `repo-ref/dagre` (see `repo-ref/REPOS.lock.json`).
+//! Baseline: `repo-ref/dagre` (see `tools/upstreams/REPOS.lock.json`).
 
 pub use dugong_graphlib as graphlib;
 

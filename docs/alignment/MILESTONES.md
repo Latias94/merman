@@ -8,7 +8,7 @@ fixture corpus grows. For the detailed post-parity hardening phases, see:
 
 ## Baseline
 
-- Mermaid baseline: `repo-ref/mermaid` at `mermaid@11.12.2` (see `repo-ref/REPOS.lock.json`).
+- Mermaid baseline: `repo-ref/mermaid` at `mermaid@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
 - DOM gate: `parity-root` (root `<svg>` viewport + DOM structure, decimals = 3).
 
 ## Milestones
@@ -33,7 +33,7 @@ Batch policy:
 
 - Prefer small batches (10–30 fixtures) that share a single upstream source file.
 - Every imported fixture must be traceable to an upstream path (and pinned commit via
-  `repo-ref/REPOS.lock.json`).
+  `tools/upstreams/REPOS.lock.json`).
 
 Exit criteria:
 

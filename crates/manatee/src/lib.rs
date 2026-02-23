@@ -3,7 +3,7 @@
 //! Headless compound graph layout algorithms (COSE/FCoSE ports).
 //!
 //! `manatee` is used by `merman-render` as a drop-in, runtime-agnostic layout engine.
-//! Baseline sources are tracked under `repo-ref/` (see `repo-ref/REPOS.lock.json`).
+//! Baseline sources are tracked under `repo-ref/` (see `tools/upstreams/REPOS.lock.json`).
 
 pub mod algo;
 pub mod error;

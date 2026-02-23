@@ -29,9 +29,9 @@ deterministic Rust implementation of the same effective layout behavior.
   - `cytoscape-fcose@2.2.0`
   - `cytoscape-cose-bilkent@4.1.0`
   - Versions are taken from `repo-ref/mermaid/pnpm-lock.yaml` under the pinned Mermaid baseline.
-  - Upstream source repositories are tracked in `repo-ref/REPOS.lock.json` (no git submodules).
+  - Upstream source repositories are tracked in `tools/upstreams/REPOS.lock.json` (no git submodules).
   - Note: `cytoscape-cose-bilkent`/`cytoscape-fcose` delegate most of their algorithmic core to
-    `cose-base` + `layout-base`, which are also tracked in `repo-ref/REPOS.lock.json`.
+    `cose-base` + `layout-base`, which are also tracked in `tools/upstreams/REPOS.lock.json`.
 - Implement them as a dedicated workspace crate:
   - `manatee`: reusable, headless graph layout engines (initially `fcose` and `cose-bilkent`).
 - Keep `merman-render` responsible for diagram-to-layout-data mapping:

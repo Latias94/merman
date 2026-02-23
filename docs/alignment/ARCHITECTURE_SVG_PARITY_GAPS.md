@@ -1,6 +1,6 @@
 # Architecture SVG Parity Gaps (Mermaid@11.12.2)
 
-Baseline: Mermaid `@11.12.2` (see `repo-ref/REPOS.lock.json`).
+Baseline: Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
 
 This document tracks what is still missing for Architecture SVG DOM parity beyond the current
 minimum fixture set. It complements:

@@ -5,11 +5,11 @@ This document tracks fixtures that are sourced from outside Mermaid's own reposi
 These fixtures are treated as additional regression coverage and are parity-gated against upstream
 Mermaid SVG baselines (Mermaid `@11.12.2`).
 
-Pinned external repositories (commit hashes) live in `repo-ref/REPOS.lock.json`.
+Pinned external repositories (commit hashes) live in `tools/upstreams/REPOS.lock.json`.
 
 ## mermaid-rs-renderer (mmdr) test fixtures
 
-Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
+Source repo: `repo-ref/mermaid-rs-renderer` (see `tools/upstreams/REPOS.lock.json`).
 
 ### Flowchart
 
@@ -77,7 +77,7 @@ Some fixtures are derived from downstream issue reports and discussions.
 
 ## mermaid-rs-renderer docs comparison sources
 
-Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
+Source repo: `repo-ref/mermaid-rs-renderer` (see `tools/upstreams/REPOS.lock.json`).
 
 These fixtures are used by mermaid-rs-renderer's own upstream-vs-downstream comparison docs and
 are parity-gated against Mermaid SVG baselines:
@@ -99,7 +99,7 @@ are parity-gated against Mermaid SVG baselines:
 
 ## mermaid-rs-renderer bench fixtures
 
-Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
+Source repo: `repo-ref/mermaid-rs-renderer` (see `tools/upstreams/REPOS.lock.json`).
 
 These fixtures are sourced from mermaid-rs-renderer's benchmark corpus and are useful for
 layout + rendering regressions at larger sizes.
