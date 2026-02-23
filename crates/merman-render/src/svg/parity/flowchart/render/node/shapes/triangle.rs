@@ -62,7 +62,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
 
     let _ = write!(
         out,
-        r#"<g transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
+        r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
         util::fmt(-h / 2.0),
         util::fmt(h / 2.0),
         escape_attr(&fill_d),

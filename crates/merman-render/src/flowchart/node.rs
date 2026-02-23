@@ -122,6 +122,9 @@ fn node_render_dimensions(
         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.
         "roundedRect" | "rounded" => (text_w + 2.0 * p, text_h + 2.0 * p),
 
+        // Note (rendering-elements/state note box).
+        "note" => (text_w + 2.0 * p, text_h + 2.0 * p),
+
         // Diamond (decision/question).
         "diamond" | "question" | "diam" => {
             let w = text_w + p;
@@ -192,6 +195,9 @@ fn node_render_dimensions(
 
         // Fork/join bar (uses `lineColor` fill/stroke; no label).
         "fork" | "join" => (70.0, 10.0),
+
+        // Choice diamond (stateChoice in rendering-elements).
+        "choice" => (28.0, 28.0),
 
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label`.
         "bolt" => (35.0, 70.0),

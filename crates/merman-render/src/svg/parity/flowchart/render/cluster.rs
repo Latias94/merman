@@ -60,7 +60,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         .join("\n");
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
             escape_xml_display(&class_attr),
             escape_xml_display(&cluster.id),
             escape_xml_display(rect_style),
@@ -89,7 +89,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
         escape_xml_display(&class_attr),
         escape_xml_display(&cluster.id),
         escape_xml_display(rect_style),

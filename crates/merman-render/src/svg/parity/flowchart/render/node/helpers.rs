@@ -31,7 +31,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
 
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
+        r#"<g class="label edgeLabel" id="{}" transform="translate({},{})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0,0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
         escape_xml_display(node_id),
         fmt_display(x),
         fmt_display(y)
@@ -98,13 +98,13 @@ pub(super) fn open_node_wrapper(
             escape_xml_into(out, href);
             out.push_str(r#"" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
-            out.push_str(", ");
+            out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")">"#);
         } else {
             out.push_str(r#"<a transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
-            out.push_str(", ");
+            out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")">"#);
         }
@@ -127,7 +127,7 @@ pub(super) fn open_node_wrapper(
             escape_xml_into(out, node_id);
             let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
-            out.push_str(", ");
+            out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")""#);
         } else {
@@ -135,7 +135,7 @@ pub(super) fn open_node_wrapper(
             escape_xml_into(out, node_id);
             out.push_str(r#"" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
-            out.push_str(", ");
+            out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
             out.push_str(r#")""#);
         }

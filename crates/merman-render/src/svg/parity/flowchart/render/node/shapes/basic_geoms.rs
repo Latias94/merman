@@ -14,7 +14,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     let h = layout_node.height.max(1.0);
     let _ = write!(
         out,
-        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({}, {})"{} />"#,
+        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{} />"#,
         fmt(w / 2.0),
         fmt(w),
         fmt(-h / 2.0),

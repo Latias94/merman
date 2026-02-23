@@ -50,7 +50,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     }) {
         let _ = write!(
             out,
-            r#"<g transform="translate({}, {})">"#,
+            r#"<g transform="translate({},{})">"#,
             fmt_display(-h / 2.0),
             fmt_display(h / 2.0)
         );
@@ -120,7 +120,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     }) {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" transform="translate(0, {})">"#,
+            r#"<g class="basic label-container" transform="translate(0,{})">"#,
             fmt(h / 4.0)
         );
         let _ = write!(

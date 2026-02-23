@@ -15,8 +15,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     shape: &str,
     layout_node: &crate::model::LayoutNode,
+    style: &str,
     fill_color: &str,
     stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
     hand_drawn_seed: u64,
     timing_enabled: bool,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -61,15 +64,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
 
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 outer_d,
-                escape_attr(ctx.node_fill_color.as_str()),
+                escape_attr(fill_color),
+                escape_attr(style),
                 outer_d,
                 escape_attr(&line_color),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
                 inner_d,
                 escape_attr(&inner_fill),
+                escape_attr(style),
                 inner_d,
                 escape_attr(&inner_fill),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
             );
             true
         }
@@ -91,18 +100,44 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                     h,
                     &line_color,
                     &line_color,
-                    1.3,
+                    stroke_width,
                     hand_drawn_seed,
                 )
             })
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 fill_d,
                 escape_attr(&line_color),
+                escape_attr(style),
                 stroke_d,
                 escape_attr(&line_color),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
+            );
+            true
+        }
+        // Flowchart v2 "rendering-elements" alias for state diagram choice pseudo-state.
+        // Mermaid ignores `node.label` and does not emit a label group.
+        "choice" => {
+            // These path data strings match Mermaid's flowchart-v2 output (via the
+            // rendering-elements/state pipeline) at 11.12.2.
+            let fill_d = r#"M0 14 C3.0797827916219833 10.920217208378016, 6.159565583243967 7.840434416756033, 14 0 C9.445017992146312 -4.554982007853687, 4.890035984292625 -9.109964015707375, 0 -14 C-4.69590768981725 -9.30409231018275, -9.3918153796345 -4.608184620365501, -14 0 C-10.594632213003933 3.4053677869960666, -7.189264426007867 6.810735573992133, 0 14"#;
+            let stroke_d = r#"M0 14 C2.800062938220799 11.1999370617792, 5.600125876441598 8.399874123558401, 14 0 M0 14 C3.0989264858886605 10.901073514111339, 6.197852971777321 7.802147028222679, 14 0 M14 0 C10.954967711679636 -3.045032288320363, 7.909935423359274 -6.090064576640726, 0 -14 M14 0 C10.242459432967006 -3.757540567032993, 6.484918865934014 -7.515081134065986, 0 -14 M0 -14 C-3.0194146709516647 -10.980585329048335, -6.038829341903329 -7.961170658096671, -14 0 M0 -14 C-5.262776161544025 -8.737223838455975, -10.52555232308805 -3.47444767691195, -14 0 M-14 0 C-9.98466955255717 4.01533044744283, -5.96933910511434 8.03066089488566, 0 14 M-14 0 C-8.907272248156367 5.092727751843632, -3.8145444963127364 10.185455503687264, 0 14"#;
+
+            let _ = write!(
+                out,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+                fill_d,
+                escape_attr(fill_color),
+                escape_attr(style),
+                stroke_d,
+                escape_attr(stroke_color),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
             );
             true
         }

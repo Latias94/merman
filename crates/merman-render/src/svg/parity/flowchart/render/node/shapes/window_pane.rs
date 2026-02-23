@@ -64,7 +64,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
     ) {
         let _ = write!(
             out,
-            r#"<g transform="translate({}, {})" class="basic label-container">"#,
+            r#"<g transform="translate({},{})" class="basic label-container">"#,
             fmt(rect_offset / 2.0),
             fmt(rect_offset / 2.0)
         );

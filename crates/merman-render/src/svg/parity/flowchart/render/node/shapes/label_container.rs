@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use crate::svg::parity::flowchart::escape_attr;
+use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::util;
 
 use super::super::geom::path_from_points;
@@ -50,7 +50,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hourglass_collate(
     .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+        r##"<g class="basic label-container" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
         util::fmt(-w / 2.0),
         util::fmt(-h / 2.0),
         escape_attr(&fill_d),
@@ -63,6 +63,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hourglass_collate(
 pub(in crate::svg::parity::flowchart::render::node) fn render_notched_rectangle(
     out: &mut String,
     layout_node: &crate::model::LayoutNode,
+    style: &str,
 ) {
     let w = layout_node.width.max(1.0);
     let h = layout_node.height.max(1.0);
@@ -84,9 +85,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_notched_rectangle(
     }
     let _ = write!(
         out,
-        r#"<polygon points="{}" class="label-container" transform="translate({},{})"/>"#,
+        r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
         points_attr,
         util::fmt(-w / 2.0),
-        util::fmt(h / 2.0)
+        util::fmt(h / 2.0),
+        OptionalStyleAttr(style),
     );
 }

@@ -126,6 +126,63 @@ fn normalize_attr_whitespace_strict(s: &str) -> String {
     out.trim().to_string()
 }
 
+fn normalize_transform_attr(s: &str) -> String {
+    // SVG transform lists allow arbitrary whitespace and optional commas between numeric
+    // arguments. For DOM comparisons we treat whitespace around commas as non-semantic.
+    //
+    // Examples that should compare equal:
+    // - `translate(1,2)` vs `translate(1, 2)`
+    // - `translate(1 ,  2)` vs `translate(1,2)`
+    // - `matrix(1 0 0 1 0 0)` (whitespace separators must be preserved, just normalized)
+    let mut out = String::with_capacity(s.len());
+    let mut pending_space = false;
+    let mut it = s.chars().peekable();
+    while let Some(ch) = it.next() {
+        if ch.is_whitespace() {
+            pending_space = true;
+            continue;
+        }
+        if ch == '(' {
+            if out.ends_with(' ') {
+                out.pop();
+            }
+            out.push('(');
+            pending_space = false;
+            while it.peek().is_some_and(|c| c.is_whitespace()) {
+                it.next();
+            }
+            continue;
+        }
+        if ch == ')' {
+            if out.ends_with(' ') {
+                out.pop();
+            }
+            out.push(')');
+            pending_space = false;
+            continue;
+        }
+        if ch == ',' {
+            if out.ends_with(' ') {
+                out.pop();
+            }
+            out.push(',');
+            pending_space = false;
+            while it.peek().is_some_and(|c| c.is_whitespace()) {
+                it.next();
+            }
+            continue;
+        }
+        if pending_space {
+            if !out.is_empty() && !out.ends_with(' ') {
+                out.push(' ');
+            }
+            pending_space = false;
+        }
+        out.push(ch);
+    }
+    out.trim().to_string()
+}
+
 fn is_identifier_like_attr(key: &str) -> bool {
     matches!(
         key,
@@ -263,7 +320,11 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             let key = a.name().to_string();
             let mut val = a.value().to_string();
 
-            if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points" | "transform") {
+            if key == "transform" {
+                val = normalize_transform_attr(&val);
+            }
+
+            if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points") {
                 val = normalize_attr_whitespace_strict(&val);
             }
 

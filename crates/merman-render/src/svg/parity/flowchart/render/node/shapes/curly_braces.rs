@@ -265,7 +265,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
         let _ = write!(
             out,
             concat!(
-                r##"<g class="text" transform="translate({}, 0)"><g>"##,
+                r##"<g class="text" transform="translate({},0)"><g>"##,
                 r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
                 r##"</g><g>"##,
                 r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
@@ -393,7 +393,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
         let _ = write!(
             out,
             concat!(
-                r##"<g class="text" transform="translate({}, 0)"><g>"##,
+                r##"<g class="text" transform="translate({},0)"><g>"##,
                 r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
                 r##"</g><g stroke-opacity="0">"##,
                 r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,

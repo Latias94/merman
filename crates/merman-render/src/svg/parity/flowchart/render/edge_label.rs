@@ -125,7 +125,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     };
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
+                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
                         fmt_display(x),
                         fmt_display(y),
                         escape_xml_display(&edge.id),
@@ -164,7 +164,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 let h = (metrics.height + 4.0).max(1.0);
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
+                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
                     fmt_display(x),
                     fmt_display(y),
                     escape_xml_display(&edge.id),
@@ -193,7 +193,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
         let _ = write!(
             out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)">"#,
             escape_xml_display(&edge.id)
         );
         write_flowchart_svg_text(out, "", false);
@@ -430,7 +430,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
@@ -497,7 +497,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
@@ -515,7 +515,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
     let _ = write!(
         out,
-        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
+        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
         escape_xml_display(&edge.id),
         escape_xml_display(&div_color_prefix),
         "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",

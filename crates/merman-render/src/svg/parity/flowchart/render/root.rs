@@ -22,7 +22,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 off.origin_x,
                 off.origin_y,
                 format!(
-                    r#" transform="translate({}, {})""#,
+                    r#" transform="translate({},{})""#,
                     fmt_display(rel_x),
                     fmt_display(rel_y)
                 ),
@@ -32,7 +32,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             (
                 parent_origin_x,
                 parent_origin_y,
-                r#" transform="translate(0, 0)""#.to_string(),
+                r#" transform="translate(0,0)""#.to_string(),
             )
         }
     } else {

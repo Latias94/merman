@@ -31,7 +31,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_cylinder(
     );
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container" style="" transform="translate({}, {})"/>"#,
+        r#"<path d="{}" class="basic label-container" style="" transform="translate({},{})"/>"#,
         escape_attr(&path_data),
         util::fmt(-w / 2.0),
         util::fmt(-(h / 2.0 + ry))

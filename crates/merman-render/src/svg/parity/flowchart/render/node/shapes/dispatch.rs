@@ -54,7 +54,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
 
         // Flowchart v2 card/notched-rectangle.
         "notch-rect" | "notched-rectangle" | "card" => {
-            super::render_notched_rectangle(out, layout_node);
+            super::render_notched_rectangle(out, layout_node, style);
         }
 
         // Flowchart v2 delay / half-rounded rectangle.
@@ -251,8 +251,11 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_shaded_process(
                 out,
                 layout_node,
+                style,
                 fill_color,
                 stroke_color,
+                stroke_width,
+                stroke_dasharray,
                 hand_drawn_seed,
                 timing_enabled,
                 details,
@@ -428,6 +431,19 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 style,
                 fill_color,
                 stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+                timing_enabled,
+                details,
+            );
+        }
+        "note" => {
+            super::render_note(
+                out,
+                ctx,
+                layout_node,
+                style,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,

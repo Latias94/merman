@@ -86,7 +86,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     } else {
         let _ = write!(
             out,
-            r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
+            r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({},{})"{} />"#,
             fmt_display(-deduced_width),
             fmt_display(-half_height),
             fmt_display(0.0),

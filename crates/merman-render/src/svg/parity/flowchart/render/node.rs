@@ -55,12 +55,22 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let node_styles = resolved.node_styles;
     let node_classes = resolved.node_classes;
 
+    let empty_classes: &[String] = &[];
+    let node_classes_for_wrapper = match shape {
+        // Mermaid flowchart-v2 start/stop nodes do not carry classDef classes on the wrapper.
+        // Styling is applied via inline styles on the shape paths (stop) or ignored (start).
+        "sm-circ" | "small-circle" | "start" | "fr-circ" | "framed-circle" | "stop" => {
+            empty_classes
+        }
+        _ => node_classes,
+    };
+
     helpers::open_node_wrapper(
         out,
         node_id,
         dom_idx,
         class_attr_base,
-        node_classes,
+        node_classes_for_wrapper,
         wrapped_in_a,
         href,
         x,
@@ -110,8 +120,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         ctx,
         shape,
         layout_node,
+        &style,
         fill_color,
         stroke_color,
+        stroke_width,
+        stroke_dasharray,
         hand_drawn_seed,
         timing_enabled,
         details,

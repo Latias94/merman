@@ -543,8 +543,55 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
         }
 
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        enum ArrayToken {
+            Str(String),
+            Ident(String),
+        }
+
         fn is_ws_byte(b: u8) -> bool {
             matches!(b, b' ' | b'\t' | b'\n' | b'\r')
+        }
+
+        fn parse_string_lit(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
+            let mut out = String::new();
+            let mut escaped = false;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if escaped {
+                    match b {
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'\\' => out.push('\\'),
+                        b'\'' => out.push('\''),
+                        b'"' => out.push('"'),
+                        _ => out.push(b as char),
+                    }
+                    escaped = false;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\\' {
+                    escaped = true;
+                    i += 1;
+                    continue;
+                }
+                if b == quote {
+                    return Some((out, i + 1));
+                }
+                out.push(b as char);
+                i += 1;
+            }
+            None
+        }
+
+        fn parse_ident(bytes: &[u8], mut i: usize) -> (String, usize) {
+            let start = i;
+            while i < bytes.len() && is_ident_byte(bytes[i]) {
+                i += 1;
+            }
+            (String::from_utf8_lossy(&bytes[start..i]).to_string(), i)
         }
 
         fn find_matching_paren_close(text: &str, open_paren: usize) -> Option<usize> {
@@ -682,6 +729,487 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
             }
             None
+        }
+
+        fn collect_const_arrays(text: &str) -> std::collections::HashMap<String, Vec<ArrayToken>> {
+            let bytes = text.as_bytes();
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            let mut out: std::collections::HashMap<String, Vec<ArrayToken>> =
+                std::collections::HashMap::new();
+            let mut mode = Mode::Normal;
+            let mut escaped = false;
+
+            let mut i = 0usize;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+
+                        if bytes.get(i..i + 5) == Some(b"const") {
+                            let before_ok = i == 0 || !is_ident_byte(bytes[i - 1]);
+                            let after_ok = !bytes.get(i + 5).is_some_and(|c| is_ident_byte(*c));
+                            if !before_ok || !after_ok {
+                                i += 1;
+                                continue;
+                            }
+
+                            let mut j = i + 5;
+                            while bytes.get(j).is_some_and(|c| is_ws_byte(*c)) {
+                                j += 1;
+                            }
+                            if !bytes.get(j).is_some_and(|c| is_ident_byte(*c)) {
+                                i += 1;
+                                continue;
+                            }
+                            let (name, mut k) = parse_ident(bytes, j);
+
+                            while k < bytes.len() {
+                                if bytes[k] == b'/' && bytes.get(k + 1) == Some(&b'/') {
+                                    while k < bytes.len() && bytes[k] != b'\n' {
+                                        k += 1;
+                                    }
+                                    continue;
+                                }
+                                if bytes[k] == b'/' && bytes.get(k + 1) == Some(&b'*') {
+                                    k += 2;
+                                    while k + 1 < bytes.len() {
+                                        if bytes[k] == b'*' && bytes[k + 1] == b'/' {
+                                            k += 2;
+                                            break;
+                                        }
+                                        k += 1;
+                                    }
+                                    continue;
+                                }
+                                if bytes[k] == b'=' {
+                                    break;
+                                }
+                                if bytes[k] == b'\n' {
+                                    break;
+                                }
+                                k += 1;
+                            }
+                            if bytes.get(k) != Some(&b'=') {
+                                i += 1;
+                                continue;
+                            }
+                            k += 1;
+                            while bytes.get(k).is_some_and(|c| is_ws_byte(*c)) {
+                                k += 1;
+                            }
+                            if bytes.get(k) != Some(&b'[') {
+                                i += 1;
+                                continue;
+                            }
+
+                            let mut depth = 1i32;
+                            let mut tokens: Vec<ArrayToken> = Vec::new();
+                            let mut m = k + 1;
+                            let mut inner_mode = Mode::Normal;
+                            let mut inner_escaped = false;
+                            while m < bytes.len() {
+                                let c = bytes[m];
+                                match inner_mode {
+                                    Mode::Normal => {
+                                        if c == b'/' && bytes.get(m + 1) == Some(&b'/') {
+                                            inner_mode = Mode::LineComment;
+                                            m += 2;
+                                            continue;
+                                        }
+                                        if c == b'/' && bytes.get(m + 1) == Some(&b'*') {
+                                            inner_mode = Mode::BlockComment;
+                                            m += 2;
+                                            continue;
+                                        }
+                                        if c == b'\'' || c == b'"' {
+                                            let quote = c;
+                                            if let Some((s, next)) =
+                                                parse_string_lit(bytes, m + 1, quote)
+                                            {
+                                                tokens.push(ArrayToken::Str(s));
+                                                m = next;
+                                                continue;
+                                            }
+                                        }
+                                        if is_ident_byte(c) {
+                                            let (id, next) = parse_ident(bytes, m);
+                                            tokens.push(ArrayToken::Ident(id));
+                                            m = next;
+                                            continue;
+                                        }
+                                        if c == b'[' {
+                                            depth += 1;
+                                        } else if c == b']' {
+                                            depth -= 1;
+                                            if depth == 0 {
+                                                break;
+                                            }
+                                        }
+                                        m += 1;
+                                    }
+                                    Mode::SingleQuote | Mode::DoubleQuote | Mode::Template => {
+                                        if inner_escaped {
+                                            inner_escaped = false;
+                                            m += 1;
+                                            continue;
+                                        }
+                                        if c == b'\\' {
+                                            inner_escaped = true;
+                                            m += 1;
+                                            continue;
+                                        }
+                                        if (inner_mode == Mode::SingleQuote && c == b'\'')
+                                            || (inner_mode == Mode::DoubleQuote && c == b'"')
+                                            || (inner_mode == Mode::Template && c == b'`')
+                                        {
+                                            inner_mode = Mode::Normal;
+                                        }
+                                        m += 1;
+                                    }
+                                    Mode::LineComment => {
+                                        if c == b'\n' {
+                                            inner_mode = Mode::Normal;
+                                        }
+                                        m += 1;
+                                    }
+                                    Mode::BlockComment => {
+                                        if c == b'*' && bytes.get(m + 1) == Some(&b'/') {
+                                            inner_mode = Mode::Normal;
+                                            m += 2;
+                                            continue;
+                                        }
+                                        m += 1;
+                                    }
+                                }
+                            }
+
+                            if depth == 0 && !tokens.is_empty() {
+                                out.insert(name, tokens);
+                            }
+                            i = m;
+                            continue;
+                        }
+
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            out
+        }
+
+        fn array_tokens_to_strings(tokens: &[ArrayToken]) -> Vec<String> {
+            tokens
+                .iter()
+                .filter_map(|t| match t {
+                    ArrayToken::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn array_tokens_to_idents(tokens: &[ArrayToken]) -> Vec<String> {
+            tokens
+                .iter()
+                .filter_map(|t| match t {
+                    ArrayToken::Ident(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn synthesize_flowchart_shape_alias_blocks(
+            spec_path: &Path,
+            source_stem: &str,
+            text: &str,
+        ) -> Result<Vec<CypressBlock>, XtaskError> {
+            let arrays = collect_const_arrays(text);
+            let Some(alias_sets_tokens) = arrays.get("aliasSets") else {
+                return Ok(Vec::new());
+            };
+            let alias_sets = array_tokens_to_idents(alias_sets_tokens);
+            if alias_sets.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let mut out: Vec<CypressBlock> = Vec::new();
+            for (idx, set_name) in alias_sets.iter().enumerate() {
+                let Some(set_tokens) = arrays.get(set_name) else {
+                    return Err(XtaskError::SnapshotUpdateFailed(format!(
+                        "failed to synthesize cypress blocks from {}: missing const array {set_name}",
+                        spec_path.display()
+                    )));
+                };
+                let aliases = array_tokens_to_strings(set_tokens);
+                if aliases.is_empty() {
+                    continue;
+                }
+
+                let mut body = String::from("flowchart\n");
+                for (i, a) in aliases.iter().enumerate() {
+                    body.push_str(&format!(" n{i}@{{ shape: {a}, label: \"{a}\" }}\n"));
+                }
+
+                out.push(CypressBlock {
+                    source_spec: spec_path.to_path_buf(),
+                    source_stem: source_stem.to_string(),
+                    idx_in_file: idx,
+                    test_name: Some(format!("shape-alias {set_name}")),
+                    call: "imgSnapshotTest".to_string(),
+                    body,
+                });
+            }
+            Ok(out)
+        }
+
+        fn synthesize_flowchart_shapes_blocks(
+            spec_path: &Path,
+            source_stem: &str,
+            text: &str,
+            aggregate_name: &str,
+        ) -> Result<Vec<CypressBlock>, XtaskError> {
+            let arrays = collect_const_arrays(text);
+
+            let looks = arrays
+                .get("looks")
+                .map(|t| array_tokens_to_strings(t))
+                .unwrap_or_default();
+            if !looks.iter().any(|l| l == "classic") {
+                return Ok(Vec::new());
+            }
+
+            let directions = arrays
+                .get("directions")
+                .map(|t| array_tokens_to_strings(t))
+                .unwrap_or_default();
+            if directions.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let Some(sets_tokens) = arrays.get(aggregate_name) else {
+                return Ok(Vec::new());
+            };
+            let set_names = array_tokens_to_idents(sets_tokens);
+            if set_names.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            let variants: [(&str, bool); 8] = [
+                ("nolabel", false),
+                ("label", false),
+                ("allpairs", false),
+                ("longlabel", false),
+                ("md_html_true", false),
+                ("md_html_false", true),
+                ("styles", false),
+                ("classdef", false),
+            ];
+
+            let mut out: Vec<CypressBlock> = Vec::new();
+            let mut idx_in_file = 0usize;
+            for dir in &directions {
+                for set_name in &set_names {
+                    let Some(set_tokens) = arrays.get(set_name) else {
+                        return Err(XtaskError::SnapshotUpdateFailed(format!(
+                            "failed to synthesize cypress blocks from {}: missing const array {set_name}",
+                            spec_path.display()
+                        )));
+                    };
+                    let shapes = array_tokens_to_strings(set_tokens);
+                    if shapes.is_empty() {
+                        continue;
+                    }
+
+                    for (variant, needs_html_labels_false) in variants {
+                        let mut code = String::new();
+                        if needs_html_labels_false {
+                            code.push_str("---\n");
+                            code.push_str("config:\n");
+                            code.push_str("  htmlLabels: false\n");
+                            code.push_str("  flowchart:\n");
+                            code.push_str("    htmlLabels: false\n");
+                            code.push_str("---\n");
+                        }
+
+                        code.push_str(&format!("flowchart {dir}\n"));
+
+                        match variant {
+                            "nolabel" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s} }}\n"
+                                    ));
+                                }
+                            }
+                            "label" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s}, label: 'This is a label for {s} shape' }}\n"
+                                    ));
+                                }
+                            }
+                            "allpairs" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i}{i}@{{ shape: {s}, label: 'This is a label for {s} shape' }}\n"
+                                    ));
+                                }
+                                for i in 0..shapes.len() {
+                                    for j in (i + 1)..shapes.len() {
+                                        code.push_str(&format!("  n{i}{i} --> n{j}{j}\n"));
+                                    }
+                                }
+                            }
+                            "longlabel" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s}, label: 'This is a very very very very very long long long label for {s} shape' }}\n"
+                                    ));
+                                }
+                            }
+                            "md_html_true" | "md_html_false" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s}, label: 'This is **bold** </br>and <strong>strong</strong> for {s} shape' }}\n"
+                                    ));
+                                }
+                            }
+                            "styles" => {
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s}, label: 'new {s} shape' }}\n"
+                                    ));
+                                    code.push_str(&format!(
+                                        "  style n{i}{i} fill:#f9f,stroke:#333,stroke-width:4px \n"
+                                    ));
+                                }
+                            }
+                            "classdef" => {
+                                code.push_str("  classDef customClazz fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5\n");
+                                for (i, s) in shapes.iter().enumerate() {
+                                    code.push_str(&format!(
+                                        "  n{i} --> n{i}{i}@{{ shape: {s}, label: 'new {s} shape' }}\n"
+                                    ));
+                                    code.push_str(&format!("  n{i}{i}:::customClazz\n"));
+                                }
+                            }
+                            _ => {}
+                        }
+
+                        out.push(CypressBlock {
+                            source_spec: spec_path.to_path_buf(),
+                            source_stem: source_stem.to_string(),
+                            idx_in_file,
+                            test_name: Some(format!("{aggregate_name} {set_name} {dir} {variant}")),
+                            call: "imgSnapshotTest".to_string(),
+                            body: code,
+                        });
+                        idx_in_file += 1;
+                    }
+                }
+            }
+
+            Ok(out)
         }
 
         let source_stem = spec_path
@@ -1120,6 +1648,45 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
 
                 search_from = close_paren + 1;
+            }
+        }
+
+        if out.is_empty() {
+            let file = spec_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+
+            if file == "flowchart-shape-alias.spec.ts" {
+                let synthesized =
+                    synthesize_flowchart_shape_alias_blocks(spec_path, &source_stem, &text)?;
+                if !synthesized.is_empty() {
+                    return Ok(synthesized);
+                }
+            }
+
+            if file == "oldShapes.spec.ts" {
+                let synthesized = synthesize_flowchart_shapes_blocks(
+                    spec_path,
+                    &source_stem,
+                    &text,
+                    "shapesSets",
+                )?;
+                if !synthesized.is_empty() {
+                    return Ok(synthesized);
+                }
+            }
+
+            if file == "newShapes.spec.ts" {
+                let synthesized = synthesize_flowchart_shapes_blocks(
+                    spec_path,
+                    &source_stem,
+                    &text,
+                    "newShapesSets",
+                )?;
+                if !synthesized.is_empty() {
+                    return Ok(synthesized);
+                }
             }
         }
 

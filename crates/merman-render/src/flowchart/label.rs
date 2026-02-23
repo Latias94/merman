@@ -507,6 +507,10 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 t = t.replace("<br />", "\n");
                 t = t.replace("<br/>", "\n");
                 t = t.replace("<br>", "\n");
+                t = t.replace("</br>", "\n");
+                t = t.replace("</br/>", "\n");
+                t = t.replace("</br />", "\n");
+                t = t.replace("</br >", "\n");
 
                 // In SVG-label mode (htmlLabels=false), Mermaid renders `<tag>text</tag>` as
                 // escaped literal tag tokens with whitespace separation (see

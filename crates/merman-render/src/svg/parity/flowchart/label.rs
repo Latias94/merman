@@ -20,7 +20,11 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         let input = input
             .replace("<br>", "<br />")
             .replace("<br/>", "<br />")
-            .replace("<br >", "<br />");
+            .replace("<br >", "<br />")
+            .replace("</br>", "<br />")
+            .replace("</br/>", "<br />")
+            .replace("</br />", "<br />")
+            .replace("</br >", "<br />");
 
         fn is_xhtml_void_tag(name: &str) -> bool {
             matches!(
@@ -232,8 +236,31 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         t[end + 1..].trim().is_empty()
     }
 
+    let looks_like_markdown = label_type != "markdown" && {
+        // Mermaid flowchart-v2 treats `**...**` as Markdown strong inside HTML labels even when the
+        // FlowDB label type is `text`.
+        label.contains("**") || label.contains("__")
+    };
+
     match label_type {
         "markdown" => {
+            let mut html_out = String::new();
+            let parser = pulldown_cmark::Parser::new_ext(
+                label,
+                pulldown_cmark::Options::ENABLE_TABLES
+                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
+            )
+            .map(|ev| match ev {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                other => other,
+            });
+            pulldown_cmark::html::push_html(&mut html_out, parser);
+            let html_out = html_out.trim().to_string();
+            let html_out = crate::text::replace_fontawesome_icons(&html_out);
+            xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
+        }
+        _ if looks_like_markdown => {
             let mut html_out = String::new();
             let parser = pulldown_cmark::Parser::new_ext(
                 label,
@@ -368,6 +395,30 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
         ])
     }
 
+    fn strip_simple_markdown_word(word: &str) -> (std::borrow::Cow<'_, str>, bool, bool) {
+        // Mermaid flowchart-v2 SVG labels apply a small subset of Markdown styling even when the
+        // FlowDB label type is `text` (not `markdown`), e.g. `**bold**`.
+        if word.len() >= 4 && word.starts_with("**") && word.ends_with("**") {
+            let inner = &word[2..word.len() - 2];
+            if !inner.is_empty() {
+                return (std::borrow::Cow::Borrowed(inner), true, false);
+            }
+        }
+        if word.len() >= 2 && word.starts_with('*') && word.ends_with('*') {
+            let inner = &word[1..word.len() - 1];
+            if !inner.is_empty() {
+                return (std::borrow::Cow::Borrowed(inner), false, true);
+            }
+        }
+        if word.len() >= 2 && word.starts_with('_') && word.ends_with('_') {
+            let inner = &word[1..word.len() - 1];
+            if !inner.is_empty() {
+                return (std::borrow::Cow::Borrowed(inner), false, true);
+            }
+        }
+        (std::borrow::Cow::Borrowed(word), false, false)
+    }
+
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
             out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
@@ -393,14 +444,19 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
                 .collect()
         });
         for (word_idx, word) in words.iter().enumerate() {
-            out.push_str(
-                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
+            let (word, is_strong, is_em) = strip_simple_markdown_word(word);
+            let font_style = if is_em { "italic" } else { "normal" };
+            let font_weight = if is_strong { "bold" } else { "normal" };
+            let _ = write!(
+                out,
+                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                font_style, font_weight
             );
             if word_idx == 0 {
-                escape_xml_into(out, word);
+                escape_xml_into(out, word.as_ref());
             } else {
                 out.push(' ');
-                escape_xml_into(out, word);
+                escape_xml_into(out, word.as_ref());
             }
             out.push_str("</tspan>");
         }
