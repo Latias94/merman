@@ -1,0 +1,127 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Charlie",
+      "Bob()",
+      "Charlie()"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob()": {
+        "name": "Bob()",
+        "description": "Bob()",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie()": {
+        "name": "Charlie()",
+        "description": "Charlie()",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob()",
+        "to": "Alice",
+        "message": "Circle at source with solid arrow (RTL)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Charlie()",
+        "to": "Bob",
+        "message": "Circle at source with dotted arrow (RTL)",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Bob()",
+        "to": "Alice",
+        "message": "Circle at source with open arrow (RTL)",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Charlie()",
+        "to": "Alice",
+        "message": "Circle at source with cross arrow (RTL)",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Bob()",
+        "to": "Alice",
+        "message": "Circle at source with close arrow (RTL)",
+        "wrap": false,
+        "type": 25,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

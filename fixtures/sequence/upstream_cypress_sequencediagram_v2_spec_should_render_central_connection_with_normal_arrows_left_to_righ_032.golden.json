@@ -1,0 +1,118 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Charlie",
+      "()Bob"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "()Bob": {
+        "name": "()Bob",
+        "description": "()Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Solid arrow with circle at destination",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Dotted arrow with circle at destination",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Open arrow with circle at destination",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Cross arrow with circle at destination",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Close arrow with circle at destination",
+        "wrap": false,
+        "type": 25,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
