@@ -24,6 +24,12 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/sankey.md`
 - config: `linkColor: source`, `showValues: false`, `nodeAlignment: left`: `fixtures/sankey/upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec.mmd`
 - `sankey-beta` header + commas example: `fixtures/sankey/upstream_sankey_beta_docs_commas_spec.mmd`
 
+Cypress rendering fixtures (SVG parity coverage):
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/sankey.spec.ts`
+
+- basic sankey: `fixtures/sankey/upstream_cypress_sankey_spec_example_001.mmd`
+
 Upstream SVG baselines:
 
 - `fixtures/upstream-svgs/sankey/upstream_sankey_beta_energy_csv_spec.svg`
@@ -33,6 +39,7 @@ Upstream SVG baselines:
 - `fixtures/upstream-svgs/sankey/upstream_sankey_docs_double_quotes_spec.svg`
 - `fixtures/upstream-svgs/sankey/upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec.svg`
 - `fixtures/upstream-svgs/sankey/upstream_sankey_beta_docs_commas_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_cypress_sankey_spec_example_001.svg`
 
 Compare report:
 
