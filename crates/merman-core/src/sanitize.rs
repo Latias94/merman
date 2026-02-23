@@ -485,14 +485,14 @@ fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
     }
 
     let level = config.get_str("securityLevel");
-    if matches!(level, Some("antiscript" | "strict")) {
+    if matches!(level, Some("antiscript" | "strict" | "sandbox")) {
         return remove_script(text);
     }
 
     if level != Some("loose") {
         let mut t = break_to_placeholder(text);
         t = t.replace('<', "&lt;").replace('>', "&gt;");
-        t = t.replace('=', "&equals;");
+        t = t.replace('=', "&#61;");
         return placeholder_to_break(&t);
     }
 
@@ -630,15 +630,17 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_text_sandbox_escapes_angle_brackets_and_equals() {
+    fn sanitize_text_sandbox_runs_remove_script_like_mermaid() {
         let cfg = MermaidConfig::from_value(json!({
             "securityLevel": "sandbox",
             "flowchart": { "htmlLabels": true }
         }));
-        assert_eq!(
-            sanitize_text(r#"<b a=1>ok</b><br/>x"#, &cfg),
-            "&lt;b a&equals;1&gt;ok&lt;/b&gt;<br/>x"
-        );
+        let out = sanitize_text(r#"<b a=1>ok</b><br/>x"#, &cfg);
+        assert!(out.contains("<b"));
+        assert!(out.contains("ok"));
+        assert!(out.contains("<br"));
+        assert!(!out.contains("&lt;"));
+        assert!(!out.contains("&equals;"));
     }
 
     #[test]
