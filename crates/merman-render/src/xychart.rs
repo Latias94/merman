@@ -132,6 +132,11 @@ fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
         .or_else(|| v.as_u64().map(|n| n as f64))
+        .or_else(|| {
+            let s = v.as_str()?.trim();
+            let s = s.strip_suffix("px").unwrap_or(s).trim();
+            s.parse::<f64>().ok()
+        })
 }
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -158,8 +163,9 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
-fn has_ref_object(v: &Value) -> bool {
-    v.as_object().is_some_and(|m| m.contains_key("$ref"))
+fn is_ref_only_object(v: &Value) -> bool {
+    v.as_object()
+        .is_some_and(|m| m.len() == 1 && m.contains_key("$ref"))
 }
 
 fn default_axis_config() -> AxisConfig {
@@ -186,7 +192,11 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
     else {
         return base;
     };
-    if !v.is_object() || has_ref_object(v) {
+    // The default Mermaid config uses `$ref` placeholders (schema references) for axis configs.
+    // When users override axis fields via directives/frontmatter, a deep-merge will keep the `$ref`
+    // key while adding the override keys. Treat a *pure* `$ref` object as "no concrete config",
+    // but do not discard user overrides just because `$ref` is present.
+    if !v.is_object() || is_ref_only_object(v) {
         return base;
     }
 
@@ -327,7 +337,10 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
     for t in texts {
         let m = measurer.measure(t, &style);
         max_w = max_w.max(m.width);
-        max_h = max_h.max(m.height);
+        // Mermaid XYChart uses `computeDimensionOfText(...)` which probes a `<tspan>`'s
+        // `getBoundingClientRect().height`. That tends to be closer to "simple text bbox height"
+        // than the slightly taller wrapped SVG `<text>.getBBox().height` heuristic.
+        max_h = max_h.max(measurer.measure_svg_simple_text_bbox_height_px(t, &style));
     }
     Dimension {
         width: max_w,

@@ -200,6 +200,44 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
     }
 }
 
+fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &str) {
+    let background = get_truthy_string(tv, "background").unwrap_or_else(|| "white".to_string());
+    let primary_text = get_truthy_string(tv, "primaryTextColor")
+        .or_else(|| get_truthy_string(tv, "textColor"))
+        .unwrap_or_else(|| "#333".to_string());
+
+    let mut xy = match tv.get("xyChart") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+
+    set_if_missing(
+        &mut xy,
+        "backgroundColor",
+        Value::String(background.clone()),
+    );
+    for key in [
+        "titleColor",
+        "xAxisTitleColor",
+        "xAxisLabelColor",
+        "xAxisTickColor",
+        "xAxisLineColor",
+        "yAxisTitleColor",
+        "yAxisLabelColor",
+        "yAxisTickColor",
+        "yAxisLineColor",
+    ] {
+        set_if_missing(&mut xy, key, Value::String(primary_text.clone()));
+    }
+    set_if_missing(
+        &mut xy,
+        "plotColorPalette",
+        Value::String(default_palette.to_string()),
+    );
+
+    tv.insert("xyChart".to_string(), Value::Object(xy));
+}
+
 pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
     let theme = config.get_str("theme").unwrap_or("default");
     match theme {
@@ -227,6 +265,58 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "#0b0000", "#4d1037", "#3f5258", "#4f2f1b", "#6e0a0a", "#3b0048", "#995a01", "#154706",
         "#161722", "#00296f", "#01629c",
     ];
+
+    // Minimal `theme-dark` seeds needed for diagram render parity when users set `theme: dark`.
+    //
+    // Mermaid's JS theme sets many more variables (and calculates derived values in `updateColors()`).
+    // We seed the commonly-consumed surfaces + xychart palette here; other missing values are left
+    // for future parity work as fixtures demand.
+    set_if_missing(&mut tv, "darkMode", Value::Bool(true));
+    set_if_missing(&mut tv, "background", Value::String("#333".to_string()));
+    set_if_missing(
+        &mut tv,
+        "primaryColor",
+        Value::String("#1f2020".to_string()),
+    );
+    if get_truthy_string(&tv, "primaryTextColor").is_none() {
+        if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
+            if let Some(rgb) = parse_hex_rgb01(&primary_color) {
+                tv.insert(
+                    "primaryTextColor".to_string(),
+                    Value::String(rgb01_to_hex(Rgb01 {
+                        r: 1.0 - rgb.r,
+                        g: 1.0 - rgb.g,
+                        b: 1.0 - rgb.b,
+                    })),
+                );
+            }
+        }
+    }
+    set_if_missing(&mut tv, "textColor", Value::String("#ccc".to_string()));
+    set_if_missing(
+        &mut tv,
+        "fontFamily",
+        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+    );
+    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
+    set_if_missing(&mut tv, "border1", Value::String("#ccc".to_string()));
+    set_if_missing(
+        &mut tv,
+        "border2",
+        Value::String("rgba(255, 255, 255, 0.25)".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "labelBackground",
+        Value::String("#181818".to_string()),
+    );
+    set_if_missing(&mut tv, "titleColor", Value::String("#F9FFFE".to_string()));
+    set_if_missing(
+        &mut tv,
+        "errorBkgColor",
+        Value::String("#a44141".to_string()),
+    );
+    set_if_missing(&mut tv, "errorTextColor", Value::String("#ddd".to_string()));
 
     set_if_missing(
         &mut tv,
@@ -278,6 +368,13 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
             Value::String(scale_label_color.clone()),
         );
     }
+
+    // `theme-dark` xychart palette + colors.
+    // Source: `theme-dark.js`.
+    ensure_xychart_theme_defaults(
+        &mut tv,
+        "#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22",
+    );
 
     config.set_value("themeVariables", Value::Object(tv));
 }
@@ -344,6 +441,16 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         return;
     };
     let primary_hsl = rgb01_to_hsl(primary_rgb);
+    if get_truthy_string(&tv, "primaryTextColor").is_none() {
+        tv.insert(
+            "primaryTextColor".to_string(),
+            Value::String(rgb01_to_hex(Rgb01 {
+                r: 1.0 - primary_rgb.r,
+                g: 1.0 - primary_rgb.g,
+                b: 1.0 - primary_rgb.b,
+            })),
+        );
+    }
 
     let secondary_color =
         get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| "#cdffb2".to_string());
@@ -510,6 +617,13 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
             Value::String(scale_label_color.clone()),
         );
     }
+
+    // `theme-forest` xychart palette + colors.
+    // Source: `theme-forest.js`.
+    ensure_xychart_theme_defaults(
+        &mut tv,
+        "#CDE498,#FF6B6B,#A0D2DB,#D7BDE2,#F0F0F0,#FFC3A0,#7FD8BE,#FF9A8B,#FAF3E0,#FFF176",
+    );
 
     config.set_value("themeVariables", Value::Object(tv));
 }
