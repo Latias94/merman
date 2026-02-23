@@ -2957,13 +2957,24 @@ fn render_sequence_diagram_svg_inner(
                     y4 = fmt(y + 20.0)
                 )
             };
+            // Mermaid attaches an `x1` attribute to bidirectional self-reference message paths
+            // when sequence numbers are visible (autonumber), even though the geometry lives in
+            // the `d` attribute. This keeps DOM parity with upstream Cypress baselines.
+            let path_x1 = if sequence_number_visible && marker_start.is_some() {
+                Some(p0.x + 6.0)
+            } else {
+                None
+            };
             let _ = write!(
                 &mut out,
-                r#"<path d="{d}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+                r#"<path d="{d}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
                 d = d,
                 class = class,
                 marker_start = marker_start.unwrap_or(""),
                 marker_end = marker_end.unwrap_or(""),
+                x1 = path_x1
+                    .map(|x1| format!(r#" x1="{x1}""#, x1 = fmt(x1)))
+                    .unwrap_or_default(),
                 style = style
             );
         } else {
