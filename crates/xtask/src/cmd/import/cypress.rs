@@ -425,6 +425,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         last
     }
 
+    fn is_ws_or_newline_byte(b: u8) -> bool {
+        matches!(b, b' ' | b'\t' | b'\n' | b'\r')
+    }
+
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
@@ -528,6 +532,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         test_name: Option<String>,
         call: String,
         body: String,
+        options_obj: Option<String>,
     }
 
     fn extract_cypress_blocks(spec_path: &Path) -> Result<Vec<CypressBlock>, XtaskError> {
@@ -729,6 +734,163 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
             }
             None
+        }
+
+        fn find_matching_brace_close(text: &str, open_brace: usize) -> Option<usize> {
+            let bytes = text.as_bytes();
+            if bytes.get(open_brace) != Some(&b'{') {
+                return None;
+            }
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            let mut mode = Mode::Normal;
+            let mut depth: i32 = 1;
+            let mut escaped = false;
+
+            let mut i = open_brace + 1;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'{' {
+                            depth += 1;
+                        } else if b == b'}' {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(i + 1);
+                            }
+                        }
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            None
+        }
+
+        fn extract_second_arg_object_literal(
+            args_slice: &str,
+            after_first_arg: usize,
+        ) -> Option<String> {
+            let bytes = args_slice.as_bytes();
+            let mut i = after_first_arg;
+
+            while i < bytes.len() && is_ws_or_newline_byte(bytes[i]) {
+                i += 1;
+            }
+            if bytes.get(i) != Some(&b',') {
+                return None;
+            }
+            i += 1;
+            while i < bytes.len() && is_ws_or_newline_byte(bytes[i]) {
+                i += 1;
+            }
+            if bytes.get(i) != Some(&b'{') {
+                return None;
+            }
+            let Some(end) = find_matching_brace_close(args_slice, i) else {
+                return None;
+            };
+            Some(args_slice[i..end].to_string())
         }
 
         fn collect_const_arrays(text: &str) -> std::collections::HashMap<String, Vec<ArrayToken>> {
@@ -1057,6 +1219,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     test_name: Some(format!("shape-alias {set_name}")),
                     call: "imgSnapshotTest".to_string(),
                     body,
+                    options_obj: None,
                 });
             }
             Ok(out)
@@ -1203,6 +1366,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                             test_name: Some(format!("{aggregate_name} {set_name} {dir} {variant}")),
                             call: "imgSnapshotTest".to_string(),
                             body: code,
+                            options_obj: None,
                         });
                         idx_in_file += 1;
                     }
@@ -1634,6 +1798,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     extract_first_template_literal(args_slice, 0)
                 };
                 if let Some((raw, end_rel)) = extracted {
+                    let options_obj = if call == "imgSnapshotTest" {
+                        extract_second_arg_object_literal(args_slice, end_rel)
+                    } else {
+                        None
+                    };
                     out.push(CypressBlock {
                         source_spec: spec_path.to_path_buf(),
                         source_stem: source_stem.clone(),
@@ -1641,6 +1810,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                         test_name: test_name.clone(),
                         call: call.to_string(),
                         body: raw,
+                        options_obj,
                     });
                     idx_in_file += 1;
                     search_from = start + end_rel;
@@ -1693,6 +1863,274 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         Ok(out)
     }
 
+    fn js_object_literal_to_yaml_config_map(obj: &str) -> Option<serde_yaml::Mapping> {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        enum Mode {
+            Normal,
+            SingleQuote,
+            DoubleQuote,
+            LineComment,
+            BlockComment,
+        }
+
+        fn is_ident_start(b: u8) -> bool {
+            b.is_ascii_alphabetic() || b == b'_' || b == b'$'
+        }
+
+        fn is_ident_continue(b: u8) -> bool {
+            b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+        }
+
+        fn skip_ws_and_comments(bytes: &[u8], mut i: usize) -> usize {
+            let mut mode = Mode::Normal;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if is_ws_or_newline_byte(b) {
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        break;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                    Mode::SingleQuote | Mode::DoubleQuote => unreachable!(),
+                }
+            }
+            i
+        }
+
+        fn parse_string(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
+            let mut out = String::new();
+            let mut escaped = false;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if escaped {
+                    match b {
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'\\' => out.push('\\'),
+                        b'\'' => out.push('\''),
+                        b'"' => out.push('"'),
+                        _ => out.push(b as char),
+                    }
+                    escaped = false;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\\' {
+                    escaped = true;
+                    i += 1;
+                    continue;
+                }
+                if b == quote {
+                    return Some((out, i + 1));
+                }
+                out.push(b as char);
+                i += 1;
+            }
+            None
+        }
+
+        fn parse_ident(bytes: &[u8], mut i: usize) -> (String, usize) {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && is_ident_continue(bytes[i]) {
+                i += 1;
+            }
+            (String::from_utf8_lossy(&bytes[start..i]).to_string(), i)
+        }
+
+        fn parse_number(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Value, usize)> {
+            let start = i;
+            if bytes.get(i) == Some(&b'-') {
+                i += 1;
+            }
+            while i < bytes.len() {
+                let b = bytes[i];
+                if b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-') {
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+            let s = String::from_utf8_lossy(&bytes[start..i]).to_string();
+            if s.is_empty() || s == "-" {
+                return None;
+            }
+            let n: f64 = s.parse().ok()?;
+            Some((serde_yaml::Value::Number(serde_yaml::Number::from(n)), i))
+        }
+
+        fn parse_value(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Value, usize)> {
+            i = skip_ws_and_comments(bytes, i);
+            let b = *bytes.get(i)?;
+            match b {
+                b'{' => {
+                    let (m, j) = parse_object(bytes, i)?;
+                    Some((serde_yaml::Value::Mapping(m), j))
+                }
+                b'[' => {
+                    let (seq, j) = parse_array(bytes, i)?;
+                    Some((serde_yaml::Value::Sequence(seq), j))
+                }
+                b'\'' | b'"' => {
+                    let (s, j) = parse_string(bytes, i + 1, b)?;
+                    Some((serde_yaml::Value::String(s), j))
+                }
+                b'-' | b'0'..=b'9' => parse_number(bytes, i),
+                _ => {
+                    if !is_ident_start(b) {
+                        return None;
+                    }
+                    let (id, j) = parse_ident(bytes, i);
+                    match id.as_str() {
+                        "true" => Some((serde_yaml::Value::Bool(true), j)),
+                        "false" => Some((serde_yaml::Value::Bool(false), j)),
+                        "null" => Some((serde_yaml::Value::Null, j)),
+                        _ => None,
+                    }
+                }
+            }
+        }
+
+        fn parse_key(bytes: &[u8], mut i: usize) -> Option<(String, usize)> {
+            i = skip_ws_and_comments(bytes, i);
+            let b = *bytes.get(i)?;
+            match b {
+                b'\'' | b'"' => parse_string(bytes, i + 1, b),
+                _ => {
+                    if !is_ident_start(b) {
+                        return None;
+                    }
+                    let (id, j) = parse_ident(bytes, i);
+                    Some((id, j))
+                }
+            }
+        }
+
+        fn parse_object(bytes: &[u8], mut i: usize) -> Option<(serde_yaml::Mapping, usize)> {
+            if bytes.get(i) != Some(&b'{') {
+                return None;
+            }
+            i += 1;
+            let mut map = serde_yaml::Mapping::new();
+            loop {
+                i = skip_ws_and_comments(bytes, i);
+                if bytes.get(i) == Some(&b'}') {
+                    return Some((map, i + 1));
+                }
+                let (key, mut j) = parse_key(bytes, i)?;
+                j = skip_ws_and_comments(bytes, j);
+                if bytes.get(j) != Some(&b':') {
+                    return None;
+                }
+                j += 1;
+                let (val, mut k) = parse_value(bytes, j)?;
+                map.insert(serde_yaml::Value::String(key), val);
+                k = skip_ws_and_comments(bytes, k);
+                match bytes.get(k) {
+                    Some(b',') => {
+                        i = k + 1;
+                        continue;
+                    }
+                    Some(b'}') => return Some((map, k + 1)),
+                    _ => return None,
+                }
+            }
+        }
+
+        fn parse_array(bytes: &[u8], mut i: usize) -> Option<(Vec<serde_yaml::Value>, usize)> {
+            if bytes.get(i) != Some(&b'[') {
+                return None;
+            }
+            i += 1;
+            let mut seq = Vec::new();
+            loop {
+                i = skip_ws_and_comments(bytes, i);
+                if bytes.get(i) == Some(&b']') {
+                    return Some((seq, i + 1));
+                }
+                let (val, mut j) = parse_value(bytes, i)?;
+                seq.push(val);
+                j = skip_ws_and_comments(bytes, j);
+                match bytes.get(j) {
+                    Some(b',') => {
+                        i = j + 1;
+                        continue;
+                    }
+                    Some(b']') => return Some((seq, j + 1)),
+                    _ => return None,
+                }
+            }
+        }
+
+        let bytes = obj.as_bytes();
+        let i = skip_ws_and_comments(bytes, 0);
+        let (map, j) = parse_object(bytes, i)?;
+        let j = skip_ws_and_comments(bytes, j);
+        if j != bytes.len() {
+            return None;
+        }
+        Some(map)
+    }
+
+    fn strip_yaml_frontmatter_for_detect(s: &str) -> &str {
+        let bytes = s.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() && is_ws_or_newline_byte(bytes[i]) {
+            i += 1;
+        }
+        let s = &s[i..];
+        if !s.starts_with("---") {
+            return s;
+        }
+
+        let mut pieces = s.split_inclusive('\n');
+        let Some(first_piece) = pieces.next() else {
+            return s;
+        };
+        let first_line = first_piece.trim_end_matches('\n').trim_end_matches('\r');
+        if first_line.trim_end() != "---" {
+            return s;
+        }
+
+        let mut consumed = first_piece.len();
+        for piece in pieces {
+            let line = piece.trim_end_matches('\n').trim_end_matches('\r');
+            consumed += piece.len();
+            if line.trim_end() == "---" {
+                return &s[consumed..];
+            }
+        }
+
+        s
+    }
+
     #[derive(Debug, Clone)]
     struct Candidate {
         block: CypressBlock,
@@ -1726,7 +2164,25 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
         let blocks = extract_cypress_blocks(&spec_path)?;
         for b in blocks {
-            let mut body = canonical_fixture_text(&normalize_cypress_fixture_text(&b.body));
+            let body = normalize_cypress_fixture_text(&b.body);
+            let mut fixture_text = body;
+            if let Some(options_obj) = b.options_obj.as_deref() {
+                if let Some(map) = js_object_literal_to_yaml_config_map(options_obj) {
+                    if !map.is_empty() {
+                        let mut fm = serde_yaml::Mapping::new();
+                        fm.insert(
+                            serde_yaml::Value::String("config".to_string()),
+                            serde_yaml::Value::Mapping(map),
+                        );
+                        if let Ok(yaml) = serde_yaml::to_string(&fm) {
+                            let yaml = yaml.trim_end_matches('\n');
+                            fixture_text = format!("---\n{yaml}\n---\n{fixture_text}");
+                        }
+                    }
+                }
+            }
+
+            let mut body = canonical_fixture_text(&fixture_text);
             if body.trim().is_empty() {
                 continue;
             }
@@ -1748,7 +2204,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             }
 
             let mut cfg = merman::MermaidConfig::default();
-            let detected = match reg.detect_type(body.as_str(), &mut cfg) {
+            let detect_input = strip_yaml_frontmatter_for_detect(body.as_str());
+            let detected = match reg.detect_type(detect_input, &mut cfg) {
                 Ok(t) => t,
                 Err(_) => {
                     skipped.push(format!(
