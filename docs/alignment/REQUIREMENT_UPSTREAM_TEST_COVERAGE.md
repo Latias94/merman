@@ -48,3 +48,13 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/requirementDiagram-unifi
 - `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_010.mmd`
 - `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_011.mmd`
 - `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_012.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_013.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_014.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_016.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_018.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_020.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_021.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_022.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_023.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_025.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_026.mmd`
