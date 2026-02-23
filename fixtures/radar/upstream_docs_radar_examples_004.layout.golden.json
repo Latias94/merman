@@ -1,0 +1,286 @@
+{
+  "diagramType": "radar",
+  "layout": {
+    "RadarDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 700.0
+      },
+      "svg_width": 700.0,
+      "svg_height": 700.0,
+      "center_x": 350.0,
+      "center_y": 350.0,
+      "radius": 300.0,
+      "axis_label_factor": 1.05,
+      "title_y": -350.0,
+      "axes": [
+        {
+          "label": "Food Quality",
+          "angle": -1.571,
+          "line_x2": 0.0,
+          "line_y2": -300.0,
+          "label_x": 0.0,
+          "label_y": -315.0
+        },
+        {
+          "label": "Service",
+          "angle": 0.0,
+          "line_x2": 300.0,
+          "line_y2": 0.0,
+          "label_x": 315.0,
+          "label_y": 0.0
+        },
+        {
+          "label": "Price",
+          "angle": 1.571,
+          "line_x2": 0.0,
+          "line_y2": 300.0,
+          "label_x": 0.0,
+          "label_y": 315.0
+        },
+        {
+          "label": "Ambiance",
+          "angle": 3.142,
+          "line_x2": -300.0,
+          "line_y2": 0.0,
+          "label_x": -315.0,
+          "label_y": 0.0
+        }
+      ],
+      "graticules": [
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -60.0
+            },
+            {
+              "x": 60.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 60.0
+            },
+            {
+              "x": -60.0,
+              "y": 0.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -120.0
+            },
+            {
+              "x": 120.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 120.0
+            },
+            {
+              "x": -120.0,
+              "y": 0.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -180.0
+            },
+            {
+              "x": 180.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 180.0
+            },
+            {
+              "x": -180.0,
+              "y": 0.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -240.0
+            },
+            {
+              "x": 240.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 240.0
+            },
+            {
+              "x": -240.0,
+              "y": 0.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -300.0
+            },
+            {
+              "x": 300.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 300.0
+            },
+            {
+              "x": -300.0,
+              "y": 0.0
+            }
+          ]
+        }
+      ],
+      "curves": [
+        {
+          "label": "Restaurant A",
+          "class_index": 0.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -240.0
+            },
+            {
+              "x": 180.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 120.0
+            },
+            {
+              "x": -240.0,
+              "y": 0.0
+            }
+          ],
+          "path_d": ""
+        },
+        {
+          "label": "Restaurant B",
+          "class_index": 1.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -180.0
+            },
+            {
+              "x": 240.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 180.0
+            },
+            {
+              "x": -180.0,
+              "y": 0.0
+            }
+          ],
+          "path_d": ""
+        },
+        {
+          "label": "Restaurant C",
+          "class_index": 2.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -120.0
+            },
+            {
+              "x": 180.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 240.0
+            },
+            {
+              "x": -120.0,
+              "y": 0.0
+            }
+          ],
+          "path_d": ""
+        },
+        {
+          "label": "Restaurant D",
+          "class_index": 3.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -120.0
+            },
+            {
+              "x": 120.0,
+              "y": 0.0
+            },
+            {
+              "x": 0.0,
+              "y": 240.0
+            },
+            {
+              "x": -180.0,
+              "y": 0.0
+            }
+          ],
+          "path_d": ""
+        }
+      ],
+      "legend_items": [
+        {
+          "label": "Restaurant A",
+          "class_index": 0.0,
+          "x": 262.5,
+          "y": -262.5
+        },
+        {
+          "label": "Restaurant B",
+          "class_index": 1.0,
+          "x": 262.5,
+          "y": -242.5
+        },
+        {
+          "label": "Restaurant C",
+          "class_index": 2.0,
+          "x": 262.5,
+          "y": -222.5
+        },
+        {
+          "label": "Restaurant D",
+          "class_index": 3.0,
+          "x": 262.5,
+          "y": -202.5
+        }
+      ]
+    }
+  }
+}

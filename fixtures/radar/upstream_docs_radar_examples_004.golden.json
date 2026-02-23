@@ -1,0 +1,76 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "Restaurant Comparison",
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "food",
+        "label": "Food Quality"
+      },
+      {
+        "name": "service",
+        "label": "Service"
+      },
+      {
+        "name": "price",
+        "label": "Price"
+      },
+      {
+        "name": "ambiance",
+        "label": "Ambiance"
+      }
+    ],
+    "curves": [
+      {
+        "name": "a",
+        "label": "Restaurant A",
+        "entries": [
+          4,
+          3,
+          2,
+          4
+        ]
+      },
+      {
+        "name": "b",
+        "label": "Restaurant B",
+        "entries": [
+          3,
+          4,
+          3,
+          3
+        ]
+      },
+      {
+        "name": "c",
+        "label": "Restaurant C",
+        "entries": [
+          2,
+          3,
+          4,
+          2
+        ]
+      },
+      {
+        "name": "d",
+        "label": "Restaurant D",
+        "entries": [
+          2,
+          2,
+          4,
+          3
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": 5,
+      "min": 0,
+      "graticule": "polygon"
+    }
+  }
+}
