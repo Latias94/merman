@@ -24,7 +24,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/quadrantD
 ## SVG Parity
 
 - Local renderer (Stage B): `crates/merman-render/src/svg.rs` (`render_quadrantchart_diagram_svg`)
-- DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+- DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):
 
@@ -33,3 +33,26 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/quadrantChart.md`
 - docs example (reach/engagement): `fixtures/quadrantchart/upstream_quadrant_docs_example_reach_engagement.mmd`
 - docs example (config + themeVariables): `fixtures/quadrantchart/upstream_quadrant_docs_config_and_theme_example.mmd`
 - docs example (point styling): `fixtures/quadrantchart/upstream_quadrant_docs_styling_example.mmd`
+
+## Cypress rendering fixtures
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/quadrantChart.spec.js`
+
+These fixtures are imported from Mermaid's Cypress rendering tests and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/quadrantchart/*.svg` via:
+`cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_example_001.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_a_complete_quadrant_chart_002.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_without_points_003.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_able_to_render_y_axis_on_right_side_004.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_able_to_render_x_axis_on_bottom_005.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_able_to_render_x_axis_on_bottom_and_y_axis_on_right_006.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_without_title_007.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_use_all_the_config_008.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_use_all_the_theme_variable_009.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_x_axis_labels_in_the_center_if_x_axis_has_two_labe_010.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_y_axis_labels_in_the_center_if_y_axis_has_two_labe_011.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_should_render_both_axes_labels_on_the_left_and_bottom_if_both_ax_012.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_it_should_render_data_points_with_styles_013.mmd`
+- `fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_it_should_render_data_points_with_styles_classes_014.mmd`
