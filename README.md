@@ -7,13 +7,13 @@ Mermaid, but headless, in Rust.
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
 `merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
-The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-parity-policy.md`).
+The upstream Mermaid implementation is the spec (see [docs/adr/0014-upstream-parity-policy.md](docs/adr/0014-upstream-parity-policy.md)).
 
 ## TL;DR
 
-- Want an executable? Use `merman-cli` (render SVG/PNG/JPG/PDF).
-- Want a library? Use `merman` (`render` for SVG; `raster` for PNG/JPG/PDF).
-- Only need parsing / semantic JSON? Use `merman-core`.
+- Want an executable? Use [`merman-cli`](crates/merman-cli) (render SVG/PNG/JPG/PDF).
+- Want a library? Use [`merman`](crates/merman) (`render` for SVG; `raster` for PNG/JPG/PDF).
+- Only need parsing / semantic JSON? Use [`merman-core`](crates/merman-core).
 - Quality gate: `cargo run -p xtask -- verify` (fmt + nextest + DOM parity sweep).
 
 ## Contents
@@ -26,7 +26,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
 - [Crates](#crates)
-- [Development](#development)
+- [Links](#links)
 - [Changelog](#changelog)
 - [License](#license)
 
@@ -35,9 +35,9 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Baseline: Mermaid `@11.12.2`.
 - Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
-- Current coverage and gates: `docs/alignment/STATUS.md`.
+- Current coverage and gates: [docs/alignment/STATUS.md](docs/alignment/STATUS.md).
 - Corpus size: 1800+ upstream SVG baselines across 23 diagrams.
-- ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
+- ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](docs/adr/0061-external-diagrams-zenuml.md).
 
 ## What you get
 
@@ -48,11 +48,17 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Render JPG (SVG rasterization via `resvg`)
 - Render PDF (SVG → PDF conversion via `svg2pdf`)
 
-Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
+Diagram coverage and current parity status live in [docs/alignment/STATUS.md](docs/alignment/STATUS.md).
 
 ## Install
 
-After publishing `0.1.0`, you can:
+From source (today):
+
+```sh
+cargo install --path crates/merman-cli
+```
+
+Once published (`0.1.0+`), you can also:
 
 ```sh
 # CLI
@@ -114,7 +120,8 @@ merman-cli render example.mmd --out example.svg
 
 ## Quickstart (library)
 
-The `merman` crate is a convenience wrapper around `merman-core` (parsing) + `merman-render` (layout + SVG).
+The [`merman`](crates/merman) crate is a convenience wrapper around [`merman-core`](crates/merman-core) (parsing)
+and [`merman-render`](crates/merman-render) (layout + SVG).
 Enable the `render` feature when you want layout + SVG. Enable `raster` when you also need
 PNG/JPG/PDF from Rust (no CLI required).
 
@@ -163,42 +170,38 @@ overlay extracted from Mermaid labels.
 
 ## Showcase
 
-All screenshots below are produced by `merman-cli` (headless) and committed under `docs/assets/showcase/`.
+All screenshots below are produced by [`merman-cli`](crates/merman-cli) (headless) and committed under
+[docs/assets/showcase/](docs/assets/showcase/).
 Each example links to an existing fixture so the README stays honest and reproducible.
 
-### Architecture (junction fanout + group boundary edges)
+### Architecture (many groups + sparse services)
 
 <p align="center">
-  <img width="900" alt="Architecture diagram: junction fanout + group boundary edges" src="docs/assets/showcase/architecture.png" />
+  <img width="900" alt="Architecture diagram: many groups + sparse services" src="docs/assets/showcase/architecture.png" />
 </p>
 
-Fixture: [`fixtures/architecture/stress_architecture_batch3_junction_fanout_group_edges_051.mmd`](fixtures/architecture/stress_architecture_batch3_junction_fanout_group_edges_051.mmd)
+Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd`](fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd)
 
 <details>
   <summary>Mermaid source</summary>
 
 ```mermaid
 architecture-beta
-%% Authored stress fixture (Mermaid@11.12.2): junction fanout + group boundary traversal.
+%% Authored stress fixture (Mermaid@11.12.2): many groups with sparse services (group rect bounds).
 
-group core(cloud)[Core]
-group ext(cloud)[External]
+group g1(cloud)[G1]
+group g2(cloud)[G2]
+group g3(cloud)[G3]
+group g4(cloud)[G4]
 
-service api(server)[API] in core
-service db(database)[DB] in core
-service cache(disk)[Cache] in core
+service a(server)[A] in g1
+service b(server)[B] in g2
+service c(server)[C] in g3
+service d(server)[D] in g4
 
-service gw(internet)[Gateway] in ext
-service client(internet)[Client] in ext
-
-junction hub in core
-
-api:B --> T:hub
-hub:L --> R:db
-hub:R --> L:cache
-
-client:R --> L:gw
-gw{group}:T -[ingress]-> B:api{group}
+a:R -- L:b
+b:R -- L:c
+c:R -- L:d
 ```
 
 </details>
@@ -321,7 +324,7 @@ This repo is built around reproducible alignment layers and CI-friendly gates:
 - Semantic snapshots: `fixtures/**/*.golden.json`
 - Layout snapshots: `fixtures/**/*.layout.golden.json`
 - Upstream SVG baselines: `fixtures/upstream-svgs/**`
-- DOM parity gates: `xtask compare-all-svgs --check-dom` (see `docs/adr/0050-release-quality-gates.md`)
+- DOM parity gates: `xtask compare-all-svgs --check-dom` (see [docs/adr/0050-release-quality-gates.md](docs/adr/0050-release-quality-gates.md))
 
 The goal is not “it looks similar”, but “it stays aligned”.
 
@@ -342,59 +345,25 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 
 ## Crates
 
-- Headless parsing: `merman-core`
-- Convenience API: `merman` (enable `render` for layout + SVG)
-- Rendering + layout stack: `merman-render`
+- Headless parsing: [`merman-core`](crates/merman-core)
+- Convenience API: [`merman`](crates/merman) (enable `render` for layout + SVG)
+- Rendering + layout stack: [`merman-render`](crates/merman-render)
 - Layout ports:
-  - `dugong`: Dagre-compatible layout (port of `dagrejs/dagre`)
-  - `dugong-graphlib`: graph container APIs (port of `dagrejs/graphlib`)
-  - `manatee`: compound graph layouts (COSE/FCoSE ports)
+  - [`dugong`](crates/dugong): Dagre-compatible layout (port of `dagrejs/dagre`)
+  - [`dugong-graphlib`](crates/dugong-graphlib): graph container APIs (port of `dagrejs/graphlib`)
+  - [`manatee`](crates/manatee): compound graph layouts (COSE/FCoSE ports)
 
-## Development
+## Links
 
-- Format:
-  - `cargo fmt`
-- Tests:
-  - `cargo nextest run`
-- Verify generated artifacts:
-  - `cargo run -p xtask -- verify-generated`
-- Update semantic goldens:
-  - `cargo run -p xtask -- update-snapshots`
-- Update layout goldens:
-  - `cargo run -p xtask -- update-layout-snapshots`
-- Full parity sweep (DOM):
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-
-More workflows: `docs/rendering/COMPARE_ALL_SVGS.md`.
-
-## Performance
-
-`merman` is designed for Mermaid parity and deterministic outputs. It is headless and does not
-spawn a browser, so it can be fast, but performance is treated as a tracked metric (not a claim).
-
-To run the local benchmark suite, see `docs/performance/BENCHMARKING.md`.
-
-For an optional apples-to-oranges comparison against `mermaid-rs-renderer` (mmdr), see
-`docs/performance/COMPARISON.md` and the generator script `tools/bench/compare_mermaid_renderers.py`.
-
-The comparison script can also include upstream Mermaid JS rendering (via the pinned
-`tools/mermaid-cli` puppeteer setup) when available.
+- Alignment status: [docs/alignment/STATUS.md](docs/alignment/STATUS.md)
+- Parity policy: [docs/adr/0014-upstream-parity-policy.md](docs/adr/0014-upstream-parity-policy.md)
+- Release quality gates: [docs/adr/0050-release-quality-gates.md](docs/adr/0050-release-quality-gates.md)
+- Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid)
+- Related: [1jehuang/mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer/)
 
 ## Changelog
 
-See `CHANGELOG.md`.
-
-If you want a local binary without `cargo run`, install the CLI from source:
-
-- `cargo install --path crates/merman-cli`
-
-## Reference upstreams (no submodules)
-
-This repository uses optional local checkouts under `repo-ref/` for parity work.
-These are **not committed** and are **not** git submodules.
-Pinned revisions live in `repo-ref/REPOS.lock.json`.
-
-Populate `repo-ref/*` by cloning each repo at the pinned commit shown in the lock file.
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
