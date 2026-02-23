@@ -1,0 +1,89 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Main",
+          "children": [
+            {
+              "name": "A",
+              "value": 20
+            },
+            {
+              "name": "B",
+              "classSelector": "important",
+              "cssCompiledStyles": [
+                "fill:#f96;stroke:#333;stroke-width:2px"
+              ],
+              "children": [
+                {
+                  "name": "B1",
+                  "value": 10
+                },
+                {
+                  "name": "B2",
+                  "value": 15
+                }
+              ]
+            },
+            {
+              "name": "C",
+              "value": 5
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Main"
+      },
+      {
+        "level": 1,
+        "name": "A",
+        "value": 20
+      },
+      {
+        "level": 1,
+        "name": "B",
+        "classSelector": "important",
+        "cssCompiledStyles": [
+          "fill:#f96;stroke:#333;stroke-width:2px"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "B1",
+        "value": 10
+      },
+      {
+        "level": 2,
+        "name": "B2",
+        "value": 15
+      },
+      {
+        "level": 1,
+        "name": "C",
+        "value": 5
+      }
+    ],
+    "classes": {
+      "important": {
+        "id": "important",
+        "styles": [
+          "fill:#f96",
+          "stroke:#333",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}
