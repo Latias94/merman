@@ -1,0 +1,49 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "type": "xychart",
+    "title": "Multiple Bar Plots",
+    "accTitle": null,
+    "accDescr": null,
+    "orientation": "horizontal",
+    "xAxis": {
+      "type": "band",
+      "title": "Categories",
+      "categories": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "yAxis": {
+      "type": "linear",
+      "title": "Values",
+      "min": 0.0,
+      "max": 100.0
+    },
+    "plots": [
+      {
+        "type": "bar",
+        "values": [
+          10.0,
+          50.0,
+          90.0
+        ],
+        "data": [
+          [
+            "A",
+            10.0
+          ],
+          [
+            "B",
+            50.0
+          ],
+          [
+            "C",
+            90.0
+          ]
+        ]
+      }
+    ]
+  }
+}

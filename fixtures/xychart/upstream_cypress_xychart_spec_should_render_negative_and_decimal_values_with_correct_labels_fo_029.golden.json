@@ -1,0 +1,49 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "type": "xychart",
+    "title": "Decimal and Negative Values",
+    "accTitle": null,
+    "accDescr": null,
+    "orientation": "horizontal",
+    "xAxis": {
+      "type": "band",
+      "title": "Categories",
+      "categories": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "yAxis": {
+      "type": "linear",
+      "title": "",
+      "min": -10.0,
+      "max": 10.0
+    },
+    "plots": [
+      {
+        "type": "bar",
+        "values": [
+          -2.5,
+          0.75,
+          5.1
+        ],
+        "data": [
+          [
+            "A",
+            -2.5
+          ],
+          [
+            "B",
+            0.75
+          ],
+          [
+            "C",
+            5.1
+          ]
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "type": "xychart",
+    "title": "Single Bar Chart",
+    "accTitle": null,
+    "accDescr": null,
+    "orientation": "horizontal",
+    "xAxis": {
+      "type": "band",
+      "title": "Categories",
+      "categories": [
+        "A"
+      ]
+    },
+    "yAxis": {
+      "type": "linear",
+      "title": "Value",
+      "min": 0.0,
+      "max": 100.0
+    },
+    "plots": [
+      {
+        "type": "bar",
+        "values": [
+          75.0
+        ],
+        "data": [
+          [
+            "A",
+            75.0
+          ]
+        ]
+      }
+    ]
+  }
+}
