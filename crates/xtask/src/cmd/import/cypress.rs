@@ -119,7 +119,17 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
     fn canonical_fixture_text(s: &str) -> String {
         let s = s.replace("\r\n", "\n").replace('\r', "\n");
-        let s = s.trim_matches('\n');
+        // Some Cypress specs end blocks with a line that is "blank" but indented (spaces only).
+        // For indentation-sensitive grammars (notably treemap-beta), Mermaid treats this as a
+        // parse error. Trim leading/trailing whitespace-only lines to keep fixtures stable.
+        let mut lines: Vec<&str> = s.lines().collect();
+        while matches!(lines.first(), Some(l) if l.trim().is_empty()) {
+            lines.remove(0);
+        }
+        while matches!(lines.last(), Some(l) if l.trim().is_empty()) {
+            lines.pop();
+        }
+        let s = lines.join("\n");
         format!("{s}\n")
     }
 
@@ -528,6 +538,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             ))
         })?;
 
+        fn is_ident_byte(b: u8) -> bool {
+            b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+        }
+
         fn find_matching_paren_close(text: &str, open_paren: usize) -> Option<usize> {
             // Best-effort JS scanning to find the matching `)` for a call starting at `open_paren`.
             //
@@ -671,27 +685,364 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             .unwrap_or("unknown")
             .to_string();
 
-        // `regex` crate does not support backreferences; capture single-quoted and double-quoted
-        // variants separately.
-        let re_it_sq = Regex::new(r#"(?m)\bit\s*\(\s*'([^']*)'"#).map_err(|e| {
-            XtaskError::SnapshotUpdateFailed(format!("invalid it() single-quote regex: {e}"))
-        })?;
-        let re_it_dq = Regex::new(r#"(?m)\bit\s*\(\s*"([^"]*)""#).map_err(|e| {
-            XtaskError::SnapshotUpdateFailed(format!("invalid it() double-quote regex: {e}"))
-        })?;
+        #[derive(Clone, Debug)]
+        struct ItPos {
+            pos: usize,
+            name: String,
+            skipped: bool,
+        }
+
+        fn collect_it_positions(text: &str) -> Vec<ItPos> {
+            let bytes = text.as_bytes();
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            fn parse_string(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
+                let mut out = String::new();
+                let mut escaped = false;
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    if escaped {
+                        match b {
+                            b'n' => out.push('\n'),
+                            b'r' => out.push('\r'),
+                            b't' => out.push('\t'),
+                            b'\\' => out.push('\\'),
+                            b'\'' => out.push('\''),
+                            b'"' => out.push('"'),
+                            _ => out.push(b as char),
+                        }
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'\\' {
+                        escaped = true;
+                        i += 1;
+                        continue;
+                    }
+                    if b == quote {
+                        return Some((out, i + 1));
+                    }
+                    out.push(b as char);
+                    i += 1;
+                }
+                None
+            }
+
+            let mut out: Vec<ItPos> = Vec::new();
+            let mut mode = Mode::Normal;
+            let mut escaped = false;
+
+            let mut i = 0usize;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+
+                        if bytes.get(i) == Some(&b'i') && bytes.get(i + 1) == Some(&b't') {
+                            let prev = if i == 0 {
+                                None
+                            } else {
+                                bytes.get(i - 1).copied()
+                            };
+                            if prev.is_some_and(is_ident_byte) {
+                                i += 1;
+                                continue;
+                            }
+                            let mut j = i + 2;
+                            let mut skipped = false;
+                            if bytes.get(j) == Some(&b'.') {
+                                if bytes.get(j + 1..j + 5) == Some(b"skip") {
+                                    skipped = true;
+                                    j += 5;
+                                } else if bytes.get(j + 1..j + 5) == Some(b"only") {
+                                    j += 5;
+                                } else {
+                                    i += 1;
+                                    continue;
+                                }
+                            }
+                            if bytes.get(j).is_some_and(|b| is_ident_byte(*b)) {
+                                i += 1;
+                                continue;
+                            }
+
+                            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                                j += 1;
+                            }
+                            if bytes.get(j) != Some(&b'(') {
+                                i += 1;
+                                continue;
+                            }
+                            j += 1;
+                            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                                j += 1;
+                            }
+                            let quote = match bytes.get(j).copied() {
+                                Some(b'\'') => b'\'',
+                                Some(b'"') => b'"',
+                                _ => {
+                                    i += 1;
+                                    continue;
+                                }
+                            };
+                            j += 1;
+                            let Some((name, end)) = parse_string(bytes, j, quote) else {
+                                i += 1;
+                                continue;
+                            };
+                            out.push(ItPos {
+                                pos: i,
+                                name,
+                                skipped,
+                            });
+                            i = end;
+                            continue;
+                        }
+
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            out
+        }
+
+        fn find_next_call(text: &str, needle: &str, from: usize) -> Option<usize> {
+            let bytes = text.as_bytes();
+            let needle_bytes = needle.as_bytes();
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            let mut mode = Mode::Normal;
+            let mut escaped = false;
+
+            let mut i = from;
+            while i + needle_bytes.len() <= bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+
+                        if bytes[i..].starts_with(needle_bytes) {
+                            let prev = if i == 0 {
+                                None
+                            } else {
+                                bytes.get(i - 1).copied()
+                            };
+                            let next = bytes.get(i + needle_bytes.len()).copied();
+                            if !prev.is_some_and(is_ident_byte) && !next.is_some_and(is_ident_byte)
+                            {
+                                return Some(i);
+                            }
+                        }
+
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+
+            None
+        }
+
         let mut test_name: Option<String> = None;
-        let mut it_positions: Vec<(usize, String)> = Vec::new();
-        for cap in re_it_sq.captures_iter(&text) {
-            if let (Some(m), Some(t)) = (cap.get(0), cap.get(1)) {
-                it_positions.push((m.start(), t.as_str().to_string()));
-            }
-        }
-        for cap in re_it_dq.captures_iter(&text) {
-            if let (Some(m), Some(t)) = (cap.get(0), cap.get(1)) {
-                it_positions.push((m.start(), t.as_str().to_string()));
-            }
-        }
-        it_positions.sort_by_key(|(pos, _)| *pos);
+        let it_positions = collect_it_positions(&text);
         let mut next_it_idx = 0usize;
 
         let mut out: Vec<CypressBlock> = Vec::new();
@@ -701,15 +1052,22 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             ("renderGraph", "renderGraph"),
         ] {
             let mut search_from = 0usize;
-            while let Some(found) = text[search_from..].find(needle) {
-                let abs = search_from + found;
-                while next_it_idx + 1 < it_positions.len() && it_positions[next_it_idx + 1].0 < abs
+            while let Some(abs) = find_next_call(&text, needle, search_from) {
+                while next_it_idx + 1 < it_positions.len()
+                    && it_positions[next_it_idx + 1].pos < abs
                 {
                     next_it_idx += 1;
                 }
-                if let Some((it_pos, name)) = it_positions.get(next_it_idx) {
-                    if *it_pos < abs {
-                        test_name = Some(name.clone());
+                let skipped_it = it_positions
+                    .get(next_it_idx)
+                    .is_some_and(|it| it.pos < abs && it.skipped);
+                if skipped_it {
+                    search_from = abs + needle.len();
+                    continue;
+                }
+                if let Some(it) = it_positions.get(next_it_idx) {
+                    if it.pos < abs {
+                        test_name = Some(it.name.clone());
                     }
                 }
 
