@@ -2141,6 +2141,150 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         score: i64,
     }
 
+    fn split_yaml_frontmatter(s: &str) -> Option<(&str, &str)> {
+        let bytes = s.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() && is_ws_or_newline_byte(bytes[i]) {
+            i += 1;
+        }
+        let s = &s[i..];
+        if !s.starts_with("---") {
+            return None;
+        }
+
+        let mut pieces = s.split_inclusive('\n');
+        let Some(first_piece) = pieces.next() else {
+            return None;
+        };
+        let first_line = first_piece.trim_end_matches('\n').trim_end_matches('\r');
+        if first_line.trim_end() != "---" {
+            return None;
+        }
+
+        let mut yaml_end = first_piece.len();
+        for piece in pieces {
+            let line = piece.trim_end_matches('\n').trim_end_matches('\r');
+            if line.trim_end() == "---" {
+                let yaml = &s[first_piece.len()..yaml_end];
+                let rest = &s[yaml_end + piece.len()..];
+                return Some((yaml, rest));
+            }
+            yaml_end += piece.len();
+        }
+
+        None
+    }
+
+    fn merge_yaml_mappings(dst: &mut serde_yaml::Mapping, src: serde_yaml::Mapping) {
+        for (k, v) in src {
+            match (dst.get_mut(&k), v) {
+                (
+                    Some(serde_yaml::Value::Mapping(dst_map)),
+                    serde_yaml::Value::Mapping(src_map),
+                ) => {
+                    merge_yaml_mappings(dst_map, src_map);
+                }
+                (Some(dst_v), src_v) => {
+                    *dst_v = src_v;
+                }
+                (None, src_v) => {
+                    dst.insert(k, src_v);
+                }
+            }
+        }
+    }
+
+    fn with_options_frontmatter(fixture_text: &str, options_obj: &str) -> String {
+        let Some(options_map) = js_object_literal_to_yaml_config_map(options_obj) else {
+            return fixture_text.to_string();
+        };
+        if options_map.is_empty() {
+            return fixture_text.to_string();
+        }
+
+        let cfg_key = serde_yaml::Value::String("config".to_string());
+        if let Some((yaml_raw, rest)) = split_yaml_frontmatter(fixture_text) {
+            let yaml_raw = yaml_raw.trim();
+            let mut fm = if yaml_raw.is_empty() {
+                serde_yaml::Mapping::new()
+            } else {
+                match serde_yaml::from_str::<serde_yaml::Value>(yaml_raw) {
+                    Ok(serde_yaml::Value::Mapping(m)) => m,
+                    Ok(serde_yaml::Value::Null) => serde_yaml::Mapping::new(),
+                    Ok(_) | Err(_) => {
+                        let mut fm = serde_yaml::Mapping::new();
+                        fm.insert(cfg_key.clone(), serde_yaml::Value::Mapping(options_map));
+                        if let Ok(yaml) = serde_yaml::to_string(&fm) {
+                            let yaml = yaml.trim_end_matches('\n');
+                            return format!("---\n{yaml}\n---\n{fixture_text}");
+                        }
+                        return fixture_text.to_string();
+                    }
+                }
+            };
+
+            match fm.get_mut(&cfg_key) {
+                Some(serde_yaml::Value::Mapping(existing)) => {
+                    merge_yaml_mappings(existing, options_map);
+                }
+                Some(v) => {
+                    *v = serde_yaml::Value::Mapping(options_map);
+                }
+                None => {
+                    fm.insert(cfg_key, serde_yaml::Value::Mapping(options_map));
+                }
+            }
+
+            if let Ok(yaml) = serde_yaml::to_string(&fm) {
+                let yaml = yaml.trim_end_matches('\n');
+                return format!("---\n{yaml}\n---\n{rest}");
+            }
+            return fixture_text.to_string();
+        }
+
+        let mut fm = serde_yaml::Mapping::new();
+        fm.insert(cfg_key, serde_yaml::Value::Mapping(options_map));
+        if let Ok(yaml) = serde_yaml::to_string(&fm) {
+            let yaml = yaml.trim_end_matches('\n');
+            return format!("---\n{yaml}\n---\n{fixture_text}");
+        }
+        fixture_text.to_string()
+    }
+
+    fn find_existing_fixture_stem_by_prefix(fixtures_dir: &Path, prefix: &str) -> Option<String> {
+        let Ok(entries) = fs::read_dir(fixtures_dir) else {
+            return None;
+        };
+
+        let mut best: Option<String> = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "mmd") {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.starts_with(prefix) {
+                continue;
+            }
+            let Some(stem) = name.strip_suffix(".mmd") else {
+                continue;
+            };
+
+            match best.as_deref() {
+                None => best = Some(stem.to_string()),
+                Some(prev) => {
+                    if stem < prev {
+                        best = Some(stem.to_string());
+                    }
+                }
+            }
+        }
+
+        best
+    }
+
     let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
     let mut spec_files: Vec<PathBuf> = Vec::new();
     collect_spec_files_recursively(&spec_root, &mut spec_files)?;
@@ -2167,19 +2311,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             let body = normalize_cypress_fixture_text(&b.body);
             let mut fixture_text = body;
             if let Some(options_obj) = b.options_obj.as_deref() {
-                if let Some(map) = js_object_literal_to_yaml_config_map(options_obj) {
-                    if !map.is_empty() {
-                        let mut fm = serde_yaml::Mapping::new();
-                        fm.insert(
-                            serde_yaml::Value::String("config".to_string()),
-                            serde_yaml::Value::Mapping(map),
-                        );
-                        if let Ok(yaml) = serde_yaml::to_string(&fm) {
-                            let yaml = yaml.trim_end_matches('\n');
-                            fixture_text = format!("---\n{yaml}\n---\n{fixture_text}");
-                        }
-                    }
-                }
+                fixture_text = with_options_frontmatter(&fixture_text, options_obj);
             }
 
             let mut body = canonical_fixture_text(&fixture_text);
@@ -2349,7 +2481,18 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
+        let stem = {
+            let source_slug = clamp_slug(slugify(&c.block.source_stem), 48);
+            let test_slug = clamp_slug(
+                slugify(c.block.test_name.as_deref().unwrap_or("example")),
+                64,
+            );
+            let prefix = format!("upstream_cypress_{source_slug}_{test_slug}_");
+            find_existing_fixture_stem_by_prefix(&c.fixtures_dir, &prefix)
+                .unwrap_or_else(|| c.stem.clone())
+        };
+
+        let out_path = c.fixtures_dir.join(format!("{stem}.mmd"));
         if out_path.exists() && !overwrite {
             skipped.push(format!("skip (already exists): {}", out_path.display()));
             continue;
@@ -2358,7 +2501,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             .join("fixtures")
             .join("_deferred")
             .join(&c.diagram_dir)
-            .join(format!("{}.mmd", c.stem));
+            .join(format!("{stem}.mmd"));
         if deferred_out_path.exists() && !overwrite {
             skipped.push(format!(
                 "skip (already deferred): {}",
@@ -2375,7 +2518,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
         created.push(CreatedFixture {
             diagram_dir: c.diagram_dir,
-            stem: c.stem,
+            stem,
             path: out_path,
             source_spec: c.block.source_spec,
             source_idx_in_file: c.block.idx_in_file,
