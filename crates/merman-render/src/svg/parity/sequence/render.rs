@@ -86,6 +86,10 @@ fn render_sequence_diagram_svg_inner(
         .and_then(|v| v.as_f64())
         .unwrap_or(5.0)
         .max(0.0);
+    let message_align = seq_cfg
+        .get("messageAlign")
+        .and_then(|v| v.as_str())
+        .unwrap_or("center");
     let _message_margin = seq_cfg
         .get("messageMargin")
         .and_then(|v| v.as_f64())
@@ -2859,10 +2863,13 @@ fn render_sequence_diagram_svg_inner(
             continue;
         }
 
+        let p0 = &edge.points[0];
+        let p1 = &edge.points[1];
+
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
             let line_step = actor_label_font_size * 1.1875;
-            let bounded_width = (edge.points[0].x - edge.points[1].x).abs().max(0.0);
+            let bounded_width = (p0.x - p1.x).abs().max(0.0);
             let raw_lines: Vec<String> = if msg.wrap && !text.is_empty() {
                 // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
                 // vendored metrics are close but can be slightly more conservative in some edge
@@ -2883,6 +2890,13 @@ fn render_sequence_diagram_svg_inner(
                     .map(|s| s.to_string())
                     .collect()
             };
+
+            // Mermaid aligns message label text based on `sequence.messageAlign`.
+            let (label_x, label_anchor) = match message_align {
+                "right" => (p1.x - 10.0, "end"),
+                "left" => (p0.x + 10.0, "start"),
+                _ => (lbl.x, "middle"),
+            };
             for (i, raw) in raw_lines.into_iter().enumerate() {
                 let y = lbl.y + (i as f64) * line_step;
                 let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(&raw);
@@ -2893,17 +2907,16 @@ fn render_sequence_diagram_svg_inner(
                 };
                 let _ = write!(
                     &mut out,
-                    r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
-                    x = fmt(lbl.x.round()),
+                    r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+                    x = fmt(label_x.round()),
                     y = fmt(y),
+                    anchor = label_anchor,
                     fs = fmt(actor_label_font_size),
                     text = escape_xml(&line)
                 );
             }
         }
 
-        let p0 = &edge.points[0];
-        let p1 = &edge.points[1];
         let class = match msg.message_type {
             1 | 4 | 6 | 25 | 34 => "messageLine1",
             _ => "messageLine0",
