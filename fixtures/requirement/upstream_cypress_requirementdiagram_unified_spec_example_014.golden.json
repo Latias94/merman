@@ -1,0 +1,69 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "test_req",
+        "type": "Requirement",
+        "requirementId": "1",
+        "text": "the test text.",
+        "risk": "High",
+        "verifyMethod": "Test",
+        "cssStyles": [
+          "stroke:lightblue",
+          "color: #0000FF",
+          "font-weight: bold"
+        ],
+        "classes": [
+          "default",
+          "blue",
+          "bold"
+        ]
+      }
+    ],
+    "elements": [
+      {
+        "name": "test_entity",
+        "type": "simulation",
+        "docRef": "",
+        "cssStyles": [
+          "font-weight: bold"
+        ],
+        "classes": [
+          "default",
+          "bold"
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "type": "satisfies",
+        "src": "test_entity",
+        "dst": "test_req"
+      }
+    ],
+    "classes": {
+      "blue": {
+        "id": "blue",
+        "styles": [
+          "stroke:lightblue",
+          "color: #0000FF"
+        ],
+        "textStyles": [
+          "color: #0000FF"
+        ]
+      },
+      "bold": {
+        "id": "bold",
+        "styles": [
+          "font-weight: bold"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

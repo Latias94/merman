@@ -1,0 +1,36 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "test req name with spaces",
+        "type": "Requirement",
+        "requirementId": "1",
+        "text": "the test text that is long and takes up a lot of space.",
+        "risk": "High",
+        "verifyMethod": "Test",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "elements": [
+      {
+        "name": "test entity name that is extra long with spaces",
+        "type": "",
+        "docRef": "",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "relationships": [],
+    "classes": {}
+  }
+}
