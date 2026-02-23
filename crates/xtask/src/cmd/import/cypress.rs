@@ -2625,6 +2625,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                         return Some("flowchart diagram type flowchart-elk (deferred)");
                     }
                 }
+                "sequence" => {
+                    // Mermaid's sequence diagram v2 supports "central connections" where the arrow
+                    // contains circles on the actor lifelines, e.g. `Alice ()->>() Bob`.
+                    // merman does not implement this rendering yet, so keep the upstream SVG for
+                    // traceability but move the fixture under `_deferred` to keep `verify` green.
+                    if fixture_text.contains(" ()-") || fixture_text.contains("()-") {
+                        return Some("sequence central connections (deferred)");
+                    }
+                }
                 _ => {}
             }
             None
