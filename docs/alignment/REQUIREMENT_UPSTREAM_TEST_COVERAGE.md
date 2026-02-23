@@ -35,3 +35,16 @@ upstream SVG baselines under `fixtures/upstream-svgs/requirement/*.svg` via:
 `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 - `fixtures/requirement/upstream_cypress_requirement_spec_example_001.mmd`
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/requirementDiagram-unified.spec.js`
+
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_001.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_003.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_005.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_006.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_007.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_008.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_009.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_010.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_011.mmd`
+- `fixtures/requirement/upstream_cypress_requirementdiagram_unified_spec_example_012.mmd`
