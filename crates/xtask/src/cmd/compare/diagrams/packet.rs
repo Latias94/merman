@@ -102,6 +102,9 @@ pub(crate) fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mode = svgdom::DomMode::parse(&dom_mode);
     let engine = merman::Engine::new();
+    // Mermaid CLI emits an error SVG (and exits successfully) for invalid fixtures. Mirror that
+    // in comparisons by converting parse failures into an `error` diagram model.
+    let parse_opts = merman::ParseOptions::lenient();
 
     let mut report = String::new();
     let _ = writeln!(
@@ -136,19 +139,18 @@ pub(crate) fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
+        let parsed =
+            match futures::executor::block_on(engine.parse_diagram(&text, parse_opts.clone())) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
         let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -159,30 +161,47 @@ pub(crate) fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let merman_render::model::LayoutDiagram::PacketDiagram(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(stem.to_string()),
             ..Default::default()
         };
 
-        let local_svg = match merman_render::svg::render_packet_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            layouted.meta.title.as_deref(),
-            &svg_opts,
-        ) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+        let local_svg = match &layouted.layout {
+            merman_render::model::LayoutDiagram::PacketDiagram(layout) => {
+                match merman_render::svg::render_packet_diagram_svg(
+                    layout,
+                    &layouted.semantic,
+                    &layouted.meta.effective_config,
+                    layouted.meta.title.as_deref(),
+                    &svg_opts,
+                ) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+                        continue;
+                    }
+                }
+            }
+            merman_render::model::LayoutDiagram::ErrorDiagram(layout) => {
+                match merman_render::svg::render_error_diagram_svg(
+                    layout,
+                    &layouted.semantic,
+                    &layouted.meta.effective_config,
+                    &svg_opts,
+                ) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+                        continue;
+                    }
+                }
+            }
+            other => {
+                failures.push(format!(
+                    "unexpected layout type for {}: {} (expected packet or error; got {other:?})",
+                    mmd_path.display(),
+                    layouted.meta.diagram_type,
+                ));
                 continue;
             }
         };
