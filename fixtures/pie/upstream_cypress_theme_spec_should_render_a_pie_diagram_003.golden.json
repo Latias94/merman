@@ -1,0 +1,24 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "Sports in Sweden",
+    "accTitle": "This is a title",
+    "accDescr": "This is a description",
+    "sections": [
+      {
+        "label": "Bandy",
+        "value": 40.0
+      },
+      {
+        "label": "Ice-Hockey",
+        "value": 80.0
+      },
+      {
+        "label": "Football",
+        "value": 90.0
+      }
+    ]
+  }
+}

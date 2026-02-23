@@ -17,25 +17,25 @@
       "legend_step_y": 22.0,
       "slices": [
         {
-          "label": "Calcium",
-          "value": 42.96,
+          "label": "Potassium",
+          "value": 50.05,
           "start_angle": 0.0,
-          "end_angle": 2.499,
+          "end_angle": 2.911,
           "is_full_circle": false,
-          "percent": 40.0,
-          "text_x": 131.646,
-          "text_y": -43.827,
+          "percent": 46.0,
+          "text_x": 137.831,
+          "text_y": -15.945,
           "fill": "#ECECFF"
         },
         {
-          "label": "Potassium",
-          "value": 50.05,
-          "start_angle": 2.499,
+          "label": "Calcium",
+          "value": 42.96,
+          "start_angle": 2.911,
           "end_angle": 5.41,
           "is_full_circle": false,
-          "percent": 46.0,
-          "text_x": -100.77,
-          "text_y": 95.378,
+          "percent": 40.0,
+          "text_x": -118.163,
+          "text_y": 72.725,
           "fill": "#ffffde"
         },
         {
@@ -65,13 +65,13 @@
         {
           "label": "Calcium",
           "value": 42.96,
-          "fill": "#ECECFF",
+          "fill": "#ffffde",
           "y": -44.0
         },
         {
           "label": "Potassium",
           "value": 50.05,
-          "fill": "#ffffde",
+          "fill": "#ECECFF",
           "y": -22.0
         },
         {

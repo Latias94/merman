@@ -1,0 +1,24 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "What Voldemort doesn't have?",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      {
+        "label": "FRIENDS",
+        "value": 2.0
+      },
+      {
+        "label": "FAMILY",
+        "value": 3.0
+      },
+      {
+        "label": "NOSE",
+        "value": 45.0
+      }
+    ]
+  }
+}
