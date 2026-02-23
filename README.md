@@ -178,7 +178,7 @@ Each example links to an existing fixture so the README stays honest and reprodu
 ### Architecture (many groups + sparse services)
 
 <p align="center">
-  <img width="900" alt="Architecture diagram: many groups + sparse services" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png" />
+  <img width="900" alt="Architecture diagram: many groups + sparse services" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/architecture.png" />
 </p>
 
 Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd`](fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd)
@@ -210,7 +210,7 @@ c:R -- L:d
 ### Mindmap (line breaks in labels)
 
 <p align="center">
-  <img width="900" alt="Mindmap diagram: label line break variants" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png" />
+  <img width="900" alt="Mindmap diagram: label line break variants" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/mindmap.png" />
 </p>
 
 Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
@@ -234,7 +234,7 @@ mindmap
 ### Sankey (dense shared nodes)
 
 <p align="center">
-  <img width="900" alt="Sankey diagram: dense shared nodes" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png" />
+  <img width="900" alt="Sankey diagram: dense shared nodes" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/sankey.png" />
 </p>
 
 Fixture: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
@@ -269,7 +269,7 @@ Z,Loss,2
 ### Gantt (date math + excludes)
 
 <p align="center">
-  <img width="900" alt="Gantt diagram: date math + excludes" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/gantt.png" />
+  <img width="900" alt="Gantt diagram: date math + excludes" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/gantt.png" />
 </p>
 
 Fixture: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
@@ -316,7 +316,7 @@ gantt
 
 | Architecture (dense services + cross edges) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: dense services + cross edges" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: dense services + cross edges" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/v0.1.0/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
 
 ## Quality gates
 
