@@ -164,21 +164,25 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                     &path_data,
                     fill_color,
                     stroke_color,
-                    1.3,
-                    "0 0",
+                    stroke_width,
+                    stroke_dasharray,
                     hand_drawn_seed,
                 )
             })
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
-                r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
+                r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
                 util::fmt(-width / 2.0),
                 util::fmt(-height),
                 escape_attr(&fill_d),
                 escape_attr(fill_color),
+                escape_attr(style),
                 escape_attr(&stroke_d),
                 escape_attr(stroke_color),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
             );
             true
         }
@@ -190,19 +194,27 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                 util::config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
                     .unwrap_or_else(|| ctx.node_border_color.clone());
 
+            let effective_style: std::borrow::Cow<'_, str> = if style.trim().is_empty() {
+                format!("fill: {border} !important;").into()
+            } else {
+                style.into()
+            };
+
             let d = rough_timed(timing_enabled, details, || {
                 roughjs_circle_path_d(14.0, hand_drawn_seed)
             })
             .unwrap_or_else(|| "M0,0".into());
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="fill: {} !important;"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill: {} !important;"/></g>"##,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
                 escape_attr(&d),
                 escape_attr(fill_color),
-                escape_attr(&border),
+                escape_attr(effective_style.as_ref()),
                 escape_attr(&d),
                 escape_attr(stroke_color),
-                escape_attr(&border),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(effective_style.as_ref()),
             );
             true
         }
@@ -241,8 +253,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                     &line_path,
                     fill_color,
                     stroke_color,
-                    1.3,
-                    "0 0",
+                    stroke_width,
+                    stroke_dasharray,
                     hand_drawn_seed,
                 )
             })
@@ -250,15 +262,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
 
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 escape_attr(&circle_d),
                 escape_attr(fill_color),
+                escape_attr(style),
                 escape_attr(&circle_d),
                 escape_attr(stroke_color),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
                 escape_attr(&line_fill_d),
                 escape_attr(fill_color),
+                escape_attr(style),
                 escape_attr(&line_stroke_d),
                 escape_attr(stroke_color),
+                util::fmt_display(stroke_width as f64),
+                escape_attr(stroke_dasharray),
+                escape_attr(style),
             );
             true
         }

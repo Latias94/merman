@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::flowchart::label::flowchart_label_plain_text;
 use crate::svg::parity::flowchart::util::flowchart_html_contains_img_tag;
+use crate::svg::parity::util;
 
 use super::super::geom::{generate_circle_points, path_from_points};
 use super::super::roughjs::roughjs_paths_for_svg_path;
@@ -16,8 +17,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
     label_type: &str,
     node_classes: &[String],
     node_styles: &[String],
+    style: &str,
     fill_color: &str,
     stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
     hand_drawn_seed: u64,
     timing_enabled: bool,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -103,18 +107,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
             &path_data,
             fill_color,
             stroke_color,
-            1.3,
-            "0 0",
+            stroke_width,
+            stroke_dasharray,
             hand_drawn_seed,
         )
     })
     .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
-        r##"<g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+        r##"<g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         escape_attr(&fill_d),
         escape_attr(fill_color),
+        escape_attr(style),
         escape_attr(&stroke_d),
         escape_attr(stroke_color),
+        util::fmt_display(stroke_width as f64),
+        escape_attr(stroke_dasharray),
+        escape_attr(style),
     );
 }

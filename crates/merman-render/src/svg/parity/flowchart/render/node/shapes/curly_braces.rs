@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::fmt;
+use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::path_from_points;
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
@@ -12,7 +12,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
     out: &mut String,
     shape: &str,
     layout_node: &crate::model::LayoutNode,
+    style: &str,
     stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
     hand_drawn_seed: u64,
     timing_enabled: bool,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -102,7 +105,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
 
     let mut stroke_d = |d: &str| {
         rough_timed(timing_enabled, details, || {
-            roughjs_stroke_path_for_svg_path(d, stroke_color, 1.3, "0 0", hand_drawn_seed)
+            roughjs_stroke_path_for_svg_path(
+                d,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            )
         })
         .unwrap_or_else(|| "M0,0".to_string())
     };
@@ -266,20 +275,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
             out,
             concat!(
                 r##"<g class="text" transform="translate({},0)"><g>"##,
-                r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                r##"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"##,
                 r##"</g><g>"##,
-                r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                r##"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"##,
                 r##"</g><g stroke-opacity="0">"##,
-                r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                r##"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"##,
                 r##"</g></g>"##
             ),
             fmt(group_tx),
             escape_attr(&left_d),
             escape_attr(stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(stroke_dasharray),
+            escape_attr(style),
             escape_attr(&right_d),
             escape_attr(stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(stroke_dasharray),
+            escape_attr(style),
             escape_attr(&rect_d),
             escape_attr(stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(stroke_dasharray),
+            escape_attr(style),
         );
     } else {
         // Mermaid `curlyBraceLeft.ts` / `curlyBraceRight.ts`.
@@ -394,16 +412,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
             out,
             concat!(
                 r##"<g class="text" transform="translate({},0)"><g>"##,
-                r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                r##"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"##,
                 r##"</g><g stroke-opacity="0">"##,
-                r##"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                r##"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"##,
                 r##"</g></g>"##
             ),
             fmt(group_tx),
             escape_attr(&brace_d),
             escape_attr(stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(stroke_dasharray),
+            escape_attr(style),
             escape_attr(&rect_d),
             escape_attr(stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(stroke_dasharray),
+            escape_attr(style),
         );
     }
 }
