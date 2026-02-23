@@ -166,38 +166,39 @@ overlay extracted from Mermaid labels.
 All screenshots below are produced by `merman-cli` (headless) and committed under `docs/assets/showcase/`.
 Each example links to an existing fixture so the README stays honest and reproducible.
 
-### Architecture (nested junction routing)
+### Architecture (junction fanout + group boundary edges)
 
 <p align="center">
-  <img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.png" />
+  <img width="900" alt="Architecture diagram: junction fanout + group boundary edges" src="docs/assets/showcase/architecture.png" />
 </p>
 
-Fixture: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd`](fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd)
+Fixture: [`fixtures/architecture/stress_architecture_batch3_junction_fanout_group_edges_051.mmd`](fixtures/architecture/stress_architecture_batch3_junction_fanout_group_edges_051.mmd)
 
 <details>
   <summary>Mermaid source</summary>
 
 ```mermaid
 architecture-beta
-%% Authored stress fixture (Mermaid@11.12.2): nested junctions + multi-hop routing.
+%% Authored stress fixture (Mermaid@11.12.2): junction fanout + group boundary traversal.
 
 group core(cloud)[Core]
-group data(cloud)[Data] in core
+group ext(cloud)[External]
 
 service api(server)[API] in core
-service worker(server)[Worker] in core
-service db(database)[DB] in data
-service cache(disk)[Cache] in data
+service db(database)[DB] in core
+service cache(disk)[Cache] in core
 
-junction j1 in core
-junction j2 in data
+service gw(internet)[Gateway] in ext
+service client(internet)[Client] in ext
 
-api:R --> L:j1
-worker:T --> B:j1
+junction hub in core
 
-j1{group}:B --> T:j2{group}
-j2:L --> R:db
-j2:R --> L:cache
+api:B --> T:hub
+hub:L --> R:db
+hub:R --> L:cache
+
+client:R --> L:gw
+gw{group}:T -[ingress]-> B:api{group}
 ```
 
 </details>
