@@ -9,6 +9,32 @@ This document tracks which upstream Mermaid Treemap behaviors are covered in `me
 
 Scope: Mermaid tag `@11.12.2`.
 
+Source: `repo-ref/mermaid/cypress/integration/rendering/treemap.spec.ts`
+
+- should render a basic treemap: `fixtures/treemap/upstream_cypress_treemap_spec_example_001.mmd`
+- 2: should render a hierarchical treemap: `fixtures/treemap/upstream_cypress_treemap_spec_2_should_render_a_hierarchical_treemap_002.mmd`
+- 3: should render a treemap with styling using classDef: `fixtures/treemap/upstream_cypress_treemap_spec_3_should_render_a_treemap_with_styling_using_classdef_003.mmd`
+- 4: should handle long text that wraps: `fixtures/treemap/upstream_cypress_treemap_spec_4_should_handle_long_text_that_wraps_004.mmd`
+- 5: should render with a forest theme: `fixtures/treemap/upstream_cypress_treemap_spec_5_should_render_with_a_forest_theme_005.mmd`
+- 6: should handle multiple levels of nesting: `fixtures/treemap/upstream_cypress_treemap_spec_6_should_handle_multiple_levels_of_nesting_006.mmd`
+- 7: should handle classDef with multiple styles: `fixtures/treemap/upstream_cypress_treemap_spec_7_should_handle_classdef_with_multiple_styles_007.mmd`
+- 8: should handle dollar value formatting with thousands separator: `fixtures/treemap/upstream_cypress_treemap_spec_8_should_handle_dollar_value_formatting_with_thousands_separator_008.mmd`
+- 8a: should handle percentage formatting: `fixtures/treemap/upstream_cypress_treemap_spec_8a_should_handle_percentage_formatting_009.mmd`
+- 8b: should handle decimal formatting: `fixtures/treemap/upstream_cypress_treemap_spec_8b_should_handle_decimal_formatting_010.mmd`
+- 8c: should handle dollar sign with decimal places: `fixtures/treemap/upstream_cypress_treemap_spec_8c_should_handle_dollar_sign_with_decimal_places_011.mmd`
+- 8d: should handle dollar sign with thousands separator and decimal places: `fixtures/treemap/upstream_cypress_treemap_spec_8d_should_handle_dollar_sign_with_thousands_separator_and_decima_012.mmd`
+- 8e: should handle simple thousands separator: `fixtures/treemap/upstream_cypress_treemap_spec_8e_should_handle_simple_thousands_separator_013.mmd`
+- 8f: should handle valueFormat set via directive with dollar and thousands separator: `fixtures/treemap/upstream_cypress_treemap_spec_8f_should_handle_valueformat_set_via_directive_with_dollar_and_t_014.mmd`
+- 8g: should handle scientific notation format: `fixtures/treemap/upstream_cypress_treemap_spec_8g_should_handle_scientific_notation_format_015.mmd`
+- 9: should handle a complex example with multiple features: `fixtures/treemap/upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd`
+- 10: should render the example from documentation: `fixtures/treemap/upstream_cypress_treemap_spec_10_should_render_the_example_from_documentation_017.mmd`
+- 11: should handle comments: `fixtures/treemap/upstream_cypress_treemap_spec_11_should_handle_comments_018.mmd`
+- 12: should apply classDef fill color to leaf nodes: `fixtures/treemap/upstream_cypress_treemap_spec_12_should_apply_classdef_fill_color_to_leaf_nodes_019.mmd`
+- 13: should apply classDef stroke styles to sections: `fixtures/treemap/upstream_cypress_treemap_spec_13_should_apply_classdef_stroke_styles_to_sections_020.mmd`
+- 14: should apply classDef color to text labels: `fixtures/treemap/upstream_cypress_treemap_spec_14_should_apply_classdef_color_to_text_labels_021.mmd`
+- 15: should apply multiple classDef properties simultaneously: `fixtures/treemap/upstream_cypress_treemap_spec_15_should_apply_multiple_classdef_properties_simultaneously_022.mmd`
+- 16: should handle classDef on nested sections and leaves: `fixtures/treemap/upstream_cypress_treemap_spec_16_should_handle_classdef_on_nested_sections_and_leaves_023.mmd`
+
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/utils.test.ts`
 
 - buildHierarchy (basic tree): `fixtures/treemap/upstream_treemap_build_hierarchy_utils_test.mmd`
