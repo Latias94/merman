@@ -537,9 +537,14 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 spec_path.display()
             ))
         })?;
+        let bytes = text.as_bytes();
 
         fn is_ident_byte(b: u8) -> bool {
             b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+        }
+
+        fn is_ws_byte(b: u8) -> bool {
+            matches!(b, b' ' | b'\t' | b'\n' | b'\r')
         }
 
         fn find_matching_paren_close(text: &str, open_paren: usize) -> Option<usize> {
@@ -1073,10 +1078,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
                 // Find the opening paren and extract the first template literal after it.
                 let after_call = abs + needle.len();
-                let Some(open_paren) = text[after_call..].find('(').map(|o| after_call + o) else {
+                let mut open_paren = after_call;
+                while bytes.get(open_paren).is_some_and(|b| is_ws_byte(*b)) {
+                    open_paren += 1;
+                }
+                if bytes.get(open_paren) != Some(&b'(') {
+                    // Not a direct call; e.g. `import { imgSnapshotTest } ...` or destructuring.
                     search_from = after_call;
                     continue;
-                };
+                }
                 let start = open_paren + 1;
 
                 let Some(close_paren) = find_matching_paren_close(&text, open_paren) else {
