@@ -13,3 +13,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/info/info.spec.ts`
 - `info showInfo`: `fixtures/info/upstream_info_show_info_spec.mmd`
 - unsupported tokens rejected with exact message: `crates/merman-core/src/lib.rs:256`
 
+Source: `repo-ref/mermaid/cypress/integration/rendering/info.spec.ts`
+
+- `info`: `fixtures/info/upstream_info_spec.mmd` (same body as Cypress rendering snapshot)
+- `info showInfo`: `fixtures/info/upstream_info_show_info_spec.mmd` (same body as Cypress rendering snapshot)
