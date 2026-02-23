@@ -20,3 +20,17 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/radar/radar.spec.ts`
 - init config override directive: `fixtures/radar/upstream_radar_config_override_directive_spec.mmd`
 - theme override + `radar-beta:` header: `fixtures/radar/upstream_radar_theme_override_colon_header_spec.mmd`
 - radar themeVariables override: `fixtures/radar/upstream_radar_radar_style_override_spec.mmd`
+
+## Cypress rendering fixtures
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/radar.spec.js`
+
+These fixtures are imported from Mermaid's Cypress rendering tests and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/radar/*.svg` via:
+`cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+- `fixtures/radar/upstream_cypress_radar_spec_example_001.mmd`
+- `fixtures/radar/upstream_cypress_radar_spec_should_render_a_radar_diagram_with_multiple_curves_002.mmd`
+- `fixtures/radar/upstream_cypress_radar_spec_should_render_a_complex_radar_diagram_003.mmd`
+- `fixtures/radar/upstream_cypress_radar_spec_should_render_radar_diagram_with_config_override_004.mmd`
+- `fixtures/radar/upstream_cypress_radar_spec_should_parse_radar_diagram_with_theme_override_005.mmd`

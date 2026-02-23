@@ -224,7 +224,7 @@ These fixtures are imported from Mermaid's Cypress "platform" HTML test pages (c
 
 Deferred (not parity-gated yet):
 
-- `fixtures/_deferred/flowchart/upstream_html_demos_flowchart_state_example_002.mmd` (from `flowchart-state.html`):
+- `upstream_html_demos_flowchart_state_example_002` (from `flowchart-state.html`; deferred locally — see `docs/alignment/FIXTURE_EXPANSION_TODO.md`):
   - uses `%%{init: {"look": "handDrawn"} }%%` which emits RoughJS path-based stadium nodes upstream.
   - our current Flowchart Stage B parity renderer is still in the "classic" look DOM shape set, so this case is tracked as a future parity work item.
 

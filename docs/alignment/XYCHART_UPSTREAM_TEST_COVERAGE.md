@@ -29,3 +29,24 @@ Non-upstream (DB behavior lock-in):
 
 - auto-derive axes when omitted: `fixtures/xychart/upstream_xychart_autoderive_axes_db.mmd`
 - band categories longer than plot values (missing values become `null`): `fixtures/xychart/upstream_xychart_band_mismatch_db.mmd`
+
+## Cypress rendering fixtures
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/xyChart.spec.js`
+
+These fixtures are imported from Mermaid's Cypress rendering tests and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/xychart/*.svg` via:
+`cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_spark_bar_without_displaying_other_property_011.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_use_all_the_config_from_directive_012.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_with_show_axis_title_false_014.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_with_show_axis_label_false_015.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_with_show_axis_tick_false_016.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_with_show_axis_line_false_017.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_render_all_the_theme_color_018.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_render_multiple_bar_plots_horizontally_with_labels_correc_025.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_render_a_single_bar_with_label_for_a_horizontal_xy_chart_027.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_render_negative_and_decimal_values_with_correct_labels_fo_029.mmd`
+- `fixtures/xychart/upstream_cypress_xychart_spec_should_render_data_labels_within_each_bar_in_the_horizontal_xy_c_033.mmd`
