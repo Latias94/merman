@@ -1,0 +1,42 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "test_req",
+        "type": "Requirement",
+        "requirementId": "1",
+        "text": "the test text.",
+        "risk": "High",
+        "verifyMethod": "Test",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "elements": [
+      {
+        "name": "test_entity",
+        "type": "simulation",
+        "docRef": "",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "type": "satisfies",
+        "src": "test_entity",
+        "dst": "test_req"
+      }
+    ],
+    "classes": {}
+  }
+}
