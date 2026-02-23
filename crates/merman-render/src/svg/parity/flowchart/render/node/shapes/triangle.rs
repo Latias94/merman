@@ -16,8 +16,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     label_type: &str,
     node_classes: &[String],
     node_styles: &[String],
+    style: &str,
     fill_color: &str,
     stroke_color: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
     hand_drawn_seed: u64,
     timing_enabled: bool,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -53,8 +56,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
             &path_data,
             fill_color,
             stroke_color,
-            1.3,
-            "0 0",
+            stroke_width,
+            stroke_dasharray,
             hand_drawn_seed,
         )
     })
@@ -62,13 +65,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
 
     let _ = write!(
         out,
-        r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
+        r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
         util::fmt(-h / 2.0),
         util::fmt(h / 2.0),
         escape_attr(&fill_d),
         escape_attr(fill_color),
+        escape_attr(style),
         escape_attr(&stroke_d),
         escape_attr(stroke_color),
+        util::fmt(stroke_width as f64),
+        escape_attr(stroke_dasharray),
+        escape_attr(style),
     );
 
     // Mermaid places the label near the base; in htmlLabels mode the padding term is /2.
