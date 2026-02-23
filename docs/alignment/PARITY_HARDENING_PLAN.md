@@ -23,7 +23,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 1984
+- Total upstream SVG baselines: 1985
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 

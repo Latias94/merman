@@ -25,3 +25,13 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requi
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/requirementDb.spec.ts`
 
 - requirements/elements/relations/classes/styles behaviors: covered across the fixtures above, and `crates/merman-core/src/diagrams/requirement.rs`
+
+## Cypress rendering fixtures
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/requirement.spec.js`
+
+These fixtures are imported from Mermaid's Cypress rendering tests and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/requirement/*.svg` via:
+`cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+- `fixtures/requirement/upstream_cypress_requirement_spec_example_001.mmd`
