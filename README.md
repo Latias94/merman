@@ -169,7 +169,7 @@ Each example links to an existing fixture so the README stays honest and reprodu
 ### Architecture (nested junction routing)
 
 <p align="center">
-  <img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.svg" />
+  <img width="900" alt="Architecture diagram: nested junction routing" src="docs/assets/showcase/architecture.png" />
 </p>
 
 Fixture: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd`](fixtures/architecture/stress_architecture_batch3_nested_junctions_routing_060.mmd)
@@ -177,7 +177,7 @@ Fixture: [`fixtures/architecture/stress_architecture_batch3_nested_junctions_rou
 <details>
   <summary>Mermaid source</summary>
 
-```text
+```mermaid
 architecture-beta
 %% Authored stress fixture (Mermaid@11.12.2): nested junctions + multi-hop routing.
 
@@ -213,7 +213,7 @@ Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindma
 <details>
   <summary>Mermaid source</summary>
 
-```text
+```mermaid
 mindmap
   %% Authored stress fixture (Mermaid@11.12.2): <br> variants inside labels.
   root((Root))
@@ -237,7 +237,7 @@ Fixture: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fix
 <details>
   <summary>Mermaid source</summary>
 
-```text
+```mermaid
 %%{init: {"sankey": {"width": 900, "height": 420, "useMaxWidth": true, "showValues": false, "linkColor": "source", "nodeAlignment": "justify"}}}%%
 sankey
 
@@ -272,7 +272,7 @@ Fixture: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/up
 <details>
   <summary>Mermaid source</summary>
 
-```text
+```mermaid
 gantt
     dateFormat  YYYY-MM-DD
     title       Adding GANTT diagram functionality to mermaid
@@ -311,7 +311,7 @@ gantt
 
 | Architecture (dense services + cross edges) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: dense services + cross edges" src="docs/assets/showcase/architecture_dense.svg" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: dense services + cross edges" src="docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
 
 ## Quality gates
 
