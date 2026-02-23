@@ -142,7 +142,7 @@ pub fn render_layout_svg_parts(
             render_block_diagram_svg(layout, semantic, effective_config, options)
         }
         LayoutDiagram::RequirementDiagram(layout) => {
-            render_requirement_diagram_svg(layout, semantic, effective_config, options)
+            render_requirement_diagram_svg(layout, semantic, effective_config, title, options)
         }
         LayoutDiagram::ArchitectureDiagram(layout) => {
             render_architecture_diagram_svg(layout, semantic, effective_config, options)
@@ -255,7 +255,7 @@ pub fn render_layout_svg_parts_with_config(
             render_block_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::RequirementDiagram(layout) => {
-            render_requirement_diagram_svg(layout, semantic, effective_config_value, options)
+            render_requirement_diagram_svg(layout, semantic, effective_config_value, title, options)
         }
         LayoutDiagram::ArchitectureDiagram(layout) => {
             architecture::render_architecture_diagram_svg_with_config(
@@ -586,9 +586,16 @@ pub fn render_requirement_diagram_svg(
     layout: &RequirementDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    requirement::render_requirement_diagram_svg(layout, semantic, effective_config, options)
+    requirement::render_requirement_diagram_svg(
+        layout,
+        semantic,
+        effective_config,
+        diagram_title,
+        options,
+    )
 }
 
 pub fn render_block_diagram_svg(

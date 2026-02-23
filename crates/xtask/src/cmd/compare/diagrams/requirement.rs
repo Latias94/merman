@@ -191,6 +191,7 @@ pub(crate) fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskErr
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            layouted.meta.title.as_deref(),
             &svg_opts,
         ) {
             Ok(v) => v,

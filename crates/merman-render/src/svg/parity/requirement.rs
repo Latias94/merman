@@ -8,6 +8,7 @@ pub(super) fn render_requirement_diagram_svg(
     layout: &RequirementDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     #[derive(Debug, Clone, Deserialize)]
@@ -1306,6 +1307,25 @@ pub(super) fn render_requirement_diagram_svg(
     }
     out.push_str("</g>");
 
-    out.push_str("</g></g></svg>\n");
+    out.push_str("</g></g>");
+
+    let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+    if let Some(title) = diagram_title {
+        let vb_x_f = vb_x_attr.parse::<f64>().unwrap_or(vb_x);
+        let vb_y_f = vb_y_attr.parse::<f64>().unwrap_or(vb_y);
+        let vb_w_f = vb_w_attr.parse::<f64>().unwrap_or(vb_w);
+        // Mermaid places requirement diagram titles at a fixed offset below the viewBox top.
+        let title_x = vb_x_f + vb_w_f / 2.0;
+        let title_y = vb_y_f + 23.0;
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="requirementDiagramTitleText">{txt}</text>"#,
+            x = fmt(title_x),
+            y = fmt(title_y),
+            txt = escape_xml(title),
+        );
+    }
+
+    out.push_str("</svg>\n");
     Ok(out)
 }
