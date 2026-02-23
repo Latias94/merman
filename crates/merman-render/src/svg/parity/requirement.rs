@@ -71,9 +71,204 @@ pub(super) fn render_requirement_diagram_svg(
         format!("{diagram_id}_requirement-{suffix}")
     }
 
+    fn mermaid_markdown_to_html(raw: &str) -> String {
+        // Mermaid runs requirement node labels through its `markdownToHTML()` pipeline when
+        // `htmlLabels=true` (via `createText(...)`).
+        //
+        // We don't embed Mermaid's `marked` lexer in Rust. Instead we:
+        // - use the same "paragraph vs raw" heuristic as the rest of the renderer
+        // - parse the small subset of inline formatting that upstream emits (`<em>/<strong>`)
+        //
+        // Note: upstream sanitizes these labels; we intentionally keep entity-like sequences
+        // (e.g. `&lt;`) without double-escaping.
+
+        fn escape_amp_preserving_entities(raw: &str) -> String {
+            fn is_valid_entity(entity: &str) -> bool {
+                if entity.is_empty() {
+                    return false;
+                }
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
+                }
+                if let Some(dec) = entity.strip_prefix('#') {
+                    return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
+                }
+                let mut it = entity.chars();
+                let Some(first) = it.next() else {
+                    return false;
+                };
+                if !first.is_ascii_alphabetic() {
+                    return false;
+                }
+                it.all(|c| c.is_ascii_alphanumeric())
+            }
+
+            let mut out = String::with_capacity(raw.len());
+            let mut i = 0usize;
+            while let Some(rel) = raw[i..].find('&') {
+                let amp = i + rel;
+                out.push_str(&raw[i..amp]);
+                let tail = &raw[amp + 1..];
+                if let Some(semi_rel) = tail.find(';') {
+                    let semi = amp + 1 + semi_rel;
+                    let entity = &raw[amp + 1..semi];
+                    if is_valid_entity(entity) {
+                        out.push_str(&raw[amp..=semi]);
+                        i = semi + 1;
+                        continue;
+                    }
+                }
+                out.push_str("&amp;");
+                i = amp + 1;
+            }
+            out.push_str(&raw[i..]);
+            out
+        }
+
+        fn normalize_br_tags(raw: &str) -> String {
+            let bytes = raw.as_bytes();
+            let mut out = String::with_capacity(raw.len());
+            let mut cur = 0usize;
+            let mut i = 0usize;
+            while i + 2 < bytes.len() {
+                if bytes[i] != b'<' {
+                    i += 1;
+                    continue;
+                }
+                let b1 = bytes[i + 1];
+                let b2 = bytes[i + 2];
+                if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+                    i += 1;
+                    continue;
+                }
+                let next = bytes.get(i + 3).copied();
+                if let Some(n) = next {
+                    if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
+                        i += 1;
+                        continue;
+                    }
+                }
+                if i > cur {
+                    out.push_str(&raw[cur..i]);
+                }
+                let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
+                    cur = i;
+                    break;
+                };
+                out.push('\n');
+                i = i + end_rel + 1;
+                cur = i;
+            }
+            if cur < raw.len() {
+                out.push_str(&raw[cur..]);
+            }
+            out
+        }
+
+        fn html_inline_with_br(raw: &str) -> String {
+            let normalized = normalize_br_tags(raw);
+            let lines: Vec<&str> = normalized.split('\n').collect();
+            let mut out = String::new();
+            for (idx, line) in lines.iter().enumerate() {
+                if idx > 0 {
+                    out.push_str("<br />");
+                }
+                out.push_str(&escape_amp_preserving_entities(line));
+            }
+            out
+        }
+
+        let normalized = normalize_br_tags(raw);
+
+        if !crate::text::mermaid_markdown_wants_paragraph_wrap(&normalized) {
+            return html_inline_with_br(&normalized);
+        }
+
+        let escape_xhtml_text = |raw: &str| -> String {
+            // `pulldown-cmark` decodes entities like `&lt;` into `<` in `Event::Text`.
+            // Convert those back into XML-safe text while preserving any valid entities that remain.
+            let s = escape_amp_preserving_entities(raw);
+            let mut out = String::with_capacity(s.len());
+            for ch in s.chars() {
+                match ch {
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    _ => out.push(ch),
+                }
+            }
+            out
+        };
+
+        let parser = pulldown_cmark::Parser::new_ext(
+            &normalized,
+            pulldown_cmark::Options::ENABLE_TABLES
+                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                | pulldown_cmark::Options::ENABLE_TASKLISTS,
+        )
+        .map(|ev| match ev {
+            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+            other => other,
+        });
+
+        let mut out = String::new();
+        let mut saw_paragraph = false;
+        for ev in parser {
+            match ev {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
+                    saw_paragraph = true;
+                    out.push_str("<p>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
+                    out.push_str("</p>");
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                    out.push_str("<em>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                    out.push_str("</em>");
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                    out.push_str("<strong>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
+                    out.push_str("</strong>");
+                }
+                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                    out.push_str(&escape_xhtml_text(&t));
+                }
+                pulldown_cmark::Event::HardBreak | pulldown_cmark::Event::SoftBreak => {
+                    out.push_str("<br />");
+                }
+                pulldown_cmark::Event::Html(t) => {
+                    // Preserve safety and XML well-formedness: treat raw HTML as literal text.
+                    out.push_str(&escape_xhtml_text(&t));
+                }
+                _ => {}
+            }
+        }
+
+        if !saw_paragraph {
+            out.push_str("<p></p>");
+        }
+        out
+    }
+
+    fn requirement_label_uses_markdown_inline(raw: &str) -> bool {
+        // Inline emphasis/strong spans. Keep this intentionally conservative.
+        raw.contains('*') || raw.contains('_')
+    }
+
+    enum LabelContent<'a> {
+        Text(&'a str),
+        Html(&'a str),
+    }
+
     fn mk_label_foreign_object(
         out: &mut String,
-        text: &str,
+        content: LabelContent<'_>,
         width: f64,
         height: f64,
         span_class: &str,
@@ -91,16 +286,24 @@ pub(super) fn render_requirement_diagram_svg(
         let div_style_prefix = div_style_prefix.unwrap_or("");
         let _ = write!(
             out,
-            r#"<foreignObject height="{h}" width="{w}"><div{div_class_attr} style="{div_style_prefix}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width}px; text-align: center;"><span class="{span_class}"{span_style_attr}><p>{text}</p></span></div></foreignObject>"#,
+            r#"<foreignObject height="{h}" width="{w}"><div{div_class_attr} style="{div_style_prefix}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width}px; text-align: center;"><span class="{span_class}"{span_style_attr}>"#,
             w = fmt(width),
             h = fmt(height),
             div_class_attr = div_class_attr,
             span_class = escape_xml(span_class),
             span_style_attr = span_style_attr,
-            text = escape_xml(text),
             div_style_prefix = escape_xml(div_style_prefix),
             max_width = max_width_px,
         );
+        match content {
+            LabelContent::Text(text) => {
+                out.push_str("<p>");
+                escape_xml_into(out, text);
+                out.push_str("</p>");
+            }
+            LabelContent::Html(html) => out.push_str(html),
+        }
+        out.push_str("</span></div></foreignObject>");
     }
 
     fn rough_double_line_path_d(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
@@ -316,6 +519,7 @@ pub(super) fn render_requirement_diagram_svg(
     #[derive(Clone, Debug)]
     struct RequirementNodeLabelLine {
         display_text: String,
+        display_html: Option<String>,
         max_width_px: i64,
         html_width: f64,
         html_height: f64,
@@ -350,8 +554,11 @@ pub(super) fn render_requirement_diagram_svg(
         {
             (em * font_size).max(1.0)
         } else {
-            measurer
-                .measure_wrapped(
+            let looks_like_markdown_inline =
+                display_text.contains('*') || display_text.contains('_');
+            if looks_like_markdown_inline {
+                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    measurer,
                     display_text,
                     html_style,
                     None,
@@ -359,6 +566,17 @@ pub(super) fn render_requirement_diagram_svg(
                 )
                 .width
                 .max(1.0)
+            } else {
+                measurer
+                    .measure_wrapped(
+                        display_text,
+                        html_style,
+                        None,
+                        crate::text::WrapMode::HtmlLike,
+                    )
+                    .width
+                    .max(1.0)
+            }
         };
         let max_w = if let Some(px) =
             crate::requirement::requirement_upstream_calc_max_width_override_px(calc_text)
@@ -600,7 +818,7 @@ pub(super) fn render_requirement_diagram_svg(
         );
         mk_label_foreign_object(
             &mut out,
-            &label_text,
+            LabelContent::Text(&label_text),
             w,
             h,
             "edgeLabel",
@@ -649,6 +867,7 @@ pub(super) fn render_requirement_diagram_svg(
             type_height = h;
             label_lines.push(RequirementNodeLabelLine {
                 display_text: type_display,
+                display_html: None,
                 max_width_px: max_w,
                 html_width: w,
                 html_height: h,
@@ -673,6 +892,7 @@ pub(super) fn render_requirement_diagram_svg(
             name_height = h;
             label_lines.push(RequirementNodeLabelLine {
                 display_text: req.name.clone(),
+                display_html: None,
                 max_width_px: max_w,
                 html_width: w,
                 html_height: h,
@@ -698,6 +918,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -723,6 +944,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -748,6 +970,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -773,6 +996,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -805,6 +1029,7 @@ pub(super) fn render_requirement_diagram_svg(
             type_height = h;
             label_lines.push(RequirementNodeLabelLine {
                 display_text: type_display,
+                display_html: None,
                 max_width_px: max_w,
                 html_width: w,
                 html_height: h,
@@ -829,6 +1054,7 @@ pub(super) fn render_requirement_diagram_svg(
             name_height = h;
             label_lines.push(RequirementNodeLabelLine {
                 display_text: el.name.clone(),
+                display_html: None,
                 max_width_px: max_w,
                 html_width: w,
                 html_height: h,
@@ -854,6 +1080,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -879,6 +1106,7 @@ pub(super) fn render_requirement_diagram_svg(
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
+                        display_html: None,
                         max_width_px: max_w,
                         html_width: w,
                         html_height: h,
@@ -974,6 +1202,13 @@ pub(super) fn render_requirement_diagram_svg(
 
         // Labels.
         let padding = 20.0;
+        for line in label_lines.iter_mut() {
+            if line.display_html.is_none()
+                && requirement_label_uses_markdown_inline(&line.display_text)
+            {
+                line.display_html = Some(mermaid_markdown_to_html(&line.display_text));
+            }
+        }
         for line in &label_lines {
             let label_x = if line.keep_centered {
                 -line.html_width / 2.0
@@ -1011,7 +1246,10 @@ pub(super) fn render_requirement_diagram_svg(
             );
             mk_label_foreign_object(
                 &mut out,
-                &line.display_text,
+                line.display_html
+                    .as_deref()
+                    .map(LabelContent::Html)
+                    .unwrap_or_else(|| LabelContent::Text(&line.display_text)),
                 line.html_width,
                 line.html_height,
                 "markdown-node-label nodeLabel",

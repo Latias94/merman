@@ -303,10 +303,23 @@ fn measure_requirement_label_metrics(
     let width = if let Some(em) = requirement_upstream_html_label_override_em(display_text, bold) {
         (em * font_size).max(1.0)
     } else {
-        measurer
-            .measure_wrapped(display_text, html_style, None, WrapMode::HtmlLike)
+        let looks_like_markdown_inline = display_text.contains('*') || display_text.contains('_');
+        if looks_like_markdown_inline {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                display_text,
+                html_style,
+                None,
+                WrapMode::HtmlLike,
+            )
             .width
             .max(1.0)
+        } else {
+            measurer
+                .measure_wrapped(display_text, html_style, None, WrapMode::HtmlLike)
+                .width
+                .max(1.0)
+        }
     };
     let max_width_px = if let Some(px) = requirement_upstream_calc_max_width_override_px(calc_text)
     {
