@@ -1,0 +1,51 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": null,
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {
+      "cat": [
+        "fill:#f9d5e5",
+        "stroke:#233d4d",
+        "stroke-width:2px",
+        "font-weight:bold"
+      ]
+    },
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "CS"
+    ],
+    "nodes": [
+      {
+        "id": "CS",
+        "label": "A long bold text to be viewed",
+        "labelType": "text",
+        "shape": "round",
+        "layoutShape": "roundedRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "cat"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [],
+    "subgraphs": []
+  }
+}
