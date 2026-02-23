@@ -170,6 +170,37 @@ fn node_render_dimensions(
             (w, height)
         }
 
+        // Flowchart v2 tilted cylinder ("horizontal-cylinder").
+        "h-cyl" | "das" | "horizontal-cylinder" => {
+            // Mermaid `tiltedCylinder.ts`:
+            // - `labelPadding` defaults to `halfPadding` (i.e. `node.padding / 2`) for classic look.
+            // - `h = bbox.height + labelPadding`
+            // - `ry = h / 2`, `rx = ry / (2.5 + h / 50)`
+            // - `w = bbox.width + rx + labelPadding`
+            // - the rendered `<path>` bbox expands by `rx` on both sides (arc extents), so Dagre
+            //   sees `out_w = w + 2*rx` via `updateNodeBounds(...)`.
+            let label_padding = p / 2.0;
+            let h = text_h + label_padding;
+            let ry = h / 2.0;
+            let rx = if ry == 0.0 {
+                0.0
+            } else {
+                ry / (2.5 + h / 50.0)
+            };
+            let w = text_w + rx + label_padding;
+            (w + 2.0 * rx, h)
+        }
+
+        // Flowchart v2 window-pane ("internal-storage").
+        "win-pane" | "internal-storage" | "window-pane" => {
+            // Mermaid `windowPane.ts`: base `w/h` uses `2 * padding`, then the final bbox expands
+            // by `rectOffset` (only on the top/left edges) after `updateNodeBounds(...)`.
+            let w = (text_w + 2.0 * p).max(0.0);
+            let h = (text_h + 2.0 * p).max(0.0);
+            let rect_offset = 5.0;
+            f32_dims(w + rect_offset, h + rect_offset)
+        }
+
         // Circle.
         "circle" | "circ" => {
             // Mermaid uses half-padding for circles and bases radius on label width.
