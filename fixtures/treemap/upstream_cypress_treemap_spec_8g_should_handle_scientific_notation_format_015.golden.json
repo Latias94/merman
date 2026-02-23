@@ -1,0 +1,53 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Scientific Values",
+          "children": [
+            {
+              "name": "Value 1",
+              "value": 1234567
+            },
+            {
+              "name": "Value 2",
+              "value": 0.0000123
+            },
+            {
+              "name": "Value 3",
+              "value": 1000000000
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Scientific Values"
+      },
+      {
+        "level": 1,
+        "name": "Value 1",
+        "value": 1234567
+      },
+      {
+        "level": 1,
+        "name": "Value 2",
+        "value": 0.0000123
+      },
+      {
+        "level": 1,
+        "name": "Value 3",
+        "value": 1000000000
+      }
+    ],
+    "classes": {}
+  }
+}

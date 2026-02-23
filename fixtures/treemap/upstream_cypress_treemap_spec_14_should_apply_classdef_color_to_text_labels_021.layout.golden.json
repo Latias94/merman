@@ -1,0 +1,113 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 115.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Products",
+          "depth": 1.0,
+          "value": 115.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Electronics",
+          "depth": 2.0,
+          "value": 70.0,
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 600.0,
+          "y1": 380.0,
+          "class_selector": "whiteText",
+          "css_compiled_styles": [
+            "fill:#2c3e50;color:#ffffff"
+          ]
+        },
+        {
+          "name": "Furniture",
+          "depth": 2.0,
+          "value": 45.0,
+          "x0": 610.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": "darkText",
+          "css_compiled_styles": [
+            "fill:#ecf0f1;color:#000000"
+          ]
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Phones",
+          "value": 40.0,
+          "parent_name": "Electronics",
+          "x0": 30.0,
+          "y0": 105.0,
+          "x1": 346.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Laptops",
+          "value": 30.0,
+          "parent_name": "Electronics",
+          "x0": 356.0,
+          "y0": 105.0,
+          "x1": 590.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Chairs",
+          "value": 25.0,
+          "parent_name": "Furniture",
+          "x0": 620.0,
+          "y0": 105.0,
+          "x1": 970.0,
+          "y1": 248.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Tables",
+          "value": 20.0,
+          "parent_name": "Furniture",
+          "x0": 620.0,
+          "y0": 258.0,
+          "x1": 970.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": "$,.2f",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 6886937.25,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Revenue",
+          "depth": 1.0,
+          "value": 6886937.25,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Q4",
+          "value": 2145678.75,
+          "parent_name": "Revenue",
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 312.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Q3",
+          "value": 1845123.5,
+          "parent_name": "Revenue",
+          "x0": 322.0,
+          "y0": 70.0,
+          "x1": 572.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Q2",
+          "value": 1645789.25,
+          "parent_name": "Revenue",
+          "x0": 582.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 242.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Q1",
+          "value": 1250345.75,
+          "parent_name": "Revenue",
+          "x0": 582.0,
+          "y0": 252.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

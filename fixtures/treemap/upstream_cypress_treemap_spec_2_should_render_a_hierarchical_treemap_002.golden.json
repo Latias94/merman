@@ -1,0 +1,125 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Products",
+          "children": [
+            {
+              "name": "Electronics",
+              "children": [
+                {
+                  "name": "Phones",
+                  "value": 50
+                },
+                {
+                  "name": "Computers",
+                  "value": 30
+                },
+                {
+                  "name": "Accessories",
+                  "value": 20
+                }
+              ]
+            },
+            {
+              "name": "Clothing",
+              "children": [
+                {
+                  "name": "Men's",
+                  "children": [
+                    {
+                      "name": "Shirts",
+                      "value": 10
+                    },
+                    {
+                      "name": "Pants",
+                      "value": 15
+                    }
+                  ]
+                },
+                {
+                  "name": "Women's",
+                  "children": [
+                    {
+                      "name": "Dresses",
+                      "value": 20
+                    },
+                    {
+                      "name": "Skirts",
+                      "value": 10
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Products"
+      },
+      {
+        "level": 1,
+        "name": "Electronics"
+      },
+      {
+        "level": 2,
+        "name": "Phones",
+        "value": 50
+      },
+      {
+        "level": 2,
+        "name": "Computers",
+        "value": 30
+      },
+      {
+        "level": 2,
+        "name": "Accessories",
+        "value": 20
+      },
+      {
+        "level": 1,
+        "name": "Clothing"
+      },
+      {
+        "level": 2,
+        "name": "Men's"
+      },
+      {
+        "level": 3,
+        "name": "Shirts",
+        "value": 10
+      },
+      {
+        "level": 3,
+        "name": "Pants",
+        "value": 15
+      },
+      {
+        "level": 2,
+        "name": "Women's"
+      },
+      {
+        "level": 3,
+        "name": "Dresses",
+        "value": 20
+      },
+      {
+        "level": 3,
+        "name": "Skirts",
+        "value": 10
+      }
+    ],
+    "classes": {}
+  }
+}

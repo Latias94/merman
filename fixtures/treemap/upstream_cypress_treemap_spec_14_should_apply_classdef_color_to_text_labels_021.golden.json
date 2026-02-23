@@ -1,0 +1,113 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Products",
+          "children": [
+            {
+              "name": "Electronics",
+              "classSelector": "whiteText",
+              "cssCompiledStyles": [
+                "fill:#2c3e50;color:#ffffff"
+              ],
+              "children": [
+                {
+                  "name": "Phones",
+                  "value": 40
+                },
+                {
+                  "name": "Laptops",
+                  "value": 30
+                }
+              ]
+            },
+            {
+              "name": "Furniture",
+              "classSelector": "darkText",
+              "cssCompiledStyles": [
+                "fill:#ecf0f1;color:#000000"
+              ],
+              "children": [
+                {
+                  "name": "Chairs",
+                  "value": 25
+                },
+                {
+                  "name": "Tables",
+                  "value": 20
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Products"
+      },
+      {
+        "level": 1,
+        "name": "Electronics",
+        "classSelector": "whiteText",
+        "cssCompiledStyles": [
+          "fill:#2c3e50;color:#ffffff"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Phones",
+        "value": 40
+      },
+      {
+        "level": 2,
+        "name": "Laptops",
+        "value": 30
+      },
+      {
+        "level": 1,
+        "name": "Furniture",
+        "classSelector": "darkText",
+        "cssCompiledStyles": [
+          "fill:#ecf0f1;color:#000000"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Chairs",
+        "value": 25
+      },
+      {
+        "level": 2,
+        "name": "Tables",
+        "value": 20
+      }
+    ],
+    "classes": {
+      "whiteText": {
+        "id": "whiteText",
+        "styles": [
+          "fill:#2c3e50",
+          "color:#ffffff"
+        ],
+        "textStyles": []
+      },
+      "darkText": {
+        "id": "darkText",
+        "styles": [
+          "fill:#ecf0f1",
+          "color:#000000"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

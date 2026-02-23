@@ -1,0 +1,44 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Main Category",
+          "children": [
+            {
+              "name": "This is a very long item name that should wrap to the next line when rendered in the treemap diagram",
+              "value": 50
+            },
+            {
+              "name": "Short item",
+              "value": 20
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Main Category"
+      },
+      {
+        "level": 1,
+        "name": "This is a very long item name that should wrap to the next line when rendered in the treemap diagram",
+        "value": 50
+      },
+      {
+        "level": 1,
+        "name": "Short item",
+        "value": 20
+      }
+    ],
+    "classes": {}
+  }
+}

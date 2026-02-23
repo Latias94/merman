@@ -1,0 +1,141 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Company",
+          "children": [
+            {
+              "name": "Engineering",
+              "classSelector": "engSection",
+              "cssCompiledStyles": [
+                "fill:#9b59b6;stroke:#8e44ad;stroke-width:2px"
+              ],
+              "children": [
+                {
+                  "name": "Frontend",
+                  "value": 30,
+                  "classSelector": "highlight",
+                  "cssCompiledStyles": [
+                    "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+                  ]
+                },
+                {
+                  "name": "Backend",
+                  "value": 40
+                },
+                {
+                  "name": "DevOps",
+                  "value": 20,
+                  "classSelector": "highlight",
+                  "cssCompiledStyles": [
+                    "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Sales",
+              "children": [
+                {
+                  "name": "Direct",
+                  "value": 35
+                },
+                {
+                  "name": "Channel",
+                  "value": 25,
+                  "classSelector": "highlight",
+                  "cssCompiledStyles": [
+                    "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Company"
+      },
+      {
+        "level": 1,
+        "name": "Engineering",
+        "classSelector": "engSection",
+        "cssCompiledStyles": [
+          "fill:#9b59b6;stroke:#8e44ad;stroke-width:2px"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Frontend",
+        "value": 30,
+        "classSelector": "highlight",
+        "cssCompiledStyles": [
+          "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Backend",
+        "value": 40
+      },
+      {
+        "level": 2,
+        "name": "DevOps",
+        "value": 20,
+        "classSelector": "highlight",
+        "cssCompiledStyles": [
+          "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+        ]
+      },
+      {
+        "level": 1,
+        "name": "Sales"
+      },
+      {
+        "level": 2,
+        "name": "Direct",
+        "value": 35
+      },
+      {
+        "level": 2,
+        "name": "Channel",
+        "value": 25,
+        "classSelector": "highlight",
+        "cssCompiledStyles": [
+          "fill:#f39c12;color:#000;stroke:#e67e22;stroke-width:2px"
+        ]
+      }
+    ],
+    "classes": {
+      "highlight": {
+        "id": "highlight",
+        "styles": [
+          "fill:#f39c12",
+          "color:#000",
+          "stroke:#e67e22",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      },
+      "engSection": {
+        "id": "engSection",
+        "styles": [
+          "fill:#9b59b6",
+          "stroke:#8e44ad",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

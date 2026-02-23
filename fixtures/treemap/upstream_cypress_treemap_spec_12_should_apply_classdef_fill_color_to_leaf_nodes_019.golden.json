@@ -1,0 +1,84 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Root",
+          "children": [
+            {
+              "name": "Item A",
+              "value": 30,
+              "classSelector": "redClass",
+              "cssCompiledStyles": [
+                "fill:#ff0000"
+              ]
+            },
+            {
+              "name": "Item B",
+              "value": 20
+            },
+            {
+              "name": "Item C",
+              "value": 25,
+              "classSelector": "blueClass",
+              "cssCompiledStyles": [
+                "fill:#0000ff"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "level": 1,
+        "name": "Item A",
+        "value": 30,
+        "classSelector": "redClass",
+        "cssCompiledStyles": [
+          "fill:#ff0000"
+        ]
+      },
+      {
+        "level": 1,
+        "name": "Item B",
+        "value": 20
+      },
+      {
+        "level": 1,
+        "name": "Item C",
+        "value": 25,
+        "classSelector": "blueClass",
+        "cssCompiledStyles": [
+          "fill:#0000ff"
+        ]
+      }
+    ],
+    "classes": {
+      "blueClass": {
+        "id": "blueClass",
+        "styles": [
+          "fill:#0000ff"
+        ],
+        "textStyles": []
+      },
+      "redClass": {
+        "id": "redClass",
+        "styles": [
+          "fill:#ff0000"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

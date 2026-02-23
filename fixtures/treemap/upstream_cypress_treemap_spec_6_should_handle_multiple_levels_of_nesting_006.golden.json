@@ -1,0 +1,98 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Level 1",
+          "children": [
+            {
+              "name": "Level 2A",
+              "children": [
+                {
+                  "name": "Level 3A",
+                  "value": 10
+                },
+                {
+                  "name": "Level 3B",
+                  "value": 15
+                }
+              ]
+            },
+            {
+              "name": "Level 2B",
+              "children": [
+                {
+                  "name": "Level 3C",
+                  "value": 20
+                },
+                {
+                  "name": "Level 3D",
+                  "children": [
+                    {
+                      "name": "Level 4A",
+                      "value": 5
+                    },
+                    {
+                      "name": "Level 4B",
+                      "value": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Level 1"
+      },
+      {
+        "level": 1,
+        "name": "Level 2A"
+      },
+      {
+        "level": 2,
+        "name": "Level 3A",
+        "value": 10
+      },
+      {
+        "level": 2,
+        "name": "Level 3B",
+        "value": 15
+      },
+      {
+        "level": 1,
+        "name": "Level 2B"
+      },
+      {
+        "level": 2,
+        "name": "Level 3C",
+        "value": 20
+      },
+      {
+        "level": 2,
+        "name": "Level 3D"
+      },
+      {
+        "level": 3,
+        "name": "Level 4A",
+        "value": 5
+      },
+      {
+        "level": 3,
+        "name": "Level 4B",
+        "value": 5
+      }
+    ],
+    "classes": {}
+  }
+}

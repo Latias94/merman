@@ -1,0 +1,120 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": "$0,0",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 1500000.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Budget",
+          "depth": 1.0,
+          "value": 1500000.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Operations",
+          "depth": 2.0,
+          "value": 1000000.0,
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 657.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Marketing",
+          "depth": 2.0,
+          "value": 500000.0,
+          "x0": 667.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Salaries",
+          "value": 700000.0,
+          "parent_name": "Operations",
+          "x0": 30.0,
+          "y0": 105.0,
+          "x1": 459.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Equipment",
+          "value": 200000.0,
+          "parent_name": "Operations",
+          "x0": 469.0,
+          "y0": 105.0,
+          "x1": 647.0,
+          "y1": 278.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Supplies",
+          "value": 100000.0,
+          "parent_name": "Operations",
+          "x0": 469.0,
+          "y0": 288.0,
+          "x1": 647.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Advertising",
+          "value": 400000.0,
+          "parent_name": "Marketing",
+          "x0": 677.0,
+          "y0": 105.0,
+          "x1": 909.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Events",
+          "value": 100000.0,
+          "parent_name": "Marketing",
+          "x0": 919.0,
+          "y0": 105.0,
+          "x1": 970.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

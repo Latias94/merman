@@ -1,0 +1,62 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "User Counts",
+          "children": [
+            {
+              "name": "Active Users",
+              "value": 1250345
+            },
+            {
+              "name": "New Signups",
+              "value": 45789
+            },
+            {
+              "name": "Churned",
+              "value": 12350
+            },
+            {
+              "name": "Converted",
+              "value": 78975
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "User Counts"
+      },
+      {
+        "level": 1,
+        "name": "Active Users",
+        "value": 1250345
+      },
+      {
+        "level": 1,
+        "name": "New Signups",
+        "value": 45789
+      },
+      {
+        "level": 1,
+        "name": "Churned",
+        "value": 12350
+      },
+      {
+        "level": 1,
+        "name": "Converted",
+        "value": 78975
+      }
+    ],
+    "classes": {}
+  }
+}

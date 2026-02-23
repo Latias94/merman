@@ -1,0 +1,62 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Revenue",
+          "children": [
+            {
+              "name": "Q1",
+              "value": 1250345.75
+            },
+            {
+              "name": "Q2",
+              "value": 1645789.25
+            },
+            {
+              "name": "Q3",
+              "value": 1845123.5
+            },
+            {
+              "name": "Q4",
+              "value": 2145678.75
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Revenue"
+      },
+      {
+        "level": 1,
+        "name": "Q1",
+        "value": 1250345.75
+      },
+      {
+        "level": 1,
+        "name": "Q2",
+        "value": 1645789.25
+      },
+      {
+        "level": 1,
+        "name": "Q3",
+        "value": 1845123.5
+      },
+      {
+        "level": 1,
+        "name": "Q4",
+        "value": 2145678.75
+      }
+    ],
+    "classes": {}
+  }
+}

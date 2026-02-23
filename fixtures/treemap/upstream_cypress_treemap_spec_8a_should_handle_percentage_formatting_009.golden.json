@@ -1,0 +1,62 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Market Share",
+          "children": [
+            {
+              "name": "Company A",
+              "value": 0.35
+            },
+            {
+              "name": "Company B",
+              "value": 0.25
+            },
+            {
+              "name": "Company C",
+              "value": 0.15
+            },
+            {
+              "name": "Others",
+              "value": 0.25
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Market Share"
+      },
+      {
+        "level": 1,
+        "name": "Company A",
+        "value": 0.35
+      },
+      {
+        "level": 1,
+        "name": "Company B",
+        "value": 0.25
+      },
+      {
+        "level": 1,
+        "name": "Company C",
+        "value": 0.15
+      },
+      {
+        "level": 1,
+        "name": "Others",
+        "value": 0.25
+      }
+    ],
+    "classes": {}
+  }
+}

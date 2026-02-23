@@ -1,0 +1,117 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Budget",
+          "children": [
+            {
+              "name": "Critical",
+              "classSelector": "critical",
+              "cssCompiledStyles": [
+                "fill:#e74c3c;color:#fff;stroke:#c0392b;stroke-width:3px"
+              ],
+              "children": [
+                {
+                  "name": "Server Costs",
+                  "value": 50000
+                },
+                {
+                  "name": "Salaries",
+                  "value": 80000
+                }
+              ]
+            },
+            {
+              "name": "Normal",
+              "classSelector": "normal",
+              "cssCompiledStyles": [
+                "fill:#3498db;color:#fff;stroke:#2980b9;stroke-width:1px"
+              ],
+              "children": [
+                {
+                  "name": "Office Supplies",
+                  "value": 5000
+                },
+                {
+                  "name": "Marketing",
+                  "value": 15000
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Budget"
+      },
+      {
+        "level": 1,
+        "name": "Critical",
+        "classSelector": "critical",
+        "cssCompiledStyles": [
+          "fill:#e74c3c;color:#fff;stroke:#c0392b;stroke-width:3px"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Server Costs",
+        "value": 50000
+      },
+      {
+        "level": 2,
+        "name": "Salaries",
+        "value": 80000
+      },
+      {
+        "level": 1,
+        "name": "Normal",
+        "classSelector": "normal",
+        "cssCompiledStyles": [
+          "fill:#3498db;color:#fff;stroke:#2980b9;stroke-width:1px"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Office Supplies",
+        "value": 5000
+      },
+      {
+        "level": 2,
+        "name": "Marketing",
+        "value": 15000
+      }
+    ],
+    "classes": {
+      "normal": {
+        "id": "normal",
+        "styles": [
+          "fill:#3498db",
+          "color:#fff",
+          "stroke:#2980b9",
+          "stroke-width:1px"
+        ],
+        "textStyles": []
+      },
+      "critical": {
+        "id": "critical",
+        "styles": [
+          "fill:#e74c3c",
+          "color:#fff",
+          "stroke:#c0392b",
+          "stroke-width:3px"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

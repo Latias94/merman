@@ -1,0 +1,131 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 55.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 1",
+          "depth": 1.0,
+          "value": 55.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 2B",
+          "depth": 2.0,
+          "value": 30.0,
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 539.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 2A",
+          "depth": 2.0,
+          "value": 25.0,
+          "x0": 549.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 3D",
+          "depth": 3.0,
+          "value": 10.0,
+          "x0": 369.0,
+          "y0": 105.0,
+          "x1": 529.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Level 3C",
+          "value": 20.0,
+          "parent_name": "Level 2B",
+          "x0": 30.0,
+          "y0": 105.0,
+          "x1": 359.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 4A",
+          "value": 5.0,
+          "parent_name": "Level 3D",
+          "x0": 379.0,
+          "y0": 140.0,
+          "x1": 444.0,
+          "y1": 360.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 4B",
+          "value": 5.0,
+          "parent_name": "Level 3D",
+          "x0": 454.0,
+          "y0": 140.0,
+          "x1": 519.0,
+          "y1": 360.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 3B",
+          "value": 15.0,
+          "parent_name": "Level 2A",
+          "x0": 559.0,
+          "y0": 105.0,
+          "x1": 802.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Level 3A",
+          "value": 10.0,
+          "parent_name": "Level 2A",
+          "x0": 812.0,
+          "y0": 105.0,
+          "x1": 970.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

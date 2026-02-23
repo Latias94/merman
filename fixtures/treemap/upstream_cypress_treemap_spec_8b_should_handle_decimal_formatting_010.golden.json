@@ -1,0 +1,62 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Metrics",
+          "children": [
+            {
+              "name": "Conversion Rate",
+              "value": 0.0567
+            },
+            {
+              "name": "Bounce Rate",
+              "value": 0.6723
+            },
+            {
+              "name": "Click-through Rate",
+              "value": 0.1289
+            },
+            {
+              "name": "Engagement",
+              "value": 0.4521
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Metrics"
+      },
+      {
+        "level": 1,
+        "name": "Conversion Rate",
+        "value": 0.0567
+      },
+      {
+        "level": 1,
+        "name": "Bounce Rate",
+        "value": 0.6723
+      },
+      {
+        "level": 1,
+        "name": "Click-through Rate",
+        "value": 0.1289
+      },
+      {
+        "level": 1,
+        "name": "Engagement",
+        "value": 0.4521
+      }
+    ],
+    "classes": {}
+  }
+}

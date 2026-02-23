@@ -1,0 +1,80 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 75.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Root",
+          "depth": 1.0,
+          "value": 75.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Item A",
+          "value": 30.0,
+          "parent_name": "Root",
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 398.0,
+          "y1": 380.0,
+          "class_selector": "redClass",
+          "css_compiled_styles": [
+            "fill:#ff0000"
+          ]
+        },
+        {
+          "name": "Item C",
+          "value": 25.0,
+          "parent_name": "Root",
+          "x0": 408.0,
+          "y0": 70.0,
+          "x1": 721.0,
+          "y1": 380.0,
+          "class_selector": "blueClass",
+          "css_compiled_styles": [
+            "fill:#0000ff"
+          ]
+        },
+        {
+          "name": "Item B",
+          "value": 20.0,
+          "parent_name": "Root",
+          "x0": 731.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}
