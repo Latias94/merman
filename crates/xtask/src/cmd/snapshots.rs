@@ -222,15 +222,27 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
 
             if diagram != "all" {
                 let dt = parsed.meta.diagram_type.as_str();
-                let matches = dt == diagram
-                    || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
-                    || (diagram == "flowchart" && dt == "flowchart-v2")
-                    || (diagram == "state" && dt == "stateDiagram")
-                    || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
-                    || (diagram == "gitgraph" && dt == "gitGraph")
-                    || (diagram == "quadrantchart" && dt == "quadrantChart");
-                if !matches {
-                    continue;
+                if dt == "error" {
+                    // `--diagram <dir>` is a directory selector; fixtures can still parse into the
+                    // error diagram when `suppress_errors=true`. Keep those snapshots so
+                    // `cargo nextest run` stays consistent with the fixture corpus.
+                    //
+                    // Example: Mermaid docs sometimes include "..." placeholder lines in syntax
+                    // blocks, which produce an upstream error SVG baseline.
+                    // We still want a golden snapshot for such fixtures.
+                    //
+                    // (Upstream baselines for the `error` diagram type itself are not maintained.)
+                } else {
+                    let matches = dt == diagram
+                        || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
+                        || (diagram == "flowchart" && dt == "flowchart-v2")
+                        || (diagram == "state" && dt == "stateDiagram")
+                        || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
+                        || (diagram == "gitgraph" && dt == "gitGraph")
+                        || (diagram == "quadrantchart" && dt == "quadrantChart");
+                    if !matches {
+                        continue;
+                    }
                 }
             }
 
@@ -711,15 +723,19 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
         if diagram != "all" {
             let dt = parsed.meta.diagram_type.as_str();
-            let matches = dt == diagram
-                || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
-                || (diagram == "flowchart" && dt == "flowchart-v2")
-                || (diagram == "state" && dt == "stateDiagram")
-                || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
-                || (diagram == "gitgraph" && dt == "gitGraph")
-                || (diagram == "quadrantchart" && dt == "quadrantChart");
-            if !matches {
-                continue;
+            if dt == "error" {
+                // See `update_snapshots`: keep error diagram snapshots under diagram-scoped runs.
+            } else {
+                let matches = dt == diagram
+                    || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
+                    || (diagram == "flowchart" && dt == "flowchart-v2")
+                    || (diagram == "state" && dt == "stateDiagram")
+                    || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
+                    || (diagram == "gitgraph" && dt == "gitGraph")
+                    || (diagram == "quadrantchart" && dt == "quadrantChart");
+                if !matches {
+                    continue;
+                }
             }
         }
 
