@@ -420,6 +420,46 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             c == "cluster" || c.ends_with("-cluster") || c.ends_with("_cluster")
         }
 
+        fn find_first_attr<'a>(n: &'a SvgDomNode, tag: &str, attr: &str) -> Option<&'a str> {
+            if n.name == tag {
+                if let Some(v) = n.attrs.get(attr) {
+                    return Some(v.as_str());
+                }
+            }
+            for c in &n.children {
+                if let Some(v) = find_first_attr(c, tag, attr) {
+                    return Some(v);
+                }
+            }
+            None
+        }
+
+        fn count_tag(n: &SvgDomNode, tag: &str) -> usize {
+            let mut out = 0usize;
+            if n.name == tag {
+                out += 1;
+            }
+            for c in &n.children {
+                out += count_tag(c, tag);
+            }
+            out
+        }
+
+        fn min_tspan_dy(n: &SvgDomNode) -> Option<f64> {
+            let mut best: Option<f64> = None;
+            if n.name == "tspan" {
+                if let Some(dy) = n.attrs.get("dy").and_then(|s| s.parse::<f64>().ok()) {
+                    best = Some(best.map(|v| v.min(dy)).unwrap_or(dy));
+                }
+            }
+            for c in &n.children {
+                if let Some(v) = min_tspan_dy(c) {
+                    best = Some(best.map(|b| b.min(v)).unwrap_or(v));
+                }
+            }
+            best
+        }
+
         fn find_first_cluster_id(n: &SvgDomNode) -> Option<&str> {
             if n.name == "g" {
                 if let Some(class) = n.attrs.get("class") {
@@ -444,6 +484,16 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if let Some(id) = n.attrs.get("data-id") {
                 return id.as_str();
+            }
+            if n.name == "text" {
+                for c in &n.children {
+                    if c.name != "tspan" {
+                        continue;
+                    }
+                    if let Some(dy) = c.attrs.get("dy") {
+                        return dy.as_str();
+                    }
+                }
             }
             if n.name == "g" {
                 fn find_first_data_id(n: &SvgDomNode) -> Option<&str> {
@@ -479,10 +529,47 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
             let ahint = sort_hint(a);
             let bhint = sort_hint(b);
+            let a_is_c4_shape_group =
+                a.name == "g" && aclass.split_whitespace().any(|c| c == "person-man");
+            let b_is_c4_shape_group =
+                b.name == "g" && bclass.split_whitespace().any(|c| c == "person-man");
             a.name
                 .cmp(&b.name)
                 .then_with(|| ahint.cmp(bhint))
                 .then_with(|| aclass.cmp(bclass))
+                .then_with(|| a.attrs.cmp(&b.attrs))
+                .then_with(|| {
+                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                        return std::cmp::Ordering::Equal;
+                    }
+                    let a_fill = find_first_attr(a, "rect", "fill").unwrap_or("");
+                    let b_fill = find_first_attr(b, "rect", "fill").unwrap_or("");
+                    a_fill.cmp(b_fill)
+                })
+                .then_with(|| {
+                    if !(a_is_c4_shape_group && b_is_c4_shape_group) {
+                        return std::cmp::Ordering::Equal;
+                    }
+                    let a_len = find_first_attr(a, "text", "textLength").unwrap_or("");
+                    let b_len = find_first_attr(b, "text", "textLength").unwrap_or("");
+                    a_len.cmp(b_len)
+                })
+                .then_with(|| {
+                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
+                        return std::cmp::Ordering::Equal;
+                    }
+                    let at = count_tag(a, "tspan");
+                    let bt = count_tag(b, "tspan");
+                    at.cmp(&bt)
+                })
+                .then_with(|| {
+                    if a.name != "g" || b.name != "g" || !aclass.is_empty() || !bclass.is_empty() {
+                        return std::cmp::Ordering::Equal;
+                    }
+                    let ady = min_tspan_dy(a).unwrap_or(0.0);
+                    let bdy = min_tspan_dy(b).unwrap_or(0.0);
+                    ady.partial_cmp(&bdy).unwrap_or(std::cmp::Ordering::Equal)
+                })
         });
     }
 
