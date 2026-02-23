@@ -6,8 +6,9 @@ Mermaid, but headless, in Rust.
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
-`merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
-The upstream Mermaid implementation is the spec (see [docs/adr/0014-upstream-parity-policy.md](docs/adr/0014-upstream-parity-policy.md)).
+`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.12.2`).
+Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
+changes that affect semantics, layout, or rendering are caught and reviewed.
 
 ## TL;DR
 
