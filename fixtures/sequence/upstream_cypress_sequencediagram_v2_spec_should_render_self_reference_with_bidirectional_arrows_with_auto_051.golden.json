@@ -1,0 +1,100 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Charlie"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Bidirectional solid self-reference",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Bob",
+        "to": "Bob",
+        "message": "Bidirectional dotted self-reference",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Charlie",
+        "to": "Charlie",
+        "message": "Another bidirectional solid",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Another bidirectional dotted",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Charlie"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Solid arrow self-reference",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "Bob",
+        "message": "Dotted arrow self-reference",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Charlie",
+        "to": "Charlie",
+        "message": "Open arrow self-reference",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Dotted open arrow self-reference",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Bob",
+        "to": "Bob",
+        "message": "Cross arrow self-reference",
+        "wrap": false,
+        "type": 3,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Charlie",
+        "to": "Charlie",
+        "message": "Dotted cross self-reference",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

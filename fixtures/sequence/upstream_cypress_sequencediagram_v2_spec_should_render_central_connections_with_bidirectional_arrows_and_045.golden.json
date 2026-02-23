@@ -1,0 +1,154 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Charlie",
+      "Alice()",
+      "()Bob",
+      "Bob()",
+      "()Alice"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Alice()": {
+        "name": "Alice()",
+        "description": "Alice()",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "()Bob": {
+        "name": "()Bob",
+        "description": "()Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob()": {
+        "name": "Bob()",
+        "description": "Bob()",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "()Alice": {
+        "name": "()Alice",
+        "description": "()Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice()",
+        "to": "()Bob",
+        "message": "Dual central with bidirectional solid LTR",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Bob()",
+        "to": "()Alice",
+        "message": "Dual central with bidirectional solid RTL",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Alice()",
+        "to": "()Bob",
+        "message": "Dual central with bidirectional dotted LTR",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Bob()",
+        "to": "()Alice",
+        "message": "Dual central with bidirectional dotted RTL",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Alice",
+        "to": "()Bob",
+        "message": "Central at end with bidirectional LTR",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Bob()",
+        "to": "Alice",
+        "message": "Central at start with bidirectional RTL",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
