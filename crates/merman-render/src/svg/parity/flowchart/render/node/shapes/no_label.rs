@@ -41,6 +41,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
     }
 
     match shape {
+        // Flowchart v2 anchor: a tiny dot used as an invisible anchor node. Mermaid ignores
+        // `node.label` and does not emit a label group.
+        "anchor" => {
+            let d = rough_timed(timing_enabled, details, || {
+                roughjs_circle_path_d(2.0, hand_drawn_seed)
+            })
+            .unwrap_or_else(|| "M0,0".to_string());
+            let _ = write!(
+                out,
+                r##"<g class="anchor" style=""><path d="{}" stroke="none" stroke-width="0" fill="black"/></g>"##,
+                escape_attr(&d),
+            );
+            true
+        }
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
         "sm-circ" | "small-circle" | "start" => {
