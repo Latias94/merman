@@ -1,0 +1,54 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "sourceNode",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 10.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 400.0
+        },
+        {
+          "id": "targetNode",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 10.0,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.0,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "sourceNode",
+          "target": "targetNode",
+          "value": 10.0,
+          "width": 400.0,
+          "y0": 200.0,
+          "y1": 200.0
+        }
+      ]
+    }
+  }
+}
