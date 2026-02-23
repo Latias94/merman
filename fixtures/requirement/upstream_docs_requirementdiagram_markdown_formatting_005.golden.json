@@ -1,0 +1,26 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "__test_req__",
+        "type": "Requirement",
+        "requirementId": "1",
+        "text": "*italicized text* **bold text**",
+        "risk": "High",
+        "verifyMethod": "Test",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "elements": [],
+    "relationships": [],
+    "classes": {}
+  }
+}
