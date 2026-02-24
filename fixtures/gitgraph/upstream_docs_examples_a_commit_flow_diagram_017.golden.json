@@ -1,0 +1,114 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "Ashish",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1111",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "newbranch"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [
+          "test"
+        ],
+        "parents": [
+          "1111"
+        ],
+        "branch": "newbranch"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 2,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "merged branch newbranch into main",
+        "seq": 5,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "4-<dynamic>",
+          "2-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": false
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "",
+        "seq": 7,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "6-<dynamic>"
+        ],
+        "branch": "b2"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "newbranch"
+      },
+      {
+        "name": "b2"
+      }
+    ],
+    "currentBranch": "b2",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

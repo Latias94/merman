@@ -1,0 +1,290 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "web",
+      "blog",
+      "account",
+      "mail",
+      "db"
+    ],
+    "actors": {
+      "web": {
+        "name": "web",
+        "description": "Web Browser",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "blog": {
+        "name": "blog",
+        "description": "Blog Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "account": {
+        "name": "account",
+        "description": "Account Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "mail": {
+        "name": "mail",
+        "description": "Mail Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "db": {
+        "name": "db",
+        "description": "Storage",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "web",
+        "to": "db",
+        "message": "The user must be logged in to submit blog posts",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "web",
+        "to": "account",
+        "message": "Logs in using credentials",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "2",
+        "from": "account",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "account",
+        "to": "db",
+        "message": "Query stored accounts",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "db",
+        "to": "account",
+        "message": "Respond with query result",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "Credentials not found",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "account",
+        "to": "web",
+        "message": "Invalid credentials",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "Credentials found",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "account",
+        "to": "web",
+        "message": "Successfully logged in",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "account",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "web",
+        "to": "db",
+        "message": "When the user is authenticated, they can now submit new posts",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "11",
+        "from": "web",
+        "to": "blog",
+        "message": "Submit new post",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "12",
+        "from": "blog",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "blog",
+        "to": "db",
+        "message": "Store post data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": null,
+        "to": null,
+        "message": "Notifications",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "blog",
+        "to": "mail",
+        "message": "Send mail to blog subscribers",
+        "wrap": false,
+        "type": 25,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "blog",
+        "to": "db",
+        "message": "Store in-site notifications",
+        "wrap": false,
+        "type": 25,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "Response",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "blog",
+        "to": "web",
+        "message": "Successfully posted",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": "blog",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "21",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "web",
+          "db"
+        ],
+        "placement": 2,
+        "message": "The user must be logged in to submit blog posts",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "web",
+          "db"
+        ],
+        "placement": 2,
+        "message": "When the user is authenticated, they can now submit new posts",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
