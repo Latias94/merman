@@ -1,0 +1,13 @@
+  sequenceDiagram
+  box aqua
+  participant a as Alice
+  participant b as Bob
+  end
+  participant c as Charlie
+  links a: { "Repo": "https://repo.contoso.com/", "Dashboard": "https://dashboard.contoso.com/" }
+  links b: { "Dashboard": "https://dashboard.contoso.com/" }
+  links a: { "On-Call": "https://oncall.contoso.com/?svc=alice" }
+  link a: Endpoint @ https://alice.contoso.com
+  link a: Swagger @ https://swagger.contoso.com
+  link a: Tests @ https://tests.contoso.com/?svc=alice@contoso.com
+  

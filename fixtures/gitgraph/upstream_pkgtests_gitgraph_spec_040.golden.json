@@ -1,0 +1,114 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "B",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "A"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "M",
+        "message": "merged branch feature into main",
+        "seq": 3,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "ZERO",
+          "B"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "C",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "seq": 5,
+        "type": 4,
+        "tags": [],
+        "parents": [
+          "C",
+          "M"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "D",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "seq": 7,
+        "type": 4,
+        "tags": [],
+        "parents": [
+          "D",
+          "M"
+        ],
+        "branch": "release"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "feature"
+      },
+      {
+        "name": "release"
+      }
+    ],
+    "currentBranch": "release",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Report": {
+        "id": "Report",
+        "type": "",
+        "label": "Report",
+        "text": "Report",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generatePDF",
+            "classifier": "",
+            "parameters": "data: List",
+            "returnType": "",
+            "displayText": "+generatePDF(data: List)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generateCSV",
+            "classifier": "",
+            "parameters": "data: List",
+            "returnType": "",
+            "displayText": "+generateCSV(data: List)",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Report-0",
+        "parent": "Company.Project.Module.SubModule",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Admin": {
+        "id": "Admin",
+        "type": "",
+        "label": "Admin",
+        "text": "Admin",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generateReport",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+generateReport()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Admin-1",
+        "parent": "Company.Project.Module",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Admin",
+        "id2": "Report",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "generates",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Company.Project.Module.SubModule": {
+        "id": "Company.Project.Module.SubModule",
+        "domId": "classId-Company.Project.Module.SubModule-0",
+        "classIds": [
+          "Report"
+        ]
+      },
+      "Company.Project.Module": {
+        "id": "Company.Project.Module",
+        "domId": "classId-Company.Project.Module-1",
+        "classIds": [
+          "Admin"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

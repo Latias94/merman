@@ -1,0 +1,71 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "a",
+      "b",
+      "c"
+    ],
+    "actors": {
+      "a": {
+        "name": "a",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {
+          "Repo": "https://repo.contoso.com/",
+          "Dashboard": "https://dashboard.contoso.com/",
+          "On-Call": "https://oncall.contoso.com/?svc=alice",
+          "Endpoint": "https://alice.contoso.com",
+          "Swagger": "https://swagger.contoso.com",
+          "Tests": "https://tests.contoso.com/?svc=alice@contoso.com"
+        },
+        "properties": {}
+      },
+      "b": {
+        "name": "b",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {
+          "Dashboard": "https://dashboard.contoso.com/"
+        },
+        "properties": {}
+      },
+      "c": {
+        "name": "c",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [],
+    "notes": [],
+    "boxes": [
+      {
+        "name": null,
+        "wrap": false,
+        "fill": "aqua",
+        "actorKeys": [
+          "a",
+          "b"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

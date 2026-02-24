@@ -1,0 +1,304 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Configuring",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Configuring",
+        "dir": "TB",
+        "domId": "state-Configuring-0",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Configuring_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Configuring_start",
+        "dir": null,
+        "domId": "state-Configuring_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "NewValueSelection",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "NewValueSelection",
+        "dir": null,
+        "domId": "state-NewValueSelection-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "NewValuePreview",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "NewValuePreview",
+        "dir": "TB",
+        "domId": "state-NewValuePreview-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "State1",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "State1",
+        "dir": null,
+        "domId": "state-State1-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "NewValuePreview",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "State2",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "State2",
+        "dir": null,
+        "domId": "state-State2-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "NewValuePreview",
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "Configuring_start",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "NewValueSelection",
+        "end": "NewValuePreview",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValue",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "NewValuePreview",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValueRejected",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "NewValuePreview",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValueSaved",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "State1",
+        "end": "State2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "Configuring": {
+        "id": "Configuring",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Configuring_start",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "NewValueSelection",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "NewValueSelection",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "NewValuePreview",
+              "type": "default",
+              "classes": []
+            },
+            "description": "EvNewValue"
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "NewValuePreview",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "NewValueSelection",
+              "type": "default",
+              "classes": []
+            },
+            "description": "EvNewValueRejected"
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "NewValuePreview",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "NewValueSelection",
+              "type": "default",
+              "classes": []
+            },
+            "description": "EvNewValueSaved"
+          },
+          {
+            "stmt": "state",
+            "id": "NewValuePreview",
+            "type": "default",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "State1",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "State2",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {}
+  }
+}
