@@ -1,0 +1,72 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Analytics and Business Intelligence Platforms",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Leaders",
+      "quadrant2Text": "Challengers",
+      "quadrant3Text": "Niche",
+      "quadrant4Text": "Visionaries"
+    },
+    "axes": {
+      "xAxisLeftText": "Completeness of Vision â¤",
+      "xAxisRightText": "x-axis-2",
+      "yAxisBottomText": "Ability to Execute",
+      "yAxisTopText": "y-axis-2"
+    },
+    "points": [
+      {
+        "text": "Incorta",
+        "x": 0.2,
+        "y": 0.3,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "IBM",
+        "x": 0.51,
+        "y": 0.4,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Salesforce",
+        "x": 0.55,
+        "y": 0.6,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Microsoft",
+        "x": 0.75,
+        "y": 0.75,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}
