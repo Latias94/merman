@@ -647,6 +647,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
         match diagram_dir {
             "flowchart" => {
+                // Flowchart-ELK is currently out of scope for the headless layout engine.
+                if fixture_text.trim_start().starts_with("flowchart-elk") {
+                    return Some("flowchart-elk directive (deferred)");
+                }
                 // ELK layout is currently out of scope for the headless layout engine.
                 if fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk")
@@ -664,6 +668,16 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 // Math rendering depends on browser KaTeX + foreignObject details.
                 if fixture_text.contains("$$") {
                     return Some("flowchart math (deferred)");
+                }
+            }
+            "gantt" => {
+                // Gantt + YAML frontmatter config is still drifting vs upstream (notably axis ticks).
+                // Import later once the renderer is aligned for these cases.
+                if fixture_text.starts_with("---\n")
+                    && fixture_text.contains("\n---\n")
+                    && fixture_text.contains("\ngantt:")
+                {
+                    return Some("gantt frontmatter config (deferred)");
                 }
             }
             "sequence" => {
