@@ -2465,8 +2465,233 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         source_test_name: Option<String>,
     }
 
+    if install && !with_baselines {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "`--install` only applies when `--with-baselines` is set".to_string(),
+        ));
+    }
+
+    let report_path = workspace_root
+        .join("target")
+        .join("import-upstream-cypress.report.txt");
+    let mut report_lines: Vec<String> = Vec::new();
+
+    fn deferred_with_baselines_reason(
+        diagram_dir: &str,
+        fixture_text: &str,
+    ) -> Option<&'static str> {
+        match diagram_dir {
+            "flowchart" => {
+                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
+                    if !fixture_text.contains("\n  look: classic")
+                        && !fixture_text.contains("\nlook: classic")
+                    {
+                        return Some("flowchart frontmatter config.look!=classic (deferred)");
+                    }
+                }
+                if fixture_text.contains("$$") {
+                    return Some("flowchart math (deferred)");
+                }
+            }
+            "sequence" => {
+                if fixture_text.contains("$$") {
+                    return Some("sequence math (deferred)");
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn looks_like_sequence_half_arrows(fixture_text: &str) -> bool {
+        [
+            "-|\\",   // -|\
+            "--|\\",  // --|\
+            "-|/",    // -|/
+            "--|/",   // --|/
+            "-\\\\",  // -\\
+            "--\\\\", // --\\
+            "-//",    // -//
+            "--//",   // --//
+            "/|-",    // /|-
+            "/|--",   // /|--
+            "\\|-",   // \|-
+            "\\|--",  // \|--
+            "//-",    // //-
+            "//--",   // //--
+            "\\\\-",  // \\-
+            "\\\\--", // \\--
+        ]
+        .into_iter()
+        .any(|n| fixture_text.contains(n))
+    }
+
+    fn deferred_keep_fixture_only_reason(
+        diagram_dir: &str,
+        fixture_text: &str,
+    ) -> Option<&'static str> {
+        match diagram_dir {
+            "sequence" => {
+                // Our pinned upstream baseline renderer (tools/mermaid-cli) currently fails to
+                // render these "half-arrow" operators, so keep the fixture for traceability under
+                // `_deferred` without baselines.
+                if looks_like_sequence_half_arrows(fixture_text) {
+                    return Some("sequence half-arrows (deferred; no upstream baselines yet)");
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn deferred_keep_baselines_reason(
+        diagram_dir: &str,
+        fixture_text: &str,
+    ) -> Option<&'static str> {
+        match diagram_dir {
+            "flowchart" => {
+                // ELK layout is currently out of scope for the headless layout engine, but we
+                // still keep the upstream SVG baseline so the case remains traceable.
+                if fixture_text.contains("\n  layout: elk")
+                    || fixture_text.contains("\nlayout: elk")
+                {
+                    return Some("flowchart frontmatter config.layout=elk (deferred)");
+                }
+
+                // Mermaid also has a dedicated `flowchart-elk` diagram type.
+                // Keep these fixtures in `_deferred` until we implement ELK layout parity.
+                if fixture_text
+                    .lines()
+                    .any(|l| l.trim_start().starts_with("flowchart-elk"))
+                {
+                    return Some("flowchart diagram type flowchart-elk (deferred)");
+                }
+            }
+            "sequence" => {
+                // Mermaid's sequence diagram v2 supports "central connections" where the arrow
+                // contains circles on the actor lifelines, e.g. `Alice ()->>() Bob`.
+                // merman does not implement this rendering yet, so keep the upstream SVG for
+                // traceability but move the fixture under `_deferred` to keep `verify` green.
+                if fixture_text.contains(" ()-") || fixture_text.contains("()-") {
+                    return Some("sequence central connections (deferred)");
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
+        let Ok(head) = fs::read_to_string(svg_path) else {
+            return false;
+        };
+        let first = head.lines().next().unwrap_or_default();
+        first.contains(r#"viewBox="-8 -8 16 16""#)
+            || first.contains(r#"viewBox="0 0 16 16""#)
+            || first.contains(r#"style="max-width: 16px"#)
+    }
+
+    fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
+        let _ = fs::remove_file(&f.path);
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.golden.json", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.layout.golden.json", f.stem)),
+        );
+    }
+
+    fn defer_fixture_files_keep_baselines(workspace_root: &Path, f: &CreatedFixture) {
+        let deferred_dir = workspace_root
+            .join("fixtures")
+            .join("_deferred")
+            .join(&f.diagram_dir);
+        let deferred_svg_dir = workspace_root
+            .join("fixtures")
+            .join("_deferred")
+            .join("upstream-svgs")
+            .join(&f.diagram_dir);
+        let _ = fs::create_dir_all(&deferred_dir);
+        let _ = fs::create_dir_all(&deferred_svg_dir);
+
+        let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
+        let _ = fs::remove_file(&deferred_mmd_path);
+        let _ = fs::rename(&f.path, &deferred_mmd_path);
+
+        let svg_path = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join(&f.diagram_dir)
+            .join(format!("{}.svg", f.stem));
+        let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
+        let _ = fs::remove_file(&deferred_svg_path);
+        let _ = fs::rename(&svg_path, &deferred_svg_path);
+
+        // We do not keep snapshots for deferred fixtures in the main fixture corpus.
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.golden.json", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.layout.golden.json", f.stem)),
+        );
+    }
+
+    fn defer_fixture_files_no_baselines(workspace_root: &Path, f: &CreatedFixture) -> PathBuf {
+        let deferred_dir = workspace_root
+            .join("fixtures")
+            .join("_deferred")
+            .join(&f.diagram_dir);
+        let _ = fs::create_dir_all(&deferred_dir);
+
+        let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
+        let _ = fs::remove_file(&deferred_mmd_path);
+        let _ = fs::rename(&f.path, &deferred_mmd_path);
+
+        // Ensure we don't leave any partially-generated artifacts in the main corpus.
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.golden.json", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.layout.golden.json", f.stem)),
+        );
+
+        deferred_mmd_path
+    }
+
     let mut created: Vec<CreatedFixture> = Vec::new();
-    let mut imported = 0usize;
+    let mut imported_kept = 0usize;
 
     for c in candidates {
         let existing = existing_by_diagram
@@ -2514,9 +2739,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             path: out_path.display().to_string(),
             source,
         })?;
-        existing.insert(c.body.clone(), out_path.clone());
 
-        created.push(CreatedFixture {
+        let f = CreatedFixture {
             diagram_dir: c.diagram_dir,
             stem,
             path: out_path,
@@ -2524,14 +2748,220 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             source_idx_in_file: c.block.idx_in_file,
             source_call: c.block.call,
             source_test_name: c.block.test_name,
-        });
+        };
 
-        imported += 1;
+        if !with_baselines {
+            existing.insert(c.body.clone(), f.path.clone());
+            created.push(f);
+            imported_kept += 1;
+            if let Some(max) = limit {
+                if imported_kept >= max {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        let fixture_text = c.body;
+
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &fixture_text) {
+            report_lines.push(format!(
+                "DEFERRED_WITHOUT_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (deferred for --with-baselines): {} ({reason})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        if let Some(reason) = deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text) {
+            report_lines.push(format!(
+                "DEFERRED_NO_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            let deferred_path = defer_fixture_files_no_baselines(&workspace_root, &f);
+            skipped.push(format!(
+                "skip (deferred without baselines): {} ({reason})",
+                deferred_path.display(),
+            ));
+            existing.insert(fixture_text.clone(), deferred_path);
+            continue;
+        }
+
+        let mut svg_args = vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ];
+        if install {
+            svg_args.push("--install".to_string());
+        }
+        match super::super::gen_upstream_svgs(svg_args) {
+            Ok(()) => {}
+            Err(XtaskError::UpstreamSvgFailed(msg)) => {
+                report_lines.push(format!(
+                    "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\tmsg={}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_spec.display(),
+                    f.source_idx_in_file,
+                    f.source_call,
+                    f.source_test_name.clone().unwrap_or_default(),
+                    msg.lines().next().unwrap_or("unknown upstream error"),
+                ));
+
+                if deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text).is_some()
+                    || (f.diagram_dir == "sequence"
+                        && msg.contains("Parse error")
+                        && looks_like_sequence_half_arrows(&fixture_text))
+                {
+                    let reason = "sequence half-arrows (upstream parse error; deferred)";
+                    let deferred_path = defer_fixture_files_no_baselines(&workspace_root, &f);
+                    skipped.push(format!(
+                        "skip (deferred without baselines): {} ({reason})",
+                        deferred_path.display()
+                    ));
+                    existing.insert(fixture_text.clone(), deferred_path);
+                } else {
+                    skipped.push(format!(
+                        "skip (upstream svg failed): {} ({})",
+                        f.path.display(),
+                        msg.lines().next().unwrap_or("unknown upstream error")
+                    ));
+                    cleanup_fixture_files(&workspace_root, &f);
+                }
+                continue;
+            }
+            Err(other) => return Err(other),
+        }
+
+        let svg_path = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join(&f.diagram_dir)
+            .join(format!("{}.svg", f.stem));
+        if is_suspicious_blank_svg(&svg_path) {
+            report_lines.push(format!(
+                "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        if let Some(reason) = deferred_keep_baselines_reason(&f.diagram_dir, &fixture_text) {
+            report_lines.push(format!(
+                "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (deferred for --with-baselines): {} ({reason})",
+                f.path.display(),
+            ));
+            defer_fixture_files_keep_baselines(&workspace_root, &f);
+            existing.insert(fixture_text.clone(), deferred_out_path);
+            continue;
+        }
+
+        if let Err(err) = super::super::update_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            report_lines.push(format!(
+                "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\terr={err}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (snapshot update failed): {} ({err})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        if let Err(err) = super::super::update_layout_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            report_lines.push(format!(
+                "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\terr={err}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (layout snapshot update failed): {} ({err})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        existing.insert(fixture_text.clone(), f.path.clone());
+        created.push(f);
+
+        imported_kept += 1;
         if let Some(max) = limit {
-            if imported >= max {
+            if imported_kept >= max {
                 break;
             }
         }
+    }
+
+    if !report_lines.is_empty() {
+        if let Some(parent) = report_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let header = format!(
+            "# import-upstream-cypress report (Mermaid@11.12.2)\n# generated_at={}\n",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
+        );
+        let mut out = String::new();
+        out.push_str(&header);
+        out.push_str(&report_lines.join("\n"));
+        out.push('\n');
+        let _ = fs::write(&report_path, out);
+        eprintln!("Wrote import report: {}", report_path.display());
     }
 
     if created.is_empty() {
@@ -2539,6 +2969,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             let mut dup = 0usize;
             let mut exists = 0usize;
             let mut deferred = 0usize;
+            let mut upstream_failed = 0usize;
+            let mut blank_svg = 0usize;
+            let mut snapshot_failed = 0usize;
+            let mut layout_snapshot_failed = 0usize;
+            let mut other = 0usize;
+
             for s in &skipped {
                 if s.starts_with("skip (duplicate content):") {
                     dup += 1;
@@ -2546,357 +2982,31 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     exists += 1;
                 } else if s.starts_with("skip (already deferred):") {
                     deferred += 1;
+                } else if s.starts_with("skip (upstream svg failed):") {
+                    upstream_failed += 1;
+                } else if s.starts_with("skip (suspicious upstream svg output):") {
+                    blank_svg += 1;
+                } else if s.starts_with("skip (snapshot update failed):") {
+                    snapshot_failed += 1;
+                } else if s.starts_with("skip (layout snapshot update failed):") {
+                    layout_snapshot_failed += 1;
+                } else {
+                    other += 1;
                 }
             }
+
             let mut msg = String::from("no fixtures were imported");
-            if dup + exists + deferred > 0 {
-                msg.push_str(&format!(
-                    " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred)"
-                ));
-            }
+            msg.push_str(&format!(
+                " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred, {upstream_failed} upstream_failed, {blank_svg} blank_svg, {snapshot_failed} snapshot_failed, {layout_snapshot_failed} layout_snapshot_failed, {other} other)"
+            ));
             msg.push_str(" (use --overwrite, or adjust --filter/--limit)");
             return Err(XtaskError::SnapshotUpdateFailed(msg));
         }
+
         return Err(XtaskError::SnapshotUpdateFailed(
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
                 .to_string(),
         ));
-    }
-
-    if install && !with_baselines {
-        return Err(XtaskError::SnapshotUpdateFailed(
-            "`--install` only applies when `--with-baselines` is set".to_string(),
-        ));
-    }
-
-    if with_baselines {
-        let report_path = workspace_root
-            .join("target")
-            .join("import-upstream-cypress.report.txt");
-        let mut report_lines: Vec<String> = Vec::new();
-
-        fn deferred_with_baselines_reason(
-            diagram_dir: &str,
-            fixture_text: &str,
-        ) -> Option<&'static str> {
-            match diagram_dir {
-                "flowchart" => {
-                    if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                        if !fixture_text.contains("\n  look: classic")
-                            && !fixture_text.contains("\nlook: classic")
-                        {
-                            return Some("flowchart frontmatter config.look!=classic (deferred)");
-                        }
-                    }
-                    if fixture_text.contains("$$") {
-                        return Some("flowchart math (deferred)");
-                    }
-                }
-                "sequence" => {
-                    if fixture_text.contains("$$") {
-                        return Some("sequence math (deferred)");
-                    }
-                }
-                _ => {}
-            }
-            None
-        }
-
-        fn deferred_keep_baselines_reason(
-            diagram_dir: &str,
-            fixture_text: &str,
-        ) -> Option<&'static str> {
-            match diagram_dir {
-                "flowchart" => {
-                    // ELK layout is currently out of scope for the headless layout engine, but we
-                    // still keep the upstream SVG baseline so the case remains traceable.
-                    if fixture_text.contains("\n  layout: elk")
-                        || fixture_text.contains("\nlayout: elk")
-                    {
-                        return Some("flowchart frontmatter config.layout=elk (deferred)");
-                    }
-
-                    // Mermaid also has a dedicated `flowchart-elk` diagram type.
-                    // Keep these fixtures in `_deferred` until we implement ELK layout parity.
-                    if fixture_text
-                        .lines()
-                        .any(|l| l.trim_start().starts_with("flowchart-elk"))
-                    {
-                        return Some("flowchart diagram type flowchart-elk (deferred)");
-                    }
-                }
-                "sequence" => {
-                    // Mermaid's sequence diagram v2 supports "central connections" where the arrow
-                    // contains circles on the actor lifelines, e.g. `Alice ()->>() Bob`.
-                    // merman does not implement this rendering yet, so keep the upstream SVG for
-                    // traceability but move the fixture under `_deferred` to keep `verify` green.
-                    if fixture_text.contains(" ()-") || fixture_text.contains("()-") {
-                        return Some("sequence central connections (deferred)");
-                    }
-                }
-                _ => {}
-            }
-            None
-        }
-
-        fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
-            let Ok(head) = fs::read_to_string(svg_path) else {
-                return false;
-            };
-            let first = head.lines().next().unwrap_or_default();
-            first.contains(r#"viewBox="-8 -8 16 16""#)
-                || first.contains(r#"viewBox="0 0 16 16""#)
-                || first.contains(r#"style="max-width: 16px"#)
-        }
-
-        fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
-            let _ = fs::remove_file(&f.path);
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join("upstream-svgs")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.svg", f.stem)),
-            );
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.golden.json", f.stem)),
-            );
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.layout.golden.json", f.stem)),
-            );
-        }
-
-        fn defer_fixture_files_keep_baselines(workspace_root: &Path, f: &CreatedFixture) {
-            let deferred_dir = workspace_root
-                .join("fixtures")
-                .join("_deferred")
-                .join(&f.diagram_dir);
-            let deferred_svg_dir = workspace_root
-                .join("fixtures")
-                .join("_deferred")
-                .join("upstream-svgs")
-                .join(&f.diagram_dir);
-            let _ = fs::create_dir_all(&deferred_dir);
-            let _ = fs::create_dir_all(&deferred_svg_dir);
-
-            let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
-            let _ = fs::remove_file(&deferred_mmd_path);
-            let _ = fs::rename(&f.path, &deferred_mmd_path);
-
-            let svg_path = workspace_root
-                .join("fixtures")
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
-            let _ = fs::remove_file(&deferred_svg_path);
-            let _ = fs::rename(&svg_path, &deferred_svg_path);
-
-            // We do not keep snapshots for deferred fixtures in the main fixture corpus.
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.golden.json", f.stem)),
-            );
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.layout.golden.json", f.stem)),
-            );
-        }
-
-        let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
-        for f in &created {
-            let fixture_text = match fs::read_to_string(&f.path) {
-                Ok(v) => v,
-                Err(err) => {
-                    report_lines.push(format!(
-                        "READ_FIXTURE_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\terr={err}",
-                        f.diagram_dir,
-                        f.stem,
-                        f.source_spec.display(),
-                        f.source_idx_in_file,
-                        f.source_call,
-                        f.source_test_name.clone().unwrap_or_default(),
-                    ));
-                    skipped.push(format!(
-                        "skip (failed to read imported fixture): {} ({err})",
-                        f.path.display(),
-                    ));
-                    cleanup_fixture_files(&workspace_root, f);
-                    continue;
-                }
-            };
-            if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &fixture_text) {
-                report_lines.push(format!(
-                    "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (deferred for --with-baselines): {} ({reason})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            let mut svg_args = vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ];
-            if install {
-                svg_args.push("--install".to_string());
-            }
-            match super::super::gen_upstream_svgs(svg_args) {
-                Ok(()) => {}
-                Err(XtaskError::UpstreamSvgFailed(msg)) => {
-                    report_lines.push(format!(
-                        "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\tmsg={}",
-                        f.diagram_dir,
-                        f.stem,
-                        f.source_spec.display(),
-                        f.source_idx_in_file,
-                        f.source_call,
-                        f.source_test_name.clone().unwrap_or_default(),
-                        msg.lines().next().unwrap_or("unknown upstream error"),
-                    ));
-                    skipped.push(format!(
-                        "skip (upstream svg failed): {} ({})",
-                        f.path.display(),
-                        msg.lines().next().unwrap_or("unknown upstream error")
-                    ));
-                    cleanup_fixture_files(&workspace_root, f);
-                    continue;
-                }
-                Err(other) => return Err(other),
-            }
-
-            let svg_path = workspace_root
-                .join("fixtures")
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            if is_suspicious_blank_svg(&svg_path) {
-                report_lines.push(format!(
-                    "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            if let Some(reason) = deferred_keep_baselines_reason(&f.diagram_dir, &fixture_text) {
-                report_lines.push(format!(
-                    "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (deferred for --with-baselines): {} ({reason})",
-                    f.path.display(),
-                ));
-                defer_fixture_files_keep_baselines(&workspace_root, f);
-                continue;
-            }
-
-            if let Err(err) = super::super::update_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                report_lines.push(format!(
-                    "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\terr={err}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (snapshot update failed): {} ({err})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-            if let Err(err) = super::super::update_layout_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                report_lines.push(format!(
-                    "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\terr={err}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (layout snapshot update failed): {} ({err})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            kept.push(f.clone());
-        }
-        created = kept;
-
-        if !report_lines.is_empty() {
-            if let Some(parent) = report_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let header = format!(
-                "# import-upstream-cypress report (Mermaid@11.12.2)\n# generated_at={}\n",
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
-            );
-            let mut out = String::new();
-            out.push_str(&header);
-            out.push_str(&report_lines.join("\n"));
-            out.push('\n');
-            let _ = fs::write(&report_path, out);
-            eprintln!("Wrote import report: {}", report_path.display());
-        }
-
-        if created.is_empty() {
-            return Err(XtaskError::SnapshotUpdateFailed(
-                "no fixtures were imported (all candidates failed upstream rendering)".to_string(),
-            ));
-        }
     }
 
     eprintln!("Imported {} fixtures:", created.len());

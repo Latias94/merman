@@ -308,7 +308,32 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     if with_baselines {
-        for (diagram_dir, stem, _) in &created {
+        let mut kept: Vec<(String, String, PathBuf)> = Vec::with_capacity(created.len());
+
+        fn is_upstream_error_svg(svg_path: &Path) -> bool {
+            let Ok(svg) = fs::read_to_string(svg_path) else {
+                return false;
+            };
+            svg.contains("aria-roledescription=\"error\"")
+        }
+
+        fn cleanup_fixture_and_svg(
+            workspace_root: &Path,
+            diagram_dir: &str,
+            stem: &str,
+            path: &Path,
+        ) {
+            let _ = fs::remove_file(path);
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join("upstream-svgs")
+                    .join(diagram_dir)
+                    .join(format!("{stem}.svg")),
+            );
+        }
+
+        for (diagram_dir, stem, path) in &created {
             let mut svg_args = vec![
                 "--diagram".to_string(),
                 diagram_dir.clone(),
@@ -319,6 +344,21 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
                 svg_args.push("--install".to_string());
             }
             super::super::gen_upstream_svgs(svg_args)?;
+
+            let svg_path = workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(diagram_dir)
+                .join(format!("{stem}.svg"));
+            if is_upstream_error_svg(&svg_path) {
+                skipped.push(format!(
+                    "skip (upstream rendered error diagram): {}",
+                    path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, diagram_dir, stem, path);
+                continue;
+            }
+
             super::super::update_snapshots(vec![
                 "--diagram".to_string(),
                 diagram_dir.clone(),
@@ -331,7 +371,11 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
                 "--filter".to_string(),
                 stem.clone(),
             ])?;
+
+            kept.push((diagram_dir.clone(), stem.clone(), path.clone()));
         }
+
+        created = kept;
     }
 
     eprintln!("Imported {} fixtures:", created.len());
