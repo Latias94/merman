@@ -1,0 +1,30 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "abc-123"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "abc-123",
+        "type": "abc-123",
+        "task": "task1",
+        "score": 0,
+        "events": []
+      },
+      {
+        "id": 1,
+        "section": "abc-123",
+        "type": "abc-123",
+        "task": "task2",
+        "score": 0,
+        "events": []
+      }
+    ]
+  }
+}
