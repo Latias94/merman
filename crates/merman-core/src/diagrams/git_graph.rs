@@ -845,7 +845,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
                         match k.as_str() {
                             "id" => commit_db.id = v,
                             "msg" => commit_db.msg = v,
-                            "tag" => commit_db.tags = vec![v],
+                            "tag" => commit_db.tags.push(v),
                             "type" => commit_db.commit_type = parse_commit_type(&v)?,
                             _ => {}
                         }
@@ -883,7 +883,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 for (k, v) in kv {
                     match k.as_str() {
                         "id" => merge_db.id = Some(v),
-                        "tag" => merge_db.tags = vec![v],
+                        "tag" => merge_db.tags.push(v),
                         "type" => merge_db.commit_type = Some(parse_commit_type(&v)?),
                         _ => {}
                     }
@@ -899,7 +899,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
                     match k.as_str() {
                         "id" => id = v,
                         "parent" => parent = v,
-                        "tag" => tags = Some(vec![v]),
+                        "tag" => tags.get_or_insert_with(Vec::new).push(v),
                         _ => {}
                     }
                 }
@@ -1060,6 +1060,13 @@ mod tests {
             commits[0]["tags"].as_array().unwrap()[0].as_str().unwrap(),
             "test"
         );
+
+        let model = parse("gitGraph:\ncommit tag:\"a\" tag:\"b\"\n");
+        let commits = model["commits"].as_array().unwrap();
+        let tags = commits[0]["tags"].as_array().unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].as_str().unwrap(), "a");
+        assert_eq!(tags[1].as_str().unwrap(), "b");
 
         let model = parse("gitGraph:\ncommit type: HIGHLIGHT\n");
         let commits = model["commits"].as_array().unwrap();
