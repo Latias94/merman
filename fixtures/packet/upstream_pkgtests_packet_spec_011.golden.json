@@ -1,0 +1,41 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "type": "packet",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "packet": [
+      [
+        {
+          "start": 0,
+          "end": 10,
+          "bits": 11,
+          "label": "test"
+        },
+        {
+          "start": 11,
+          "end": 31,
+          "bits": 20,
+          "label": "multiple"
+        }
+      ],
+      [
+        {
+          "start": 32,
+          "end": 63,
+          "bits": 31,
+          "label": "multiple"
+        }
+      ],
+      [
+        {
+          "start": 64,
+          "end": 90,
+          "bits": 26,
+          "label": "multiple"
+        }
+      ]
+    ]
+  }
+}
