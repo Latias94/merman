@@ -1,0 +1,91 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class10": {
+        "id": "Class10",
+        "type": "T",
+        "label": "Class10",
+        "text": "Class10&lt;T&gt;",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "test",
+            "classifier": "",
+            "parameters": "List~int~ ids",
+            "returnType": "List~bool~",
+            "displayText": "test(List<int> ids) : List<bool>",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "testArray",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool[]",
+            "displayText": "testArray() : bool[]",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int[] id",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int[] id",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "List~int~ ids",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "List<int> ids",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class10-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,223 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -111.234,
+        "min_y": -18.0,
+        "max_x": 408.0,
+        "max_y": 108.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 400.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "branch1",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 50.234,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "s1",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "s2",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s1"
+          ],
+          "branch": "main",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 0.0
+        },
+        {
+          "id": "s3",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s2"
+          ],
+          "branch": "branch1",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 90.0
+        },
+        {
+          "id": "s4",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s3"
+          ],
+          "branch": "branch1",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 90.0
+        },
+        {
+          "id": "s5",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s2"
+          ],
+          "branch": "main",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 0.0
+        },
+        {
+          "id": "s6",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s4"
+          ],
+          "branch": "branch1",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 90.0
+        },
+        {
+          "id": "s7",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "s6"
+          ],
+          "branch": "branch1",
+          "pos": 300.0,
+          "pos_with_offset": 310.0,
+          "x": 310.0,
+          "y": 90.0
+        },
+        {
+          "id": "7-<dynamic>",
+          "message": "merged branch main into branch1",
+          "seq": 7.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "s7",
+            "s5"
+          ],
+          "branch": "branch1",
+          "pos": 350.0,
+          "pos_with_offset": 360.0,
+          "x": 360.0,
+          "y": 90.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "s1",
+          "to": "s2",
+          "class_index": 0.0,
+          "d": "M 10 0 L 60 0"
+        },
+        {
+          "from": "s2",
+          "to": "s3",
+          "class_index": 1.0,
+          "d": "M 60 0 L 60 70 A 20 20, 0, 0, 0, 80 90 L 110 90"
+        },
+        {
+          "from": "s3",
+          "to": "s4",
+          "class_index": 1.0,
+          "d": "M 110 90 L 160 90"
+        },
+        {
+          "from": "s2",
+          "to": "s5",
+          "class_index": 0.0,
+          "d": "M 60 0 L 210 0"
+        },
+        {
+          "from": "s4",
+          "to": "s6",
+          "class_index": 1.0,
+          "d": "M 160 90 L 260 90"
+        },
+        {
+          "from": "s6",
+          "to": "s7",
+          "class_index": 1.0,
+          "d": "M 260 90 L 310 90"
+        },
+        {
+          "from": "s7",
+          "to": "7-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 310 90 L 360 90"
+        },
+        {
+          "from": "s5",
+          "to": "7-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 210 0 L 210 35 A 10 10, 0, 0, 0, 220 45 L 350 45 A 10 10, 0, 0, 1, 360 55 L 360 90"
+        }
+      ]
+    }
+  }
+}

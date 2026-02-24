@@ -1,0 +1,231 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 212.8,
+          "y": 35.0,
+          "width": 127.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 212.8,
+          "y": 160.6,
+          "width": 104.4,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C",
+          "x": 212.8,
+          "y": 308.2,
+          "width": 141.2,
+          "height": 141.2,
+          "is_cluster": false
+        },
+        {
+          "id": "D",
+          "x": 60.0,
+          "y": 477.4,
+          "width": 104.0,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "E",
+          "x": 212.8,
+          "y": 477.4,
+          "width": 101.6,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "F",
+          "x": 365.913,
+          "y": 477.4,
+          "width": 104.625,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 212.8,
+              "y": 62.0
+            },
+            {
+              "x": 212.8,
+              "y": 97.8
+            },
+            {
+              "x": 212.8,
+              "y": 133.6
+            }
+          ],
+          "label": {
+            "x": 212.8,
+            "y": 97.8,
+            "width": 74.56,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_B_C_0",
+          "from": "B",
+          "to": "C",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 212.8,
+              "y": 187.6
+            },
+            {
+              "x": 212.8,
+              "y": 212.6
+            },
+            {
+              "x": 212.8,
+              "y": 237.6
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_C_D_0",
+          "from": "C",
+          "to": "D",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 171.181,
+              "y": 337.181
+            },
+            {
+              "x": 60.0,
+              "y": 414.6
+            },
+            {
+              "x": 60.0,
+              "y": 450.4
+            }
+          ],
+          "label": {
+            "x": 60.0,
+            "y": 414.6,
+            "width": 27.36,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_C_E_0",
+          "from": "C",
+          "to": "E",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 212.8,
+              "y": 378.8
+            },
+            {
+              "x": 212.8,
+              "y": 414.6
+            },
+            {
+              "x": 212.8,
+              "y": 450.4
+            }
+          ],
+          "label": {
+            "x": 212.8,
+            "y": 414.6,
+            "width": 32.96,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_C_F_0",
+          "from": "C",
+          "to": "F",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 254.454,
+              "y": 337.146
+            },
+            {
+              "x": 365.913,
+              "y": 414.6
+            },
+            {
+              "x": 365.913,
+              "y": 450.4
+            }
+          ],
+          "label": {
+            "x": 365.913,
+            "y": 414.6,
+            "width": 41.12,
+            "height": 21.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 418.225,
+        "max_y": 504.4
+      }
+    }
+  }
+}

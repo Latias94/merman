@@ -1,0 +1,109 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "s1",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "s2",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s1"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "s3",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s2"
+        ],
+        "branch": "branch1"
+      },
+      {
+        "id": "s4",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s3"
+        ],
+        "branch": "branch1"
+      },
+      {
+        "id": "s5",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s2"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "s6",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s4"
+        ],
+        "branch": "branch1"
+      },
+      {
+        "id": "s7",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "s6"
+        ],
+        "branch": "branch1"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "merged branch main into branch1",
+        "seq": 7,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "s7",
+          "s5"
+        ],
+        "branch": "branch1",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "branch1"
+      }
+    ],
+    "currentBranch": "branch1",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
