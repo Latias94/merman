@@ -1,0 +1,75 @@
+{
+  "diagramType": "pie",
+  "layout": {
+    "PieDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 544.249,
+        "max_y": 450.0
+      },
+      "center_x": 225.0,
+      "center_y": 225.0,
+      "radius": 185.0,
+      "outer_radius": 186.0,
+      "legend_x": 216.0,
+      "legend_start_y": -33.0,
+      "legend_step_y": 22.0,
+      "slices": [
+        {
+          "label": "Dogs",
+          "value": 386.0,
+          "start_angle": 0.0,
+          "end_angle": 4.981,
+          "is_full_circle": false,
+          "percent": 79.0,
+          "text_x": 84.083,
+          "text_y": 110.37,
+          "fill": "#ECECFF"
+        },
+        {
+          "label": "Cats",
+          "value": 85.9,
+          "start_angle": 4.981,
+          "end_angle": 6.09,
+          "is_full_circle": false,
+          "percent": 18.0,
+          "text_x": -94.355,
+          "text_y": -101.728,
+          "fill": "#ffffde"
+        },
+        {
+          "label": "Rats",
+          "value": 15.0,
+          "start_angle": 6.09,
+          "end_angle": 6.283,
+          "is_full_circle": false,
+          "percent": 3.0,
+          "text_x": -13.408,
+          "text_y": -138.101,
+          "fill": "hsl(80, 100%, 56.2745098039%)"
+        }
+      ],
+      "legend_items": [
+        {
+          "label": "Dogs",
+          "value": 386.0,
+          "fill": "#ECECFF",
+          "y": -33.0
+        },
+        {
+          "label": "Cats",
+          "value": 85.9,
+          "fill": "#ffffde",
+          "y": -11.0
+        },
+        {
+          "label": "Rats",
+          "value": 15.0,
+          "fill": "hsl(80, 100%, 56.2745098039%)",
+          "y": 11.0
+        }
+      ]
+    }
+  }
+}
