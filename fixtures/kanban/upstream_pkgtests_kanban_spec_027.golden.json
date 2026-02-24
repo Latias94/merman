@@ -1,0 +1,30 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "root",
+        "label": "fix things",
+        "level": 8,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false,
+        "icon": "star"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "root",
+        "label": "fix things",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 8,
+        "look": "classic"
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}
