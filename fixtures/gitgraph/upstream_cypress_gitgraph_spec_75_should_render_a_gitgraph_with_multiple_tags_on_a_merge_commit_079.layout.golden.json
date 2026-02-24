@@ -1,0 +1,203 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -18.0,
+        "min_y": 22.0,
+        "max_x": 123.359,
+        "max_y": 388.0
+      },
+      "direction": "BT",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 380.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "develop",
+          "index": 1.0,
+          "pos": 105.359,
+          "bbox_width": 45.773,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "C",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "B"
+          ],
+          "branch": "develop",
+          "pos": 30.0,
+          "pos_with_offset": 40.0,
+          "x": 105.359,
+          "y": 40.0
+        },
+        {
+          "id": "TWO",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Release 1.0"
+          ],
+          "branch": "main",
+          "pos": 80.0,
+          "pos_with_offset": 90.0,
+          "x": 0.0,
+          "y": 90.0
+        },
+        {
+          "id": "Release 1.0",
+          "message": "merged branch develop into main",
+          "seq": 4.0,
+          "commit_type": 3.0,
+          "custom_type": 2.0,
+          "custom_id": true,
+          "tags": [
+            "SAML v2.0",
+            "OpenID v1.1"
+          ],
+          "parents": [
+            "ONE",
+            "B"
+          ],
+          "branch": "main",
+          "pos": 130.0,
+          "pos_with_offset": 140.0,
+          "x": 0.0,
+          "y": 140.0
+        },
+        {
+          "id": "B",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "A"
+          ],
+          "branch": "develop",
+          "pos": 180.0,
+          "pos_with_offset": 190.0,
+          "x": 105.359,
+          "y": 190.0
+        },
+        {
+          "id": "ONE",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "main",
+          "pos": 230.0,
+          "pos_with_offset": 240.0,
+          "x": 0.0,
+          "y": 240.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "develop",
+          "pos": 280.0,
+          "pos_with_offset": 290.0,
+          "x": 105.359,
+          "y": 290.0
+        },
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 330.0,
+          "pos_with_offset": 340.0,
+          "x": 0.0,
+          "y": 340.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "A",
+          "class_index": 1.0,
+          "d": "M 0 340 L 85.359375 340 A 20 20, 0, 0, 0, 105.359375 320 L 105.359375 290"
+        },
+        {
+          "from": "ZERO",
+          "to": "ONE",
+          "class_index": 0.0,
+          "d": "M 0 340 L 0 240"
+        },
+        {
+          "from": "A",
+          "to": "B",
+          "class_index": 1.0,
+          "d": "M 105.359375 290 L 105.359375 190"
+        },
+        {
+          "from": "ONE",
+          "to": "Release 1.0",
+          "class_index": 0.0,
+          "d": "M 0 240 L 0 140"
+        },
+        {
+          "from": "B",
+          "to": "Release 1.0",
+          "class_index": 1.0,
+          "d": "M 105.359375 190 L 105.359375 160 A 20 20, 0, 0, 0, 85.359375 140 L 0 140"
+        },
+        {
+          "from": "Release 1.0",
+          "to": "TWO",
+          "class_index": 0.0,
+          "d": "M 0 140 L 0 90"
+        },
+        {
+          "from": "B",
+          "to": "C",
+          "class_index": 1.0,
+          "d": "M 105.359375 190 L 105.359375 40"
+        }
+      ]
+    }
+  }
+}

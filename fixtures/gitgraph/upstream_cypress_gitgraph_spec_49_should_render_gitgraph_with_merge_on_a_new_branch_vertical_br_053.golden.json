@@ -1,0 +1,70 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "1-abcdefg",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "2-abcdefg",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-abcdefg"
+        ],
+        "branch": "branch-B"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "merged branch main into branch-A",
+        "seq": 2,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "2-abcdefg",
+          "1-abcdefg"
+        ],
+        "branch": "branch-A",
+        "customId": false
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "merged branch branch-A into branch-B",
+        "seq": 3,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "2-abcdefg",
+          "2-<dynamic>"
+        ],
+        "branch": "branch-B",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "branch-A"
+      },
+      {
+        "name": "branch-B"
+      }
+    ],
+    "currentBranch": "branch-B",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

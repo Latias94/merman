@@ -1,0 +1,60 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "75f7219e83b321cd3fdde7dcf83bc7c1000a6828",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "0db4784daf82736dec4569e0dc92980d328c1f2e",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "75f7219e83b321cd3fdde7dcf83bc7c1000a6828"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "7067e9973f9eaa6cd4a4b723c506d1eab598e83e",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0db4784daf82736dec4569e0dc92980d328c1f2e"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "66972321ad6c199013b5b31f03b3a86fa3f9817d",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "7067e9973f9eaa6cd4a4b723c506d1eab598e83e"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

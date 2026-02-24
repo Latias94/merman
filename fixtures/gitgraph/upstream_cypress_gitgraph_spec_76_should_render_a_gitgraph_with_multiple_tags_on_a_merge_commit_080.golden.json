@@ -1,0 +1,102 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "ONE",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "B",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "A"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "Release 1.0",
+        "message": "merged branch develop into main",
+        "seq": 4,
+        "type": 3,
+        "tags": [
+          "SAML v2.0",
+          "OpenID v1.1"
+        ],
+        "parents": [
+          "ONE",
+          "B"
+        ],
+        "branch": "main",
+        "customType": 2,
+        "customId": true
+      },
+      {
+        "id": "TWO",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Release 1.0"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "C",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "B"
+        ],
+        "branch": "develop"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      }
+    ],
+    "currentBranch": "develop",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
