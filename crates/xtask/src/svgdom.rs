@@ -146,6 +146,43 @@ fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
     .to_string()
 }
 
+fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> String {
+    // Root `viewBox` is affected by label measurements and can drift by tiny fractions across
+    // platforms (commonly 1/64px). Snap to a small lattice to keep CI parity stable while still
+    // tracking meaningful viewport changes.
+    let step = 1.0 / 16.0; // 0.0625px: collapses common subpixel drift.
+
+    let parts: Vec<&str> = view_box
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|t| !t.is_empty())
+        .collect();
+    if parts.len() != 4 {
+        return normalize_numeric_tokens(view_box, decimals);
+    }
+
+    let mut out_parts: Vec<String> = Vec::with_capacity(4);
+    for p in parts {
+        let Ok(v) = p.parse::<f64>() else {
+            return normalize_numeric_tokens(view_box, decimals);
+        };
+        let snapped = (v / step).round() * step;
+        let snapped = round_f64(snapped, decimals);
+        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
+        let mut s = format!("{snapped}");
+        if s.contains('.') {
+            while s.ends_with('0') {
+                s.pop();
+            }
+            if s.ends_with('.') {
+                s.pop();
+            }
+        }
+        out_parts.push(s);
+    }
+
+    out_parts.join(" ")
+}
+
 fn normalize_attr_whitespace_strict(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_space = true;
@@ -436,6 +473,18 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                             // as geometry noise in parity mode.
                             val = "<geom>".to_string();
                             normalized_geom = true;
+                        } else if key == "d"
+                            && n.tag_name().name() == "path"
+                            && n.attribute("class").is_some_and(|c| {
+                                c.split_whitespace().any(|t| t == "relationshipLine")
+                            })
+                        {
+                            // Mermaid ER relationship routes are layout-engine-dependent (notably
+                            // when `layout=elk` is enabled). Treat the `d` payload as geometry
+                            // noise in parity mode so comparisons focus on DOM structure and
+                            // semantic attributes.
+                            val = "<geom>".to_string();
+                            normalized_geom = true;
                         } else {
                             // Keep command letters but treat numeric payload as geometry noise.
                             // This enables parity checks to catch path/points structure changes while
@@ -498,6 +547,9 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
             if key == "style" && mode == DomMode::ParityRoot && n.tag_name().name() == "svg" {
                 val = normalize_svg_root_style_parity_root(&val, decimals);
+            }
+            if key == "viewBox" && mode == DomMode::ParityRoot && n.tag_name().name() == "svg" {
+                val = normalize_svg_root_viewbox_parity_root(&val, decimals);
             }
 
             attrs.insert(key, val);
@@ -1042,7 +1094,7 @@ mod tests {
         assert_eq!(dom.attrs.get("width").map(|s| s.as_str()), Some("100%"));
         assert_eq!(
             dom.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("0 -5.976 600 405.976")
+            Some("0 -6 600 406")
         );
         assert_eq!(
             dom.attrs.get("style").map(|s| s.as_str()),
@@ -1060,6 +1112,19 @@ mod tests {
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
             Some("max-width: 560.375px; background-color: white;")
+        );
+    }
+
+    #[test]
+    fn parity_root_snaps_svg_root_viewbox_numbers() {
+        let a = r#"<svg width="100%" viewBox="0 0 560.391 10.016" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
+        assert_eq!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
+        assert_eq!(
+            dom_a.attrs.get("viewBox").map(|s| s.as_str()),
+            Some("0 0 560.375 10")
         );
     }
 

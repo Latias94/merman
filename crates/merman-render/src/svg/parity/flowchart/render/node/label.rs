@@ -7,6 +7,7 @@ use crate::svg::parity::flowchart::style::FlowchartCompiledStyles;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{OptionalStyleXmlAttr, flowchart_html_contains_img_tag};
 use crate::svg::parity::flowchart::write_flowchart_svg_text;
+use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown;
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::root::flowchart_wrap_svg_text_lines;
@@ -100,15 +101,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             fmt_display(label_dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
-        let wrapped = flowchart_wrap_svg_text_lines(
-            ctx.measurer,
-            &label_text_plain,
-            &node_text_style,
-            Some(ctx.wrapping_width),
-            true,
-        )
-        .join("\n");
-        write_flowchart_svg_text(out, &wrapped, true);
+        if label_type == "markdown" {
+            write_flowchart_svg_text_markdown(out, label_text, true);
+        } else {
+            let wrapped = flowchart_wrap_svg_text_lines(
+                ctx.measurer,
+                &label_text_plain,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                true,
+            )
+            .join("\n");
+            write_flowchart_svg_text(out, &wrapped, true);
+        }
         out.push_str("</g></g></g>");
     } else {
         let label_html = label_html_timed(timing_enabled, details, || {

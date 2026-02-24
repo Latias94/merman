@@ -388,6 +388,10 @@ pub(super) fn render_er_diagram_svg(
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
+    let is_elk_layout = effective_config
+        .get("layout")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("elk"));
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
@@ -649,15 +653,11 @@ pub(super) fn render_er_diagram_svg(
 <defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
     );
 
-    let _ = writeln!(&mut out, r#"<g class="root">"#);
-
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
     for e in model.entities.values() {
         entity_by_id.insert(e.id.as_str(), e);
     }
-
-    out.push_str(r#"<g class="clusters"/>"#);
 
     fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
         let rest = edge_id.strip_prefix("er-rel-")?;
@@ -674,7 +674,11 @@ pub(super) fn render_er_diagram_svg(
         rest[..digits_len].parse::<usize>().ok()
     }
 
-    fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
+    fn er_edge_dom_id(
+        edge_id: &str,
+        relationships: &[crate::er::ErRelationship],
+        elk_suffix: bool,
+    ) -> String {
         let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
             return edge_id.to_string();
         };
@@ -684,24 +688,45 @@ pub(super) fn render_er_diagram_svg(
         let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
         let idx_prefix = idx.to_string();
         let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
-        if rel.entity_a == rel.entity_b {
-            return match suffix {
+        let base = if rel.entity_a == rel.entity_b {
+            match suffix {
                 "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
                 "" => format!("{}-cyclic-special-mid", rel.entity_a),
                 "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
                 _ => format!("{}-cyclic-special-mid", rel.entity_a),
-            };
+            }
+        } else {
+            format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
+        };
+        if elk_suffix {
+            format!("{base}_0")
+        } else {
+            base
         }
-        format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
     }
 
-    out.push_str(r#"<g class="edgePaths">"#);
+    if is_elk_layout {
+        // Mermaid's ER diagram output changes shape when `layout=elk` is enabled: markers are
+        // emitted in their own wrapper `<g>`, and the rest of the content is written as sibling
+        // top-level groups (`edges/edgePaths`, `subgraphs`, `nodes`, `edgeLabels`).
+        out.push_str("</g>\n");
+        out.push_str(r#"<g class="subgraphs"/>"#);
+    } else {
+        let _ = writeln!(&mut out, r#"<g class="root">"#);
+        out.push_str(r#"<g class="clusters"/>"#);
+    }
+
+    if is_elk_layout {
+        out.push_str(r#"<g class="edges edgePaths">"#);
+    } else {
+        out.push_str(r#"<g class="edgePaths">"#);
+    }
     if options.include_edges {
         for e in &edges {
             if e.points.len() < 2 {
                 continue;
             }
-            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships, is_elk_layout);
             let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
             let pattern_class = if is_dashed {
                 "edge-pattern-dashed"
@@ -762,7 +787,7 @@ pub(super) fn render_er_diagram_svg(
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
 
             let rel_text = rel_idx.map(|(_, r)| r.role_a.as_str()).unwrap_or("").trim();
-            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships, is_elk_layout);
 
             let has_label_text = !rel_text.is_empty();
             let (w, h, mut cx, mut cy) = if has_label_text {
@@ -1638,7 +1663,9 @@ pub(super) fn render_er_diagram_svg(
     }
     out.push_str("</g>\n");
 
-    out.push_str("</g>\n</g>\n");
+    if !is_elk_layout {
+        out.push_str("</g>\n</g>\n");
+    }
 
     if let Some(title) = diagram_title {
         // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.

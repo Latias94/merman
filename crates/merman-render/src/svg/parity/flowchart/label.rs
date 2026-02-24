@@ -580,6 +580,15 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
     markdown: &str,
     include_style: bool,
 ) {
+    // Mermaid wraps SVG-label Markdown strings in single backticks:
+    // - markdown["`This **is** _Markdown_`"]
+    // Feeding these to a Markdown parser verbatim turns the whole label into inline-code, which
+    // suppresses `**`/`_` formatting. Strip the outer backticks to match upstream.
+    let markdown = markdown
+        .strip_prefix('`')
+        .and_then(|s| s.strip_suffix('`'))
+        .unwrap_or(markdown);
+
     if include_style {
         out.push_str(r#"<text y="-10.1" style="">"#);
     } else {

@@ -660,6 +660,35 @@ impl<'a> Parser<'a> {
         true
     }
 
+    fn consume_keyword_same_line(&mut self, kw: &str) -> bool {
+        // Like `consume_keyword`, but does not skip newlines/comments. This is used for
+        // statement-local infix tokens (e.g. `id1 space id2`), where treating the next line's
+        // `space` statement as an infix separator would be incorrect.
+        while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
+            self.bump();
+        }
+        if self.starts_with("%%") {
+            return false;
+        }
+        if !self.starts_with(kw) {
+            return false;
+        }
+        if kw.ends_with(':') {
+            self.pos += kw.len();
+            return true;
+        }
+        let after = &self.input[self.pos + kw.len()..];
+        if after
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || c == ':')
+        {
+            self.pos += kw.len();
+            return true;
+        }
+        false
+    }
+
     fn consume_exact(&mut self, s: &str) -> bool {
         self.skip_ws_and_comments();
         if !self.starts_with(s) {
@@ -875,8 +904,47 @@ impl<'a> Parser<'a> {
 
     fn parse_node_statement(&mut self) -> Result<Vec<Block>> {
         let mut left = self.parse_node()?;
-        self.skip_ws_and_comments();
+        if self.consume_keyword_same_line("space") {
+            let mut width = 1;
+            while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
+                self.bump();
+            }
+            if self.peek_char() == Some(':') {
+                self.bump();
+                while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
+                    self.bump();
+                }
+                let start = self.pos;
+                while self.peek_char().is_some_and(|c| c.is_ascii_digit()) {
+                    self.bump();
+                }
+                if self.pos == start {
+                    return Err(Error::DiagramParse {
+                        diagram_type: "block".to_string(),
+                        message: "expected integer width after space:".to_string(),
+                    });
+                }
+                width = self.input[start..self.pos].parse::<i64>().unwrap_or(1);
+            }
+            let mut space = Block::new(self.generate_id());
+            space.block_type = "space".to_string();
+            space.label = Some("".to_string());
+            space.width = Some(width);
 
+            left.width_in_columns.get_or_insert(1);
+            while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
+                self.bump();
+            }
+            if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
+                return Ok(vec![left, space]);
+            }
+
+            let mut right = self.parse_node()?;
+            right.width_in_columns.get_or_insert(1);
+            return Ok(vec![left, space, right]);
+        }
+
+        self.skip_ws_and_comments();
         if let Some((label, edge_marker)) = self.parse_link()? {
             let mut right = self.parse_node()?;
             let arrow_type_end = edge_str_to_edge_data(&edge_marker);
@@ -962,6 +1030,12 @@ impl<'a> Parser<'a> {
 
         while let Some(c) = self.peek_char() {
             if c.is_whitespace() {
+                break;
+            }
+            // Mermaid block edge markers can be directly adjacent to node ids
+            // (e.g. `a-->b`). Stop once we hit a non-marker character so we don't consume the
+            // right-hand node into the marker token.
+            if !matches!(c, '-' | '=' | '.' | 'x' | 'o' | '<' | '>' | '~') {
                 break;
             }
             self.bump();

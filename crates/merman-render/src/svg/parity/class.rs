@@ -1804,6 +1804,15 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     merman_core::MermaidConfig::from_value(effective_config.clone())
                 }),
             );
+            // `foreignObject` content is XML, so ensure XHTML void tags are self-closed.
+            let note_html = note_html
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />")
+                .replace("<br >", "<br />")
+                .replace("</br>", "<br />")
+                .replace("</br/>", "<br />")
+                .replace("</br />", "<br />")
+                .replace("</br >", "<br />");
             if let Some(s) = sanitize_start {
                 detail.notes_sanitize += s.elapsed();
             }
