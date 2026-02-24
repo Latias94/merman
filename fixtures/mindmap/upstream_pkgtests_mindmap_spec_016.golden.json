@@ -1,0 +1,54 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "The root",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-root section--1 m-4 p-8",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "bomb",
+        "level": 0,
+        "nodeId": "root",
+        "type": 2
+      }
+    ],
+    "edges": [],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "The root",
+      "type": 2,
+      "children": [],
+      "width": 200,
+      "padding": 20,
+      "class": "m-4 p-8",
+      "icon": "bomb",
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}
