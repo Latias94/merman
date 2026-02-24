@@ -1,0 +1,78 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": "C4Context sprite (positional) on SystemDb_Ext",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "s1",
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "descr": {
+          "text": "Allows customers to view account data."
+        },
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "External System DB"
+        },
+        "descr": {
+          "text": "PostgreSQL"
+        },
+        "typeC4Shape": {
+          "text": "external_system_db"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external"
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "s1",
+        "to": "db",
+        "label": {
+          "text": "Reads/Writes"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}

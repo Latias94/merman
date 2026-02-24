@@ -1,0 +1,8 @@
+C4Context
+title C4Context sprite (positional) on SystemDb_Ext
+
+System(s1, "Internet Banking System", "Allows customers to view account data.")
+SystemDb_Ext(db, "External System DB", "PostgreSQL", "External database system.", $sprite="users", $tags="external", $link="https://example.com/external-system-db")
+
+Rel(s1, db, "Reads/Writes", "JDBC")
+
