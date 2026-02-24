@@ -1,0 +1,119 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class1": {
+        "id": "Class1",
+        "type": "",
+        "label": "Class1",
+        "text": "Class1",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "test",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "test()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "foo",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "foo()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int : test",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int : test",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "string : foo",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "string : foo",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class1-0",
+        "parent": "Namespace1",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class2": {
+        "id": "Class2",
+        "type": "",
+        "label": "Class2",
+        "text": "Class2",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class2-1",
+        "parent": "Namespace1",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Namespace1": {
+        "id": "Namespace1",
+        "domId": "classId-Namespace1-0",
+        "classIds": [
+          "Class1",
+          "Class2"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
