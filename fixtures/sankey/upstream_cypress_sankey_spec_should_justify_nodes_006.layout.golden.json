@@ -1,0 +1,159 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 410.0,
+        "max_y": 400.0
+      },
+      "width": 410.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "a",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 8.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 250.0
+        },
+        {
+          "id": "b",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 3.0,
+          "layer": 1.0,
+          "value": 8.0,
+          "x0": 100.0,
+          "x1": 110.0,
+          "y0": 0.0,
+          "y1": 250.0
+        },
+        {
+          "id": "c",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 2.0,
+          "layer": 2.0,
+          "value": 12.0,
+          "x0": 200.0,
+          "x1": 210.0,
+          "y0": 12.5,
+          "y1": 387.5
+        },
+        {
+          "id": "d",
+          "index": 3.0,
+          "depth": 3.0,
+          "height": 1.0,
+          "layer": 3.0,
+          "value": 8.0,
+          "x0": 300.0,
+          "x1": 310.0,
+          "y0": 0.0,
+          "y1": 250.0
+        },
+        {
+          "id": "e",
+          "index": 4.0,
+          "depth": 4.0,
+          "height": 0.0,
+          "layer": 4.0,
+          "value": 8.0,
+          "x0": 400.0,
+          "x1": 410.0,
+          "y0": 0.0,
+          "y1": 250.0
+        },
+        {
+          "id": "x",
+          "index": 5.0,
+          "depth": 0.0,
+          "height": 3.0,
+          "layer": 0.0,
+          "value": 4.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 275.0,
+          "y1": 400.0
+        },
+        {
+          "id": "y",
+          "index": 6.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 4.0,
+          "value": 4.0,
+          "x0": 400.0,
+          "x1": 410.0,
+          "y0": 275.0,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "a",
+          "target": "b",
+          "value": 8.0,
+          "width": 250.0,
+          "y0": 125.0,
+          "y1": 125.0
+        },
+        {
+          "index": 1.0,
+          "source": "b",
+          "target": "c",
+          "value": 8.0,
+          "width": 250.0,
+          "y0": 125.0,
+          "y1": 137.5
+        },
+        {
+          "index": 2.0,
+          "source": "c",
+          "target": "d",
+          "value": 8.0,
+          "width": 250.0,
+          "y0": 137.5,
+          "y1": 125.0
+        },
+        {
+          "index": 3.0,
+          "source": "d",
+          "target": "e",
+          "value": 8.0,
+          "width": 250.0,
+          "y0": 125.0,
+          "y1": 125.0
+        },
+        {
+          "index": 4.0,
+          "source": "x",
+          "target": "c",
+          "value": 4.0,
+          "width": 125.0,
+          "y0": 337.5,
+          "y1": 325.0
+        },
+        {
+          "index": 5.0,
+          "source": "c",
+          "target": "y",
+          "value": 4.0,
+          "width": 125.0,
+          "y0": 325.0,
+          "y1": 337.5
+        }
+      ]
+    }
+  }
+}
