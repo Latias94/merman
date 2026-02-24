@@ -1,0 +1,146 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class01": {
+        "id": "Class01",
+        "type": "",
+        "label": "Class01",
+        "text": "Class01",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "-",
+            "id": "privateMethod",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-privateMethod()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "publicMethod",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+publicMethod()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "#",
+            "id": "protectedMethod",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#protectedMethod()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "int privateChimp",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-int privateChimp",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "int publicGorilla",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+int publicGorilla",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "#",
+            "id": "int protectedMarmoset",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#int protectedMarmoset",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "interface"
+        ],
+        "styles": [],
+        "domId": "classId-Class01-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "AveryLongClass": {
+        "id": "AveryLongClass",
+        "type": "",
+        "label": "AveryLongClass",
+        "text": "AveryLongClass",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-AveryLongClass-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Class01",
+        "id2": "AveryLongClass",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "Cool",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

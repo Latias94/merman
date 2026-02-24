@@ -1,0 +1,68 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "AveryLongClass",
+          "x": 110.88,
+          "y": 380.0,
+          "width": 128.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class01",
+          "x": 110.88,
+          "y": 132.0,
+          "width": 221.76,
+          "height": 264.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Class01",
+          "to": "AveryLongClass",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 110.88,
+              "y": 264.0
+            },
+            {
+              "x": 110.88,
+              "y": 301.0
+            },
+            {
+              "x": 110.88,
+              "y": 338.0
+            }
+          ],
+          "label": {
+            "x": 110.88,
+            "y": 301.0,
+            "width": 27.84,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 221.76,
+        "max_y": 422.0
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "1-abcdefg",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "2-abcdefg",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-abcdefg"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "3-abcdefg",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-abcdefg"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "4-abcdefg",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-abcdefg"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "5-abcdefg",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-abcdefg"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "6-abcdefg",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-abcdefg"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "7-abcdefg",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-abcdefg"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "8-abcdefg",
+        "message": "",
+        "seq": 7,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "7-abcdefg"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      },
+      {
+        "name": "feature"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "BT",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
