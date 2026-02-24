@@ -1,0 +1,420 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "Start",
+        "type": "circle",
+        "label": "Start",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#969"
+        ]
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-1-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "down",
+        "type": "block_arrow",
+        "label": " ",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "id-<id>-2-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-2-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "Decision",
+        "type": "hexagon",
+        "label": "Make Decision",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "right",
+        "type": "block_arrow",
+        "label": "Yes",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "Process1",
+        "type": "square",
+        "label": "Process A",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "downAgain",
+        "type": "block_arrow",
+        "label": "No",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "id-<id>-3-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "r3",
+        "type": "block_arrow",
+        "label": "Done",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "Process2",
+        "type": "square",
+        "label": "Process B",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "r2",
+        "type": "block_arrow",
+        "label": "Done",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "End",
+        "type": "circle",
+        "label": "End",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#696"
+        ]
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "Start",
+            "type": "circle",
+            "label": "Start",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#969"
+            ]
+          },
+          {
+            "id": "id-<id>-1-0",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 2
+          },
+          {
+            "id": "id-<id>-1-1",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 2
+          },
+          {
+            "id": "down",
+            "type": "block_arrow",
+            "label": " ",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "down"
+            ]
+          },
+          {
+            "id": "id-<id>-2-0",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 2
+          },
+          {
+            "id": "id-<id>-2-1",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 2
+          },
+          {
+            "id": "Decision",
+            "type": "hexagon",
+            "label": "Make Decision",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "right",
+            "type": "block_arrow",
+            "label": "Yes",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "right"
+            ]
+          },
+          {
+            "id": "Process1",
+            "type": "square",
+            "label": "Process A",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "downAgain",
+            "type": "block_arrow",
+            "label": "No",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "down"
+            ]
+          },
+          {
+            "id": "id-<id>-3-0",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 1
+          },
+          {
+            "id": "r3",
+            "type": "block_arrow",
+            "label": "Done",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "down"
+            ]
+          },
+          {
+            "id": "Process2",
+            "type": "square",
+            "label": "Process B",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "r2",
+            "type": "block_arrow",
+            "label": "Done",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "right"
+            ]
+          },
+          {
+            "id": "End",
+            "type": "circle",
+            "label": "End",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#696"
+            ]
+          }
+        ],
+        "columns": 3
+      },
+      {
+        "id": "Start",
+        "type": "circle",
+        "label": "Start",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#969"
+        ]
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-1-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "down",
+        "type": "block_arrow",
+        "label": " ",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "id-<id>-2",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-2-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "id-<id>-2-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 2
+      },
+      {
+        "id": "Decision",
+        "type": "hexagon",
+        "label": "Make Decision",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "right",
+        "type": "block_arrow",
+        "label": "Yes",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "Process1",
+        "type": "square",
+        "label": "Process A",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "downAgain",
+        "type": "block_arrow",
+        "label": "No",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "id-<id>-3",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "id-<id>-3-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "r3",
+        "type": "block_arrow",
+        "label": "Done",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "down"
+        ]
+      },
+      {
+        "id": "Process2",
+        "type": "square",
+        "label": "Process B",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "r2",
+        "type": "block_arrow",
+        "label": "Done",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "End",
+        "type": "circle",
+        "label": "End",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#696"
+        ]
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

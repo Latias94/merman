@@ -1,0 +1,49 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "Alpha",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "Beta",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Alpha"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "Gamma",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Beta"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

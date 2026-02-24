@@ -1,0 +1,105 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "id1",
+        "type": "lean_right",
+        "label": "This is the text in the box",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id2",
+        "type": "lean_left",
+        "label": "This is the text in the box",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A",
+        "type": "trapezoid",
+        "label": "Christmas",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B",
+        "type": "inv_trapezoid",
+        "label": "Go shopping",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "id1",
+            "type": "lean_right",
+            "label": "This is the text in the box",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "id2",
+            "type": "lean_left",
+            "label": "This is the text in the box",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "A",
+            "type": "trapezoid",
+            "label": "Christmas",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B",
+            "type": "inv_trapezoid",
+            "label": "Go shopping",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "id1",
+        "type": "lean_right",
+        "label": "This is the text in the box",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id2",
+        "type": "lean_left",
+        "label": "This is the text in the box",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A",
+        "type": "trapezoid",
+        "label": "Christmas",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B",
+        "type": "inv_trapezoid",
+        "label": "Go shopping",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

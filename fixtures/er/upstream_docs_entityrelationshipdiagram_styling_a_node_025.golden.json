@@ -1,0 +1,65 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "id2": {
+        "id": "entity-id2-1",
+        "label": "id2",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": [
+          "fill:#bbf",
+          "stroke:#f66",
+          "stroke-width:2px",
+          "color:#fff",
+          "stroke-dasharray:55"
+        ]
+      },
+      "id1": {
+        "id": "entity-id1-0",
+        "label": "id1",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-id1-0",
+        "roleA": "label",
+        "entityB": "entity-id2-1",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

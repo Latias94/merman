@@ -1,0 +1,74 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "CAR": {
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "NAMED-DRIVER": {
+        "id": "entity-NAMED-DRIVER-1",
+        "label": "NAMED-DRIVER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PERSON": {
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CAR-0",
+        "roleA": "allows",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PERSON-2",
+        "roleA": "is",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

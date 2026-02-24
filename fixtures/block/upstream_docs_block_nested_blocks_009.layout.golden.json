@@ -1,0 +1,40 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "id-<id>-1",
+          "x": 65.44,
+          "y": 0.0,
+          "width": 130.88,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "D",
+          "x": 65.44,
+          "y": 0.0,
+          "width": 114.88,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "A",
+          "x": 204.32,
+          "y": 0.0,
+          "width": 130.88,
+          "height": 41.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -20.8,
+        "max_x": 269.76,
+        "max_y": 20.8
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "Normal",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [
+          "v1.0.0"
+        ],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Normal"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "Reverse",
+        "message": "",
+        "seq": 3,
+        "type": 1,
+        "tags": [
+          "RC_1"
+        ],
+        "parents": [
+          "2-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Reverse"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "Highlight",
+        "message": "",
+        "seq": 5,
+        "type": 2,
+        "tags": [
+          "8.8.4"
+        ],
+        "parents": [
+          "4-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Highlight"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "classes": [
+          "blue"
+        ]
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#bbf",
+          "stroke:#f66",
+          "stroke-width:2px",
+          "color:#fff",
+          "stroke-dasharray: 5 5"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "id": "1-A-B",
+        "type": "edge",
+        "label": "",
+        "children": [],
+        "start": "A",
+        "end": "B",
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open"
+      }
+    ],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "na",
+            "label": "A",
+            "children": [],
+            "widthInColumns": 1,
+            "classes": [
+              "blue"
+            ]
+          },
+          {
+            "id": "id-<id>-1-0",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 1
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#bbf",
+              "stroke:#f66",
+              "stroke-width:2px",
+              "color:#fff",
+              "stroke-dasharray: 5 5"
+            ]
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "classes": [
+          "blue"
+        ]
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#bbf",
+          "stroke:#f66",
+          "stroke-width:2px",
+          "color:#fff",
+          "stroke-dasharray: 5 5"
+        ]
+      }
+    ],
+    "classes": {
+      "blue": {
+        "id": "blue",
+        "styles": [
+          "fill:#6e6ce6",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "textStyles": []
+      }
+    },
+    "warnings": []
+  }
+}

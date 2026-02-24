@@ -1,0 +1,51 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fillﬂ°°969¶ß"
+        ]
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "na",
+            "label": "A",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fillﬂ°°969¶ß"
+            ]
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fillﬂ°°969¶ß"
+        ]
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

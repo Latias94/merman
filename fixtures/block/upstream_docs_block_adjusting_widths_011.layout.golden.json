@@ -1,0 +1,136 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "a",
+          "x": 156.08,
+          "y": -83.2,
+          "width": 312.16,
+          "height": 75.2,
+          "is_cluster": false
+        },
+        {
+          "id": "group1",
+          "x": 102.72,
+          "y": -0.0,
+          "width": 205.44,
+          "height": 75.2,
+          "is_cluster": false
+        },
+        {
+          "id": "h",
+          "x": 53.36,
+          "y": -16.8,
+          "width": 90.72,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "i",
+          "x": 152.08,
+          "y": -16.8,
+          "width": 90.72,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "j",
+          "x": 53.36,
+          "y": 16.8,
+          "width": 90.72,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "k",
+          "x": 152.08,
+          "y": 16.8,
+          "width": 90.72,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "g",
+          "x": 262.8,
+          "y": -0.0,
+          "width": 98.72,
+          "height": 75.2,
+          "is_cluster": false
+        },
+        {
+          "id": "group2",
+          "x": 156.08,
+          "y": 83.2,
+          "width": 312.16,
+          "height": 75.2,
+          "is_cluster": false
+        },
+        {
+          "id": "l",
+          "x": 25.726,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "m",
+          "x": 69.177,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "n",
+          "x": 112.629,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "o",
+          "x": 156.08,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "p",
+          "x": 199.531,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "q",
+          "x": 242.983,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        },
+        {
+          "id": "r",
+          "x": 286.434,
+          "y": 83.2,
+          "width": 35.451,
+          "height": 59.2,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -120.8,
+        "max_x": 312.16,
+        "max_y": 120.8
+      }
+    }
+  }
+}

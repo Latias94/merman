@@ -1,0 +1,96 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "Start",
+          "x": 49.2,
+          "y": -124.8,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "down",
+          "x": 262.0,
+          "y": -83.2,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Decision",
+          "x": 49.2,
+          "y": 0.0,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "right",
+          "x": 155.6,
+          "y": 0.0,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Process1",
+          "x": 262.0,
+          "y": 0.0,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "downAgain",
+          "x": 49.2,
+          "y": 41.6,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "r3",
+          "x": 262.0,
+          "y": 41.6,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Process2",
+          "x": 49.2,
+          "y": 83.2,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "r2",
+          "x": 155.6,
+          "y": 83.2,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "End",
+          "x": 262.0,
+          "y": 83.2,
+          "width": 98.4,
+          "height": 33.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -141.6,
+        "max_x": 417.6,
+        "max_y": 100.0
+      }
+    }
+  }
+}

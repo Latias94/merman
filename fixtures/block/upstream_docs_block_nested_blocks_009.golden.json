@@ -1,0 +1,91 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "D",
+            "type": "na",
+            "label": "D",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ]
+      },
+      {
+        "id": "A",
+        "type": "square",
+        "label": "A: I am a wide one",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "id-<id>-1",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "D",
+                "type": "na",
+                "label": "D",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ]
+          },
+          {
+            "id": "A",
+            "type": "square",
+            "label": "A: I am a wide one",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "D",
+            "type": "na",
+            "label": "D",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ]
+      },
+      {
+        "id": "D",
+        "type": "na",
+        "label": "D",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A",
+        "type": "square",
+        "label": "A: I am a wide one",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

@@ -12,51 +12,11 @@
 /cytoscape-fcose-*.tgz
 /layout-base-*.tgz
 
-# Upstream docs example fixtures (generated locally). Promote to tracked fixtures explicitly
-# when we decide they are part of the official corpus.
-/fixtures/**/upstream_docs_examples_*.mmd
-/fixtures/**/upstream_docs_examples_*.golden.json
-/fixtures/**/upstream_docs_examples_*.layout.golden.json
-/fixtures/upstream-svgs/**/upstream_docs_examples_*.svg
+# Upstream docs example fixtures.
+#
+# These are generated via `xtask import-upstream-docs --filter examples --with-baselines` and are
+# part of the tracked fixture corpus.
 /fixtures/upstream-svgs/**/_failures.txt
-
-# Promoted upstream docs examples fixtures (batch 1).
-!/fixtures/flowchart/upstream_docs_examples_basic_flowchart_007.mmd
-!/fixtures/flowchart/upstream_docs_examples_basic_flowchart_007.golden.json
-!/fixtures/flowchart/upstream_docs_examples_basic_flowchart_007.layout.golden.json
-!/fixtures/upstream-svgs/flowchart/upstream_docs_examples_basic_flowchart_007.svg
-!/fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.mmd
-!/fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.golden.json
-!/fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.layout.golden.json
-!/fixtures/upstream-svgs/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.svg
-!/fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.mmd
-!/fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.golden.json
-!/fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.layout.golden.json
-!/fixtures/upstream-svgs/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.svg
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_001.golden.json
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_001.layout.golden.json
-!/fixtures/upstream-svgs/pie/upstream_docs_examples_basic_pie_chart_001.svg
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_003.mmd
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_003.golden.json
-!/fixtures/pie/upstream_docs_examples_basic_pie_chart_003.layout.golden.json
-!/fixtures/upstream-svgs/pie/upstream_docs_examples_basic_pie_chart_003.svg
-!/fixtures/sequence/upstream_docs_examples_basic_sequence_diagram_005.mmd
-!/fixtures/sequence/upstream_docs_examples_basic_sequence_diagram_005.golden.json
-!/fixtures/sequence/upstream_docs_examples_basic_sequence_diagram_005.layout.golden.json
-!/fixtures/upstream-svgs/sequence/upstream_docs_examples_basic_sequence_diagram_005.svg
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.mmd
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.golden.json
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.layout.golden.json
-!/fixtures/upstream-svgs/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.svg
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.mmd
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.golden.json
-!/fixtures/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.layout.golden.json
-!/fixtures/upstream-svgs/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.svg
-!/fixtures/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.mmd
-!/fixtures/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.golden.json
-!/fixtures/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.layout.golden.json
-!/fixtures/upstream-svgs/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.svg
 
 __pycache__/
 # Local deferred fixtures (kept for investigation; not part of the committed fixture corpus).

@@ -1,0 +1,422 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "a",
+        "type": "na",
+        "label": "a",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "group1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "h",
+            "type": "na",
+            "label": "h",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "i",
+            "type": "na",
+            "label": "i",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "j",
+            "type": "na",
+            "label": "j",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "k",
+            "type": "na",
+            "label": "k",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2,
+        "widthInColumns": 2
+      },
+      {
+        "id": "g",
+        "type": "na",
+        "label": "g",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "group2",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "l",
+            "type": "na",
+            "label": "l",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "m",
+            "type": "na",
+            "label": "m",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "n",
+            "type": "na",
+            "label": "n",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "o",
+            "type": "na",
+            "label": "o",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "p",
+            "type": "na",
+            "label": "p",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "q",
+            "type": "na",
+            "label": "q",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "r",
+            "type": "na",
+            "label": "r",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "widthInColumns": 3
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "a",
+            "type": "na",
+            "label": "a",
+            "children": [],
+            "widthInColumns": 3
+          },
+          {
+            "id": "group1",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "h",
+                "type": "na",
+                "label": "h",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "i",
+                "type": "na",
+                "label": "i",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "j",
+                "type": "na",
+                "label": "j",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "k",
+                "type": "na",
+                "label": "k",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ],
+            "columns": 2,
+            "widthInColumns": 2
+          },
+          {
+            "id": "g",
+            "type": "na",
+            "label": "g",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "group2",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "l",
+                "type": "na",
+                "label": "l",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "m",
+                "type": "na",
+                "label": "m",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "n",
+                "type": "na",
+                "label": "n",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "o",
+                "type": "na",
+                "label": "o",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "p",
+                "type": "na",
+                "label": "p",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "q",
+                "type": "na",
+                "label": "q",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "r",
+                "type": "na",
+                "label": "r",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ],
+            "widthInColumns": 3
+          }
+        ],
+        "columns": 3
+      },
+      {
+        "id": "a",
+        "type": "na",
+        "label": "a",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "group1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "h",
+            "type": "na",
+            "label": "h",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "i",
+            "type": "na",
+            "label": "i",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "j",
+            "type": "na",
+            "label": "j",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "k",
+            "type": "na",
+            "label": "k",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2,
+        "widthInColumns": 2
+      },
+      {
+        "id": "h",
+        "type": "na",
+        "label": "h",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "i",
+        "type": "na",
+        "label": "i",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "j",
+        "type": "na",
+        "label": "j",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "k",
+        "type": "na",
+        "label": "k",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "g",
+        "type": "na",
+        "label": "g",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "group2",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "l",
+            "type": "na",
+            "label": "l",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "m",
+            "type": "na",
+            "label": "m",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "n",
+            "type": "na",
+            "label": "n",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "o",
+            "type": "na",
+            "label": "o",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "p",
+            "type": "na",
+            "label": "p",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "q",
+            "type": "na",
+            "label": "q",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "r",
+            "type": "na",
+            "label": "r",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "widthInColumns": 3
+      },
+      {
+        "id": "l",
+        "type": "na",
+        "label": "l",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "m",
+        "type": "na",
+        "label": "m",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "n",
+        "type": "na",
+        "label": "n",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "o",
+        "type": "na",
+        "label": "o",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "p",
+        "type": "na",
+        "label": "p",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "q",
+        "type": "na",
+        "label": "q",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "r",
+        "type": "na",
+        "label": "r",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}
