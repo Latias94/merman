@@ -1,0 +1,9 @@
+---
+config:
+  logLevel: 1.0
+---
+
+erDiagram
+    CUSTOMER ||..o{ CUSTOMER : refers
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE-ITEM : contains

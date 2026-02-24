@@ -1,0 +1,136 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-AUTHOR-1",
+          "x": 115.0,
+          "y": 206.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-BOOK-0",
+          "x": 50.0,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-GENRE-2",
+          "x": 50.0,
+          "y": 370.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-BOOK-0",
+          "to": "entity-AUTHOR-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 83.293,
+              "y": 84.0
+            },
+            {
+              "x": 115.0,
+              "y": 124.0
+            },
+            {
+              "x": 115.0,
+              "y": 164.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONE_OR_MORE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-BOOK-0",
+          "to": "entity-GENRE-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 16.707,
+              "y": 84.0
+            },
+            {
+              "x": -15.0,
+              "y": 124.0
+            },
+            {
+              "x": -15.0,
+              "y": 206.0
+            },
+            {
+              "x": -15.0,
+              "y": 288.0
+            },
+            {
+              "x": 16.707,
+              "y": 328.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONE_OR_MORE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-AUTHOR-1",
+          "to": "entity-GENRE-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 115.0,
+              "y": 248.0
+            },
+            {
+              "x": 115.0,
+              "y": 288.0
+            },
+            {
+              "x": 83.293,
+              "y": 328.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONE_OR_MORE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": -15.0,
+        "min_y": 0.0,
+        "max_x": 165.0,
+        "max_y": 412.0
+      }
+    }
+  }
+}

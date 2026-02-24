@@ -1,0 +1,84 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "AUTHOR": {
+        "id": "entity-AUTHOR-1",
+        "label": "AUTHOR",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "GENRE": {
+        "id": "entity-GENRE-2",
+        "label": "GENRE",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "BOOK": {
+        "id": "entity-BOOK-0",
+        "label": "BOOK",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-BOOK-0",
+        "roleA": "",
+        "entityB": "entity-AUTHOR-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-BOOK-0",
+        "roleA": " ",
+        "entityB": "entity-GENRE-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-AUTHOR-1",
+        "roleA": "  ",
+        "entityB": "entity-GENRE-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

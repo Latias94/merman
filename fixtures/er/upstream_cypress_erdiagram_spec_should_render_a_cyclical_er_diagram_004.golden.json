@@ -1,0 +1,84 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "C": {
+        "id": "entity-C-2",
+        "label": "C",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "A": {
+        "id": "entity-A-0",
+        "label": "A",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "B": {
+        "id": "entity-B-1",
+        "label": "B",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-A-0",
+        "roleA": "likes",
+        "entityB": "entity-B-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-B-1",
+        "roleA": "likes",
+        "entityB": "entity-C-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-C-2",
+        "roleA": "likes",
+        "entityB": "entity-A-0",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}
