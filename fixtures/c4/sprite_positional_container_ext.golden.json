@@ -1,0 +1,114 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Container",
+    "title": "C4Container sprite (positional) on Container_Ext",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "p1",
+        "label": {
+          "text": "Customer"
+        },
+        "descr": {
+          "text": "A customer of the bank."
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "web",
+        "label": {
+          "text": "Web App"
+        },
+        "techn": {
+          "text": "React"
+        },
+        "descr": {
+          "text": "Provides Internet banking functionality."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "mobile",
+        "label": {
+          "text": "Mobile App"
+        },
+        "techn": {
+          "text": "C#, Xamarin"
+        },
+        "descr": {
+          "text": "Provides a limited subset of the functionality."
+        },
+        "typeC4Shape": {
+          "text": "external_container"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/mobile"
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "p1",
+        "to": "web",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      },
+      {
+        "type": "rel",
+        "from": "p1",
+        "to": "mobile",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}

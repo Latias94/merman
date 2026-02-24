@@ -1,0 +1,10 @@
+C4Container
+title C4Container sprite (positional) on Container_Ext
+
+Person(p1, "Customer", "A customer of the bank.")
+Container(web, "Web App", "React", "Provides Internet banking functionality.")
+Container_Ext(mobile, "Mobile App", "C#, Xamarin", "Provides a limited subset of the functionality.", $sprite="users", $tags="external", $link="https://example.com/mobile")
+
+Rel(p1, web, "Uses", "HTTPS")
+Rel(p1, mobile, "Uses", "HTTPS")
+
