@@ -821,6 +821,12 @@ pub(super) fn render_er_diagram_svg(
             }
 
             if has_label_text && w > 0.0 && h > 0.0 {
+                // Mermaid's ER edge label rendering follows the `htmlLabels` switch (sourced from
+                // `flowchart.htmlLabels` in config). When disabled, Mermaid falls back to SVG
+                // `<text>/<tspan>` output; otherwise it uses HTML `<foreignObject>` labels.
+                let edge_html_labels =
+                    config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
+
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeLabel" transform="translate({}, {})">"#,
@@ -834,33 +840,61 @@ pub(super) fn render_er_diagram_svg(
                     fmt(-w / 2.0),
                     fmt(-h / 2.0)
                 );
-                let _ = write!(
-                    &mut out,
-                    r#"<foreignObject width="{}" height="{}">"#,
-                    fmt(w),
-                    fmt(h)
-                );
-                out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
-                // Mermaid ER relationship labels are rendered as HTML (foreignObject) and treat
-                // `<br>`-style tags as actual line breaks (not escaped text).
-                for (idx, part) in crate::text::split_html_br_lines(rel_text)
-                    .iter()
-                    .enumerate()
-                {
-                    if idx > 0 {
-                        out.push_str("<br />");
+                if edge_html_labels {
+                    let _ = write!(
+                        &mut out,
+                        r#"<foreignObject width="{}" height="{}">"#,
+                        fmt(w),
+                        fmt(h)
+                    );
+                    out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
+                    // Mermaid ER relationship labels are rendered as HTML (foreignObject) and treat
+                    // `<br>`-style tags as actual line breaks (not escaped text).
+                    for (idx, part) in crate::text::split_html_br_lines(rel_text)
+                        .iter()
+                        .enumerate()
+                    {
+                        if idx > 0 {
+                            out.push_str("<br />");
+                        }
+                        escape_xml_into(&mut out, part);
                     }
-                    escape_xml_into(&mut out, part);
+                    out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
+                } else {
+                    out.push_str("<g>");
+                    let _ = write!(
+                        &mut out,
+                        r#"<rect class="background" style="" x="-2" y="-1" width="{}" height="{}"/>"#,
+                        fmt(w),
+                        fmt(h)
+                    );
+                    crate::svg::parity::flowchart::write_flowchart_svg_text(
+                        &mut out, rel_text, true,
+                    );
+                    out.push_str("</g></g></g>");
                 }
-                out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
             } else {
-                out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                let _ = write!(
-                    &mut out,
-                    r#" data-id="{}""#,
-                    escape_xml_display(&edge_dom_id)
-                );
-                out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
+                let edge_html_labels =
+                    config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
+                if edge_html_labels {
+                    out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    let _ = write!(
+                        &mut out,
+                        r#" data-id="{}""#,
+                        escape_xml_display(&edge_dom_id)
+                    );
+                    out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
+                } else {
+                    out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    let _ = write!(
+                        &mut out,
+                        r#" data-id="{}""#,
+                        escape_xml_display(&edge_dom_id)
+                    );
+                    out.push_str(r#" transform="translate(0, 0)"><g><rect class="background" style="" x="-2" y="-1" width="0" height="0"/>"#);
+                    crate::svg::parity::flowchart::write_flowchart_svg_text(&mut out, "", true);
+                    out.push_str("</g></g></g>");
+                }
             }
         }
     }

@@ -316,6 +316,30 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             })
         }
 
+        fn is_xychart_bar_data_label_text(n: roxmltree::Node<'_, '_>) -> bool {
+            if !(n.is_element() && n.tag_name().name() == "text") {
+                return false;
+            }
+            let mut has_plot = false;
+            let mut has_bar_plot = false;
+            for a in n.ancestors() {
+                if !(a.is_element() && a.tag_name().name() == "g") {
+                    continue;
+                }
+                let Some(class) = a.attribute("class") else {
+                    continue;
+                };
+                for token in class.split_whitespace() {
+                    if token == "plot" {
+                        has_plot = true;
+                    } else if token.starts_with("bar-plot-") {
+                        has_bar_plot = true;
+                    }
+                }
+            }
+            has_plot && has_bar_plot
+        }
+
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
@@ -326,6 +350,15 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
             if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points") {
                 val = normalize_attr_whitespace_strict(&val);
+            }
+
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && key == "font-size"
+                && is_xychart_bar_data_label_text(n)
+            {
+                val = normalize_numeric_tokens_mode(&val, decimals, DomMode::Structure);
+                attrs.insert(key, val);
+                continue;
             }
 
             // `data-points` is a base64-encoded JSON payload (Mermaid uses `btoa(JSON.stringify(...))`).
