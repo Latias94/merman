@@ -1,0 +1,10 @@
+C4Context
+title C4Context sprite (positional) on System
+
+Person(p1, "Customer", "A customer of the bank.")
+System(s1, "Internet Banking System", "Allows customers to view account data.", $sprite="users", $tags="core", $link="https://example.com/system")
+System_Ext(s2, "E-mail system", "The internal Microsoft Exchange e-mail system.")
+
+Rel(p1, s1, "Uses", "HTTPS")
+Rel(s1, s2, "Sends e-mails", "SMTP")
+
