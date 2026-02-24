@@ -1,0 +1,50 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "Radar diagram",
+    "accTitle": "Radar accTitle",
+    "accDescr": "Radar accDescription",
+    "axes": [
+      {
+        "name": "A",
+        "label": "Axis A"
+      },
+      {
+        "name": "B",
+        "label": "Axis B"
+      },
+      {
+        "name": "C",
+        "label": "Axis C"
+      }
+    ],
+    "curves": [
+      {
+        "name": "mycurve",
+        "label": "My Curve",
+        "entries": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "name": "mycurve2",
+        "label": "My Curve 2",
+        "entries": [
+          2,
+          3,
+          1
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": null,
+      "min": 0,
+      "graticule": "polygon"
+    }
+  }
+}
