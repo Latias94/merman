@@ -1,0 +1,8 @@
+C4Container
+title C4Container sprite (positional) on ContainerDb_Ext
+
+Container(web, "Web App", "React", "Provides Internet banking functionality.")
+ContainerDb_Ext(db, "External Container DB", "PostgreSQL", "External database container.", $sprite="users", $tags="external", $link="https://example.com/external-container-db")
+
+Rel(web, db, "Reads/Writes", "JDBC")
+

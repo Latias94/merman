@@ -1,0 +1,85 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Container",
+    "title": "C4Container sprite (positional) on ContainerDb_Ext",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "web",
+        "label": {
+          "text": "Web App"
+        },
+        "techn": {
+          "text": "React"
+        },
+        "descr": {
+          "text": "Provides Internet banking functionality."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "External Container DB"
+        },
+        "techn": {
+          "text": "PostgreSQL"
+        },
+        "descr": {
+          "text": "External database container."
+        },
+        "typeC4Shape": {
+          "text": "external_container_db"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/external-container-db"
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "web",
+        "to": "db",
+        "label": {
+          "text": "Reads/Writes"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}
