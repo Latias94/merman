@@ -47,6 +47,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     println!("\n== svg dom parity ==");
     cmd::compare_all_svgs(vec![
         "--check-dom".to_string(),
+        "--dom-mode".to_string(),
+        "parity".to_string(),
         "--dom-decimals".to_string(),
         "3".to_string(),
     ])?;
