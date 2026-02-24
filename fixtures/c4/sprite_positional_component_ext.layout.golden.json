@@ -1,0 +1,171 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 782.0,
+        "max_y": 419.0
+      },
+      "width": 832.0,
+      "height": 429.0,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Component",
+      "title": "C4Component sprite (positional) on Component_Ext",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 632.0,
+          "height": 303.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "api",
+          "parent_boundary": "global",
+          "type_c4_shape": "component",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 105.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«component»",
+            "y": 20.0,
+            "width": 65.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "API",
+            "y": 38.0,
+            "width": 24.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Rust]",
+            "y": 60.0,
+            "width": 31.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Handles requests.",
+            "y": 94.0,
+            "width": 99.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ext",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_component",
+          "x": 466.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 153.0,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«external_component»",
+            "y": 20.0,
+            "width": 108.48,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "External Service",
+            "y": 86.0,
+            "width": 109.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[HTTPS]",
+            "y": 108.0,
+            "width": 44.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Third-party dependency.",
+            "y": 142.0,
+            "width": 137.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        }
+      ],
+      "rels": [
+        {
+          "from": "api",
+          "to": "ext",
+          "rel_type": "rel",
+          "start_point": {
+            "x": 366.0,
+            "y": 237.986
+          },
+          "end_point": {
+            "x": 466.0,
+            "y": 269.76
+          },
+          "offset_x": null,
+          "offset_y": null,
+          "label": {
+            "text": "Calls",
+            "y": 0.0,
+            "width": 24.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": {
+            "text": "HTTPS",
+            "y": 0.0,
+            "width": 36.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ]
+    }
+  }
+}

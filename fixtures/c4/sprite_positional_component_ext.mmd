@@ -1,0 +1,8 @@
+C4Component
+title C4Component sprite (positional) on Component_Ext
+
+Component(api, "API", "Rust", "Handles requests.")
+Component_Ext(ext, "External Service", "HTTPS", "Third-party dependency.", $sprite="users", $tags="external", $link="https://example.com/external-service")
+
+Rel(api, ext, "Calls", "HTTPS")
+
