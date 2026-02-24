@@ -114,6 +114,56 @@ fn htmlish_to_text_lines(html: &str) -> Vec<String> {
         .collect()
 }
 
+fn extract_css_background_color_for_class(svg: &str, class_name: &str) -> Option<String> {
+    // Mermaid parity SVGs inline styles in a `<style>` element and typically emit rules like:
+    //   #<id> .labelBkg{background-color:rgba(...);}
+    // This is a cheap non-validating parser that looks for `.className{...}` and then extracts the
+    // first `background-color:` declaration within that block.
+    let needle = format!(".{class_name}{{");
+    let mut search = 0usize;
+    while let Some(rel) = svg[search..].find(&needle) {
+        let i = search + rel + needle.len();
+        let Some(end_rel) = svg[i..].find('}') else {
+            return None;
+        };
+        let block = &svg[i..i + end_rel];
+        if let Some(k) = block.find("background-color:") {
+            let after = &block[k + "background-color:".len()..];
+            let end = after.find(';').unwrap_or(after.len());
+            let value = after[..end].trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+        search = i + end_rel + 1;
+    }
+    None
+}
+
+fn extract_inline_html_color(html: &str) -> Option<String> {
+    // Look for `style="...color: <value> ..."` inside the foreignObject HTML fragment.
+    let lower = html.to_ascii_lowercase();
+    let Some(style_i) = lower.find("style=\"") else {
+        return None;
+    };
+    let after = &html[style_i + "style=\"".len()..];
+    let Some(end_quote) = after.find('"') else {
+        return None;
+    };
+    let style = &after[..end_quote];
+    let lower_style = style.to_ascii_lowercase();
+    let Some(color_i) = lower_style.find("color:") else {
+        return None;
+    };
+    let after_color = &style[color_i + "color:".len()..];
+    let end = after_color.find(';').unwrap_or(after_color.len());
+    let mut value = after_color[..end].trim().to_string();
+    if let Some(v) = value.strip_suffix("!important") {
+        value = v.trim().to_string();
+    }
+    if value.is_empty() { None } else { Some(value) }
+}
+
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
 ///
@@ -132,6 +182,9 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     let mut out = String::with_capacity(svg.len() + 2048);
     let mut overlays = String::new();
     let mut g_translate_stack: Vec<Translate> = Vec::new();
+    let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
+    let label_bkg = extract_css_background_color_for_class(svg, "labelBkg")
+        .unwrap_or_else(|| label_bkg_default);
 
     let mut i = 0usize;
     while let Some(lt_rel) = svg[i..].find('<') {
@@ -195,40 +248,43 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                 let y = parse_attr_f64(tag, "y").unwrap_or(0.0);
                 let base = sum_translate(&g_translate_stack);
 
+                let abs_x = base.x + x;
+                let abs_y = base.y + y;
                 let (anchor, text_x) = match parse_attr_str(tag, "text-anchor") {
-                    Some("start") => ("start", base.x + x),
-                    Some("end") => ("end", base.x + x + width),
-                    _ => ("middle", base.x + x + width / 2.0),
+                    Some("start") => ("start", abs_x),
+                    Some("end") => ("end", abs_x + width),
+                    _ => ("middle", abs_x + width / 2.0),
                 };
-                let text_y = base.y + y + height / 2.0;
+                let text_y = abs_y + height / 2.0;
 
                 let lines = htmlish_to_text_lines(inner);
                 if !lines.is_empty() {
                     overlays.push_str(r#"<g data-merman-foreignobject="fallback">"#);
 
-                    let font_size = 16.0_f64;
-                    let n = lines.len() as f64;
-                    for (idx, line) in lines.iter().enumerate() {
-                        let dy = (idx as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
-                        let text = escape_xml_text(line);
+                    let wants_label_bkg = inner.contains("labelBkg");
+                    if wants_label_bkg {
+                        overlays.push_str(&format!(
+                            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+                            abs_x, abs_y, width, height, label_bkg
+                        ));
+                    }
 
-                        overlays.push_str("<text");
+                    let font_size = 16.0_f64;
+                    let line_height = font_size * 1.5;
+                    let n = lines.len() as f64;
+                    let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
+                    let fill =
+                        extract_inline_html_color(inner).unwrap_or_else(|| "#333".to_string());
+                    // Avoid quoting font families inside an XML attribute that is already quoted.
+                    // Rasterizers can be strict about unescaped quotes in `style="..."`.
+                    let font_family = "trebuchet ms,verdana,arial,sans-serif";
+
+                    for (idx, line) in lines.iter().enumerate() {
+                        let y_line = y0 + (idx as f64) * line_height;
+                        let text = escape_xml_text(line);
                         overlays.push_str(&format!(
-                            r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#000" stroke="#fff" stroke-width="3" stroke-linejoin="round" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
-                            text_x, text_y, anchor, font_size
-                        ));
-                        overlays.push_str(&format!(
-                            r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
-                            text_x, dy, text
-                        ));
-                        overlays.push_str("<text");
-                        overlays.push_str(&format!(
-                            r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#000" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
-                            text_x, text_y, anchor, font_size
-                        ));
-                        overlays.push_str(&format!(
-                            r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
-                            text_x, dy, text
+                            r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" style="text-anchor: {}; font-size: {}px; font-family: {};">{}</text>"##,
+                            text_x, y_line, fill, anchor, font_size, font_family, text
                         ));
                     }
 
@@ -282,6 +338,20 @@ mod tests {
         assert!(
             out.contains(">Todo<"),
             "expected text content to be present"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_renders_label_bkg_rect_when_present() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><style>#d .labelBkg{background-color:rgba(232,232,232,0.5);}</style><g id="d"><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><p>Hello</p></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(
+            out.contains(r#"fill="rgba(232,232,232,0.5)""#),
+            "expected labelBkg fill"
+        );
+        assert!(
+            out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
+            "expected rect with foreignObject bounds"
         );
     }
 }

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Fixed
+
+- Improved `<foreignObject>` readability fallback for raster outputs (PNG/JPG/PDF): remove the white text outline overlay and render a semi-transparent `.labelBkg` background when present (closer to upstream Mermaid defaults).
+- Reduced cross-platform SVG DOM drift in `parity-root` compares by snapping root `style` `max-width` to a stable lattice.
+- Aligned C4 `sprite` rendering with upstream Mermaid: only `person`/`external_person` emit `<image>` sprites.
+
 ## [0.1.0] - 2026-02-22
 
 ### Added
