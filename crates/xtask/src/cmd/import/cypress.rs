@@ -1744,6 +1744,139 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
         let mut out: Vec<CypressBlock> = Vec::new();
         let mut idx_in_file = 0usize;
+
+        fn synthesize_sankey_render_graph_using_this_graph_blocks(
+            spec_path: &Path,
+            source_stem: &str,
+            text: &str,
+            it_positions: &[ItPos],
+            idx_in_file: &mut usize,
+        ) -> Vec<CypressBlock> {
+            #[derive(Clone, Debug)]
+            struct GraphAssign {
+                pos: usize,
+                body: String,
+            }
+
+            fn find_test_name(it_positions: &[ItPos], abs: usize) -> Option<String> {
+                let mut best: Option<String> = None;
+                for it in it_positions {
+                    if it.pos > abs {
+                        break;
+                    }
+                    if it.pos < abs && !it.skipped {
+                        best = Some(it.name.clone());
+                    }
+                }
+                best
+            }
+
+            let bytes = text.as_bytes();
+            let mut assigns: Vec<GraphAssign> = Vec::new();
+
+            // Capture `cy.wrap(`...`).as('graph')` blocks.
+            let mut search_from = 0usize;
+            while let Some(abs) = find_next_call(text, "cy.wrap", search_from) {
+                let after_call = abs + "cy.wrap".len();
+                let mut open_paren = after_call;
+                while bytes.get(open_paren).is_some_and(|b| is_ws_byte(*b)) {
+                    open_paren += 1;
+                }
+                if bytes.get(open_paren) != Some(&b'(') {
+                    search_from = after_call;
+                    continue;
+                }
+                let Some(close_paren) = find_matching_paren_close(text, open_paren) else {
+                    search_from = open_paren + 1;
+                    continue;
+                };
+
+                let args_slice = &text[open_paren + 1..close_paren];
+                let Some((raw, _end_rel)) = extract_first_template_literal(args_slice, 0) else {
+                    search_from = close_paren + 1;
+                    continue;
+                };
+
+                // Only keep the assignment if it targets `this.graph` via `.as('graph')`.
+                let mut j = close_paren + 1;
+                while bytes.get(j).is_some_and(|b| is_ws_byte(*b)) {
+                    j += 1;
+                }
+                let tail = &text[j..text.len().min(j + 128)];
+                if !(tail.contains(".as('graph')") || tail.contains(".as(\"graph\")")) {
+                    search_from = close_paren + 1;
+                    continue;
+                }
+
+                assigns.push(GraphAssign {
+                    pos: abs,
+                    body: raw,
+                });
+                search_from = close_paren + 1;
+            }
+
+            if assigns.is_empty() {
+                return Vec::new();
+            }
+
+            // Synthesize `renderGraph(this.graph, { ... })` fixtures using the nearest preceding
+            // `cy.wrap(...).as('graph')` source.
+            let mut out: Vec<CypressBlock> = Vec::new();
+            search_from = 0usize;
+            while let Some(abs) = find_next_call(text, "renderGraph", search_from) {
+                let after_call = abs + "renderGraph".len();
+                let mut open_paren = after_call;
+                while bytes.get(open_paren).is_some_and(|b| is_ws_byte(*b)) {
+                    open_paren += 1;
+                }
+                if bytes.get(open_paren) != Some(&b'(') {
+                    search_from = after_call;
+                    continue;
+                }
+                let Some(close_paren) = find_matching_paren_close(text, open_paren) else {
+                    search_from = open_paren + 1;
+                    continue;
+                };
+
+                let args_slice = &text[open_paren + 1..close_paren];
+                let trimmed = args_slice.trim_start();
+                if !trimmed.starts_with("this.graph") {
+                    search_from = close_paren + 1;
+                    continue;
+                }
+
+                let Some(graph) = assigns.iter().rev().find(|a| a.pos < abs).cloned() else {
+                    search_from = close_paren + 1;
+                    continue;
+                };
+
+                // Extract second arg object literal.
+                let arg0_start = args_slice.len() - trimmed.len();
+                let after_first_arg = arg0_start + "this.graph".len();
+                let Some(options_obj) =
+                    extract_second_arg_object_literal(args_slice, after_first_arg)
+                else {
+                    search_from = close_paren + 1;
+                    continue;
+                };
+
+                out.push(CypressBlock {
+                    source_spec: spec_path.to_path_buf(),
+                    source_stem: source_stem.to_string(),
+                    idx_in_file: *idx_in_file,
+                    test_name: find_test_name(it_positions, abs),
+                    call: "renderGraph".to_string(),
+                    body: graph.body,
+                    options_obj: Some(options_obj),
+                });
+                *idx_in_file += 1;
+
+                search_from = close_paren + 1;
+            }
+
+            out
+        }
+
         for (call, needle) in [
             ("imgSnapshotTest", "imgSnapshotTest"),
             ("renderGraph", "renderGraph"),
@@ -1819,6 +1952,20 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
                 search_from = close_paren + 1;
             }
+        }
+
+        let file_name = spec_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if file_name == "sankey.spec.ts" {
+            out.extend(synthesize_sankey_render_graph_using_this_graph_blocks(
+                spec_path,
+                &source_stem,
+                &text,
+                &it_positions,
+                &mut idx_in_file,
+            ));
         }
 
         if out.is_empty() {
