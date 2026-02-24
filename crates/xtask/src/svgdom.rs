@@ -109,6 +109,43 @@ fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> Strin
     }
 }
 
+fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
+    // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
+    // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
+    // regressions, snap `max-width` to a small pixel lattice.
+    let step = 1.0 / 16.0; // 0.0625px: collapses common 1/64px drift without hiding real changes.
+
+    let re = {
+        static ONCE: OnceLock<Regex> = OnceLock::new();
+        ONCE.get_or_init(|| Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap())
+    };
+
+    re.replace_all(style, |caps: &regex::Captures<'_>| {
+        let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+        let Ok(v) = raw.parse::<f64>() else {
+            return caps
+                .get(0)
+                .map(|m| m.as_str())
+                .unwrap_or_default()
+                .to_string();
+        };
+        let snapped = (v / step).round() * step;
+        let snapped = round_f64(snapped, decimals);
+        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
+        let mut out = format!("{snapped}");
+        if out.contains('.') {
+            while out.ends_with('0') {
+                out.pop();
+            }
+            if out.ends_with('.') {
+                out.pop();
+            }
+        }
+        format!("max-width: {out}px")
+    })
+    .to_string()
+}
+
 fn normalize_attr_whitespace_strict(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_space = true;
@@ -458,6 +495,11 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             } else {
                 val = normalize_numeric_tokens_mode(&val, decimals, mode);
             }
+
+            if key == "style" && mode == DomMode::ParityRoot && n.tag_name().name() == "svg" {
+                val = normalize_svg_root_style_parity_root(&val, decimals);
+            }
+
             attrs.insert(key, val);
         }
     }
@@ -1005,6 +1047,19 @@ mod tests {
         assert_eq!(
             dom.attrs.get("style").map(|s| s.as_str()),
             Some("max-width: 600px; background-color: white;")
+        );
+    }
+
+    #[test]
+    fn parity_root_snaps_svg_root_style_max_width() {
+        let a = r#"<svg width="100%" viewBox="0 0 560.391 10" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
+        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
+        assert_eq!(
+            dom_a.attrs.get("style").map(|s| s.as_str()),
+            Some("max-width: 560.375px; background-color: white;")
         );
     }
 
