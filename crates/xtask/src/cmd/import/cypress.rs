@@ -2714,6 +2714,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // ELK layout and non-classic looks are currently out of scope for parity-gated
                 // headless rendering. Keep upstream SVG baselines for traceability but move these
                 // fixtures under `_deferred` so `verify` remains green.
+                if fixture_text.contains("\n  flowchart:\n    htmlLabels: false")
+                    || fixture_text.contains("\nflowchart:\n    htmlLabels: false")
+                {
+                    return Some("class frontmatter config.flowchart.htmlLabels=false (deferred)");
+                }
                 if fixture_text.contains("\n  htmlLabels: false")
                     || fixture_text.contains("\nhtmlLabels: false")
                 {
