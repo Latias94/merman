@@ -1,0 +1,126 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": "C4Context link/tags (kv fields)",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "p1",
+        "label": {
+          "text": "Customer"
+        },
+        "descr": {
+          "text": "A customer of the bank."
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "",
+        "tags": "tag1,tag2",
+        "link": "https://example.com/customer"
+      },
+      {
+        "alias": "s1",
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "descr": {
+          "text": "Allows customers to view account data."
+        },
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "parentBoundary": "b0",
+        "wrap": false,
+        "sprite": "",
+        "tags": "internal",
+        "link": "https://example.com/system"
+      },
+      {
+        "alias": "s2",
+        "label": {
+          "text": "E-mail system"
+        },
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        },
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "parentBoundary": "b0",
+        "wrap": false,
+        "sprite": "",
+        "tags": "external",
+        "link": "https://example.com/email"
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "b0",
+        "label": {
+          "text": "BankBoundary0"
+        },
+        "type": {
+          "text": "ENTERPRISE"
+        },
+        "tags": "boundary_tag",
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "p1",
+        "to": "s1",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      },
+      {
+        "type": "rel",
+        "from": "s1",
+        "to": "s2",
+        "label": {
+          "text": "Sends e-mails"
+        },
+        "techn": {
+          "text": "SMTP"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}
