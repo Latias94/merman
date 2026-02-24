@@ -4,6 +4,17 @@ use super::*;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
+fn c4_sprite_is_truthy(sprite: &serde_json::Value) -> bool {
+    match sprite {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(b) => *b,
+        serde_json::Value::Number(_) => true,
+        serde_json::Value::String(s) => !s.trim().is_empty(),
+        serde_json::Value::Array(a) => !a.is_empty(),
+        serde_json::Value::Object(o) => !o.is_empty(),
+    }
+}
+
 fn c4_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
@@ -456,7 +467,10 @@ pub(super) fn render_c4_diagram_svg(
                 fmt(s.y + s.image.y),
                 escape_attr(href)
             );
-        } else if meta.is_some_and(|m| m.sprite.is_some()) {
+        } else if meta
+            .and_then(|m| m.sprite.as_ref())
+            .is_some_and(c4_sprite_is_truthy)
+        {
             let _ = write!(
                 &mut out,
                 r#"<image width="48" height="48" x="{}" y="{}" xlink:href="{}"/>"#,
