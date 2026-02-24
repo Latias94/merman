@@ -1,0 +1,45 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "branch01"
+      },
+      {
+        "name": "checkout02"
+      },
+      {
+        "name": "cherry-pick03"
+      },
+      {
+        "name": "branch/example-branch"
+      },
+      {
+        "name": "merge/test_merge"
+      },
+      {
+        "name": "A"
+      }
+    ],
+    "currentBranch": "A",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
