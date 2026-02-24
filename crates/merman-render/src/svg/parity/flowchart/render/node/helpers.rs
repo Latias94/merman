@@ -40,9 +40,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
 }
 
 pub(super) fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::MermaidConfig) -> bool {
-    if config.get_str("securityLevel") == Some("loose") {
-        return true;
-    }
+    let _config = config;
 
     let href = href.trim();
     if href.is_empty() {
@@ -62,9 +60,13 @@ pub(super) fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::Merm
         return true;
     }
 
-    // In Mermaid's browser pipeline, the rendered SVG is further sanitized in strict mode.
-    // This strips unknown deep-link schemes (e.g. `notes://...`) from `xlink:href`.
-    !lower.contains("://")
+    // Mermaid's SVG output does not include `xlink:href` for unknown schemes (e.g. `notes://...`
+    // or `javascript:...`). Treat any explicit scheme as unsafe unless it matched the allow-list
+    // above.
+    let scheme_end = lower
+        .find(|c| matches!(c, '/' | '?' | '#'))
+        .unwrap_or(lower.len());
+    !lower[..scheme_end].contains(':')
 }
 
 pub(super) fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
