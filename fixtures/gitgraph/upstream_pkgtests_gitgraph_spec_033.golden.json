@@ -1,0 +1,113 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "testBranch"
+      },
+      {
+        "id": "2-222",
+        "message": "merged branch testBranch into main",
+        "seq": 2,
+        "type": 3,
+        "tags": [
+          "merge-tag"
+        ],
+        "parents": [
+          "0-<dynamic>",
+          "1-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-222"
+        ],
+        "branch": "testBranch2"
+      },
+      {
+        "id": "4-444",
+        "message": "merged branch testBranch2 into main",
+        "seq": 4,
+        "type": 3,
+        "tags": [
+          "merge-tag2"
+        ],
+        "parents": [
+          "2-222",
+          "3-<dynamic>"
+        ],
+        "branch": "main",
+        "customType": 2,
+        "customId": true
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "4-444"
+        ],
+        "branch": "testBranch3"
+      },
+      {
+        "id": "6-666",
+        "message": "merged branch testBranch3 into main",
+        "seq": 6,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "4-444",
+          "5-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": true
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "testBranch"
+      },
+      {
+        "name": "testBranch2"
+      },
+      {
+        "name": "testBranch3"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

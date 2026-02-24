@@ -1,0 +1,178 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "initial commit",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "work on first release",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "initial commit"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "design freeze from here",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "work on first release"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "bugfix 1",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "design freeze from here"
+        ],
+        "branch": "v1-rc"
+      },
+      {
+        "id": "bigfix 2",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [
+          "v1.0.1"
+        ],
+        "parents": [
+          "bugfix 1"
+        ],
+        "branch": "v1-rc"
+      },
+      {
+        "id": "minor design changes for MDR",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [
+          "v1.0.2"
+        ],
+        "parents": [
+          "bigfix 2"
+        ],
+        "branch": "v1-rc"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "merged branch v1-rc into FORK-v1.0-MDR",
+        "seq": 7,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "working on MDR",
+          "minor design changes for MDR"
+        ],
+        "branch": "FORK-v1.0-MDR",
+        "customId": false
+      },
+      {
+        "id": "new feature for v1.1â¦",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "design freeze from here"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "working on MDR",
+        "message": "",
+        "seq": 9,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "7-<dynamic>"
+        ],
+        "branch": "FORK-v1.0-MDR"
+      },
+      {
+        "id": "finishing MDR",
+        "message": "",
+        "seq": 10,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "working on MDR"
+        ],
+        "branch": "FORK-v1.0-MDR"
+      },
+      {
+        "id": "brush up release",
+        "message": "",
+        "seq": 11,
+        "type": 0,
+        "tags": [
+          "v1.0.2-MDR"
+        ],
+        "parents": [
+          "finishing MDR"
+        ],
+        "branch": "v1.0-MDR"
+      },
+      {
+        "id": "bugfix without MDR",
+        "message": "",
+        "seq": 12,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "minor design changes for MDR"
+        ],
+        "branch": "v1-rc"
+      },
+      {
+        "id": "work on v1.1",
+        "message": "",
+        "seq": 13,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "new feature for v1.1â¦"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "v1-rc"
+      },
+      {
+        "name": "FORK-v1.0-MDR"
+      },
+      {
+        "name": "v1.0-MDR"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": [
+      "Commit ID working on MDR already exists"
+    ]
+  }
+}
