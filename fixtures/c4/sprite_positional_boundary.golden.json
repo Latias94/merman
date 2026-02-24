@@ -1,0 +1,89 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": "C4Context sprite (positional) on Boundary",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "p1",
+        "label": {
+          "text": "Customer"
+        },
+        "descr": {
+          "text": "A customer of the bank."
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "b1",
+        "wrap": false
+      },
+      {
+        "alias": "s1",
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "descr": {
+          "text": "Allows customers to view account data."
+        },
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "parentBoundary": "b1",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "b1",
+        "label": {
+          "text": "Bank Boundary"
+        },
+        "type": {
+          "text": "company"
+        },
+        "sprite": "users",
+        "tags": "bank",
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "p1",
+        "to": "s1",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}
