@@ -1,0 +1,134 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "Parallel one",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "Parallel two",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Are you OK?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Fine!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "Parallel three",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "What do you think about it?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "It's good!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

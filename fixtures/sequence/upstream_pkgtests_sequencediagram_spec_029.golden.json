@@ -1,0 +1,116 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "John",
+      "Mandy",
+      "Joan"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice2",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John2",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Mandy": {
+        "name": "Mandy",
+        "description": "Mandy",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Joan": {
+        "name": "Joan",
+        "description": "Joan",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hi Bob",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Hi Alice",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hi John",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "John",
+        "to": "Mandy",
+        "message": "Hi Mandy",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Mandy",
+        "to": "Joan",
+        "message": "Hi Joan",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

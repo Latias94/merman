@@ -1,0 +1,113 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "actors": {
+      "1": {
+        "name": "1",
+        "description": "1",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "2": {
+        "name": "2",
+        "description": "2",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "3": {
+        "name": "3",
+        "description": "3",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "4": {
+        "name": "4",
+        "description": "4",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "1",
+        "to": "2",
+        "message": "single-line text",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "2",
+        "to": "2",
+        "message": "single-line text",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "2",
+        "from": "2",
+        "to": "3",
+        "message": "multiline<br/>text",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "3",
+        "to": "3",
+        "message": "multiline<br/>text",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      }
+    ],
+    "notes": [
+      {
+        "actor": "2",
+        "placement": 1,
+        "message": "single-line text",
+        "wrap": true
+      },
+      {
+        "actor": "3",
+        "placement": 1,
+        "message": "multiline<br/>text",
+        "wrap": true
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

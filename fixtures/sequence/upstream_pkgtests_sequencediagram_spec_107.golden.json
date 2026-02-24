@@ -1,0 +1,116 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Carl",
+      "David",
+      "Eve",
+      "Favela"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Carl": {
+        "name": "Carl",
+        "description": "Carl",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "David": {
+        "name": "David",
+        "description": "David",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Eve": {
+        "name": "Eve",
+        "description": "Eve",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Favela": {
+        "name": "Favela",
+        "description": "Favela",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Hi Alice",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hi Bob",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "3",
+        "from": "Bob",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

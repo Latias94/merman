@@ -1,0 +1,92 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "a",
+      "b",
+      "c"
+    ],
+    "actors": {
+      "a": {
+        "name": "a",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "b": {
+        "name": "b",
+        "description": "b",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "c": {
+        "name": "c",
+        "description": "c",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "a",
+        "to": "b",
+        "message": "Hello Bob?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "b",
+        "to": "a",
+        "message": "Hello Alice!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "b",
+        "to": "c",
+        "message": "Where is Alice?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "b",
+        "to": "c",
+        "message": "Where are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {
+      "a": 1,
+      "c": 3
+    },
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
