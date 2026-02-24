@@ -1,0 +1,8 @@
+C4Context
+title C4Context sprite (positional) on SystemQueue_Ext
+
+System(s1, "Internet Banking System", "Allows customers to view account data.")
+SystemQueue_Ext(q, "External System Queue", "External queue system.", $sprite="users", $tags="external", $link="https://example.com/external-system-queue")
+
+Rel(s1, q, "Publishes", "AMQP")
+
