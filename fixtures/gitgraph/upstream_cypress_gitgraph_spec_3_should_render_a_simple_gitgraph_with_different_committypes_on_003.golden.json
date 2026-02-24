@@ -1,0 +1,49 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "Normal Commit",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "Reverse Commit",
+        "message": "",
+        "seq": 1,
+        "type": 1,
+        "tags": [],
+        "parents": [
+          "Normal Commit"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "Highlight Commit",
+        "message": "",
+        "seq": 2,
+        "type": 2,
+        "tags": [],
+        "parents": [
+          "Reverse Commit"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
