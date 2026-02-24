@@ -1,0 +1,250 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Active",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Active",
+        "dir": null,
+        "domId": "state-Active-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Inactive",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Inactive",
+        "dir": null,
+        "domId": "state-Inactive-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "this is a short<br/>note",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Active----parent",
+        "domId": "state-Active----parent-2",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "left of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "this is a short<br/>note",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Active----note-2",
+        "domId": "state-Active----note-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "left of",
+        "parentId": "Active----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "A note can also\nbe defined on\nseveral lines",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Inactive----parent",
+        "domId": "state-Inactive----parent-3",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "A note can also\nbe defined on\nseveral lines",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Inactive----note-3",
+        "domId": "state-Inactive----note-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "Inactive----parent"
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Active",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "Active",
+        "end": "Inactive",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "Active----note-2-Active",
+        "start": "Active----note-2",
+        "end": "Active",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "Inactive-Inactive----note-3",
+        "start": "Inactive",
+        "end": "Inactive----note-3",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Active": {
+        "id": "Active",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "left of",
+          "text": "this is a short<br/>note"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Inactive": {
+        "id": "Inactive",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "A note can also\nbe defined on\nseveral lines"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Active",
+        "relationTitle": null
+      },
+      {
+        "id1": "Active",
+        "id2": "Inactive",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {}
+  }
+}

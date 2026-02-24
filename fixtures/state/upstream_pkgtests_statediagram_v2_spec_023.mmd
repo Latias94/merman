@@ -1,0 +1,12 @@
+stateDiagram-v2
+
+      [*] --> Active
+
+      state Active {
+        [*] --> NumLockOff
+        --
+        [*] --> CapsLockOff
+        --
+        [*] --> ScrollLockOff
+      }
+      

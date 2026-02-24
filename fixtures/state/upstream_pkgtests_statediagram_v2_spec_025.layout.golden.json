@@ -1,0 +1,245 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "Active",
+          "x": 112.336,
+          "y": 206.0,
+          "width": 57.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Active----note-2",
+          "x": 182.438,
+          "y": 72.0,
+          "width": 126.406,
+          "height": 78.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Active----parent",
+          "x": 182.438,
+          "y": 72.0,
+          "width": 196.406,
+          "height": 128.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Inactive",
+          "x": 112.336,
+          "y": 296.0,
+          "width": 66.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Inactive----note-3",
+          "x": 112.336,
+          "y": 442.0,
+          "width": 138.672,
+          "height": 102.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Inactive----parent",
+          "x": 112.336,
+          "y": 442.0,
+          "width": 208.672,
+          "height": 152.0,
+          "is_cluster": true
+        },
+        {
+          "id": "root_start",
+          "x": 42.234,
+          "y": 72.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "Active----note-2-Active",
+          "from": "Active----note-2",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 182.438,
+              "y": 72.0
+            },
+            {
+              "x": 182.438,
+              "y": 136.0
+            },
+            {
+              "x": 182.438,
+              "y": 161.0
+            },
+            {
+              "x": 140.707,
+              "y": 188.609
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "Inactive-Inactive----note-3",
+          "from": "Inactive",
+          "to": "Inactive----note-3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 112.836,
+              "y": 316.5
+            },
+            {
+              "x": 112.336,
+              "y": 341.0
+            },
+            {
+              "x": 112.336,
+              "y": 366.0
+            },
+            {
+              "x": 112.336,
+              "y": 442.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 42.234,
+              "y": 79.0
+            },
+            {
+              "x": 42.234,
+              "y": 136.0
+            },
+            {
+              "x": 42.234,
+              "y": 161.0
+            },
+            {
+              "x": 84.965,
+              "y": 188.609
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "Active",
+          "to": "Inactive",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 112.836,
+              "y": 226.5
+            },
+            {
+              "x": 112.336,
+              "y": 251.0
+            },
+            {
+              "x": 112.836,
+              "y": 276.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Active----parent",
+          "x": 182.438,
+          "y": 72.0,
+          "width": 196.406,
+          "height": 128.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "this is a short<br/>note",
+          "title_label": {
+            "x": 182.438,
+            "y": 33.0,
+            "width": 93.594,
+            "height": 48.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Inactive----parent",
+          "x": 112.336,
+          "y": 442.0,
+          "width": 208.672,
+          "height": 152.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "A note can also\nbe defined on\nseveral lines",
+          "title_label": {
+            "x": 112.336,
+            "y": 403.0,
+            "width": 98.719,
+            "height": 72.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 280.641,
+        "max_y": 518.0
+      }
+    }
+  }
+}
