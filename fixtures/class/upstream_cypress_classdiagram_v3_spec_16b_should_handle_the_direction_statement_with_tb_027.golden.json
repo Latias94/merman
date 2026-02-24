@@ -1,0 +1,167 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Student": {
+        "id": "Student",
+        "type": "",
+        "label": "Student",
+        "text": "Student",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "idCard : IdCard",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-idCard : IdCard",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Student-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "IdCard": {
+        "id": "IdCard",
+        "type": "",
+        "label": "IdCard",
+        "text": "IdCard",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "id : int",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-id : int",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "name : string",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-name : string",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-IdCard-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Bike": {
+        "id": "Bike",
+        "type": "",
+        "label": "Bike",
+        "text": "Bike",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "id : int",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-id : int",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "name : string",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-name : string",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Bike-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Student",
+        "id2": "IdCard",
+        "relationTitle1": "1",
+        "relationTitle2": "1",
+        "title": "carries",
+        "relation": {
+          "type1": -1,
+          "type2": 0,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Student",
+        "id2": "Bike",
+        "relationTitle1": "1",
+        "relationTitle2": "1",
+        "title": "rides",
+        "relation": {
+          "type1": -1,
+          "type2": 0,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
