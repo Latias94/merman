@@ -740,8 +740,6 @@ struct C4SvgModelShape {
     border_color: Option<String>,
     #[serde(default, rename = "fontColor")]
     font_color: Option<String>,
-    #[serde(default)]
-    sprite: Option<serde_json::Value>,
     #[serde(default, rename = "typeC4Shape")]
     #[allow(dead_code)]
     type_c4_shape: Option<C4SvgModelText>,
