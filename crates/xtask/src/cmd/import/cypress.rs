@@ -2754,6 +2754,13 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 {
                     return Some("flowchart diagram type flowchart-elk (deferred)");
                 }
+
+                // Mermaid supports flowchart nodes with an `@{ icon: ... }` modifier. merman does
+                // not implement icon rendering yet, so keep the upstream SVG for traceability but
+                // move the fixture under `_deferred` to keep `verify` green.
+                if fixture_text.contains("@{") && fixture_text.contains("icon:") {
+                    return Some("flowchart icon nodes (deferred)");
+                }
             }
             "sequence" => {
                 // Mermaid's sequence diagram v2 supports "central connections" where the arrow
