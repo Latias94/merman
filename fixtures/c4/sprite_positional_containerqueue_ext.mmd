@@ -1,0 +1,8 @@
+C4Container
+title C4Container sprite (positional) on ContainerQueue_Ext
+
+Container(web, "Web App", "React", "Provides Internet banking functionality.")
+ContainerQueue_Ext(q, "External Container Queue", "RabbitMQ", "External queue container.", $sprite="users", $tags="external", $link="https://example.com/external-container-queue")
+
+Rel(web, q, "Publishes", "AMQP")
+
