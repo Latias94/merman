@@ -1,0 +1,119 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "round",
+            "label": "This is the text",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ]
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "C",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "id-<id>-1",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "A",
+                "type": "round",
+                "label": "This is the text",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "B",
+                "type": "na",
+                "label": "B",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ]
+          },
+          {
+            "id": "C",
+            "type": "na",
+            "label": "C",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "round",
+            "label": "This is the text",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ]
+      },
+      {
+        "id": "A",
+        "type": "round",
+        "label": "This is the text",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "C",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

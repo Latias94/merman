@@ -1,0 +1,105 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "a",
+        "type": "square",
+        "label": "A wide one",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "b",
+        "type": "na",
+        "label": "b",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "c",
+        "type": "na",
+        "label": "c",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "d",
+        "type": "na",
+        "label": "d",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "a",
+            "type": "square",
+            "label": "A wide one",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "b",
+            "type": "na",
+            "label": "b",
+            "children": [],
+            "widthInColumns": 2
+          },
+          {
+            "id": "c",
+            "type": "na",
+            "label": "c",
+            "children": [],
+            "widthInColumns": 2
+          },
+          {
+            "id": "d",
+            "type": "na",
+            "label": "d",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 3
+      },
+      {
+        "id": "a",
+        "type": "square",
+        "label": "A wide one",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "b",
+        "type": "na",
+        "label": "b",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "c",
+        "type": "na",
+        "label": "c",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "d",
+        "type": "na",
+        "label": "d",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

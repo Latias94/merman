@@ -1,0 +1,67 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-BOOK-0",
+          "x": 93.96,
+          "y": 85.5,
+          "width": 187.92,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-STORE-1",
+          "x": 93.96,
+          "y": 357.5,
+          "width": 174.8,
+          "height": 171.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-BOOK-0",
+          "to": "entity-STORE-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 93.96,
+              "y": 171.0
+            },
+            {
+              "x": 93.96,
+              "y": 221.5
+            },
+            {
+              "x": 93.96,
+              "y": 272.0
+            }
+          ],
+          "label": {
+            "x": 93.96,
+            "y": 221.5,
+            "width": 38.08,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ZERO_OR_MORE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 187.92,
+        "max_y": 443.0
+      }
+    }
+  }
+}

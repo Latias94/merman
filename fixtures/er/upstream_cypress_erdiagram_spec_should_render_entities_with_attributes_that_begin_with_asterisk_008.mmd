@@ -1,0 +1,17 @@
+---
+config:
+  loglevel: 1.0
+---
+
+erDiagram
+    BOOK {
+      int         *id
+      string      name
+      varchar(99) summary
+    }
+    BOOK }o..o{ STORE : soldBy
+    STORE {
+      int         *id
+      string      name
+      varchar(50) address
+    }

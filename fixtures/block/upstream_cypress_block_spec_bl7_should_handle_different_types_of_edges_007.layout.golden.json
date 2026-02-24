@@ -1,0 +1,136 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 8.8,
+          "y": -151.2,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 8.8,
+          "y": 16.8,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "C",
+          "x": 34.4,
+          "y": 16.8,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "D",
+          "x": 60.0,
+          "y": 16.8,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "1-A-B",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 8.8,
+              "y": -151.2
+            },
+            {
+              "x": 8.8,
+              "y": -67.2
+            },
+            {
+              "x": 8.8,
+              "y": 16.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_circle",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1-A-C",
+          "from": "A",
+          "to": "C",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 8.8,
+              "y": -151.2
+            },
+            {
+              "x": 21.6,
+              "y": -67.2
+            },
+            {
+              "x": 34.4,
+              "y": 16.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1-A-D",
+          "from": "A",
+          "to": "D",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 8.8,
+              "y": -151.2
+            },
+            {
+              "x": 34.4,
+              "y": -67.2
+            },
+            {
+              "x": 60.0,
+              "y": 16.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_cross",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -164.0,
+        "max_x": 145.6,
+        "max_y": 29.6
+      }
+    }
+  }
+}

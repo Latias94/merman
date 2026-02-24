@@ -1,0 +1,14 @@
+---
+config:
+  logLevel: 1.0
+---
+
+erDiagram
+  p[Person] {
+    varchar(64) firstName
+    varchar(64) lastName
+  }
+  c["Customer Account"] {
+    varchar(128) email
+  }
+  p ||--o| c : has

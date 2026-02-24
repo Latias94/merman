@@ -1,0 +1,84 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "round",
+        "label": "rounded",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "C",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "round",
+            "label": "rounded",
+            "children": [],
+            "widthInColumns": 2
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 2
+          },
+          {
+            "id": "C",
+            "type": "na",
+            "label": "C",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A",
+        "type": "round",
+        "label": "rounded",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "C",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

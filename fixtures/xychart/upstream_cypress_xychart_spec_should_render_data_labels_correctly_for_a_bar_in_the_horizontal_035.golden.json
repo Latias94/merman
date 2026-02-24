@@ -1,0 +1,37 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "type": "xychart",
+    "title": "Sales Revenue",
+    "accTitle": null,
+    "accDescr": null,
+    "orientation": "horizontal",
+    "xAxis": {
+      "type": "band",
+      "title": "Months",
+      "categories": [
+        "jan"
+      ]
+    },
+    "yAxis": {
+      "type": "linear",
+      "title": "Revenue (in $)",
+      "min": 3000.0,
+      "max": 12000.0
+    },
+    "plots": [
+      {
+        "type": "bar",
+        "values": [
+          4000.0
+        ],
+        "data": [
+          [
+            "jan",
+            4000.0
+          ]
+        ]
+      }
+    ]
+  }
+}

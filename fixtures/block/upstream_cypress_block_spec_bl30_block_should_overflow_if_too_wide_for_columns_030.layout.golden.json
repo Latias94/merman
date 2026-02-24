@@ -1,0 +1,48 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "fit",
+          "x": 100.64,
+          "y": -50.4,
+          "width": 201.28,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "overflow",
+          "x": 152.96,
+          "y": -16.8,
+          "width": 305.92,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "short",
+          "x": 48.32,
+          "y": 16.8,
+          "width": 96.64,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "also_overflow",
+          "x": 205.28,
+          "y": 16.8,
+          "width": 201.28,
+          "height": 25.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -63.2,
+        "max_x": 305.92,
+        "max_y": 29.6
+      }
+    }
+  }
+}

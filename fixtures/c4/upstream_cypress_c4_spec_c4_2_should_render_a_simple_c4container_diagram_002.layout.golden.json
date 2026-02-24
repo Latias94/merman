@@ -1,0 +1,255 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 848.0,
+        "max_y": 947.0
+      },
+      "width": 898.0,
+      "height": 957.0,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Container",
+      "title": "Container diagram for Internet Banking System",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 698.0,
+          "height": 831.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "c1",
+          "parent_boundary": "global",
+          "x": 150.0,
+          "y": 592.0,
+          "width": 598.0,
+          "height": 255.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "Internet Banking",
+            "y": 8.0,
+            "width": 109.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[CONTAINER]",
+            "y": 30.0,
+            "width": 81.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "email_system",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_system",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 251.0,
+          "height": 86.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«external_system»",
+            "y": 20.0,
+            "width": 94.44,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "E-Mail System",
+            "y": 38.0,
+            "width": 97.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "The internal Microsoft Exchange system",
+            "y": 75.0,
+            "width": 231.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "customer",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 150.0,
+          "y": 352.0,
+          "width": 325.0,
+          "height": 134.0,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 45.36,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Customer",
+            "y": 86.0,
+            "width": 63.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "A customer of the bank, with personal bank accounts",
+            "y": 123.0,
+            "width": 305.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "spa",
+          "parent_boundary": "c1",
+          "type_c4_shape": "container",
+          "x": 200.0,
+          "y": 692.0,
+          "width": 498.0,
+          "height": 105.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container»",
+            "y": 20.0,
+            "width": 59.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Single-Page App",
+            "y": 38.0,
+            "width": 103.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[JavaScript, Angular]",
+            "y": 60.0,
+            "width": 105.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Provides all the Internet banking functionality to customers via their web browser",
+            "y": 94.0,
+            "width": 478.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        }
+      ],
+      "rels": [
+        {
+          "from": "customer",
+          "to": "spa",
+          "rel_type": "rel",
+          "start_point": {
+            "x": 363.539,
+            "y": 486.0
+          },
+          "end_point": {
+            "x": 470.635,
+            "y": 692.0
+          },
+          "offset_x": null,
+          "offset_y": null,
+          "label": {
+            "text": "Uses",
+            "y": 0.0,
+            "width": 23.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": {
+            "text": "HTTPS",
+            "y": 0.0,
+            "width": 36.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "from": "email_system",
+          "to": "customer",
+          "rel_type": "rel",
+          "start_point": {
+            "x": 303.119,
+            "y": 252.0
+          },
+          "end_point": {
+            "x": 371.301,
+            "y": 352.0
+          },
+          "offset_x": null,
+          "offset_y": null,
+          "label": {
+            "text": "Sends e-mails to",
+            "y": 0.0,
+            "width": 82.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": null,
+          "descr": null
+        }
+      ]
+    }
+  }
+}

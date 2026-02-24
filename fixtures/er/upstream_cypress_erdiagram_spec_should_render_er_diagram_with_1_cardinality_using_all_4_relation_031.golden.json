@@ -1,0 +1,93 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "BOOK": {
+        "id": "entity-BOOK-1",
+        "label": "BOOK",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "description",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "float",
+            "name": "price",
+            "keys": [],
+            "comment": "price comment"
+          },
+          {
+            "type": "string",
+            "name": "title",
+            "keys": [
+              "PK"
+            ],
+            "comment": "title comment"
+          },
+          {
+            "type": "string",
+            "name": "author",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "AUTHOR_WITH_LONG_ENTITY_NAME": {
+        "id": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
+        "label": "AUTHOR_WITH_LONG_ENTITY_NAME",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [
+              "PK"
+            ],
+            "comment": "comment"
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
+        "roleA": "writes",
+        "entityB": "entity-BOOK-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

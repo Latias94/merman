@@ -1,0 +1,121 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Container",
+    "title": "Container diagram for Internet Banking System",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "email_system",
+        "label": {
+          "text": "E-Mail System"
+        },
+        "descr": {
+          "text": "The internal Microsoft Exchange system"
+        },
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "tags": "v1.0"
+      },
+      {
+        "alias": "customer",
+        "label": {
+          "text": "Customer"
+        },
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts"
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "tags": "v1.0"
+      },
+      {
+        "alias": "spa",
+        "label": {
+          "text": "Single-Page App"
+        },
+        "techn": {
+          "text": "JavaScript, Angular"
+        },
+        "descr": {
+          "text": "Provides all the Internet banking functionality to customers via their web browser"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "c1",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "c1",
+        "label": {
+          "text": "Internet Banking"
+        },
+        "type": {
+          "text": "CONTAINER"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "customer",
+        "to": "spa",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      },
+      {
+        "type": "rel",
+        "from": "email_system",
+        "to": "customer",
+        "label": {
+          "text": "Sends e-mails to"
+        },
+        "techn": {
+          "text": ""
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}

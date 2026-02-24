@@ -1,0 +1,142 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Deployment",
+    "title": "Deployment Diagram for Internet Banking System - Live",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "mobile",
+        "label": {
+          "text": "Mobile App"
+        },
+        "techn": {
+          "text": "Xamarin"
+        },
+        "descr": {
+          "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "mob",
+        "wrap": false
+      },
+      {
+        "alias": "api",
+        "label": {
+          "text": "API Application"
+        },
+        "techn": {
+          "text": "Java and Spring MVC"
+        },
+        "descr": {
+          "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "apache",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "mob",
+        "label": {
+          "text": "Customer's mobile device"
+        },
+        "type": {
+          "text": "Apple IOS or Android"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "plc",
+        "label": {
+          "text": "Big Bank plc"
+        },
+        "type": {
+          "text": "Big Bank plc data center"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "dn",
+        "label": {
+          "text": "bigbank-api*** x8"
+        },
+        "type": {
+          "text": "Ubuntu 16.04 LTS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "plc",
+        "wrap": false
+      },
+      {
+        "alias": "apache",
+        "label": {
+          "text": "Apache Tomcat"
+        },
+        "type": {
+          "text": "Apache Tomcat 8.x"
+        },
+        "descr": {
+          "text": ""
+        },
+        "nodeType": "node",
+        "parentBoundary": "dn",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "mobile",
+        "to": "api",
+        "label": {
+          "text": "Makes API calls to"
+        },
+        "techn": {
+          "text": "json/HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}

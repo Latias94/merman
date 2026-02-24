@@ -1,0 +1,301 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 868.0,
+        "max_y": 1034.0
+      },
+      "width": 918.0,
+      "height": 1044.0,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "System Context diagram for Internet Banking System",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 718.0,
+          "height": 918.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "b0",
+          "parent_boundary": "global",
+          "x": 150.0,
+          "y": 122.0,
+          "width": 618.0,
+          "height": 812.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "BankBoundary0",
+            "y": 8.0,
+            "width": 101.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[ENTERPRISE]",
+            "y": 30.0,
+            "width": 89.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "b1",
+          "parent_boundary": "b0",
+          "x": 200.0,
+          "y": 648.0,
+          "width": 395.0,
+          "height": 236.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "BankBoundary",
+            "y": 8.0,
+            "width": 92.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[ENTERPRISE]",
+            "y": 30.0,
+            "width": 89.0,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "customerA",
+          "parent_boundary": "b0",
+          "type_c4_shape": "person",
+          "x": 200.0,
+          "y": 222.0,
+          "width": 329.0,
+          "height": 134.0,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 45.36,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Banking Customer A",
+            "y": 86.0,
+            "width": 134.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "A customer of the bank, with personal bank accounts.",
+            "y": 123.0,
+            "width": 309.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "SystemAA",
+          "parent_boundary": "b0",
+          "type_c4_shape": "system",
+          "x": 200.0,
+          "y": 456.0,
+          "width": 518.0,
+          "height": 86.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 51.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Internet Banking System",
+            "y": 38.0,
+            "width": 165.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "Allows customers to view information about their bank accounts, and make payments.",
+            "y": 75.0,
+            "width": 498.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "SystemC",
+          "parent_boundary": "b1",
+          "type_c4_shape": "external_system",
+          "x": 250.0,
+          "y": 748.0,
+          "width": 295.0,
+          "height": 86.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«external_system»",
+            "y": 20.0,
+            "width": 94.44,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "E-mail system",
+            "y": 38.0,
+            "width": 97.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "The internal Microsoft Exchange e-mail system.",
+            "y": 75.0,
+            "width": 275.0,
+            "height": 16.0,
+            "line_count": 1.0
+          }
+        }
+      ],
+      "rels": [
+        {
+          "from": "customerA",
+          "to": "SystemAA",
+          "rel_type": "birel",
+          "start_point": {
+            "x": 427.146,
+            "y": 356.0
+          },
+          "end_point": {
+            "x": 501.356,
+            "y": 456.0
+          },
+          "offset_x": 5.0,
+          "offset_y": null,
+          "label": {
+            "text": "Uses",
+            "y": 0.0,
+            "width": 23.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": null,
+          "descr": null
+        },
+        {
+          "from": "SystemAA",
+          "to": "SystemC",
+          "rel_type": "rel",
+          "start_point": {
+            "x": 484.351,
+            "y": 542.0
+          },
+          "end_point": {
+            "x": 433.592,
+            "y": 748.0
+          },
+          "offset_x": null,
+          "offset_y": null,
+          "label": {
+            "text": "Sends e-mails",
+            "y": 0.0,
+            "width": 67.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": {
+            "text": "SMTP",
+            "y": 0.0,
+            "width": 29.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "from": "SystemC",
+          "to": "customerA",
+          "rel_type": "rel",
+          "start_point": {
+            "x": 408.227,
+            "y": 748.0
+          },
+          "end_point": {
+            "x": 387.756,
+            "y": 356.0
+          },
+          "offset_x": -50.0,
+          "offset_y": 20.0,
+          "label": {
+            "text": "Sends e-mails to",
+            "y": 0.0,
+            "width": 82.0,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "techn": null,
+          "descr": null
+        }
+      ]
+    }
+  }
+}

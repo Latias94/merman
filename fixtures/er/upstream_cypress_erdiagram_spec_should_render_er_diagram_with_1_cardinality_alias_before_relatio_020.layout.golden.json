@@ -1,0 +1,209 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CATEGORY-4",
+          "x": 309.663,
+          "y": 227.0,
+          "width": 116.8,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-CUSTOMER-0",
+          "x": 58.031,
+          "y": 42.0,
+          "width": 116.063,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-LINE-ITEM-2",
+          "x": 58.031,
+          "y": 412.0,
+          "width": 112.48,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 58.031,
+          "y": 227.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PRODUCT-3",
+          "x": 309.663,
+          "y": 42.0,
+          "width": 107.2,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PROFILE-6",
+          "x": 559.263,
+          "y": 227.0,
+          "width": 102.4,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-USER-5",
+          "x": 559.263,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 58.031,
+              "y": 84.0
+            },
+            {
+              "x": 58.031,
+              "y": 134.5
+            },
+            {
+              "x": 58.031,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 58.031,
+            "y": 134.5,
+            "width": 64.4,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONLY_ONE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-ORDER-1",
+          "to": "entity-LINE-ITEM-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 58.031,
+              "y": 269.0
+            },
+            {
+              "x": 58.031,
+              "y": 319.5
+            },
+            {
+              "x": 58.031,
+              "y": 370.0
+            }
+          ],
+          "label": {
+            "x": 58.031,
+            "y": 319.5,
+            "width": 70.0,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-PRODUCT-3",
+          "to": "entity-CATEGORY-4",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 309.663,
+              "y": 84.0
+            },
+            {
+              "x": 309.663,
+              "y": 134.5
+            },
+            {
+              "x": 309.663,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 309.663,
+            "y": 134.5,
+            "width": 68.32,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-3",
+          "from": "entity-USER-5",
+          "to": "entity-PROFILE-6",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 559.263,
+              "y": 84.0
+            },
+            {
+              "x": 559.263,
+              "y": 134.5
+            },
+            {
+              "x": 559.263,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 559.263,
+            "y": 134.5,
+            "width": 112.98,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONLY_ONE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 615.753,
+        "max_y": 454.0
+      }
+    }
+  }
+}

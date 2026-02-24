@@ -1,0 +1,64 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "C",
+          "x": 29.6,
+          "y": -24.8,
+          "width": 59.2,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "A",
+          "x": 96.8,
+          "y": -24.8,
+          "width": 59.2,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 29.6,
+          "y": 24.8,
+          "width": 59.2,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "id-<id>-1",
+          "x": 96.8,
+          "y": 24.8,
+          "width": 59.2,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "D",
+          "x": 84.0,
+          "y": 24.8,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        },
+        {
+          "id": "E",
+          "x": 109.6,
+          "y": 24.8,
+          "width": 17.6,
+          "height": 25.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -45.6,
+        "max_x": 126.4,
+        "max_y": 45.6
+      }
+    }
+  }
+}

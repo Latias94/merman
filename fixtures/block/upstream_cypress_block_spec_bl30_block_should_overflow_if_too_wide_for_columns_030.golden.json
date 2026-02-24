@@ -1,0 +1,107 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "fit",
+        "type": "na",
+        "label": "fit",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "overflow",
+        "type": "na",
+        "label": "overflow",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "short",
+        "type": "na",
+        "label": "short",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "also_overflow",
+        "type": "na",
+        "label": "also_overflow",
+        "children": [],
+        "widthInColumns": 2
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "fit",
+            "type": "na",
+            "label": "fit",
+            "children": [],
+            "widthInColumns": 2
+          },
+          {
+            "id": "overflow",
+            "type": "na",
+            "label": "overflow",
+            "children": [],
+            "widthInColumns": 3
+          },
+          {
+            "id": "short",
+            "type": "na",
+            "label": "short",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "also_overflow",
+            "type": "na",
+            "label": "also_overflow",
+            "children": [],
+            "widthInColumns": 2
+          }
+        ],
+        "columns": 2
+      },
+      {
+        "id": "fit",
+        "type": "na",
+        "label": "fit",
+        "children": [],
+        "widthInColumns": 2
+      },
+      {
+        "id": "overflow",
+        "type": "na",
+        "label": "overflow",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "short",
+        "type": "na",
+        "label": "short",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "also_overflow",
+        "type": "na",
+        "label": "also_overflow",
+        "children": [],
+        "widthInColumns": 2
+      }
+    ],
+    "classes": {},
+    "warnings": [
+      "Block overflow width 3 exceeds configured column width 2"
+    ]
+  }
+}

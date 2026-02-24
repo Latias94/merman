@@ -1,0 +1,93 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "STORE": {
+        "id": "entity-STORE-1",
+        "label": "STORE",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "*id",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "varchar(50)",
+            "name": "address",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "BOOK": {
+        "id": "entity-BOOK-0",
+        "label": "BOOK",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "*id",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "varchar(99)",
+            "name": "summary",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-BOOK-0",
+        "roleA": "soldBy",
+        "entityB": "entity-STORE-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

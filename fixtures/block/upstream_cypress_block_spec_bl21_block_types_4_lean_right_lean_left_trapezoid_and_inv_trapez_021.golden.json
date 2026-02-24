@@ -1,0 +1,105 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "lean_right",
+        "label": "lean right",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B",
+        "type": "square",
+        "label": "lean left",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "D",
+        "type": "na",
+        "label": "trapezoid alt",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "lean_right",
+            "label": "lean right",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B",
+            "type": "square",
+            "label": "lean left",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "C",
+            "type": "na",
+            "label": "trapezoid",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "D",
+            "type": "na",
+            "label": "trapezoid alt",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A",
+        "type": "lean_right",
+        "label": "lean right",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B",
+        "type": "square",
+        "label": "lean left",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C",
+        "type": "na",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "D",
+        "type": "na",
+        "label": "trapezoid alt",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

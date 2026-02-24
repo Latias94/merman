@@ -1,0 +1,97 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "classes": [
+          "blue"
+        ]
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#f9F",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "na",
+            "label": "A",
+            "children": [],
+            "widthInColumns": 1,
+            "classes": [
+              "blue"
+            ]
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#f9F",
+              "stroke:#333",
+              "stroke-width:4px"
+            ]
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1,
+        "classes": [
+          "blue"
+        ]
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#f9F",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      }
+    ],
+    "classes": {
+      "blue": {
+        "id": "blue",
+        "styles": [
+          "fill:#66f",
+          "stroke:#333",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    },
+    "warnings": []
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Component",
+    "title": "Component diagram for Internet Banking System - API Application",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "spa",
+        "label": {
+          "text": "Single Page Application"
+        },
+        "techn": {
+          "text": "javascript and angular"
+        },
+        "descr": {
+          "text": "Provides all the internet banking functionality to customers via their web browser."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "sign",
+        "label": {
+          "text": "Sign In Controller"
+        },
+        "techn": {
+          "text": "MVC Rest Controller"
+        },
+        "descr": {
+          "text": "Allows users to sign in to the internet banking system"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "parentBoundary": "api",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "api",
+        "label": {
+          "text": "API Application"
+        },
+        "type": {
+          "text": "CONTAINER"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel_b",
+        "from": "spa",
+        "to": "sign",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false,
+        "offsetY": -40
+      }
+    ]
+  }
+}
