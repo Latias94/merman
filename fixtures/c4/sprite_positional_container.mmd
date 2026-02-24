@@ -1,0 +1,10 @@
+C4Container
+title C4Container sprite (positional) on Container
+
+Person(p1, "Customer", "A customer of the bank.")
+
+Container(c1, "Single-Page App", "JavaScript, Angular", "Provides Internet banking functionality.", $sprite="users", $tags="frontend", $link="https://example.com/spa")
+ContainerDb(db, "Database", "PostgreSQL", "Stores account data.")
+
+Rel(p1, c1, "Uses", "HTTPS")
+Rel(c1, db, "Reads/Writes", "JDBC")

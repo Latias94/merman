@@ -1,0 +1,114 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Container",
+    "title": "C4Container sprite (positional) on Container",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "p1",
+        "label": {
+          "text": "Customer"
+        },
+        "descr": {
+          "text": "A customer of the bank."
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "c1",
+        "label": {
+          "text": "Single-Page App"
+        },
+        "techn": {
+          "text": "JavaScript, Angular"
+        },
+        "descr": {
+          "text": "Provides Internet banking functionality."
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "users",
+        "tags": "frontend",
+        "link": "https://example.com/spa"
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "Database"
+        },
+        "techn": {
+          "text": "PostgreSQL"
+        },
+        "descr": {
+          "text": "Stores account data."
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "p1",
+        "to": "c1",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": "HTTPS"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      },
+      {
+        "type": "rel",
+        "from": "c1",
+        "to": "db",
+        "label": {
+          "text": "Reads/Writes"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}
