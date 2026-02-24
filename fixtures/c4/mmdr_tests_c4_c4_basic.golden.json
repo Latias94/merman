@@ -1,0 +1,101 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "admin",
+        "label": {
+          "text": "Admin"
+        },
+        "descr": {
+          "text": ""
+        },
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "sys",
+        "label": {
+          "text": "System"
+        },
+        "descr": {
+          "text": ""
+        },
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "DB"
+        },
+        "descr": {
+          "text": ""
+        },
+        "typeC4Shape": {
+          "text": "system_db"
+        },
+        "parentBoundary": "b0",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      },
+      {
+        "alias": "b0",
+        "label": {
+          "text": "Boundary"
+        },
+        "type": {
+          "text": "system"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "admin",
+        "to": "sys",
+        "label": {
+          "text": "Uses"
+        },
+        "techn": {
+          "text": ""
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}
