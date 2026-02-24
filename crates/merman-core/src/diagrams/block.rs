@@ -255,6 +255,10 @@ impl BlockDb {
                     .get(&block.id)
                     .cloned()
                     .unwrap_or_else(|| Block::new(block.id.clone()));
+                // Mermaid's blockDB only merges a small subset of fields when a block id is
+                // encountered multiple times. In particular, later occurrences do *not* override
+                // arrow directions (see upstream cypress BL6), so keep the first-seen properties
+                // and only patch in "obviously relevant" updates.
                 if block.block_type != "na" {
                     existing.block_type = block.block_type.clone();
                 }
@@ -262,18 +266,6 @@ impl BlockDb {
                     if lbl != &block.id {
                         existing.label = Some(lbl.clone());
                     }
-                }
-                if let Some(cols) = block.columns {
-                    existing.columns = Some(cols);
-                }
-                if let Some(w) = block.width_in_columns {
-                    existing.width_in_columns = Some(w);
-                }
-                if let Some(w) = block.width {
-                    existing.width = Some(w);
-                }
-                if let Some(dirs) = &block.directions {
-                    existing.directions = Some(dirs.clone());
                 }
                 self.insert_block(block.id.clone(), existing);
             }
@@ -544,15 +536,21 @@ fn node_delims_at_start(input: &str) -> Option<NodeDelims> {
         },
         NodeDelims {
             start: "[/",
-            ends: &["/]", "\\]"],
+            // Upstream Mermaid's block lexer ends NODE state on `]` as a fallback, even when the
+            // node started with a more specific delimiter like `[/` (see cypress BL21).
+            // Accepting `]` here matches that behavior (and yields an unknown typeStr like `[/]`,
+            // which upstream maps to the default `na` type).
+            ends: &["/]", "\\]", "]"],
         },
         NodeDelims {
             start: "[\\",
-            ends: &["\\]", "/]"],
+            // Same as `[/`: accept `]` as a fallback end delimiter for parity with upstream.
+            ends: &["\\]", "/]", "]"],
         },
         NodeDelims {
             start: "[",
-            ends: &["]"],
+            // Upstream ends NODE state on `\]` and `/]` before falling back to `]`.
+            ends: &["\\]", "/]", "]"],
         },
         NodeDelims {
             start: "(",
