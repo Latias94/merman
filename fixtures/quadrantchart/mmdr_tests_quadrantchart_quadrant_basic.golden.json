@@ -1,0 +1,48 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Sample",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Execute",
+      "quadrant2Text": "Expand",
+      "quadrant3Text": "Monitor",
+      "quadrant4Text": "Re-evaluate"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Reach",
+      "xAxisRightText": "High Reach",
+      "yAxisBottomText": "Low Engagement",
+      "yAxisTopText": "High Engagement"
+    },
+    "points": [
+      {
+        "text": "B",
+        "x": 0.7,
+        "y": 0.3,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "A",
+        "x": 0.2,
+        "y": 0.8,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

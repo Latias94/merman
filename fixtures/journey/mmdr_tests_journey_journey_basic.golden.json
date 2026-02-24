@@ -1,0 +1,37 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": "My Journey",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Start"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          "Alice"
+        ],
+        "section": "Start",
+        "type": "Start",
+        "task": "    Step one"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Alice",
+          "Bob"
+        ],
+        "section": "Start",
+        "type": "Start",
+        "task": "    Step two"
+      }
+    ],
+    "actors": [
+      "Alice",
+      "Bob"
+    ]
+  }
+}

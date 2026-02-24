@@ -1,0 +1,32 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "History",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "Launch"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "",
+        "type": "",
+        "task": "2021 ",
+        "score": 0,
+        "events": [
+          "Growth"
+        ]
+      }
+    ]
+  }
+}
