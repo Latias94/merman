@@ -1,0 +1,170 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "ORDER-ITEM": {
+        "id": "entity-ORDER-ITEM-4",
+        "label": "ORDER-ITEM",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PRODUCT-CATEGORY": {
+        "id": "entity-PRODUCT-CATEGORY-5",
+        "label": "PRODUCT-CATEGORY",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ORDER": {
+        "id": "entity-ORDER-2",
+        "label": "ORDER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "DELIVERY-ADDRESS": {
+        "id": "entity-DELIVERY-ADDRESS-1",
+        "label": "DELIVERY-ADDRESS",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PRODUCT": {
+        "id": "entity-PRODUCT-6",
+        "label": "PRODUCT",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "CUSTOMER": {
+        "id": "entity-CUSTOMER-0",
+        "label": "CUSTOMER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "INVOICE": {
+        "id": "entity-INVOICE-3",
+        "label": "INVOICE",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "has",
+        "entityB": "entity-DELIVERY-ADDRESS-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "places",
+        "entityB": "entity-ORDER-2",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "liable for",
+        "entityB": "entity-INVOICE-3",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-DELIVERY-ADDRESS-1",
+        "roleA": "receives",
+        "entityB": "entity-ORDER-2",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-INVOICE-3",
+        "roleA": "covers",
+        "entityB": "entity-ORDER-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ORDER-2",
+        "roleA": "includes",
+        "entityB": "entity-ORDER-ITEM-4",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PRODUCT-CATEGORY-5",
+        "roleA": "contains",
+        "entityB": "entity-PRODUCT-6",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PRODUCT-6",
+        "roleA": "ordered in",
+        "entityB": "entity-ORDER-ITEM-4",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section"
+    ],
+    "tasks": [
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Completed ",
+        "id": "des1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done,    des1, 2014-01-06,2014-01-08",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-06"
+          },
+          "endTime": {
+            "data": "2014-01-08"
+          }
+        },
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-06T00:00:00.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Active        ",
+        "id": "des2",
+        "prevTaskId": "des1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":active,  des2, 2014-01-07, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-07"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-07T00:00:00.000",
+        "endTime": "2014-01-10T00:00:00.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Parallel 1   ",
+        "id": "des3",
+        "prevTaskId": "des2",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         des3, after des1, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des1"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-07T00:00:00.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Parallel 2   ",
+        "id": "des4",
+        "prevTaskId": "des3",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         des4, after des1, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des1"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-07T00:00:00.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Parallel 3   ",
+        "id": "des5",
+        "prevTaskId": "des4",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         des5, after des3, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des3"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2014-01-07T00:00:00.000",
+        "endTime": "2014-01-08T00:00:00.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Parallel 4   ",
+        "id": "des6",
+        "prevTaskId": "des5",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         des6, after des4, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des4"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2014-01-07T00:00:00.000",
+        "endTime": "2014-01-08T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

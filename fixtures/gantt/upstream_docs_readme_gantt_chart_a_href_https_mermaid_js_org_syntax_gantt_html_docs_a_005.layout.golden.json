@@ -1,0 +1,338 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 244.0
+      },
+      "width": 1184.0,
+      "height": 244.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Section"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 5.0,
+          "x": 0.0,
+          "y": 168.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Section",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 122.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Section"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "des1",
+          "task": "Completed ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 0.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1388966400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "des1-text",
+            "text": "Completed ",
+            "font_size": 11.0,
+            "width": 46.64,
+            "x": 80.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-46.640000000000015"
+          }
+        },
+        {
+          "id": "des3",
+          "task": "Parallel 1   ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 2.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1389052800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des3",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 259.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des3-text",
+            "text": "Parallel 1   ",
+            "font_size": 11.0,
+            "width": 44.55,
+            "x": 204.5,
+            "y": 111.5,
+            "class": "taskText taskText0 width-44.55000000000001"
+          }
+        },
+        {
+          "id": "des4",
+          "task": "Parallel 2   ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 3.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1389052800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des4",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 259.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des4-text",
+            "text": "Parallel 2   ",
+            "font_size": 11.0,
+            "width": 44.55,
+            "x": 204.5,
+            "y": 135.5,
+            "class": "taskText taskText0 width-44.55000000000001"
+          }
+        },
+        {
+          "id": "des2",
+          "task": "Active        ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 1.0,
+          "start_ms": 1389052800000.0,
+          "end_ms": 1389312000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des2",
+            "x": 334.0,
+            "y": 74.0,
+            "width": 775.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active0"
+          },
+          "label": {
+            "id": "des2-text",
+            "text": "Active        ",
+            "font_size": 11.0,
+            "width": 28.6,
+            "x": 721.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-28.6"
+          }
+        },
+        {
+          "id": "des5",
+          "task": "Parallel 3   ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 4.0,
+          "start_ms": 1389052800000.0,
+          "end_ms": 1389139200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des5",
+            "x": 334.0,
+            "y": 146.0,
+            "width": 258.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des5-text",
+            "text": "Parallel 3   ",
+            "font_size": 11.0,
+            "width": 44.55,
+            "x": 463.0,
+            "y": 159.5,
+            "class": "taskText taskText0 width-44.55000000000001"
+          }
+        },
+        {
+          "id": "des6",
+          "task": "Parallel 4   ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 5.0,
+          "start_ms": 1389052800000.0,
+          "end_ms": 1389139200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des6",
+            "x": 334.0,
+            "y": 170.0,
+            "width": 258.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des6-text",
+            "text": "Parallel 4   ",
+            "font_size": 11.0,
+            "width": 44.55,
+            "x": 463.0,
+            "y": 183.5,
+            "class": "taskText taskText0 width-44.55000000000001"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1388966400000.0,
+          "x": 75.0,
+          "label": "2014-01-06"
+        },
+        {
+          "time_ms": 1389009600000.0,
+          "x": 204.0,
+          "label": "2014-01-06"
+        },
+        {
+          "time_ms": 1389052800000.0,
+          "x": 334.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389096000000.0,
+          "x": 463.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389139200000.0,
+          "x": 592.0,
+          "label": "2014-01-08"
+        },
+        {
+          "time_ms": 1389182400000.0,
+          "x": 721.0,
+          "label": "2014-01-08"
+        },
+        {
+          "time_ms": 1389225600000.0,
+          "x": 851.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389268800000.0,
+          "x": 980.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389312000000.0,
+          "x": 1109.0,
+          "label": "2014-01-10"
+        }
+      ],
+      "top_ticks": [],
+      "title": null,
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

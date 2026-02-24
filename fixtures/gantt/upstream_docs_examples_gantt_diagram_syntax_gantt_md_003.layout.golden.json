@@ -1,0 +1,270 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 196.0
+      },
+      "width": 1184.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": " YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "A section"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "A section",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            "A section"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "des1",
+          "task": "Completed task            ",
+          "section": "A section",
+          "task_type": "A section",
+          "order": 0.0,
+          "start_ms": 1388966400000.0,
+          "end_ms": 1389139200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 122.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "des1-text",
+            "text": "Completed task            ",
+            "font_size": 11.0,
+            "width": 77.382,
+            "x": 136.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-77.3818359375"
+          }
+        },
+        {
+          "id": "des2",
+          "task": "Active task               ",
+          "section": "A section",
+          "task_type": "A section",
+          "order": 1.0,
+          "start_ms": 1389225600000.0,
+          "end_ms": 1389571200000.0,
+          "render_end_ms": 1389571200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des2",
+            "x": 257.0,
+            "y": 74.0,
+            "width": 244.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active0"
+          },
+          "label": {
+            "id": "des2-text",
+            "text": "Active task               ",
+            "font_size": 11.0,
+            "width": 55.727,
+            "x": 379.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-55.7265625"
+          }
+        },
+        {
+          "id": "des3",
+          "task": "Future task               ",
+          "section": "A section",
+          "task_type": "A section",
+          "order": 2.0,
+          "start_ms": 1389571200000.0,
+          "end_ms": 1390003200000.0,
+          "render_end_ms": 1390003200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des3",
+            "x": 501.0,
+            "y": 98.0,
+            "width": 304.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des3-text",
+            "text": "Future task               ",
+            "font_size": 11.0,
+            "width": 56.338,
+            "x": 653.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-56.337890625"
+          }
+        },
+        {
+          "id": "des4",
+          "task": "Future task2               ",
+          "section": "A section",
+          "task_type": "A section",
+          "order": 3.0,
+          "start_ms": 1390003200000.0,
+          "end_ms": 1390435200000.0,
+          "render_end_ms": 1390435200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des4",
+            "x": 805.0,
+            "y": 122.0,
+            "width": 304.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "des4-text",
+            "text": "Future task2               ",
+            "font_size": 11.0,
+            "width": 60.28,
+            "x": 957.0,
+            "y": 135.5,
+            "class": "taskText taskText0 width-60.28"
+          }
+        }
+      ],
+      "excludes": [
+        {
+          "id": "exclude-2014-01-10",
+          "start_ms": 1389312000000.0,
+          "end_ms": 1389398399999.0,
+          "x": 318.0,
+          "y": 35.0,
+          "width": 61.0,
+          "height": 111.0
+        }
+      ],
+      "has_excludes_layer": true,
+      "bottom_ticks": [
+        {
+          "time_ms": 1389052800000.0,
+          "x": 136.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389225600000.0,
+          "x": 257.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389398400000.0,
+          "x": 379.0,
+          "label": "2014-01-11"
+        },
+        {
+          "time_ms": 1389571200000.0,
+          "x": 501.0,
+          "label": "2014-01-13"
+        },
+        {
+          "time_ms": 1389744000000.0,
+          "x": 622.0,
+          "label": "2014-01-15"
+        },
+        {
+          "time_ms": 1389916800000.0,
+          "x": 744.0,
+          "label": "2014-01-17"
+        },
+        {
+          "time_ms": 1390089600000.0,
+          "x": 866.0,
+          "label": "2014-01-19"
+        },
+        {
+          "time_ms": 1390262400000.0,
+          "x": 987.0,
+          "label": "2014-01-21"
+        },
+        {
+          "time_ms": 1390435200000.0,
+          "x": 1109.0,
+          "label": "2014-01-23"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Adding GANTT diagram to mermaid",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

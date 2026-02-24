@@ -1,0 +1,15 @@
+---
+config:
+  gitGraph:
+    mainBranchName: develop
+---
+gitGraph LR:
+  commit
+  commit
+  branch "docs/2910_update-guidelines" order: 1
+  commit
+  commit
+  commit
+  checkout develop
+  merge "docs/2910_update-guidelines"
+  commit

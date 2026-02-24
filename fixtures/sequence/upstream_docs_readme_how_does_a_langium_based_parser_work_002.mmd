@@ -1,0 +1,15 @@
+sequenceDiagram
+actor Package
+participant Module
+participant TokenBuilder
+participant Lexer
+participant Parser
+participant ValueConverter
+
+
+Package ->> Module: Create services
+Module ->> TokenBuilder: Override or/and<br>reorder rules
+TokenBuilder ->> Lexer: Read the string and transform<br>it into a token stream
+Lexer ->> Parser: Parse token<br>stream into AST
+Parser ->> ValueConverter: Clean/modify tokenized<br>rules returned value
+ValueConverter -->> Package: Return AST

@@ -1,0 +1,78 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "GenericClass": {
+        "id": "GenericClass",
+        "type": "T",
+        "label": "GenericClass",
+        "text": "GenericClass&lt;T&gt;",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "addItem",
+            "classifier": "",
+            "parameters": "item: T",
+            "returnType": "",
+            "displayText": "+addItem(item: T)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "getItem",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "T",
+            "displayText": "+getItem() : T",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-GenericClass-0",
+        "parent": "Company.Project.Module",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Company.Project.Module": {
+        "id": "Company.Project.Module",
+        "domId": "classId-Company.Project.Module-0",
+        "classIds": [
+          "GenericClass"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
