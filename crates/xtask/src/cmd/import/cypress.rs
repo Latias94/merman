@@ -2761,6 +2761,18 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 if fixture_text.contains("@{") && fixture_text.contains("icon:") {
                     return Some("flowchart icon nodes (deferred)");
                 }
+
+                // Mermaid also supports icon shorthands inside node labels, e.g.
+                // `A(\"fab:fa-twitter Twitter\")` / `B(\"fa:fa-coffee Coffee\")`.
+                if fixture_text.contains("fa:fa-")
+                    || fixture_text.contains("fab:fa-")
+                    || fixture_text.contains("far:fa-")
+                    || fixture_text.contains("fas:fa-")
+                    || fixture_text.contains("fal:fa-")
+                    || fixture_text.contains("fad:fa-")
+                {
+                    return Some("flowchart icon labels (deferred)");
+                }
             }
             "sequence" => {
                 // Mermaid's sequence diagram v2 supports "central connections" where the arrow
