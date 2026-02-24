@@ -433,6 +433,95 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 
     let mut candidates: Vec<Candidate> = Vec::new();
 
+    fn strip_yaml_frontmatter(body: &str) -> &str {
+        // Mermaid examples in docs sometimes start with YAML frontmatter. Keep the logic simple:
+        // only treat the very first `---` as a frontmatter opener.
+        let mut lines = body.lines();
+        let Some(first) = lines.next() else {
+            return body;
+        };
+        if first.trim() != "---" {
+            return body;
+        }
+        let mut consumed = first.len() + 1;
+        for l in lines {
+            consumed += l.len() + 1;
+            if l.trim() == "---" {
+                break;
+            }
+        }
+        body.get(consumed..).unwrap_or("")
+    }
+
+    fn has_any_directive(body: &str, directives: &[&str]) -> bool {
+        let body = strip_yaml_frontmatter(body);
+        let mut seen = 0usize;
+        for raw in body.lines() {
+            let line = raw.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Allow a little bit of prelude noise (init blocks / comments) in docs snippets.
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("%%{init") || lower.starts_with("%%") {
+                seen += 1;
+                if seen > 25 {
+                    break;
+                }
+                continue;
+            }
+            for d in directives {
+                if lower.starts_with(&d.to_ascii_lowercase()) {
+                    return true;
+                }
+            }
+            seen += 1;
+            if seen > 25 {
+                break;
+            }
+        }
+        false
+    }
+
+    fn blank_info_directives_for(diagram_dir: &str) -> Option<&'static [&'static str]> {
+        // When docs code fences omit the language/info string, we can accidentally treat non-Mermaid
+        // snippets as diagrams. For `--with-baselines`, this is mostly churn: the upstream SVG
+        // generation fails anyway (e.g. isolated node syntax without `flowchart` / `graph`).
+        //
+        // Keep this intentionally conservative: only apply to blank-info fences.
+        match diagram_dir {
+            "flowchart" => Some(&["flowchart", "graph"]),
+            "sequence" => Some(&["sequencediagram"]),
+            "class" => Some(&["classdiagram"]),
+            "state" => Some(&["statediagram"]),
+            "er" => Some(&["erdiagram"]),
+            "gantt" => Some(&["gantt"]),
+            "journey" => Some(&["journey"]),
+            "pie" => Some(&["pie"]),
+            "mindmap" => Some(&["mindmap"]),
+            "timeline" => Some(&["timeline"]),
+            "gitgraph" => Some(&["gitgraph"]),
+            "sankey" => Some(&["sankey"]),
+            "packet" => Some(&["packet"]),
+            "treemap" => Some(&["treemap"]),
+            "radar" => Some(&["radar"]),
+            "xychart" => Some(&["xychart"]),
+            "quadrantchart" => Some(&["quadrantchart"]),
+            "requirement" => Some(&["requirementdiagram"]),
+            "architecture" => Some(&["architecture"]),
+            "block" => Some(&["block"]),
+            "c4" => Some(&[
+                "c4context",
+                "c4container",
+                "c4component",
+                "c4deployment",
+                "c4dynamic",
+            ]),
+            "info" => Some(&["info"]),
+            _ => None,
+        }
+    }
+
     for md_path in md_files {
         if !md_path.is_file() {
             skipped.push(format!("missing markdown source: {}", md_path.display()));
@@ -494,6 +583,20 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             }
             if diagram != "all" && diagram_dir != diagram {
                 continue;
+            }
+
+            if with_baselines && b.info.is_empty() {
+                if let Some(directives) = blank_info_directives_for(&diagram_dir) {
+                    if !has_any_directive(&body, directives) {
+                        skipped.push(format!(
+                            "skip (blank info missing directive): {} (detected={detected}, idx={}, heading={})",
+                            b.source_md.display(),
+                            b.idx_in_file,
+                            b.heading.clone().unwrap_or_default()
+                        ));
+                        continue;
+                    }
+                }
             }
 
             let fixtures_dir = workspace_root.join("fixtures").join(&diagram_dir);

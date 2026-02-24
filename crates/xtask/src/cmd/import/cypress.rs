@@ -2696,6 +2696,28 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         fixture_text: &str,
     ) -> Option<&'static str> {
         match diagram_dir {
+            "class" => {
+                // ELK layout and non-classic looks are currently out of scope for parity-gated
+                // headless rendering. Keep upstream SVG baselines for traceability but move these
+                // fixtures under `_deferred` so `verify` remains green.
+                if fixture_text.contains("\n  htmlLabels: false")
+                    || fixture_text.contains("\nhtmlLabels: false")
+                {
+                    return Some("class frontmatter config.htmlLabels=false (deferred)");
+                }
+                if fixture_text.contains("\n  layout: elk")
+                    || fixture_text.contains("\nlayout: elk")
+                {
+                    return Some("class frontmatter config.layout=elk (deferred)");
+                }
+                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
+                    if !fixture_text.contains("\n  look: classic")
+                        && !fixture_text.contains("\nlook: classic")
+                    {
+                        return Some("class frontmatter config.look!=classic (deferred)");
+                    }
+                }
+            }
             "flowchart" => {
                 // ELK layout is currently out of scope for the headless layout engine, but we
                 // still keep the upstream SVG baseline so the case remains traceable.

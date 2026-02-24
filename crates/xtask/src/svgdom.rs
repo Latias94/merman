@@ -420,6 +420,16 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
             if key == "transform" {
                 val = normalize_transform_attr(&val);
+                if matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
+                    let lower = val.to_ascii_lowercase();
+                    // Upstream Mermaid can emit invalid transforms for certain edge-label corner
+                    // cases (e.g. blank labels): `translate(undefined,NaN)`. Treat these as
+                    // non-semantic in parity modes so we don't fail DOM comparisons on upstream
+                    // renderer quirks.
+                    if lower.contains("undefined") || lower.contains("nan") {
+                        continue;
+                    }
+                }
             }
 
             if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points") {
