@@ -1,0 +1,85 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Component",
+    "title": "C4Component sprite (positional) on ComponentDb_Ext",
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "api",
+        "label": {
+          "text": "API"
+        },
+        "techn": {
+          "text": "Rust"
+        },
+        "descr": {
+          "text": "Handles requests."
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "label": {
+          "text": "External Component DB"
+        },
+        "techn": {
+          "text": "PostgreSQL"
+        },
+        "descr": {
+          "text": "External database component."
+        },
+        "typeC4Shape": {
+          "text": "external_component_db"
+        },
+        "parentBoundary": "global",
+        "wrap": false,
+        "sprite": "users",
+        "tags": "external",
+        "link": "https://example.com/external-component-db"
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": [
+      {
+        "type": "rel",
+        "from": "api",
+        "to": "db",
+        "label": {
+          "text": "Reads/Writes"
+        },
+        "techn": {
+          "text": "JDBC"
+        },
+        "descr": {
+          "text": ""
+        },
+        "wrap": false
+      }
+    ]
+  }
+}

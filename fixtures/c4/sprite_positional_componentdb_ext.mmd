@@ -1,0 +1,8 @@
+C4Component
+title C4Component sprite (positional) on ComponentDb_Ext
+
+Component(api, "API", "Rust", "Handles requests.")
+ComponentDb_Ext(db, "External Component DB", "PostgreSQL", "External database component.", $sprite="users", $tags="external", $link="https://example.com/external-component-db")
+
+Rel(api, db, "Reads/Writes", "JDBC")
+
