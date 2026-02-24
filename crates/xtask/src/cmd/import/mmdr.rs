@@ -8,6 +8,7 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
     let mut overwrite: bool = false;
     let mut with_baselines: bool = false;
     let mut install: bool = false;
+    let mut mmd_root: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -29,6 +30,11 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
             "--overwrite" => overwrite = true,
             "--with-baselines" => with_baselines = true,
             "--install" => install = true,
+            "--mmd-root" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                mmd_root = Some(PathBuf::from(raw));
+            }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -41,20 +47,55 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    let mmdr_root = workspace_root
+    let default_mmdr_root = workspace_root
         .join("repo-ref")
         .join("mermaid-rs-renderer")
         .join("tests")
         .join("fixtures");
-    if !mmdr_root.is_dir() {
+    let mmd_root = mmd_root
+        .map(|p| {
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(p)
+            }
+        })
+        .unwrap_or_else(|| default_mmdr_root.clone());
+    let is_default_mmdr_root = mmd_root == default_mmdr_root;
+
+    if !mmd_root.is_dir() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "mmdr fixtures folder not found: {} (expected repo-ref checkout of mermaid-rs-renderer)",
-            mmdr_root.display()
+            "mmd fixtures folder not found: {}",
+            mmd_root.display()
         )));
     }
 
-    fn canonical_fixture_text(s: &str) -> String {
+    fn strip_yaml_frontmatter(s: &str) -> String {
         let s = s.replace("\r\n", "\n").replace('\r', "\n");
+        let lines: Vec<&str> = s.lines().collect();
+        let mut first_non_empty = 0usize;
+        while first_non_empty < lines.len() && lines[first_non_empty].trim().is_empty() {
+            first_non_empty += 1;
+        }
+        if first_non_empty >= lines.len() || lines[first_non_empty].trim() != "---" {
+            return s;
+        }
+        let mut close_idx: Option<usize> = None;
+        for i in (first_non_empty + 1)..lines.len() {
+            if lines[i].trim() == "---" {
+                close_idx = Some(i);
+                break;
+            }
+        }
+        let Some(close_idx) = close_idx else {
+            return s;
+        };
+        let body = lines[(close_idx + 1)..].join("\n");
+        if body.trim().is_empty() { s } else { body }
+    }
+
+    fn canonical_fixture_text(s: &str) -> String {
+        let s = strip_yaml_frontmatter(s);
         let s = s.trim_matches('\n');
         format!("{s}\n")
     }
@@ -139,101 +180,143 @@ pub(crate) fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> 
 
     let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
 
+    fn collect_mmd_files_recursively(
+        root: &Path,
+        out: &mut Vec<PathBuf>,
+    ) -> Result<(), XtaskError> {
+        if root.is_file() {
+            if is_file_with_extension(root, "mmd") {
+                out.push(root.to_path_buf());
+            }
+            return Ok(());
+        }
+        let entries = fs::read_dir(root).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to list mmd fixtures directory {}: {err}",
+                root.display()
+            ))
+        })?;
+        for entry in entries {
+            let path = entry
+                .map_err(|err| {
+                    XtaskError::SnapshotUpdateFailed(format!(
+                        "failed to read directory entry under {}: {err}",
+                        root.display()
+                    ))
+                })?
+                .path();
+            if path.is_dir() {
+                let dir_name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                if dir_name == "node_modules" || dir_name == "target" {
+                    continue;
+                }
+                collect_mmd_files_recursively(&path, out)?;
+            } else if is_file_with_extension(&path, "mmd") {
+                out.push(path);
+            }
+        }
+        Ok(())
+    }
+
     let mut candidates: Vec<Candidate> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
-    let Ok(top_entries) = fs::read_dir(&mmdr_root) else {
-        return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "failed to list mmdr fixtures directory {}",
-            mmdr_root.display()
-        )));
-    };
-    for top_entry in top_entries.flatten() {
-        let dir_path = top_entry.path();
-        if !dir_path.is_dir() {
-            continue;
-        }
-        let dir_name = dir_path
+    let mut mmd_files: Vec<PathBuf> = Vec::new();
+    collect_mmd_files_recursively(&mmd_root, &mut mmd_files)?;
+    mmd_files.sort();
+
+    let root_tag = if is_default_mmdr_root {
+        "mmdr_tests".to_string()
+    } else {
+        let name = mmd_root
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-        if dir_name == "node_modules" || dir_name == "target" {
-            continue;
-        }
+            .unwrap_or("mmd");
+        format!("upstream_mmd_{}", sanitize_stem(name))
+    };
 
-        let Ok(entries) = fs::read_dir(&dir_path) else {
+    for path in mmd_files {
+        let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !is_file_with_extension(&path, "mmd") {
+
+        if let Some(f) = filter.as_deref() {
+            let hay = path.to_string_lossy();
+            if !hay.contains(f) {
                 continue;
             }
-            let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-
-            if let Some(f) = filter.as_deref() {
-                let hay = format!(
-                    "{} {}",
-                    dir_name,
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("")
-                );
-                if !hay.contains(f) {
-                    continue;
-                }
-            }
-
-            let text = match fs::read_to_string(&path) {
-                Ok(v) => v,
-                Err(err) => {
-                    skipped.push(format!("skip (read failed): {} ({err})", path.display()));
-                    continue;
-                }
-            };
-            let body = canonical_fixture_text(&text);
-            if body.trim().is_empty() {
-                continue;
-            }
-
-            let mut cfg = merman::MermaidConfig::default();
-            let detected = match reg.detect_type(body.as_str(), &mut cfg) {
-                Ok(t) => t,
-                Err(_) => {
-                    skipped.push(format!("skip (type not detected): {}", path.display()));
-                    continue;
-                }
-            };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
-                skipped.push(format!(
-                    "skip (unsupported detected type '{detected}'): {}",
-                    path.display()
-                ));
-                continue;
-            };
-
-            if diagram_dir == "zenuml" {
-                continue;
-            }
-            if diagram != "all" && diagram_dir != diagram {
-                continue;
-            }
-
-            let stem = format!(
-                "mmdr_tests_{diagram_dir}_{}_{}",
-                sanitize_stem(&dir_name),
-                sanitize_stem(file_stem)
-            );
-
-            candidates.push(Candidate {
-                source_path: path,
-                diagram_dir,
-                stem,
-                score: score_for_body(&body),
-                body,
-            });
         }
+
+        let text = match fs::read_to_string(&path) {
+            Ok(v) => v,
+            Err(err) => {
+                skipped.push(format!("skip (read failed): {} ({err})", path.display()));
+                continue;
+            }
+        };
+        let body = canonical_fixture_text(&text);
+        if body.trim().is_empty() {
+            continue;
+        }
+
+        let mut cfg = merman::MermaidConfig::default();
+        let detected = match reg.detect_type(body.as_str(), &mut cfg) {
+            Ok(t) => t,
+            Err(_) => {
+                skipped.push(format!("skip (type not detected): {}", path.display()));
+                continue;
+            }
+        };
+        let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            skipped.push(format!(
+                "skip (unsupported detected type '{detected}'): {}",
+                path.display()
+            ));
+            continue;
+        };
+
+        if diagram_dir == "zenuml" {
+            continue;
+        }
+        if diagram != "all" && diagram_dir != diagram {
+            continue;
+        }
+
+        let rel_slug = path
+            .strip_prefix(&mmd_root)
+            .ok()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.to_str())
+            .unwrap_or_default();
+        let rel_slug = format!("{rel_slug}_{file_stem}");
+        let rel_slug = sanitize_stem(&rel_slug);
+
+        let stem = if is_default_mmdr_root {
+            // Preserve the existing naming scheme for mermaid-rs-renderer fixtures.
+            let dir_name = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            format!(
+                "{root_tag}_{diagram_dir}_{}_{}",
+                sanitize_stem(dir_name),
+                sanitize_stem(file_stem)
+            )
+        } else {
+            format!("{root_tag}_{diagram_dir}_{rel_slug}")
+        };
+
+        candidates.push(Candidate {
+            source_path: path,
+            diagram_dir,
+            stem,
+            score: score_for_body(&body),
+            body,
+        });
     }
 
     if prefer_complex {

@@ -66,6 +66,7 @@ fn print_help(topic: Option<&str>) {
     println!("  import-upstream-docs");
     println!("  import-upstream-html");
     println!("  import-upstream-cypress");
+    println!("  import-upstream-pkg-tests");
     println!("  import-mmdr-fixtures");
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
@@ -140,6 +141,7 @@ fn main() -> Result<(), XtaskError> {
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),
         "import-upstream-cypress" => cmd::import_upstream_cypress(args.collect()),
+        "import-upstream-pkg-tests" => cmd::import_upstream_pkg_tests(args.collect()),
         "import-mmdr-fixtures" => cmd::import_mmdr_fixtures(args.collect()),
         "update-snapshots" => cmd::update_snapshots(args.collect()),
         "update-layout-snapshots" | "gen-layout-goldens" => {

@@ -1,0 +1,719 @@
+use super::*;
+
+pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut diagram: String = "all".to_string();
+    let mut filter: Option<String> = None;
+    let mut limit: Option<usize> = None;
+    let mut min_lines: Option<usize> = None;
+    let mut prefer_complex: bool = false;
+    let mut overwrite: bool = false;
+    let mut with_baselines: bool = false;
+    let mut install: bool = false;
+    let mut src_root: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--diagram" => {
+                i += 1;
+                diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--limit" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                limit = Some(raw.parse::<usize>().map_err(|_| XtaskError::Usage)?);
+            }
+            "--min-lines" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                min_lines = Some(raw.parse::<usize>().map_err(|_| XtaskError::Usage)?);
+            }
+            "--complex" => prefer_complex = true,
+            "--overwrite" => overwrite = true,
+            "--with-baselines" => with_baselines = true,
+            "--install" => install = true,
+            "--src-root" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                src_root = Some(PathBuf::from(raw));
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+
+    let default_src_root = workspace_root
+        .join("repo-ref")
+        .join("mermaid")
+        .join("packages")
+        .join("mermaid")
+        .join("src");
+    let src_root = src_root
+        .map(|p| {
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(p)
+            }
+        })
+        .unwrap_or(default_src_root);
+    if !src_root.is_dir() {
+        return Err(XtaskError::SnapshotUpdateFailed(format!(
+            "upstream package src root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            src_root.display()
+        )));
+    }
+
+    if install && !with_baselines {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "`--install` only applies when `--with-baselines` is set".to_string(),
+        ));
+    }
+
+    fn canonical_fixture_text(s: &str) -> String {
+        let s = s.replace("\r\n", "\n").replace('\r', "\n");
+        let s = s.trim_matches('\n');
+        format!("{s}\n")
+    }
+
+    fn slugify(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_us = false;
+        for ch in s.chars() {
+            let ch = ch.to_ascii_lowercase();
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                prev_us = false;
+            } else if !prev_us {
+                out.push('_');
+                prev_us = true;
+            }
+        }
+        while out.starts_with('_') {
+            out.remove(0);
+        }
+        while out.ends_with('_') {
+            out.pop();
+        }
+        if out.is_empty() {
+            "untitled".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn clamp_slug(mut s: String, max_len: usize) -> String {
+        if s.len() <= max_len {
+            return s;
+        }
+        s.truncate(max_len);
+        while s.ends_with('_') {
+            s.pop();
+        }
+        if s.is_empty() {
+            "untitled".to_string()
+        } else {
+            s
+        }
+    }
+
+    fn load_existing_fixtures(fixtures_dir: &Path) -> std::collections::HashMap<String, PathBuf> {
+        let mut map = std::collections::HashMap::new();
+        let Ok(entries) = fs::read_dir(fixtures_dir) else {
+            return map;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "mmd") {
+                if let Ok(text) = fs::read_to_string(&path) {
+                    let canon = canonical_fixture_text(&text);
+                    map.insert(canon, path);
+                }
+            }
+        }
+        map
+    }
+
+    fn normalize_diagram_dir(detected: &str) -> Option<String> {
+        match detected {
+            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+                Some("state".to_string())
+            }
+            "class" | "classDiagram" => Some("class".to_string()),
+            "gitGraph" => Some("gitgraph".to_string()),
+            "quadrantChart" => Some("quadrantchart".to_string()),
+            "er" => Some("er".to_string()),
+            "journey" => Some("journey".to_string()),
+            "xychart" => Some("xychart".to_string()),
+            "requirement" => Some("requirement".to_string()),
+            "architecture-beta" => Some("architecture".to_string()),
+            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
+            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
+                Some(detected.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn collect_test_files_recursively(
+        root: &Path,
+        out: &mut Vec<PathBuf>,
+    ) -> Result<(), XtaskError> {
+        if root.is_file() {
+            let name = root
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            if (name.ends_with(".spec.ts")
+                || name.ends_with(".spec.js")
+                || name.ends_with(".test.ts")
+                || name.ends_with(".test.js"))
+                && !name.contains(".d.ts")
+            {
+                out.push(root.to_path_buf());
+            }
+            return Ok(());
+        }
+
+        let entries = fs::read_dir(root).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to list upstream src directory {}: {err}",
+                root.display()
+            ))
+        })?;
+        for entry in entries {
+            let path = entry
+                .map_err(|err| {
+                    XtaskError::SnapshotUpdateFailed(format!(
+                        "failed to read upstream src directory entry under {}: {err}",
+                        root.display()
+                    ))
+                })?
+                .path();
+            if path.is_dir() {
+                let dir_name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                if dir_name == "node_modules" || dir_name == "dist" || dir_name == "target" {
+                    continue;
+                }
+                collect_test_files_recursively(&path, out)?;
+            } else {
+                collect_test_files_recursively(&path, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum InterpMode {
+        Normal,
+        SingleQuote,
+        DoubleQuote,
+        LineComment,
+        BlockComment,
+    }
+
+    fn scan_template_literal(text: &str, open_tick: usize) -> Option<(Option<String>, usize)> {
+        let bytes = text.as_bytes();
+        if bytes.get(open_tick) != Some(&b'`') {
+            return None;
+        }
+
+        let mut i = open_tick + 1;
+        let mut out = String::new();
+        let mut escaped = false;
+        let mut has_interpolation = false;
+        let mut interp_depth: i32 = 0;
+        let mut mode = InterpMode::Normal;
+
+        while i < bytes.len() {
+            let b = bytes[i];
+
+            if interp_depth == 0 {
+                if escaped {
+                    match b {
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'\\' => out.push('\\'),
+                        b'`' => out.push('`'),
+                        _ => out.push(b as char),
+                    }
+                    escaped = false;
+                    i += 1;
+                    continue;
+                }
+                if b == b'\\' {
+                    escaped = true;
+                    i += 1;
+                    continue;
+                }
+                if b == b'`' {
+                    let end = i + 1;
+                    if has_interpolation {
+                        return Some((None, end));
+                    }
+                    return Some((Some(out), end));
+                }
+                if b == b'$' && bytes.get(i + 1) == Some(&b'{') {
+                    has_interpolation = true;
+                    interp_depth = 1;
+                    mode = InterpMode::Normal;
+                    i += 2;
+                    continue;
+                }
+
+                out.push(b as char);
+                i += 1;
+                continue;
+            }
+
+            match mode {
+                InterpMode::Normal => {
+                    if b == b'\'' {
+                        mode = InterpMode::SingleQuote;
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'"' {
+                        mode = InterpMode::DoubleQuote;
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                        mode = InterpMode::LineComment;
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                        mode = InterpMode::BlockComment;
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'`' {
+                        // Nested template literal inside interpolation. Skip it.
+                        if let Some((_, end)) = scan_template_literal(text, i) {
+                            i = end;
+                            continue;
+                        }
+                    }
+
+                    if b == b'{' {
+                        interp_depth += 1;
+                    } else if b == b'}' {
+                        interp_depth -= 1;
+                        if interp_depth == 0 {
+                            i += 1;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+                InterpMode::SingleQuote => {
+                    if escaped {
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'\\' {
+                        escaped = true;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'\'' {
+                        mode = InterpMode::Normal;
+                    }
+                    i += 1;
+                }
+                InterpMode::DoubleQuote => {
+                    if escaped {
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'\\' {
+                        escaped = true;
+                        i += 1;
+                        continue;
+                    }
+                    if b == b'"' {
+                        mode = InterpMode::Normal;
+                    }
+                    i += 1;
+                }
+                InterpMode::LineComment => {
+                    if b == b'\n' {
+                        mode = InterpMode::Normal;
+                    }
+                    i += 1;
+                }
+                InterpMode::BlockComment => {
+                    if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                        mode = InterpMode::Normal;
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                }
+            }
+        }
+
+        None
+    }
+
+    fn extract_all_template_literals(text: &str) -> Vec<String> {
+        let bytes = text.as_bytes();
+        let mut out: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'`' {
+                if let Some((content, end)) = scan_template_literal(text, i) {
+                    if let Some(content) = content {
+                        out.push(content);
+                    }
+                    i = end;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    fn complexity_score(body: &str) -> i64 {
+        let line_count = body.lines().count() as i64;
+        (line_count * 1_000) + (body.len() as i64)
+    }
+
+    #[derive(Debug, Clone)]
+    struct Candidate {
+        source_path: PathBuf,
+        idx_in_file: usize,
+        diagram_dir: String,
+        stem: String,
+        body: String,
+        score: i64,
+    }
+
+    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+
+    let mut spec_files: Vec<PathBuf> = Vec::new();
+    collect_test_files_recursively(&src_root, &mut spec_files)?;
+    spec_files.sort();
+
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    for spec_path in spec_files {
+        let hay = spec_path.to_string_lossy();
+        if let Some(f) = filter.as_deref() {
+            if !hay.contains(f) {
+                // Still allow matching by diagram heading later; template strings have no heading here.
+                continue;
+            }
+        }
+
+        let text = match fs::read_to_string(&spec_path) {
+            Ok(v) => v,
+            Err(err) => {
+                skipped.push(format!(
+                    "skip (read failed): {} ({err})",
+                    spec_path.display()
+                ));
+                continue;
+            }
+        };
+        let blocks = extract_all_template_literals(&text);
+        if blocks.is_empty() {
+            continue;
+        }
+
+        let source_stem = spec_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let source_slug = clamp_slug(slugify(&source_stem), 48);
+
+        for (idx, raw) in blocks.into_iter().enumerate() {
+            let body = canonical_fixture_text(&raw);
+            if body.trim().is_empty() {
+                continue;
+            }
+            if let Some(min) = min_lines {
+                if body.lines().count() < min {
+                    continue;
+                }
+            }
+
+            let mut cfg = merman::MermaidConfig::default();
+            let detected = match reg.detect_type(body.as_str(), &mut cfg) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+                continue;
+            };
+            if diagram_dir == "zenuml" {
+                continue;
+            }
+            if diagram != "all" && diagram_dir != diagram {
+                continue;
+            }
+
+            let stem = format!("upstream_pkgtests_{source_slug}_{idx:03}", idx = idx + 1);
+            candidates.push(Candidate {
+                source_path: spec_path.clone(),
+                idx_in_file: idx,
+                diagram_dir: diagram_dir.clone(),
+                stem,
+                score: complexity_score(&body),
+                body,
+            });
+        }
+    }
+
+    if prefer_complex {
+        candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.stem.cmp(&b.stem)));
+    } else {
+        candidates.sort_by(|a, b| a.stem.cmp(&b.stem));
+    }
+
+    if candidates.is_empty() {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "no candidate template literals were detected (use --filter, or check repo-ref/mermaid checkout)"
+                .to_string(),
+        ));
+    }
+
+    let mut existing_by_diagram: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, PathBuf>,
+    > = std::collections::HashMap::new();
+
+    #[derive(Debug, Clone)]
+    struct CreatedFixture {
+        diagram_dir: String,
+        stem: String,
+        path: PathBuf,
+    }
+
+    let mut created: Vec<CreatedFixture> = Vec::new();
+
+    let mut imported = 0usize;
+    for c in candidates {
+        let fixtures_dir = workspace_root.join("fixtures").join(&c.diagram_dir);
+        if !fixtures_dir.is_dir() {
+            skipped.push(format!(
+                "skip (fixtures dir missing): {}",
+                fixtures_dir.display()
+            ));
+            continue;
+        }
+
+        let existing = existing_by_diagram
+            .entry(c.diagram_dir.clone())
+            .or_insert_with(|| load_existing_fixtures(&fixtures_dir));
+        if let Some(existing_path) = existing.get(&c.body) {
+            skipped.push(format!(
+                "skip (duplicate content): {} (idx={}) -> {}",
+                c.source_path.display(),
+                c.idx_in_file + 1,
+                existing_path.display()
+            ));
+            continue;
+        }
+
+        let out_path = fixtures_dir.join(format!("{}.mmd", c.stem));
+        if out_path.exists() && !overwrite {
+            skipped.push(format!("skip (exists): {}", out_path.display()));
+            continue;
+        }
+
+        fs::write(&out_path, &c.body).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to write fixture {}: {err}",
+                out_path.display()
+            ))
+        })?;
+        existing.insert(c.body.clone(), out_path.clone());
+
+        created.push(CreatedFixture {
+            diagram_dir: c.diagram_dir,
+            stem: c.stem,
+            path: out_path,
+        });
+
+        imported += 1;
+        if let Some(max) = limit {
+            if imported >= max {
+                break;
+            }
+        }
+    }
+
+    if created.is_empty() {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
+                .to_string(),
+        ));
+    }
+
+    if with_baselines {
+        let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
+
+        fn is_upstream_error_svg(svg_path: &Path) -> bool {
+            let Ok(svg) = fs::read_to_string(svg_path) else {
+                return false;
+            };
+            svg.contains("aria-roledescription=\"error\"")
+        }
+
+        fn cleanup_fixture_and_svg(workspace_root: &Path, f: &CreatedFixture) {
+            let _ = fs::remove_file(&f.path);
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.golden.json", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.layout.golden.json", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join("upstream-svgs")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.svg", f.stem)),
+            );
+        }
+
+        for f in &created {
+            let mut svg_args = vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ];
+            if install {
+                svg_args.push("--install".to_string());
+            }
+            if let Err(err) = super::super::gen_upstream_svgs(svg_args) {
+                skipped.push(format!(
+                    "skip (upstream svg generation failed): {} ({err})",
+                    f.path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, f);
+                continue;
+            }
+
+            let svg_path = workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem));
+            if is_upstream_error_svg(&svg_path) {
+                skipped.push(format!(
+                    "skip (upstream rendered error diagram): {}",
+                    f.path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, f);
+                continue;
+            }
+
+            if let Err(err) = super::super::update_snapshots(vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ]) {
+                skipped.push(format!(
+                    "skip (snapshot update failed): {} ({err})",
+                    f.path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, f);
+                continue;
+            }
+
+            if let Err(err) = super::super::update_layout_snapshots(vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ]) {
+                skipped.push(format!(
+                    "skip (layout snapshot update failed): {} ({err})",
+                    f.path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, f);
+                continue;
+            }
+
+            // Parity gate (matches `xtask verify`): keep only fixtures that pass SVG DOM parity.
+            if let Err(err) = super::super::compare_all_svgs(vec![
+                "--check-dom".to_string(),
+                "--dom-mode".to_string(),
+                "parity".to_string(),
+                "--dom-decimals".to_string(),
+                "3".to_string(),
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ]) {
+                skipped.push(format!(
+                    "skip (svg dom parity mismatch): {} ({err})",
+                    f.path.display()
+                ));
+                cleanup_fixture_and_svg(&workspace_root, f);
+                continue;
+            }
+
+            kept.push(f.clone());
+        }
+
+        created = kept;
+    }
+
+    if created.is_empty() {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "no fixtures were kept after baseline/snapshot/parity checks".to_string(),
+        ));
+    }
+
+    eprintln!("Imported {} fixtures:", created.len());
+    for f in &created {
+        eprintln!("  {}", f.path.display());
+    }
+    if !skipped.is_empty() {
+        eprintln!("Skipped {} candidates:", skipped.len());
+        for s in skipped.iter().take(50) {
+            eprintln!("  {s}");
+        }
+        if skipped.len() > 50 {
+            eprintln!("  ... ({} more)", skipped.len() - 50);
+        }
+    }
+
+    Ok(())
+}
