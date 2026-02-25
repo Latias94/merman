@@ -1,0 +1,6 @@
+      sequenceDiagram
+      participant API@{ "type" : "boundary", "alias": "Public API" }
+      participant Auth@{ "type" : "control", "alias": "Auth Controller" }
+      API->>Auth: Request
+      Auth-->>API: Response
+      

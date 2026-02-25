@@ -1,0 +1,6 @@
+    sequenceDiagram
+        participant lead
+        participant dsa@{ "type" : "queue" }
+        API->>+Database: getUserb
+        Database-->>-API: userb
+        dsa --> Database: hello
