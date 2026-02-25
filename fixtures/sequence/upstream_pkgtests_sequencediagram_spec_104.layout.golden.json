@@ -1,0 +1,89 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-E",
+          "x": 75.0,
+          "y": 28.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-E",
+          "x": 75.0,
+          "y": 178.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "E",
+          "to": "E",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 100.0
+            },
+            {
+              "x": 76.0,
+              "y": 100.0
+            }
+          ],
+          "label": {
+            "x": 76.0,
+            "y": 71.0,
+            "width": 27.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-E",
+          "from": "actor-top-E",
+          "to": "actor-bottom-E",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 75.0
+            },
+            {
+              "x": 75.0,
+              "y": 150.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 201.0,
+        "max_y": 217.0
+      }
+    }
+  }
+}
