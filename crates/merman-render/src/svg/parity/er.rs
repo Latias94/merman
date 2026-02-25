@@ -1030,14 +1030,14 @@ pub(super) fn render_er_diagram_svg(
 
             let _ = write!(
                 &mut out,
-                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>"#,
+                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g>"#,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),
                 label_style_attr,
                 fmt(lw),
                 fmt(lh),
                 measure.label_max_width_px.max(0),
-                escape_xml(&measure.label_text)
+                html_label_content(&measure.label_text, "")
             );
             out.push_str("</g>");
             continue;

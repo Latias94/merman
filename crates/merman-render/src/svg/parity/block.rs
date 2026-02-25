@@ -637,6 +637,25 @@ pub(super) fn render_block_diagram_svg(
                     fmt(height)
                 );
             }
+            "doublecircle" => {
+                // Mermaid renders double-circle blocks as two concentric `<circle>` elements
+                // nested under a `default flowchart-label` group.
+                //
+                // DOM parity checks care about element/tag/class structure much more than exact
+                // numbers, so keep the upstream wrapper/group shape and attribute names.
+                let outer_w = width + 10.0;
+                let outer_h = height + 10.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="default flowchart-label"><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
+                    fmt(outer_w / 2.0),
+                    fmt(outer_w),
+                    fmt(outer_h),
+                    fmt(width / 2.0),
+                    fmt(width),
+                    fmt(height)
+                );
+            }
             "stadium" => {
                 // Upstream uses a plain `<rect>` (no `class`) for stadium-shaped block nodes.
                 let _ = write!(
