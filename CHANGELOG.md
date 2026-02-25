@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
-- Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class, quadrantchart, xychart, radar) to expand SVG parity coverage.
+- Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class, quadrantchart, xychart, radar, kanban, architecture, block, mindmap) to expand SVG parity coverage.
 - Imported upstream HTML demo fixtures (flowchart, sequence, quadrantchart, sankey, xychart) to expand golden-driven parity coverage.
 
 ### Fixed
