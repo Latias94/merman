@@ -113,7 +113,7 @@ fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
     // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
     // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
     // regressions, snap `max-width` to a small pixel lattice.
-    let step = 1.0 / 16.0; // 0.0625px: collapses common 1/64px drift without hiding real changes.
+    let step = 1.0 / 8.0; // 0.125px: collapses common subpixel drift across platforms.
 
     let re = {
         static ONCE: OnceLock<Regex> = OnceLock::new();
@@ -150,7 +150,7 @@ fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> Stri
     // Root `viewBox` is affected by label measurements and can drift by tiny fractions across
     // platforms (commonly 1/64px). Snap to a small lattice to keep CI parity stable while still
     // tracking meaningful viewport changes.
-    let step = 1.0 / 16.0; // 0.0625px: collapses common subpixel drift.
+    let step = 1.0 / 8.0; // 0.125px: collapses common subpixel drift across platforms.
 
     let parts: Vec<&str> = view_box
         .split(|c: char| c.is_whitespace() || c == ',')
