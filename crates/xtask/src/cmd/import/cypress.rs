@@ -2629,13 +2629,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     ) -> Option<&'static str> {
         match diagram_dir {
             "flowchart" => {
-                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                    if !fixture_text.contains("\n  look: classic")
-                        && !fixture_text.contains("\nlook: classic")
-                    {
-                        return Some("flowchart frontmatter config.look!=classic (deferred)");
-                    }
-                }
                 if fixture_text.contains("$$") {
                     return Some("flowchart math (deferred)");
                 }
@@ -2801,6 +2794,17 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     || fixture_text.contains("\nlayout: elk")
                 {
                     return Some("flowchart frontmatter config.layout=elk (deferred)");
+                }
+
+                // Non-classic looks (e.g. `handDrawn`) are currently out of scope for parity-gated
+                // headless rendering. Keep upstream SVG baselines for traceability but move these
+                // fixtures under `_deferred` so `verify` remains green.
+                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
+                    if !fixture_text.contains("\n  look: classic")
+                        && !fixture_text.contains("\nlook: classic")
+                    {
+                        return Some("flowchart frontmatter config.look!=classic (deferred)");
+                    }
                 }
 
                 // Mermaid also has a dedicated `flowchart-elk` diagram type.
@@ -3079,23 +3083,43 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         match super::super::gen_upstream_svgs(svg_args) {
             Ok(()) => {}
             Err(XtaskError::UpstreamSvgFailed(msg)) => {
-                report_lines.push(format!(
-                    "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\tmsg={}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_spec.display(),
-                    f.source_idx_in_file,
-                    f.source_call,
-                    f.source_test_name.clone().unwrap_or_default(),
-                    msg.lines().next().unwrap_or("unknown upstream error"),
-                ));
+                let is_error_diagram_spec = f
+                    .source_spec
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n == "errorDiagram.spec.js");
 
-                if deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text).is_some()
-                    || (f.diagram_dir == "sequence"
-                        && msg.contains("Parse error")
-                        && looks_like_sequence_half_arrows(&fixture_text))
-                {
-                    let reason = "sequence half-arrows (upstream parse error; deferred)";
+                let fixture_only_reason =
+                    deferred_keep_fixture_only_reason(&f.diagram_dir, &fixture_text);
+                let is_half_arrow_parse_error = f.diagram_dir == "sequence"
+                    && msg.contains("Parse error")
+                    && looks_like_sequence_half_arrows(&fixture_text);
+
+                let can_defer_without_baselines = fixture_only_reason.is_some()
+                    || is_half_arrow_parse_error
+                    || is_error_diagram_spec;
+
+                if can_defer_without_baselines {
+                    let reason = if let Some(r) = fixture_only_reason {
+                        r
+                    } else if is_half_arrow_parse_error {
+                        "sequence half-arrows (upstream parse error; deferred)"
+                    } else {
+                        debug_assert!(is_error_diagram_spec);
+                        "errorDiagram fixtures (upstream svg fails; deferred)"
+                    };
+
+                    report_lines.push(format!(
+                        "DEFERRED_NO_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}\tmsg={}",
+                        f.diagram_dir,
+                        f.stem,
+                        f.source_spec.display(),
+                        f.source_idx_in_file,
+                        f.source_call,
+                        f.source_test_name.clone().unwrap_or_default(),
+                        msg.lines().next().unwrap_or("unknown upstream error"),
+                    ));
+
                     let deferred_path = defer_fixture_files_no_baselines(&workspace_root, &f);
                     imported_deferred += 1;
                     skipped.push(format!(
@@ -3104,6 +3128,16 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     ));
                     existing.insert(fixture_text.clone(), deferred_path);
                 } else {
+                    report_lines.push(format!(
+                        "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\tmsg={}",
+                        f.diagram_dir,
+                        f.stem,
+                        f.source_spec.display(),
+                        f.source_idx_in_file,
+                        f.source_call,
+                        f.source_test_name.clone().unwrap_or_default(),
+                        msg.lines().next().unwrap_or("unknown upstream error"),
+                    ));
                     skipped.push(format!(
                         "skip (upstream svg failed): {} ({})",
                         f.path.display(),
