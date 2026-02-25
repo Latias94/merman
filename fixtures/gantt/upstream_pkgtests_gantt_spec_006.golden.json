@@ -1,0 +1,60 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section"
+    ],
+    "tasks": [
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "A task ",
+        "id": "X",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [
+          "clickable"
+        ],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":X, 2024-10-01, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-10-01"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2024-10-01T00:00:00.000",
+        "endTime": "2024-10-04T00:00:00.000"
+      }
+    ],
+    "links": {
+      "X": "https://mermaid.js.org/"
+    },
+    "clickEvents": {}
+  }
+}

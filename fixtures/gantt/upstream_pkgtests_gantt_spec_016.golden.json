@@ -1,0 +1,24 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Adding gantt diagram functionality to mermaid",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "yyyy-mm-dd",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [],
+    "tasks": [],
+    "links": {},
+    "clickEvents": {}
+  }
+}
