@@ -10,6 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class, quadrantchart, xychart, radar, kanban, architecture, block, mindmap) to expand SVG parity coverage.
 - Imported upstream HTML demo fixtures (flowchart, sequence, quadrantchart, sankey, xychart) to expand golden-driven parity coverage.
+- Imported an additional `mermaid-rs-renderer` comparison source fixture for kanban to expand parity coverage.
 
 ### Fixed
 
@@ -18,6 +19,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Block: aligned `doublecircle` SVG structure to match upstream Mermaid DOM output.
 - Aligned C4 `sprite` rendering with upstream Mermaid: only `person`/`external_person` emit `<image>` sprites.
 - ER: align Markdown formatting in entity labels even when the entity has no attributes.
+- `import-upstream-pkg-tests`: avoid failing the import when all candidates are skipped (still prints a skip summary).
 - Reduced churn during `import-upstream-docs --with-baselines` by skipping blank-info code fences that lack an explicit Mermaid diagram directive (e.g. `flowchart` / `graph`).
 - Reduced churn during `import-upstream-cypress --with-baselines` by deferring out-of-scope class fixtures (`htmlLabels=false`, `layout=elk`, `look!=classic`) under `fixtures/_deferred/`.
 - Improved `import-upstream-pkg-tests` Mermaid source extraction to handle `"..."` / `'...'` literals and template strings with `${...}` interpolation.

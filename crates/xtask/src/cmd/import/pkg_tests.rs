@@ -914,14 +914,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
     }
 
     if created.is_empty() {
-        return Err(XtaskError::SnapshotUpdateFailed(
-            "no fixtures were kept after baseline/snapshot/parity checks".to_string(),
-        ));
-    }
-
-    eprintln!("Imported {} fixtures:", created.len());
-    for f in &created {
-        eprintln!("  {}", f.path.display());
+        eprintln!("Imported 0 fixtures (all candidates were skipped).");
+    } else {
+        eprintln!("Imported {} fixtures:", created.len());
+        for f in &created {
+            eprintln!("  {}", f.path.display());
+        }
     }
     if !skipped.is_empty() {
         eprintln!("Skipped {} candidates:", skipped.len());
