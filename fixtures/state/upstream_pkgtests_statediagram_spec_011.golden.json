@@ -1,0 +1,51 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "as",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "as",
+        "dir": null,
+        "domId": "state-as-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      }
+    ],
+    "edges": [],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "as": {
+        "id": "as",
+        "type": "default",
+        "descriptions": [
+          "as"
+        ],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {}
+  }
+}
