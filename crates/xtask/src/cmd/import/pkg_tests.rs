@@ -271,7 +271,18 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     // Replace `${...}` with a deterministic placeholder so we can still extract a
                     // stable Mermaid definition from tests that build diagrams with variables.
                     // Downstream diagram detection will discard non-Mermaid strings.
-                    out.push('X');
+                    //
+                    // Heuristic: if the interpolation is appended directly to an identifier-like
+                    // token (e.g. `C4Context${suffix}`), inserting `X` would often break upstream
+                    // parsing (`C4ContextX` is not a recognized macro). In that case, prefer
+                    // eliding the interpolation entirely so the surrounding token stays valid.
+                    let prev_is_ident = out
+                        .chars()
+                        .last()
+                        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                    if !prev_is_ident {
+                        out.push('X');
+                    }
                     interp_depth = 1;
                     mode = InterpMode::Normal;
                     i += 2;
