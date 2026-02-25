@@ -1,0 +1,122 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "block1",
+        "type": "square",
+        "label": "Block 1",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "block2",
+            "type": "square",
+            "label": "Block 2",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "block3",
+            "type": "square",
+            "label": "Block 3",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "block1",
+            "type": "square",
+            "label": "Block 1",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "id-<id>-1",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "block2",
+                "type": "square",
+                "label": "Block 2",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "block3",
+                "type": "square",
+                "label": "Block 3",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ],
+            "columns": 2
+          }
+        ],
+        "columns": 1
+      },
+      {
+        "id": "block1",
+        "type": "square",
+        "label": "Block 1",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "block2",
+            "type": "square",
+            "label": "Block 2",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "block3",
+            "type": "square",
+            "label": "Block 3",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2
+      },
+      {
+        "id": "block2",
+        "type": "square",
+        "label": "Block 2",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "block3",
+        "type": "square",
+        "label": "Block 3",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

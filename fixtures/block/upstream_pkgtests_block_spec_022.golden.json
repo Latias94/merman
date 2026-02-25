@@ -1,0 +1,57 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "B",
+        "type": "square",
+        "label": "A wide one in the middle",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#f9F",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "B",
+            "type": "square",
+            "label": "A wide one in the middle",
+            "children": [],
+            "widthInColumns": 1,
+            "styles": [
+              "fill:#f9F",
+              "stroke:#333",
+              "stroke-width:4px"
+            ]
+          }
+        ],
+        "columns": 1
+      },
+      {
+        "id": "B",
+        "type": "square",
+        "label": "A wide one in the middle",
+        "children": [],
+        "widthInColumns": 1,
+        "styles": [
+          "fill:#f9F",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

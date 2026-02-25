@@ -1,0 +1,32 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "compoundBlock",
+          "x": 51.28,
+          "y": 0.0,
+          "width": 102.56,
+          "height": 41.6,
+          "is_cluster": false
+        },
+        {
+          "id": "block2",
+          "x": 51.28,
+          "y": 0.0,
+          "width": 86.56,
+          "height": 25.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -20.8,
+        "max_x": 102.56,
+        "max_y": 20.8
+      }
+    }
+  }
+}

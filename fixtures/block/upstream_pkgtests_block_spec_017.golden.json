@@ -1,0 +1,93 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "block1",
+        "type": "square",
+        "label": "Block 1",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "blockArrow",
+        "type": "block_arrow",
+        "label": "&nbsp;&nbsp;&nbsp;",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "block2",
+        "type": "square",
+        "label": "Block 2",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "block1",
+            "type": "square",
+            "label": "Block 1",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "blockArrow",
+            "type": "block_arrow",
+            "label": "&nbsp;&nbsp;&nbsp;",
+            "children": [],
+            "widthInColumns": 1,
+            "directions": [
+              "right"
+            ]
+          },
+          {
+            "id": "block2",
+            "type": "square",
+            "label": "Block 2",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 3
+      },
+      {
+        "id": "block1",
+        "type": "square",
+        "label": "Block 1",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "blockArrow",
+        "type": "block_arrow",
+        "label": "&nbsp;&nbsp;&nbsp;",
+        "children": [],
+        "widthInColumns": 1,
+        "directions": [
+          "right"
+        ]
+      },
+      {
+        "id": "block2",
+        "type": "square",
+        "label": "Block 2",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}
