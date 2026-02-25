@@ -69,7 +69,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         });
     if !html_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream html root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            "upstream html root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
             html_root.display()
         )));
     }

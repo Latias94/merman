@@ -70,7 +70,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         .unwrap_or(default_src_root);
     if !src_root.is_dir() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream package src root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            "upstream package src root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
             src_root.display()
         )));
     }

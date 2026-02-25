@@ -70,7 +70,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         });
     if !docs_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream docs root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            "upstream docs root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
             docs_root.display()
         )));
     }
@@ -950,7 +950,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             let _ = fs::create_dir_all(parent);
         }
         let header = format!(
-            "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
+            "# import-upstream-docs report (Mermaid@11.12.3)\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z"),
             report_total_candidates,
             report_skip_duplicate_content,
@@ -983,7 +983,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 msg.push_str(" (no candidates passed upstream baseline/snapshot gating)");
             }
             msg.push_str(&format!("; report: {}", report_path.display()));
-            return Err(XtaskError::SnapshotUpdateFailed(msg));
+            // Best-effort import: no new fixtures is a normal outcome as our fixture corpus grows.
+            // Emit a helpful message and return success instead of failing CI.
+            eprintln!("{msg}");
+            return Ok(());
         }
         return Err(XtaskError::SnapshotUpdateFailed(
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
