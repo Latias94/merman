@@ -1,0 +1,46 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "type": "c4",
+    "c4Type": "C4Context",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "wrap": false,
+    "layout": {
+      "c4ShapeInRow": 4,
+      "c4BoundaryInRow": 2
+    },
+    "shapes": [
+      {
+        "alias": "customerA",
+        "label": {
+          "text": ""
+        },
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts."
+        },
+        "typeC4Shape": {
+          "text": "external_person"
+        },
+        "parentBoundary": "global",
+        "wrap": false
+      }
+    ],
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "type": {
+          "text": "global"
+        },
+        "tags": null,
+        "link": null,
+        "parentBoundary": ""
+      }
+    ],
+    "rels": []
+  }
+}
