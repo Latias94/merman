@@ -236,7 +236,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         let mut i = open_tick + 1;
         let mut out = String::new();
         let mut escaped = false;
-        let mut has_interpolation = false;
+        let mut _has_interpolation = false;
         let mut interp_depth: i32 = 0;
         let mut mode = InterpMode::Normal;
 
@@ -264,13 +264,14 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 }
                 if b == b'`' {
                     let end = i + 1;
-                    if has_interpolation {
-                        return Some((None, end));
-                    }
                     return Some((Some(out), end));
                 }
                 if b == b'$' && bytes.get(i + 1) == Some(&b'{') {
-                    has_interpolation = true;
+                    _has_interpolation = true;
+                    // Replace `${...}` with a deterministic placeholder so we can still extract a
+                    // stable Mermaid definition from tests that build diagrams with variables.
+                    // Downstream diagram detection will discard non-Mermaid strings.
+                    out.push('X');
                     interp_depth = 1;
                     mode = InterpMode::Normal;
                     i += 2;
@@ -396,6 +397,211 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         out
     }
 
+    fn extract_all_string_literals(text: &str) -> Vec<String> {
+        fn hex_val(b: u8) -> Option<u8> {
+            match b {
+                b'0'..=b'9' => Some(b - b'0'),
+                b'a'..=b'f' => Some(10 + (b - b'a')),
+                b'A'..=b'F' => Some(10 + (b - b'A')),
+                _ => None,
+            }
+        }
+
+        fn scan_string_literal(
+            text: &str,
+            open_quote: usize,
+            quote: u8,
+        ) -> Option<(String, usize)> {
+            let bytes = text.as_bytes();
+            if bytes.get(open_quote) != Some(&quote) {
+                return None;
+            }
+
+            let mut out: Vec<u8> = Vec::new();
+            let mut i = open_quote + 1;
+            let mut escaped = false;
+
+            while i < bytes.len() {
+                let b = bytes[i];
+
+                if escaped {
+                    escaped = false;
+                    match b {
+                        b'n' => out.push(b'\n'),
+                        b'r' => out.push(b'\r'),
+                        b't' => out.push(b'\t'),
+                        b'\\' => out.push(b'\\'),
+                        b'\'' => out.push(b'\''),
+                        b'"' => out.push(b'"'),
+                        b'`' => out.push(b'`'),
+                        b'0' => out.push(0),
+                        b'\n' => {
+                            // Line continuation: `"...\\\n..."` in JS.
+                        }
+                        b'\r' => {
+                            // Handle `\\\r\n` continuation.
+                            if bytes.get(i + 1) == Some(&b'\n') {
+                                i += 1;
+                            }
+                        }
+                        b'x' => {
+                            let hi = bytes.get(i + 1).copied().and_then(hex_val);
+                            let lo = bytes.get(i + 2).copied().and_then(hex_val);
+                            if let (Some(hi), Some(lo)) = (hi, lo) {
+                                out.push((hi << 4) | lo);
+                                i += 2;
+                            } else {
+                                out.extend_from_slice(b"x");
+                            }
+                        }
+                        b'u' => {
+                            // `\uXXXX` or `\u{...}`.
+                            if bytes.get(i + 1) == Some(&b'{') {
+                                let mut j = i + 2;
+                                let mut v: u32 = 0;
+                                let mut saw = false;
+                                while j < bytes.len() {
+                                    if bytes[j] == b'}' {
+                                        break;
+                                    }
+                                    let Some(h) = hex_val(bytes[j]) else {
+                                        break;
+                                    };
+                                    saw = true;
+                                    v = (v << 4) | (h as u32);
+                                    j += 1;
+                                }
+                                if saw && j < bytes.len() && bytes[j] == b'}' {
+                                    if let Some(ch) = char::from_u32(v) {
+                                        let mut buf = [0u8; 4];
+                                        out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                                        i = j;
+                                    } else {
+                                        out.extend_from_slice(b"u");
+                                    }
+                                } else {
+                                    out.extend_from_slice(b"u");
+                                }
+                            } else {
+                                let d1 = bytes.get(i + 1).copied().and_then(hex_val);
+                                let d2 = bytes.get(i + 2).copied().and_then(hex_val);
+                                let d3 = bytes.get(i + 3).copied().and_then(hex_val);
+                                let d4 = bytes.get(i + 4).copied().and_then(hex_val);
+                                if let (Some(d1), Some(d2), Some(d3), Some(d4)) = (d1, d2, d3, d4) {
+                                    let v: u32 = ((d1 as u32) << 12)
+                                        | ((d2 as u32) << 8)
+                                        | ((d3 as u32) << 4)
+                                        | (d4 as u32);
+                                    if let Some(ch) = char::from_u32(v) {
+                                        let mut buf = [0u8; 4];
+                                        out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+                                        i += 4;
+                                    } else {
+                                        out.extend_from_slice(b"u");
+                                    }
+                                } else {
+                                    out.extend_from_slice(b"u");
+                                }
+                            }
+                        }
+                        _ => out.push(b),
+                    }
+                    i += 1;
+                    continue;
+                }
+
+                if b == b'\\' {
+                    escaped = true;
+                    i += 1;
+                    continue;
+                }
+
+                if b == quote {
+                    let s = String::from_utf8_lossy(&out).to_string();
+                    return Some((s, i + 1));
+                }
+
+                // Invalid JS string (raw newline). Bail out to avoid swallowing the rest of the file.
+                if b == b'\n' || b == b'\r' {
+                    return None;
+                }
+
+                out.push(b);
+                i += 1;
+            }
+
+            None
+        }
+
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        enum Mode {
+            Normal,
+            LineComment,
+            BlockComment,
+        }
+
+        let bytes = text.as_bytes();
+        let mut out: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        let mut mode = Mode::Normal;
+        while i < bytes.len() {
+            let b = bytes[i];
+            match mode {
+                Mode::Normal => {
+                    if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                        mode = Mode::LineComment;
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                        mode = Mode::BlockComment;
+                        i += 2;
+                        continue;
+                    }
+                    if b == b'`' {
+                        // Skip template literals entirely so we don't accidentally scan quotes within
+                        // them here. Template literals are extracted separately.
+                        if let Some((_, end)) = scan_template_literal(text, i) {
+                            i = end;
+                            continue;
+                        }
+                    }
+                    if b == b'\'' {
+                        if let Some((content, end)) = scan_string_literal(text, i, b'\'') {
+                            out.push(content);
+                            i = end;
+                            continue;
+                        }
+                    }
+                    if b == b'"' {
+                        if let Some((content, end)) = scan_string_literal(text, i, b'"') {
+                            out.push(content);
+                            i = end;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+                Mode::LineComment => {
+                    if b == b'\n' {
+                        mode = Mode::Normal;
+                    }
+                    i += 1;
+                }
+                Mode::BlockComment => {
+                    if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                        mode = Mode::Normal;
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                }
+            }
+        }
+
+        out
+    }
+
     fn complexity_score(body: &str) -> i64 {
         let line_count = body.lines().count() as i64;
         (line_count * 1_000) + (body.len() as i64)
@@ -439,7 +645,8 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 continue;
             }
         };
-        let blocks = extract_all_template_literals(&text);
+        let mut blocks = extract_all_template_literals(&text);
+        blocks.extend(extract_all_string_literals(&text));
         if blocks.is_empty() {
             continue;
         }
@@ -497,7 +704,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
     if candidates.is_empty() {
         return Err(XtaskError::SnapshotUpdateFailed(
-            "no candidate template literals were detected (use --filter, or check repo-ref/mermaid checkout)"
+            "no candidate template/string literals were detected (use --filter, or check repo-ref/mermaid checkout)"
                 .to_string(),
         ));
     }
