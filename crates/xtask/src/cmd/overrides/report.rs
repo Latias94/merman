@@ -96,7 +96,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let state_text_n = count_matches(state_text_entry_re, &state_text_txt);
     let timeline_n = count_matches(root_viewport_entry_re, &timeline_txt);
 
-    println!("Mermaid baseline: @11.12.2");
+    println!("Mermaid baseline: @11.12.3");
     println!();
     println!("Root viewport overrides:");
     println!("- architecture_root_overrides_11_12_2.rs: {architecture_n} entries");
