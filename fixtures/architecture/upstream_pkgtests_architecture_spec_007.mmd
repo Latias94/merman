@@ -1,0 +1,9 @@
+architecture-beta
+  group app_env(cloud)[App Env]
+  service app(server)[Web App] in app_env
+  service db(database)[DB] in app_env
+  service api(server)[API] in app_env
+  junction mid in app_env
+  app:B -- T:mid
+  mid:R -- L:db
+  mid:B -- T:api
