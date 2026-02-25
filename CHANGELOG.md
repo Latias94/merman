@@ -10,8 +10,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class, quadrantchart, xychart, radar, kanban, architecture, block, mindmap) to expand SVG parity coverage.
 - Imported upstream HTML demo fixtures (flowchart, sequence, quadrantchart, sankey, xychart) to expand golden-driven parity coverage.
-- Imported an additional `mermaid-rs-renderer` comparison source fixture for kanban to expand parity coverage.
-- Imported additional `mermaid-rs-renderer` bench fixtures (`benches/fixtures/expanded`) to expand semantic/layout/SVG parity coverage for larger real-world graphs (flowchart, ER, class, sequence).
 
 ### Fixed
 
@@ -36,6 +34,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Updated upstream Mermaid baselines to 11.12.3 and refreshed `fixtures/upstream-svgs/**`.
 - `import-upstream-html`: flowchart fixtures containing `$$...$$` math labels are imported as `*_parser_only_katex` (kept for parser/layout coverage, excluded from SVG DOM parity gates until KaTeX HTML label parity is implemented).
 - Deferred upstream HTML treemap demos that render as upstream error output under `fixtures/_deferred/` (avoid permanently failing parity gates).
+
+### Removed
+
+- Removed `mermaid-rs-renderer` (`mmdr_`) fixtures and baselines from this repository; fixtures are now sourced only from upstream Mermaid.
 
 ## [0.1.0] - 2026-02-22
 

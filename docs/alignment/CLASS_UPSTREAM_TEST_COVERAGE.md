@@ -1,4 +1,4 @@
-# Class Diagram Upstream Test Coverage (Mermaid@11.12.2)
+# Class Diagram Upstream Test Coverage (Mermaid@11.12.3)
 
 This document tracks which upstream Mermaid `classDiagram` tests are covered in `merman` via:
 
@@ -6,15 +6,14 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.12.2`.
+Scope: Mermaid tag `@11.12.3`.
 
 ## External regression cases
 
 These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
 are parity-gated against upstream SVG baselines:
 
-- mmdr test fixture (basic): `fixtures/class/mmdr_tests_class_class_basic.mmd`
-- mmdr test fixture (multiplicity): `fixtures/class/mmdr_tests_class_class_multiplicity.mmd`
+None checked in (policy: `docs/alignment/EXTERNAL_FIXTURES.md`).
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
