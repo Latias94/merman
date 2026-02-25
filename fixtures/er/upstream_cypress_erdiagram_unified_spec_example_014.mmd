@@ -1,25 +1,11 @@
 erDiagram
-  p[Person] {
-      string firstName
-      string lastName
+  AUTHOR_WITH_LONG_ENTITY_NAME {
+    string name PK "comment"
   }
-  a["Customer Account"] {
-      string email
-  }
-  
-  b["Customer Account Secondary"] {
-    string email
-  }
-  
-  c["Customer Account Tertiary"] {
-    string email
-  }
-  
-  d["Customer Account Nth"] {
-    string email
-  }
-  
-  p ||--o| a : "has<br />one"
-  p ||--o| b : "has<br />one<br />two"
-  p ||--o| c : "has<br />one<br/>two<br />three"
-  p ||--o| d : "has<br />one<br />two<br/>three<br />...<br/>Nth"
+  AUTHOR_WITH_LONG_ENTITY_NAME }|..|{ BOOK : writes
+  BOOK {
+      string description
+      float price "price comment"
+      string title PK "title comment"
+      string author FK
+    }

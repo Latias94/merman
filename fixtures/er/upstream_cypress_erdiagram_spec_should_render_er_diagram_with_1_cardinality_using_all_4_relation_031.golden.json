@@ -6,57 +6,73 @@
     "accTitle": null,
     "accDescr": null,
     "entities": {
-      "BOOK": {
-        "id": "entity-BOOK-1",
-        "label": "BOOK",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "description",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "float",
-            "name": "price",
-            "keys": [],
-            "comment": "price comment"
-          },
-          {
-            "type": "string",
-            "name": "title",
-            "keys": [
-              "PK"
-            ],
-            "comment": "title comment"
-          },
-          {
-            "type": "string",
-            "name": "author",
-            "keys": [
-              "FK"
-            ],
-            "comment": ""
-          }
-        ],
+      "C": {
+        "id": "entity-C-2",
+        "label": "C",
+        "attributes": [],
         "alias": "",
         "shape": "erBox",
         "cssClasses": "default",
         "cssStyles": []
       },
-      "AUTHOR_WITH_LONG_ENTITY_NAME": {
-        "id": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
-        "label": "AUTHOR_WITH_LONG_ENTITY_NAME",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "name",
-            "keys": [
-              "PK"
-            ],
-            "comment": "comment"
-          }
-        ],
+      "A": {
+        "id": "entity-A-0",
+        "label": "A",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "E": {
+        "id": "entity-E-4",
+        "label": "E",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "F": {
+        "id": "entity-F-5",
+        "label": "F",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "H": {
+        "id": "entity-H-7",
+        "label": "H",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "G": {
+        "id": "entity-G-6",
+        "label": "G",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "B": {
+        "id": "entity-B-1",
+        "label": "B",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "D": {
+        "id": "entity-D-3",
+        "label": "D",
+        "attributes": [],
         "alias": "",
         "shape": "erBox",
         "cssClasses": "default",
@@ -65,12 +81,42 @@
     },
     "relationships": [
       {
-        "entityA": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
-        "roleA": "writes",
-        "entityB": "entity-BOOK-1",
+        "entityA": "entity-A-0",
+        "roleA": "solid-solid",
+        "entityB": "entity-B-1",
         "relSpec": {
-          "cardA": "ONE_OR_MORE",
-          "cardB": "ONE_OR_MORE",
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-C-2",
+        "roleA": "dotted-dotted",
+        "entityB": "entity-D-3",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "NON_IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-E-4",
+        "roleA": "dotted-solid",
+        "entityB": "entity-F-5",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "NON_IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-G-6",
+        "roleA": "solid-dotted",
+        "entityB": "entity-H-7",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
           "relType": "NON_IDENTIFYING"
         }
       }

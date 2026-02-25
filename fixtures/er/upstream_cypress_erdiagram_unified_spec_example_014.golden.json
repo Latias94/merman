@@ -6,88 +6,58 @@
     "accTitle": null,
     "accDescr": null,
     "entities": {
-      "a": {
-        "id": "entity-a-1",
-        "label": "a",
+      "AUTHOR_WITH_LONG_ENTITY_NAME": {
+        "id": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
+        "label": "AUTHOR_WITH_LONG_ENTITY_NAME",
         "attributes": [
           {
             "type": "string",
-            "name": "email",
-            "keys": [],
-            "comment": ""
+            "name": "name",
+            "keys": [
+              "PK"
+            ],
+            "comment": "comment"
           }
         ],
-        "alias": "Customer Account",
+        "alias": "",
         "shape": "erBox",
         "cssClasses": "default",
         "cssStyles": []
       },
-      "p": {
-        "id": "entity-p-0",
-        "label": "p",
+      "BOOK": {
+        "id": "entity-BOOK-1",
+        "label": "BOOK",
         "attributes": [
           {
             "type": "string",
-            "name": "firstName",
+            "name": "description",
             "keys": [],
             "comment": ""
           },
           {
-            "type": "string",
-            "name": "lastName",
+            "type": "float",
+            "name": "price",
             "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "Person",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "b": {
-        "id": "entity-b-2",
-        "label": "b",
-        "attributes": [
+            "comment": "price comment"
+          },
           {
             "type": "string",
-            "name": "email",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "Customer Account Secondary",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "d": {
-        "id": "entity-d-4",
-        "label": "d",
-        "attributes": [
+            "name": "title",
+            "keys": [
+              "PK"
+            ],
+            "comment": "title comment"
+          },
           {
             "type": "string",
-            "name": "email",
-            "keys": [],
+            "name": "author",
+            "keys": [
+              "FK"
+            ],
             "comment": ""
           }
         ],
-        "alias": "Customer Account Nth",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "c": {
-        "id": "entity-c-3",
-        "label": "c",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "email",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "Customer Account Tertiary",
+        "alias": "",
         "shape": "erBox",
         "cssClasses": "default",
         "cssStyles": []
@@ -95,43 +65,13 @@
     },
     "relationships": [
       {
-        "entityA": "entity-p-0",
-        "roleA": "has<br />one",
-        "entityB": "entity-a-1",
+        "entityA": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
+        "roleA": "writes",
+        "entityB": "entity-BOOK-1",
         "relSpec": {
-          "cardA": "ZERO_OR_ONE",
-          "cardB": "ONLY_ONE",
-          "relType": "IDENTIFYING"
-        }
-      },
-      {
-        "entityA": "entity-p-0",
-        "roleA": "has<br />one<br />two",
-        "entityB": "entity-b-2",
-        "relSpec": {
-          "cardA": "ZERO_OR_ONE",
-          "cardB": "ONLY_ONE",
-          "relType": "IDENTIFYING"
-        }
-      },
-      {
-        "entityA": "entity-p-0",
-        "roleA": "has<br />one<br/>two<br />three",
-        "entityB": "entity-c-3",
-        "relSpec": {
-          "cardA": "ZERO_OR_ONE",
-          "cardB": "ONLY_ONE",
-          "relType": "IDENTIFYING"
-        }
-      },
-      {
-        "entityA": "entity-p-0",
-        "roleA": "has<br />one<br />two<br/>three<br />...<br/>Nth",
-        "entityB": "entity-d-4",
-        "relSpec": {
-          "cardA": "ZERO_OR_ONE",
-          "cardB": "ONLY_ONE",
-          "relType": "IDENTIFYING"
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
         }
       }
     ],
