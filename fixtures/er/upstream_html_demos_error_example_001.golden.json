@@ -1,0 +1,93 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "ATLAS-ORGANIZATION": {
+        "id": "entity-ATLAS-ORGANIZATION-0",
+        "label": "ATLAS-ORGANIZATION",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "MONGODB-CLUSTERS": {
+        "id": "entity-MONGODB-CLUSTERS-2",
+        "label": "MONGODB-CLUSTERS",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ATLAS-TEAMS": {
+        "id": "entity-ATLAS-TEAMS-3",
+        "label": "ATLAS-TEAMS",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ATLAS-PROJECTS": {
+        "id": "entity-ATLAS-PROJECTS-1",
+        "label": "ATLAS-PROJECTS",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-ATLAS-ORGANIZATION-0",
+        "roleA": "has many",
+        "entityB": "entity-ATLAS-PROJECTS-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ATLAS-PROJECTS-1",
+        "roleA": "has many",
+        "entityB": "entity-MONGODB-CLUSTERS-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ATLAS-PROJECTS-1",
+        "roleA": "has many",
+        "entityB": "entity-ATLAS-TEAMS-3",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}
