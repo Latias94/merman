@@ -1,0 +1,82 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "type": "xychart",
+    "title": "Basic xychart",
+    "accTitle": null,
+    "accDescr": null,
+    "orientation": "horizontal",
+    "xAxis": {
+      "type": "band",
+      "title": "this is x axis",
+      "categories": [
+        "category1",
+        "category 2",
+        "category3",
+        "category4"
+      ]
+    },
+    "yAxis": {
+      "type": "linear",
+      "title": "yaxisText",
+      "min": 10.0,
+      "max": 150.0
+    },
+    "plots": [
+      {
+        "type": "bar",
+        "values": [
+          52.0,
+          96.0,
+          35.0,
+          10.0
+        ],
+        "data": [
+          [
+            "category1",
+            52.0
+          ],
+          [
+            "category 2",
+            96.0
+          ],
+          [
+            "category3",
+            35.0
+          ],
+          [
+            "category4",
+            10.0
+          ]
+        ]
+      },
+      {
+        "type": "line",
+        "values": [
+          23.0,
+          46.0,
+          75.0,
+          43.0
+        ],
+        "data": [
+          [
+            "category1",
+            23.0
+          ],
+          [
+            "category 2",
+            46.0
+          ],
+          [
+            "category3",
+            75.0
+          ],
+          [
+            "category4",
+            43.0
+          ]
+        ]
+      }
+    ]
+  }
+}

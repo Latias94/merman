@@ -1,0 +1,145 @@
+{
+  "diagramType": "xychart",
+  "layout": {
+    "XyChartDiagram": {
+      "width": 200.0,
+      "height": 20.0,
+      "chartOrientation": "vertical",
+      "showDataLabel": false,
+      "backgroundColor": "#333",
+      "labelData": [
+        "5000",
+        "9000",
+        "7500",
+        "6200",
+        "9500",
+        "5500",
+        "11000",
+        "8200",
+        "9200",
+        "9500",
+        "7000",
+        "8800"
+      ],
+      "drawables": [
+        {
+          "type": "rect",
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "data": [
+            {
+              "x": 0.25,
+              "y": 20.0,
+              "width": 9.5,
+              "height": 0.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 17.523,
+              "y": 6.667,
+              "width": 9.5,
+              "height": 13.333,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 34.795,
+              "y": 11.667,
+              "width": 9.5,
+              "height": 8.333,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 52.068,
+              "y": 16.0,
+              "width": 9.5,
+              "height": 4.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 69.341,
+              "y": 5.0,
+              "width": 9.5,
+              "height": 15.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 86.614,
+              "y": 18.333,
+              "width": 9.5,
+              "height": 1.667,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 103.886,
+              "y": 0.0,
+              "width": 9.5,
+              "height": 20.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 121.159,
+              "y": 9.333,
+              "width": 9.5,
+              "height": 10.667,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 138.432,
+              "y": 6.0,
+              "width": 9.5,
+              "height": 14.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 155.705,
+              "y": 5.0,
+              "width": 9.5,
+              "height": 15.0,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 172.977,
+              "y": 13.333,
+              "width": 9.5,
+              "height": 6.667,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            },
+            {
+              "x": 190.25,
+              "y": 7.333,
+              "width": 9.5,
+              "height": 12.667,
+              "fill": "#3498db",
+              "strokeFill": "#3498db",
+              "strokeWidth": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
