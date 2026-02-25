@@ -8,7 +8,7 @@ pub(super) fn render_sequence_diagram_svg(
     layout: &SequenceDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -18,7 +18,7 @@ pub(super) fn render_sequence_diagram_svg(
         semantic,
         effective_config,
         &sanitize_config,
-        _diagram_title,
+        diagram_title,
         measurer,
         options,
     )
@@ -28,7 +28,7 @@ pub(super) fn render_sequence_diagram_svg_with_config(
     layout: &SequenceDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &merman_core::MermaidConfig,
-    _diagram_title: Option<&str>,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -37,7 +37,7 @@ pub(super) fn render_sequence_diagram_svg_with_config(
         semantic,
         effective_config.as_value(),
         effective_config,
-        _diagram_title,
+        diagram_title,
         measurer,
         options,
     )
@@ -48,11 +48,16 @@ fn render_sequence_diagram_svg_inner(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     sanitize_config: &merman_core::MermaidConfig,
-    _diagram_title: Option<&str>,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
+    let mut model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
+    if model.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
+        if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
+            model.title = Some(title.to_string());
+        }
+    }
 
     let seq_cfg = effective_config
         .get("sequence")

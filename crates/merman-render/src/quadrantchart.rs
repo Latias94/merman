@@ -211,13 +211,111 @@ fn adjust_hex_rgb(hex: &str, delta: i16) -> Option<String> {
     Some(format!("#{:02x}{:02x}{:02x}", adj(r), adj(g), adj(b)))
 }
 
-fn default_quadrant_theme() -> QuadrantThemeConfig {
-    // Mermaid 11.12.2 default theme values (derived from `theme-default.js`).
+fn fmt_rgb(r: u8, g: u8, b: u8) -> String {
+    format!("rgb({r}, {g}, {b})")
+}
+
+fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
+    let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let h = parts.next()?.parse::<f64>().ok()?;
+    let s = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    let l = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    Some((h, s, l))
+}
+
+fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
+    if !(h_deg.is_finite() && s_pct.is_finite() && l_pct.is_finite()) {
+        return None;
+    }
+
+    let h = (h_deg / 360.0).rem_euclid(1.0);
+    let s = (s_pct / 100.0).clamp(0.0, 1.0);
+    let l = (l_pct / 100.0).clamp(0.0, 1.0);
+
+    // HSL -> RGB (same parameterization as Python's `colorsys.hls_to_rgb`).
+    if s == 0.0 {
+        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
+        return Some((v, v, v));
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 1.0 / 2.0 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
+        p
+    }
+
+    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+    let g = hue_to_rgb(p, q, h);
+    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+
+    let to_u8 = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some((to_u8(r), to_u8(g), to_u8(b)))
+}
+
+fn css_color_to_rgb_string(s: &str) -> Option<String> {
+    let t = s.trim();
+    if t.starts_with("rgb(") {
+        return Some(t.to_string());
+    }
+    if let Some((r, g, b)) = parse_hex_rgb(t) {
+        return Some(fmt_rgb(r, g, b));
+    }
+    if let Some((h, s, l)) = parse_hsl_css(t) {
+        let (r, g, b) = hsl_to_rgb_u8(h, s, l)?;
+        return Some(fmt_rgb(r, g, b));
+    }
+    None
+}
+
+fn default_quadrant_theme(effective_config: &Value) -> QuadrantThemeConfig {
+    // Mermaid 11.12.2 quadrant defaults:
+    // - Quadrant fills are derived from the active theme's `primaryColor`.
+    // - Label text is derived from the active theme's `primaryTextColor` (or, for older configs,
+    //   an invert-of-primary heuristic).
+    // - Border strokes use `primaryBorderColor` which upstream serializes as `rgb(...)` even when
+    //   the config stores it as `hsl(...)`.
     //
     // Note: quadrant point fill currently resolves to an `hsl(...NaN%)` string in upstream.
     // Keep that behavior for DOM parity at the pinned baseline.
-    let quadrant1_fill = "#ECECFF".to_string();
-    let primary_text = invert_hex_rgb(&quadrant1_fill).unwrap_or_else(|| "#131300".to_string());
+    let quadrant1_fill = config_string(effective_config, &["themeVariables", "primaryColor"])
+        .unwrap_or_else(|| "#ECECFF".to_string());
+    let primary_text = config_string(effective_config, &["themeVariables", "primaryTextColor"])
+        .or_else(|| invert_hex_rgb(&quadrant1_fill))
+        .unwrap_or_else(|| "#131300".to_string());
+    let border_stroke = config_string(effective_config, &["themeVariables", "primaryBorderColor"])
+        .and_then(|v| css_color_to_rgb_string(&v))
+        .unwrap_or_else(|| "rgb(199, 199, 241)".to_string());
     QuadrantThemeConfig {
         quadrant2_fill: adjust_hex_rgb(&quadrant1_fill, 5).unwrap_or_else(|| "#f1f1ff".to_string()),
         quadrant3_fill: adjust_hex_rgb(&quadrant1_fill, 10)
@@ -236,14 +334,14 @@ fn default_quadrant_theme() -> QuadrantThemeConfig {
         quadrant_x_axis_text_fill: primary_text.clone(),
         quadrant_y_axis_text_fill: primary_text.clone(),
         quadrant_title_fill: primary_text,
-        quadrant_internal_border_stroke_fill: "rgb(199, 199, 241)".to_string(),
-        quadrant_external_border_stroke_fill: "rgb(199, 199, 241)".to_string(),
+        quadrant_internal_border_stroke_fill: border_stroke.clone(),
+        quadrant_external_border_stroke_fill: border_stroke,
         quadrant1_fill,
     }
 }
 
 fn quadrant_theme_with_overrides(effective_config: &Value) -> QuadrantThemeConfig {
-    let mut theme = default_quadrant_theme();
+    let mut theme = default_quadrant_theme(effective_config);
 
     // Mermaid applies theme variables as raw CSS tokens (some upstream examples omit the leading
     // `#` in hex colors). Preserve the string verbatim for DOM parity.
