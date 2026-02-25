@@ -71,7 +71,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         });
     if !spec_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream cypress spec root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            "upstream cypress spec root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
             spec_root.display()
         )));
     }
@@ -2678,6 +2678,38 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         fixture_text: &str,
     ) -> Option<&'static str> {
         match diagram_dir {
+            "er" => {
+                // Some upstream Cypress ER fixtures intentionally exercise syntax that Mermaid's
+                // CLI renderer (`mmdc`) fails to baseline-render today (e.g. numeric-only entity
+                // names like `1` / `2.5`, or the standalone entity name `u`).
+                //
+                // Keep these fixtures for traceability under `_deferred` without baselines so
+                // `verify` remains green.
+                let er_src = fixture_text
+                    .lines()
+                    .skip_while(|l| !l.trim_start().starts_with("erDiagram"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                for raw in er_src.lines().skip(1) {
+                    let l = raw.trim();
+                    if l.is_empty() {
+                        continue;
+                    }
+                    if l.as_bytes().first().is_some_and(|b| b.is_ascii_digit()) {
+                        return Some(
+                            "er numeric entity names (deferred; no upstream baselines yet)",
+                        );
+                    }
+                    if l == "u" || l.starts_with("u {") || l.starts_with("u{") {
+                        return Some("er entity name `u` (deferred; no upstream baselines yet)");
+                    }
+                    if l.contains("||--|| u") || l.contains("||--o{ u") || l.contains(" u--") {
+                        return Some(
+                            "er `u` in entities/cardinalities (deferred; no upstream baselines yet)",
+                        );
+                    }
+                }
+            }
             "sequence" => {
                 // Our pinned upstream baseline renderer (tools/mermaid-cli) currently fails to
                 // render these "half-arrow" operators, so keep the fixture for traceability under
@@ -3160,7 +3192,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             let _ = fs::create_dir_all(parent);
         }
         let header = format!(
-            "# import-upstream-cypress report (Mermaid@11.12.2)\n# generated_at={}\n",
+            "# import-upstream-cypress report (Mermaid@11.12.3)\n# generated_at={}\n",
             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
         );
         let mut out = String::new();
