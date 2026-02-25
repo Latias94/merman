@@ -157,7 +157,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let _ = writeln!(&mut report);
     let _ = writeln!(
         &mut report,
-        "- Upstream: `fixtures/upstream-svgs/er/*.svg` (Mermaid CLI pinned to Mermaid 11.12.2)"
+        "- Upstream: `fixtures/upstream-svgs/er/*.svg` (Mermaid CLI pinned to Mermaid 11.12.3)"
     );
     let _ = writeln!(&mut report, "- Local: `render_er_diagram_svg` (Stage B)");
     let _ = writeln!(&mut report);

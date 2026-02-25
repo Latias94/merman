@@ -7,7 +7,7 @@ This crate is a convenience wrapper around:
 - `merman-core` (parsing + semantic JSON model)
 - `merman-render` (layout + parity-focused SVG)
 
-Baseline: Mermaid `@11.12.2` (upstream Mermaid is treated as the spec).
+Baseline: Mermaid `@11.12.3` (upstream Mermaid is treated as the spec).
 
 ## Features
 
@@ -43,4 +43,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 For parity policy and gates, see `docs/alignment/STATUS.md` in the repository.
-

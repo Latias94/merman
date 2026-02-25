@@ -2,7 +2,7 @@
 
 Headless layout + SVG renderer for Mermaid.
 
-Baseline: Mermaid `@11.12.2` (upstream Mermaid is treated as the spec).
+Baseline: Mermaid `@11.12.3` (upstream Mermaid is treated as the spec).
 
 This crate provides:
 
@@ -12,4 +12,3 @@ This crate provides:
 If you want a single ergonomic API surface, use the `merman` crate with the `render` feature.
 
 Parity dashboards and automation live in `docs/alignment/STATUS.md` in the repository.
-

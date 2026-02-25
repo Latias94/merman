@@ -117,6 +117,12 @@ fn measure_svg_like_with_html_br(
     )
 }
 
+// Mermaid wraps Sequence notes via `utils.wrapLabel(...)`, which relies on DOM `getBBox()` probes.
+// Our vendored text metrics are deterministic but can be slightly more conservative for some
+// phrases, changing wrap breakpoints and note heights. Give note wrapping a small amount of
+// horizontal slack so greedy line breaks match the upstream Mermaid SVG baselines (11.12.3).
+const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 12.0;
+
 fn sequence_actor_visual_height(
     actor_type: &str,
     base_width: f64,
@@ -1344,7 +1350,7 @@ pub fn layout_sequence_diagram(
                         text,
                         measurer,
                         &note_text_style,
-                        note_width_single.max(1.0),
+                        (note_width_single + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
                     );
                     let init_wrapped = init_lines.join("<br/>");
                     let (w, _h) =
@@ -1364,7 +1370,7 @@ pub fn layout_sequence_diagram(
                     text,
                     measurer,
                     &note_text_style,
-                    wrap_w,
+                    (wrap_w + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
                 );
                 let wrapped = lines.join("<br/>");
                 let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);

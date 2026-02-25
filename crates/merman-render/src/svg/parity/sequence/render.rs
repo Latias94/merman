@@ -52,6 +52,11 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    // Mermaid wraps Sequence notes via `utils.wrapLabel(...)` and DOM `getBBox()` probes.
+    // Our vendored text metrics are deterministic but can be slightly more conservative; add a
+    // small amount of horizontal slack so note line breaks match upstream SVG baselines (11.12.3).
+    const NOTE_WRAP_SLACK_PX: f64 = 12.0;
+
     let mut model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     if model.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
         if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
@@ -1850,7 +1855,7 @@ fn render_sequence_diagram_svg_inner(
                     //
                     // Layout already computed the note box width (`n.width`) to match Mermaid's
                     // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
-                    let wrap_w = (n.width - 2.0 * wrap_padding).max(1.0);
+                    let wrap_w = (n.width - 2.0 * wrap_padding + NOTE_WRAP_SLACK_PX).max(1.0);
                     crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                         raw,
                         measurer,

@@ -3,7 +3,7 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.12.2`.
+Baseline version: Mermaid `@11.12.3`.
 
 ## Why This Exists
 
@@ -40,7 +40,7 @@ If we need tighter 1:1 parity coverage beyond ER, extend the golden strategy in 
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.12.2`.
+to force Mermaid `11.12.3`.
 
 Install:
 

@@ -6,7 +6,7 @@ Mermaid, but headless, in Rust.
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
-`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.12.2`).
+`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.12.3`).
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
 changes that affect semantics, layout, or rendering are caught and reviewed.
 
@@ -33,7 +33,7 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 
 ## Status
 
-- Baseline: Mermaid `@11.12.2`.
+- Baseline: Mermaid `@11.12.3`.
 - Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: [docs/alignment/STATUS.md](docs/alignment/STATUS.md).

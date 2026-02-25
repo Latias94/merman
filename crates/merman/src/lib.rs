@@ -2,7 +2,7 @@
 
 //! `merman` is a headless, parity-focused Mermaid implementation in Rust.
 //!
-//! It is pinned to Mermaid `@11.12.2`; upstream Mermaid is treated as the spec. See:
+//! It is pinned to Mermaid `@11.12.3`; upstream Mermaid is treated as the spec. See:
 //! - `docs/adr/0014-upstream-parity-policy.md`
 //! - `docs/alignment/STATUS.md`
 //!

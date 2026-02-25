@@ -2,7 +2,7 @@ use crate::Result;
 use crate::model::ErrorDiagramLayout;
 use crate::text::TextMeasurer;
 
-pub const UPSTREAM_MERMAID_VERSION: &str = "11.12.2";
+pub const UPSTREAM_MERMAID_VERSION: &str = "11.12.3";
 
 pub fn layout_error_diagram(
     _semantic: &serde_json::Value,

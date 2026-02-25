@@ -4,8 +4,8 @@
     "mermaid": {
       "path": "repo-ref/mermaid",
       "url": "https://github.com/mermaid-js/mermaid.git",
-      "ref": "mermaid@11.12.2",
-      "commit": "bd85b51e2404102dbd04613a4891c017b425f803"
+      "ref": "mermaid@11.12.3",
+      "commit": "de0a5800944da7e3f0a040a55d2e91893c2b7bdb"
     },
     "mermaid-rs-renderer": {
       "path": "repo-ref/mermaid-rs-renderer",
@@ -93,4 +93,3 @@
     }
   }
 }
-
