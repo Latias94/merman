@@ -114,6 +114,7 @@ fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
     // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
     // regressions, snap `max-width` to a small pixel lattice.
     let step = 1.0 / 8.0; // 0.125px: collapses common subpixel drift across platforms.
+    let eps = 1e-9; // Avoid float edge cases at exact step boundaries.
 
     let re = {
         static ONCE: OnceLock<Regex> = OnceLock::new();
@@ -129,7 +130,9 @@ fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
                 .unwrap_or_default()
                 .to_string();
         };
-        let snapped = (v / step).round() * step;
+        // Use a one-sided snap (floor) to avoid splitting extremely close values around the
+        // midpoint between lattice steps (a common cause of platform-specific parity failures).
+        let snapped = ((v / step) + eps).floor() * step;
         let snapped = round_f64(snapped, decimals);
         let snapped = if snapped == 0.0 { 0.0 } else { snapped };
         let mut out = format!("{snapped}");
@@ -1122,6 +1125,21 @@ mod tests {
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
             Some("max-width: 560.375px; background-color: white;")
+        );
+    }
+
+    #[test]
+    fn parity_root_snaps_svg_root_style_max_width_is_midpoint_stable() {
+        // Values that straddle the midpoint between steps should still normalize to the same
+        // signature to avoid platform-specific CI failures.
+        let a = r#"<svg width="100%" viewBox="0 0 502.172 10" style="max-width: 502.172px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let b = r#"<svg width="100%" viewBox="0 0 502.188 10" style="max-width: 502.188px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
+        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
+        assert_eq!(
+            dom_a.attrs.get("style").map(|s| s.as_str()),
+            Some("max-width: 502.125px; background-color: white;")
         );
     }
 
