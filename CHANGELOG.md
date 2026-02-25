@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
-- Imported additional upstream Cypress fixtures (ER, state, class) to expand SVG parity coverage.
+- Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class) to expand SVG parity coverage.
 
 ### Fixed
 
@@ -17,6 +17,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Aligned C4 `sprite` rendering with upstream Mermaid: only `person`/`external_person` emit `<image>` sprites.
 - Reduced churn during `import-upstream-docs --with-baselines` by skipping blank-info code fences that lack an explicit Mermaid diagram directive (e.g. `flowchart` / `graph`).
 - Reduced churn during `import-upstream-cypress --with-baselines` by deferring out-of-scope class fixtures (`htmlLabels=false`, `layout=elk`, `look!=classic`) under `fixtures/_deferred/`.
+- Improved `import-upstream-pkg-tests` Mermaid source extraction to handle `"..."` / `'...'` literals and template strings with `${...}` interpolation.
+
+### Changed
+
+- Refreshed README showcase renders after parity updates (mindmap examples).
 
 ## [0.1.0] - 2026-02-22
 
