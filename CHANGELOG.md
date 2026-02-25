@@ -11,14 +11,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Imported additional upstream fixtures from Cypress and package tests (requirement, gantt, ER, flowchart, sequence, state, class, quadrantchart, xychart, radar, kanban, architecture, block, mindmap) to expand SVG parity coverage.
 - Imported upstream HTML demo fixtures (flowchart, sequence, quadrantchart, sankey, xychart) to expand golden-driven parity coverage.
 - Imported an additional `mermaid-rs-renderer` comparison source fixture for kanban to expand parity coverage.
+- Imported additional `mermaid-rs-renderer` bench fixtures (`benches/fixtures/expanded`) to expand semantic/layout/SVG parity coverage for larger real-world graphs (flowchart, ER, class, sequence).
 
 ### Fixed
 
 - Improved `<foreignObject>` readability fallback for raster outputs (PNG/JPG/PDF): remove the white text outline overlay and render a semi-transparent `.labelBkg` background when present (closer to upstream Mermaid defaults).
 - Reduced cross-platform SVG DOM drift in `parity-root` compares by snapping root `style` `max-width` and `viewBox` to a stable lattice.
+- Further reduced `parity-root` drift by bias-snapping root `max-width` and masking `viewBox` origin (x/y) while still tracking viewport size changes (w/h).
 - Block: aligned `doublecircle` SVG structure to match upstream Mermaid DOM output.
 - Aligned C4 `sprite` rendering with upstream Mermaid: only `person`/`external_person` emit `<image>` sprites.
 - ER: align Markdown formatting in entity labels even when the entity has no attributes.
+- Flowchart: preserve cyclic self-loop helper mid-edge labels (fixes missing self-loop label DOM).
 - `import-upstream-pkg-tests`: avoid failing the import when all candidates are skipped (still prints a skip summary).
 - Reduced churn during `import-upstream-docs --with-baselines` by skipping blank-info code fences that lack an explicit Mermaid diagram directive (e.g. `flowchart` / `graph`).
 - Reduced churn during `import-upstream-cypress --with-baselines` by deferring out-of-scope class fixtures (`htmlLabels=false`, `layout=elk`, `look!=classic`) under `fixtures/_deferred/`.
@@ -29,7 +32,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
-- Refreshed README showcase renders after parity updates (mindmap examples).
+- Refreshed README showcase renders after parity updates (architecture/mindmap/sankey/gantt).
 - Updated upstream Mermaid baselines to 11.12.3 and refreshed `fixtures/upstream-svgs/**`.
 - `import-upstream-html`: flowchart fixtures containing `$$...$$` math labels are imported as `*_parser_only_katex` (kept for parser/layout coverage, excluded from SVG DOM parity gates until KaTeX HTML label parity is implemented).
 - Deferred upstream HTML treemap demos that render as upstream error output under `fixtures/_deferred/` (avoid permanently failing parity gates).

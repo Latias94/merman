@@ -539,8 +539,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         edge_mid.id = format!("{node_id}-cyclic-special-mid");
         edge_mid.from = special_id_1.clone();
         edge_mid.to = special_id_2.clone();
-        edge_mid.label = None;
-        edge_mid.label_type = None;
         edge_mid.edge_type = Some("arrow_open".to_string());
 
         let mut edge2 = e.clone();
