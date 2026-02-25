@@ -1,0 +1,14 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": "Simple Architecture Diagram",
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [],
+    "services": [],
+    "junctions": [],
+    "edges": []
+  }
+}
