@@ -1,10 +1,10 @@
-# Fixture Expansion TODO (Mermaid@11.12.2)
+# Fixture Expansion TODO (Mermaid@11.12.3)
 
 This document tracks fixture expansion work that is not yet imported into `fixtures/**`.
 
 Policy:
 
-- Upstream baseline is Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+- Upstream baseline is Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 - Prefer small, reviewable batches.
 - Every imported fixture must remain traceable to an upstream source file.
 - After each batch, keep the global parity gates green:

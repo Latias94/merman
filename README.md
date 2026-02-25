@@ -188,7 +188,7 @@ Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_s
 
 ```mermaid
 architecture-beta
-%% Authored stress fixture (Mermaid@11.12.2): many groups with sparse services (group rect bounds).
+%% Authored stress fixture (Mermaid@11.12.3): many groups with sparse services (group rect bounds).
 
 group g1(cloud)[G1]
 group g2(cloud)[G2]
@@ -220,7 +220,7 @@ Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindma
 
 ```mermaid
 mindmap
-  %% Authored stress fixture (Mermaid@11.12.2): <br> variants inside labels.
+  %% Authored stress fixture (Mermaid@11.12.3): <br> variants inside labels.
   root((Root))
     n1["line 1<br>line 2"]
     n2["line 1<br/>line 2"]
