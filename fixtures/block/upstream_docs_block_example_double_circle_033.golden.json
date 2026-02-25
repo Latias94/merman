@@ -1,0 +1,42 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "id1",
+        "type": "doublecircle",
+        "label": "This is the text in the circle",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "id1",
+            "type": "doublecircle",
+            "label": "This is the text in the circle",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "id1",
+        "type": "doublecircle",
+        "label": "This is the text in the circle",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}
