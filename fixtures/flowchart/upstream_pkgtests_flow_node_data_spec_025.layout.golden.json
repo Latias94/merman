@@ -1,0 +1,41 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "n2",
+          "x": 76.32,
+          "y": 35.0,
+          "width": 136.64,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "n4",
+          "x": 262.96,
+          "y": 35.0,
+          "width": 136.64,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "n5",
+          "x": 449.6,
+          "y": 35.0,
+          "width": 136.64,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 517.92,
+        "max_y": 62.0
+      }
+    }
+  }
+}
