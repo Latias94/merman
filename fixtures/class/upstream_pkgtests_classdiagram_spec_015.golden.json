@@ -1,0 +1,76 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Something": {
+        "id": "Something",
+        "type": "",
+        "label": "Something",
+        "text": "Something",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int id",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int id",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "string name",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "string name",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Something-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [
+      {
+        "id": "note0",
+        "class": "Something",
+        "text": "This is a keyword: X. It truly is."
+      }
+    ],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

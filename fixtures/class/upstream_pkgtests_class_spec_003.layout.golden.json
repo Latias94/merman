@@ -1,0 +1,55 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "A::B",
+          "x": 87.98,
+          "y": 79.5,
+          "width": 175.96,
+          "height": 159.0,
+          "is_cluster": true
+        },
+        {
+          "id": "IPC::Sender",
+          "x": 87.98,
+          "y": 79.5,
+          "width": 100.96,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [
+        {
+          "id": "A::B",
+          "x": 87.98,
+          "y": 79.5,
+          "width": 175.96,
+          "height": 159.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "A::B",
+          "title_label": {
+            "x": 87.98,
+            "y": 12.0,
+            "width": 28.16,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 175.96,
+        "max_y": 159.0
+      }
+    }
+  }
+}
