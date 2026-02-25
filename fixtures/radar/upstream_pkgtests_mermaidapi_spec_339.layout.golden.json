@@ -1,0 +1,50 @@
+{
+  "diagramType": "radar",
+  "layout": {
+    "RadarDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 700.0
+      },
+      "svg_width": 700.0,
+      "svg_height": 700.0,
+      "center_x": 350.0,
+      "center_y": 350.0,
+      "radius": 300.0,
+      "axis_label_factor": 1.05,
+      "title_y": -350.0,
+      "axes": [],
+      "graticules": [
+        {
+          "kind": "circle",
+          "r": 60.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 120.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 180.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 240.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 300.0,
+          "points": []
+        }
+      ],
+      "curves": [],
+      "legend_items": []
+    }
+  }
+}

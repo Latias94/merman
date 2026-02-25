@@ -1,0 +1,13 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [],
+    "elements": [],
+    "relationships": [],
+    "classes": {}
+  }
+}
