@@ -1,0 +1,30 @@
+{
+  "diagramType": "journey",
+  "layout": {
+    "JourneyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -25.0,
+        "max_x": 400.0,
+        "max_y": -5.0
+      },
+      "left_margin": 150.0,
+      "max_actor_label_width": 0.0,
+      "width": 400.0,
+      "height": 20.0,
+      "svg_height": 45.0,
+      "title": null,
+      "title_x": 150.0,
+      "title_y": 25.0,
+      "actor_legend": [],
+      "sections": [],
+      "tasks": [],
+      "activity_line": {
+        "x1": 150.0,
+        "y1": 200.0,
+        "x2": 246.0,
+        "y2": 200.0
+      }
+    }
+  }
+}
