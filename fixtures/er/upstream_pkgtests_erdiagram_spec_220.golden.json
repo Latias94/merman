@@ -1,0 +1,46 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "NODE": {
+        "id": "entity-NODE-0",
+        "label": "NODE",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-NODE-0",
+        "roleA": "leads to",
+        "entityB": "entity-NODE-0",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

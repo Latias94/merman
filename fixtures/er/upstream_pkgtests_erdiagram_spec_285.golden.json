@@ -1,0 +1,55 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "PERSON": {
+        "id": "entity-PERSON-0",
+        "label": "PERSON",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "POSSESSION": {
+        "id": "entity-POSSESSION-1",
+        "label": "POSSESSION",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-PERSON-0",
+        "roleA": "owns",
+        "entityB": "entity-POSSESSION-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

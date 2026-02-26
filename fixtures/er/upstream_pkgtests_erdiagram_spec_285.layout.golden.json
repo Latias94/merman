@@ -1,0 +1,67 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-PERSON-0",
+          "x": 62.25,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-POSSESSION-1",
+          "x": 62.25,
+          "y": 227.0,
+          "width": 124.5,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-PERSON-0",
+          "to": "entity-POSSESSION-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 62.25,
+              "y": 84.0
+            },
+            {
+              "x": 62.25,
+              "y": 134.5
+            },
+            {
+              "x": 62.25,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 62.25,
+            "y": 134.5,
+            "width": 31.25,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 124.5,
+        "max_y": 269.0
+      }
+    }
+  }
+}

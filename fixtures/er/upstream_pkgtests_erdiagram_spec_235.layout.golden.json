@@ -1,0 +1,67 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-A-0",
+          "x": 50.0,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-B-1",
+          "x": 50.0,
+          "y": 227.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-A-0",
+          "to": "entity-B-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 50.0,
+              "y": 84.0
+            },
+            {
+              "x": 50.0,
+              "y": 134.5
+            },
+            {
+              "x": 50.0,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 50.0,
+            "y": 134.5,
+            "width": 20.672,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 100.0,
+        "max_y": 269.0
+      }
+    }
+  }
+}
