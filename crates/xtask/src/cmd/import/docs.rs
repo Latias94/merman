@@ -730,6 +730,69 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         );
     }
 
+    fn defer_fixture_files(workspace_root: &Path, f: &CreatedFixture, keep_upstream_svg: bool) {
+        let deferred_fixture_dir = workspace_root
+            .join("fixtures")
+            .join("_deferred")
+            .join(&f.diagram_dir);
+        let _ = fs::create_dir_all(&deferred_fixture_dir);
+
+        let deferred_fixture_path = deferred_fixture_dir.join(format!("{}.mmd", f.stem));
+        if deferred_fixture_path.exists() {
+            let _ = fs::remove_file(&f.path);
+        } else {
+            let _ = fs::rename(&f.path, &deferred_fixture_path)
+                .or_else(|_| fs::copy(&f.path, &deferred_fixture_path).map(|_| ()))
+                .and_then(|_| fs::remove_file(&f.path));
+        }
+
+        if keep_upstream_svg {
+            let upstream_svg_path = workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem));
+            if upstream_svg_path.exists() {
+                let deferred_svg_dir = workspace_root
+                    .join("fixtures")
+                    .join("_deferred")
+                    .join("upstream-svgs")
+                    .join(&f.diagram_dir);
+                let _ = fs::create_dir_all(&deferred_svg_dir);
+
+                let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
+                if deferred_svg_path.exists() {
+                    let _ = fs::remove_file(&upstream_svg_path);
+                } else {
+                    let _ = fs::rename(&upstream_svg_path, &deferred_svg_path)
+                        .or_else(|_| fs::copy(&upstream_svg_path, &deferred_svg_path).map(|_| ()))
+                        .and_then(|_| fs::remove_file(&upstream_svg_path));
+                }
+            }
+        } else {
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join("upstream-svgs")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.svg", f.stem)),
+            );
+        }
+
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.golden.json", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.layout.golden.json", f.stem)),
+        );
+    }
+
     let report_path = workspace_root
         .join("target")
         .join("import-upstream-docs.report.txt");
@@ -830,7 +893,8 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 "skip (deferred for --with-baselines): {} ({reason})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            // Preserve the corpus for future parity work without breaking current gates.
+            defer_fixture_files(&workspace_root, &f, false);
             continue;
         }
 
@@ -861,7 +925,8 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     f.path.display(),
                     msg.lines().next().unwrap_or("unknown upstream error")
                 ));
-                cleanup_fixture_files(&workspace_root, &f);
+                // Keep the fixture source for later investigation/alignment.
+                defer_fixture_files(&workspace_root, &f, false);
                 continue;
             }
             Err(other) => return Err(other),
@@ -886,7 +951,8 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            // Preserve the upstream output anomaly for later root-viewport parity work.
+            defer_fixture_files(&workspace_root, &f, true);
             continue;
         }
 
