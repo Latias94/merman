@@ -819,6 +819,68 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             );
         }
 
+        fn defer_fixture_and_svg(
+            workspace_root: &Path,
+            f: &CreatedFixture,
+            keep_upstream_svg: bool,
+        ) {
+            let deferred_fixture_dir = workspace_root
+                .join("fixtures")
+                .join("_deferred")
+                .join(&f.diagram_dir);
+            let _ = fs::create_dir_all(&deferred_fixture_dir);
+
+            let deferred_fixture_path = deferred_fixture_dir.join(format!("{}.mmd", f.stem));
+            if deferred_fixture_path.exists() {
+                let _ = fs::remove_file(&f.path);
+            } else {
+                let _ = fs::rename(&f.path, &deferred_fixture_path)
+                    .or_else(|_| fs::copy(&f.path, &deferred_fixture_path).map(|_| ()))
+                    .and_then(|_| fs::remove_file(&f.path));
+            }
+
+            if keep_upstream_svg {
+                let upstream_svg_path = workspace_root
+                    .join("fixtures")
+                    .join("upstream-svgs")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.svg", f.stem));
+
+                if upstream_svg_path.exists() {
+                    let deferred_svg_dir = workspace_root
+                        .join("fixtures")
+                        .join("_deferred")
+                        .join("upstream-svgs")
+                        .join(&f.diagram_dir);
+                    let _ = fs::create_dir_all(&deferred_svg_dir);
+
+                    let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
+                    if deferred_svg_path.exists() {
+                        let _ = fs::remove_file(&upstream_svg_path);
+                    } else {
+                        let _ = fs::rename(&upstream_svg_path, &deferred_svg_path)
+                            .or_else(|_| {
+                                fs::copy(&upstream_svg_path, &deferred_svg_path).map(|_| ())
+                            })
+                            .and_then(|_| fs::remove_file(&upstream_svg_path));
+                    }
+                }
+            }
+
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.golden.json", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.layout.golden.json", f.stem)),
+            );
+        }
+
         for f in &created {
             let mut svg_args = vec![
                 "--diagram".to_string(),
@@ -831,10 +893,10 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             }
             if let Err(err) = super::super::gen_upstream_svgs(svg_args) {
                 skipped.push(format!(
-                    "skip (upstream svg generation failed): {} ({err})",
+                    "defer (upstream svg generation failed): {} ({err})",
                     f.path.display()
                 ));
-                cleanup_fixture_and_svg(&workspace_root, f);
+                defer_fixture_and_svg(&workspace_root, f, false);
                 continue;
             }
 
@@ -845,10 +907,10 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 .join(format!("{}.svg", f.stem));
             if is_upstream_error_svg(&svg_path) {
                 skipped.push(format!(
-                    "skip (upstream rendered error diagram): {}",
+                    "defer (upstream rendered error diagram): {}",
                     f.path.display()
                 ));
-                cleanup_fixture_and_svg(&workspace_root, f);
+                defer_fixture_and_svg(&workspace_root, f, true);
                 continue;
             }
 
