@@ -1,4 +1,4 @@
-# Root Viewport Overrides (Mermaid@11.12.2)
+# Root Viewport Overrides (Mermaid@11.12.3)
 
 This document explains how fixture-scoped root viewport overrides are maintained for
 `parity-root` SVG checks.
@@ -16,7 +16,10 @@ even after layout/renderer parity improvements.
 To keep regression checks deterministic for the pinned upstream baselines, we keep **version-scoped,
 fixture-scoped** overrides.
 
-Baseline version in this repository: Mermaid `@11.12.2`.
+Baseline version in this repository: Mermaid `@11.12.3`.
+
+Note: the generated override module filenames still use `*_11_12_2.rs` for historical reasons, but
+their contents are maintained to match the pinned baseline.
 
 ## Override Files
 
