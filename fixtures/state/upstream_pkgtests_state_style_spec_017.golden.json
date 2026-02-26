@@ -1,0 +1,26 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [],
+    "edges": [],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {},
+    "relations": [],
+    "styleClasses": {
+      "exampleClass": {
+        "id": "exampleClass",
+        "styles": [
+          "background:#bbb",
+          "font-weight:bold",
+          "font-style:italic"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}
