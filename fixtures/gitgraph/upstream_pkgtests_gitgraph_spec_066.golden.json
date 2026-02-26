@@ -1,0 +1,17 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [],
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
