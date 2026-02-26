@@ -786,13 +786,6 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         }
     }
 
-    if created.is_empty() {
-        return Err(XtaskError::SnapshotUpdateFailed(
-            "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
-                .to_string(),
-        ));
-    }
-
     if with_baselines {
         let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
 
