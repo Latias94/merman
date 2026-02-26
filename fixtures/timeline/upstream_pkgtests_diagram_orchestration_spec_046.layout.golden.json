@@ -1,0 +1,29 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": 50.0,
+        "max_x": 600.0,
+        "max_y": 150.0
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 100.0,
+      "sections": [],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 100.0,
+        "x2": 550.0,
+        "y2": 100.0
+      },
+      "title": null,
+      "title_x": -100.0,
+      "title_y": 20.0
+    }
+  }
+}

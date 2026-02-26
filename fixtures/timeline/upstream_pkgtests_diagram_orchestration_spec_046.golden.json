@@ -1,0 +1,11 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": []
+  }
+}
