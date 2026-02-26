@@ -1,0 +1,14 @@
+      sequenceDiagram
+      participant user as End User
+      participant Server as Server
+      participant System as System
+      participant System2 as System2
+
+      user->>+Server: Test
+      user->>+Server: Test2
+      user->>System: Test
+      Server->>-user: Test
+      Server->>-user: Test2
+
+      %% The following deactivation of Server will fail
+      Server->>-user: Test3
