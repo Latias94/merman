@@ -109,7 +109,7 @@ pub(crate) fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Packet SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/packet/*.svg` (Mermaid 11.12.2)\n- Local: `render_packet_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Packet SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/packet/*.svg` (Mermaid 11.12.3)\n- Local: `render_packet_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

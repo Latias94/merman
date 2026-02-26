@@ -115,7 +115,7 @@ pub(crate) fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# GitGraph SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gitgraph/*.svg` (Mermaid 11.12.2)\n- Local: `render_gitgraph_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# GitGraph SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gitgraph/*.svg` (Mermaid 11.12.3)\n- Local: `render_gitgraph_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

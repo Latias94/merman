@@ -107,7 +107,7 @@ pub(crate) fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskE
     let mut report = String::new();
     let _ = write!(
         &mut report,
-        "# QuadrantChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/quadrantchart/*.svg` (Mermaid 11.12.2)\n- Local: `render_quadrantchart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
+        "# QuadrantChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/quadrantchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_quadrantchart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
         dom_mode, dom_decimals
     );
     let mut failures: Vec<String> = Vec::new();

@@ -113,7 +113,7 @@ pub(crate) fn compare_xychart_svgs(args: Vec<String>) -> Result<(), XtaskError> 
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# XYChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/xychart/*.svg` (Mermaid 11.12.2)\n- Local: `render_xychart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# XYChart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/xychart/*.svg` (Mermaid 11.12.3)\n- Local: `render_xychart_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

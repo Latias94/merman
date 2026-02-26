@@ -113,7 +113,7 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Mindmap SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/mindmap/*.svg` (Mermaid 11.12.2)\n- Local: `render_mindmap_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Mindmap SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/mindmap/*.svg` (Mermaid 11.12.3)\n- Local: `render_mindmap_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

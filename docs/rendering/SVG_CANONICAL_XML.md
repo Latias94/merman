@@ -5,7 +5,7 @@ parity compares (`xtask compare-*-svgs`) for day-to-day regression checks.
 
 For stricter alignment work, `xtask compare-svg-xml` compares **canonicalized** SVG XML between:
 
-- upstream: `fixtures/upstream-svgs/<diagram>/*.svg` (generated via Mermaid CLI pinned to Mermaid `@11.12.2`)
+- upstream: `fixtures/upstream-svgs/<diagram>/*.svg` (generated via Mermaid CLI pinned to Mermaid `@11.12.3`)
 - local: `merman-render` Stage-B SVG output for the corresponding `fixtures/<diagram>/*.mmd`
 
 ## What “canonical XML” means here

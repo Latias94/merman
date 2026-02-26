@@ -1,6 +1,6 @@
 # Alignment Status (Mermaid Parity Dashboard)
 
-Baseline: Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 
 This file is a lightweight dashboard of what is currently implemented and what is covered by
 goldens/baselines. It is intentionally short and should stay true even as fixtures grow.

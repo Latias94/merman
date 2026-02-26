@@ -109,7 +109,7 @@ pub(crate) fn compare_timeline_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Timeline SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/timeline/*.svg` (Mermaid 11.12.2)\n- Local: `render_timeline_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Timeline SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/timeline/*.svg` (Mermaid 11.12.3)\n- Local: `render_timeline_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

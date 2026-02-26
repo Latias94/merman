@@ -107,7 +107,7 @@ pub(crate) fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskErr
     let mut report = String::new();
     let _ = write!(
         &mut report,
-        "# Requirement SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/requirement/*.svg` (Mermaid 11.12.2)\n- Local: `render_requirement_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
+        "# Requirement SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/requirement/*.svg` (Mermaid 11.12.3)\n- Local: `render_requirement_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n\n",
         dom_mode, dom_decimals
     );
     let mut failures: Vec<String> = Vec::new();

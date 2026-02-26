@@ -116,7 +116,7 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Architecture SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/architecture/*.svg` (Mermaid 11.12.2)\n- Local: `render_architecture_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Architecture SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/architecture/*.svg` (Mermaid 11.12.3)\n- Local: `render_architecture_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

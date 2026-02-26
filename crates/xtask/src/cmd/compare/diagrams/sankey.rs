@@ -113,7 +113,7 @@ pub(crate) fn compare_sankey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Sankey SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sankey/*.svg` (Mermaid 11.12.2)\n- Local: `render_sankey_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Sankey SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sankey/*.svg` (Mermaid 11.12.3)\n- Local: `render_sankey_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

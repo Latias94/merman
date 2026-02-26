@@ -2,7 +2,7 @@
 
 Headless Mermaid parser + semantic JSON model.
 
-Baseline: Mermaid `@11.12.2` (upstream Mermaid is treated as the spec).
+Baseline: Mermaid `@11.12.3` (upstream Mermaid is treated as the spec).
 
 This crate focuses on:
 
@@ -13,4 +13,3 @@ This crate focuses on:
 If you also need layout and SVG, use `merman-render` (or the `merman` wrapper crate).
 
 Parity policy and gates live in `docs/alignment/STATUS.md` in the repository.
-

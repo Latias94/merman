@@ -111,7 +111,7 @@ pub(crate) fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# StateDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/state/*.svg` (Mermaid 11.12.2)\n- Local: `render_state_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# StateDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/state/*.svg` (Mermaid 11.12.3)\n- Local: `render_state_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 

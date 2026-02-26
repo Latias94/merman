@@ -113,7 +113,7 @@ pub(crate) fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# ClassDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/class/*.svg` (Mermaid 11.12.2)\n- Local: `render_class_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# ClassDiagram SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/class/*.svg` (Mermaid 11.12.3)\n- Local: `render_class_diagram_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 
