@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "er".to_string();
@@ -99,6 +100,28 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         } else {
             None
         };
+        let per_chart_timeout = Duration::from_secs(60);
+
+        fn wait_with_timeout(
+            mut child: std::process::Child,
+            timeout: Duration,
+        ) -> Result<std::process::ExitStatus, std::io::Error> {
+            let start = Instant::now();
+            loop {
+                if let Some(status) = child.try_wait()? {
+                    return Ok(status);
+                }
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "process timed out",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
 
         fn sanitize_svg_id(raw: &str) -> String {
             let mut out = String::with_capacity(raw.len());
@@ -276,7 +299,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 if let Some(mut stdin) = child.stdin.take() {
                     let _ = stdin.write_all(input_json.as_bytes());
                 }
-                child.wait()
+                wait_with_timeout(child, per_chart_timeout)
             } else {
                 let mut cmd = if cfg!(windows) {
                     match mmdc.extension().and_then(|s| s.to_str()) {
@@ -328,7 +351,14 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
 
                 cmd.arg("--svgId").arg(svg_id);
-                cmd.status()
+                cmd.stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit());
+
+                let child = cmd.spawn();
+                match child {
+                    Ok(child) => wait_with_timeout(child, per_chart_timeout),
+                    Err(err) => Err(err),
+                }
             };
 
             match status {
