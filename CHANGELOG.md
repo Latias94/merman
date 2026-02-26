@@ -21,6 +21,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Aligned C4 `sprite` rendering with upstream Mermaid: only `person`/`external_person` emit `<image>` sprites.
 - ER: align Markdown formatting in entity labels even when the entity has no attributes.
 - Flowchart: preserve cyclic self-loop helper mid-edge labels (fixes missing self-loop label DOM).
+- Pie: support `accTitle:` / `accDescr:` on the header line (as accepted by upstream Mermaid parser tests).
 - `import-upstream-pkg-tests`: avoid failing the import when all candidates are skipped (still prints a skip summary).
 - `import-upstream-pkg-tests --with-baselines`: defer fixtures that fail upstream baseline generation / render as upstream error output under `fixtures/_deferred/` (keeps the corpus without breaking parity gates).
 - Reduced churn during `import-upstream-docs --with-baselines` by skipping blank-info code fences that lack an explicit Mermaid diagram directive (e.g. `flowchart` / `graph`).

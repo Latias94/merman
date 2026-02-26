@@ -28,6 +28,8 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     let mut show_data = false;
     let mut title: Option<String> = None;
+    let mut acc_title: Option<String> = None;
+    let mut acc_descr: Option<String> = None;
     let mut unsupported: Option<String> = None;
 
     fn token_boundary_ok(s: &str, token_len: usize) -> bool {
@@ -57,6 +59,41 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
             rest = "";
             continue;
         }
+        if rest.starts_with("accTitle") {
+            if let Some(v) = parse_key_value(rest, "accTitle") {
+                acc_title = Some(v);
+                rest = "";
+                continue;
+            }
+        }
+        if rest.starts_with("accDescr") {
+            if let Some(v) = parse_acc_descr_inline(rest) {
+                acc_descr = Some(v);
+                rest = "";
+                continue;
+            }
+            if starts_acc_descr_block(rest) {
+                let mut parts: Vec<String> = Vec::new();
+                for next_line in raw_lines.by_ref() {
+                    let s = strip_inline_comment(next_line);
+                    if s.contains('}') {
+                        let before = s.split('}').next().unwrap_or("").trim();
+                        if !before.is_empty() {
+                            parts.push(before.to_string());
+                        }
+                        break;
+                    }
+                    let trimmed = s.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    parts.push(trimmed.to_string());
+                }
+                acc_descr = Some(parts.join("\n"));
+                rest = "";
+                continue;
+            }
+        }
         unsupported = Some(rest.split_whitespace().next().unwrap_or(rest).to_string());
         break;
     }
@@ -68,8 +105,6 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    let mut acc_title = None;
-    let mut acc_descr = None;
     let mut sections: Vec<Value> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -274,6 +309,49 @@ pie showData
         assert_eq!(
             parsed.model.get("showData").and_then(|v| v.as_bool()),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn pie_supports_header_acc_title_inline() {
+        let engine = Engine::new();
+        let input = r#"
+pie accTitle: sample wow
+  "A" : 1
+"#;
+
+        let parsed = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .expect("diagram detected");
+
+        assert_eq!(parsed.meta.diagram_type, "pie");
+        assert_eq!(
+            parsed.model.get("accTitle").and_then(|v| v.as_str()),
+            Some("sample wow")
+        );
+    }
+
+    #[test]
+    fn pie_supports_header_acc_descr_block() {
+        let engine = Engine::new();
+        let input = r#"
+pie accDescr {
+  first line
+  second line
+}
+  "A" : 1
+"#;
+
+        let parsed = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .expect("diagram detected");
+
+        assert_eq!(parsed.meta.diagram_type, "pie");
+        assert_eq!(
+            parsed.model.get("accDescr").and_then(|v| v.as_str()),
+            Some("first line\nsecond line")
         );
     }
 }
