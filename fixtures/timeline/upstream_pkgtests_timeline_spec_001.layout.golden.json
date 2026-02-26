@@ -1,0 +1,47 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": 0.0,
+        "max_x": 690.0,
+        "max_y": 267.8
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 190.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "abc-123",
+            "label_lines": [
+              "abc-123"
+            ],
+            "kind": "section"
+          },
+          "tasks": []
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 217.8,
+        "x2": 640.0,
+        "y2": 217.8
+      },
+      "title": null,
+      "title_x": -55.0,
+      "title_y": 20.0
+    }
+  }
+}
