@@ -20,4 +20,3 @@
 
 __pycache__/
 # Local deferred fixtures (kept for investigation; not part of the committed fixture corpus).
-/fixtures/_deferred/
