@@ -3239,6 +3239,41 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
+        // Parity gate (matches `xtask verify`): keep the main fixture corpus green while still
+        // retaining the upstream SVG + input under `_deferred/` for later investigation.
+        if let Err(err) = super::super::compare_all_svgs(vec![
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            "parity".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            let msg = err.to_string();
+            let msg_head = msg.lines().next().unwrap_or("svg compare failed");
+            let reason = "svg dom parity mismatch (deferred)";
+            report_lines.push(format!(
+                "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}\terr={msg_head}",
+                f.diagram_dir,
+                f.stem,
+                f.source_spec.display(),
+                f.source_idx_in_file,
+                f.source_call,
+                f.source_test_name.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (svg dom parity mismatch; deferred): {} ({msg_head})",
+                f.path.display(),
+            ));
+            defer_fixture_files_keep_baselines(&workspace_root, &f);
+            imported_deferred += 1;
+            existing.insert(fixture_text.clone(), deferred_out_path);
+            continue;
+        }
+
         existing.insert(fixture_text.clone(), f.path.clone());
         created.push(f);
 
@@ -3275,6 +3310,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             let mut blank_svg = 0usize;
             let mut snapshot_failed = 0usize;
             let mut layout_snapshot_failed = 0usize;
+            let mut svg_parity_deferred = 0usize;
             let mut other = 0usize;
 
             for s in &skipped {
@@ -3292,6 +3328,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     snapshot_failed += 1;
                 } else if s.starts_with("skip (layout snapshot update failed):") {
                     layout_snapshot_failed += 1;
+                } else if s.starts_with("skip (svg dom parity mismatch; deferred):") {
+                    svg_parity_deferred += 1;
                 } else {
                     other += 1;
                 }
@@ -3299,7 +3337,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
             let mut msg = String::from("no fixtures were imported");
             msg.push_str(&format!(
-                " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred, {upstream_failed} upstream_failed, {blank_svg} blank_svg, {snapshot_failed} snapshot_failed, {layout_snapshot_failed} layout_snapshot_failed, {other} other)"
+                " (skipped: {dup} duplicate, {exists} exists, {deferred} deferred, {upstream_failed} upstream_failed, {blank_svg} blank_svg, {snapshot_failed} snapshot_failed, {layout_snapshot_failed} layout_snapshot_failed, {svg_parity_deferred} svg_parity_deferred, {other} other)"
             ));
             msg.push_str(" (use --overwrite, or adjust --filter/--limit)");
             if imported_deferred > 0
