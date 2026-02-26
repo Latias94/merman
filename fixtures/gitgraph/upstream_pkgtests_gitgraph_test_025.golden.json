@@ -1,0 +1,70 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "init",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "feat1",
+        "message": "Add feature",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "init"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "merged branch feature into main",
+        "seq": 2,
+        "type": 3,
+        "tags": [
+          "v1.0"
+        ],
+        "parents": [
+          "init",
+          "feat1"
+        ],
+        "branch": "main",
+        "customId": false
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "cherry-picked Add feature into main",
+        "seq": 3,
+        "type": 4,
+        "tags": [
+          "critical fix"
+        ],
+        "parents": [
+          "2-<dynamic>",
+          "feat1"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "feature"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "TB",
+    "accTitle": "Complex Example",
+    "accDescr": null,
+    "warnings": []
+  }
+}

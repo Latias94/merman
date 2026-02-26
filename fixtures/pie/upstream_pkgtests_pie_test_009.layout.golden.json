@@ -1,0 +1,22 @@
+{
+  "diagramType": "pie",
+  "layout": {
+    "PieDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 512.0,
+        "max_y": 450.0
+      },
+      "center_x": 225.0,
+      "center_y": 225.0,
+      "radius": 185.0,
+      "outer_radius": 186.0,
+      "legend_x": 216.0,
+      "legend_start_y": -11.0,
+      "legend_step_y": 22.0,
+      "slices": [],
+      "legend_items": []
+    }
+  }
+}

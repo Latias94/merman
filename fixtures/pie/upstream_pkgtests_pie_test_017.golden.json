@@ -1,0 +1,11 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": true,
+    "title": "sample title",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": []
+  }
+}
