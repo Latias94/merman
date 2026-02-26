@@ -21,6 +21,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - ER: align Markdown formatting in entity labels even when the entity has no attributes.
 - Flowchart: preserve cyclic self-loop helper mid-edge labels (fixes missing self-loop label DOM).
 - `import-upstream-pkg-tests`: avoid failing the import when all candidates are skipped (still prints a skip summary).
+- `import-upstream-pkg-tests --with-baselines`: defer fixtures that fail upstream baseline generation / render as upstream error output under `fixtures/_deferred/` (keeps the corpus without breaking parity gates).
 - Reduced churn during `import-upstream-docs --with-baselines` by skipping blank-info code fences that lack an explicit Mermaid diagram directive (e.g. `flowchart` / `graph`).
 - Reduced churn during `import-upstream-cypress --with-baselines` by deferring out-of-scope class fixtures (`htmlLabels=false`, `layout=elk`, `look!=classic`) under `fixtures/_deferred/`.
 - Improved `import-upstream-pkg-tests` Mermaid source extraction to handle `"..."` / `'...'` literals and template strings with `${...}` interpolation.
