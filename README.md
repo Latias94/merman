@@ -59,7 +59,7 @@ From source (today):
 cargo install --path crates/merman-cli
 ```
 
-Once published (`0.2.0+`), you can also:
+From crates.io:
 
 ```sh
 # CLI
