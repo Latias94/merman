@@ -37,7 +37,7 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 - Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: [docs/alignment/STATUS.md](docs/alignment/STATUS.md).
-- Corpus size: 1800+ upstream SVG baselines across 23 diagrams.
+- Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](docs/adr/0061-external-diagrams-zenuml.md).
 
 ## What you get
