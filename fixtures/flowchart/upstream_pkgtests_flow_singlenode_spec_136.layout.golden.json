@@ -1,0 +1,25 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "a",
+          "x": 30.82,
+          "y": 30.82,
+          "width": 45.64,
+          "height": 45.64,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 53.64,
+        "max_y": 53.64
+      }
+    }
+  }
+}

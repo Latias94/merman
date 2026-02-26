@@ -1,0 +1,29 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "graph",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {
+      "firstClass": [
+        "background:#bbb",
+        "border:1px solid red"
+      ],
+      "secondClass": [
+        "background:#bbb",
+        "border:1px solid red"
+      ]
+    },
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [],
+    "nodes": [],
+    "edges": [],
+    "subgraphs": []
+  }
+}

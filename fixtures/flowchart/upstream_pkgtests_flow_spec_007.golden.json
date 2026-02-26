@@ -1,0 +1,22 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "graph",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {
+      "X": "X"
+    },
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [],
+    "nodes": [],
+    "edges": [],
+    "subgraphs": []
+  }
+}
