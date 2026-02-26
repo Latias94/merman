@@ -1,0 +1,35 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": "My Treemap Diagram",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Root",
+          "children": [
+            {
+              "name": "Child",
+              "value": 100
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "level": 1,
+        "name": "Child",
+        "value": 100
+      }
+    ],
+    "classes": {}
+  }
+}

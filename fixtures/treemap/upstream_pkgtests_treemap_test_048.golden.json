@@ -1,0 +1,35 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": "This is an accessible description",
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Root",
+          "children": [
+            {
+              "name": "Child",
+              "value": 100
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "level": 1,
+        "name": "Child",
+        "value": 100
+      }
+    ],
+    "classes": {}
+  }
+}

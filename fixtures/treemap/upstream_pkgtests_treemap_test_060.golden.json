@@ -1,0 +1,23 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": []
+    },
+    "nodes": [],
+    "classes": {
+      "complexClass": {
+        "id": "complexClass",
+        "styles": [
+          "fill:blue stroke:#ff0000 stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}
