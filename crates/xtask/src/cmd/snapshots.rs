@@ -390,6 +390,16 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     let mut mmd_files = Vec::new();
     let mut stack = vec![fixtures_root.clone()];
     while let Some(dir) = stack.pop() {
+        // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the
+        // alignment gates (e.g. upstream CLI renders an error, or depends on unsupported options).
+        // Do not require goldens for these files.
+        if dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with('_') || n == "upstream-svgs")
+        {
+            continue;
+        }
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
         };
