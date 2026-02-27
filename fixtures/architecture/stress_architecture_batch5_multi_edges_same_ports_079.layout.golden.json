@@ -5,30 +5,6 @@
       "nodes": [
         {
           "id": "client",
-          "x": -300.0,
-          "y": 100.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "gateway",
-          "x": 100.0,
-          "y": 100.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "backend",
-          "x": 300.0,
-          "y": 100.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j1",
           "x": -100.0,
           "y": 100.0,
           "width": 80.0,
@@ -36,8 +12,32 @@
           "is_cluster": false
         },
         {
+          "id": "gateway",
+          "x": -100.0,
+          "y": 100.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "backend",
+          "x": 100.0,
+          "y": 100.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "j1",
+          "x": 100.0,
+          "y": 100.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
           "id": "j2",
-          "x": -300.0,
+          "x": -100.0,
           "y": -100.0,
           "width": 80.0,
           "height": 80.0,
@@ -49,35 +49,6 @@
           "id": "edge-0",
           "from": "client",
           "to": "j1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": -220.0,
-              "y": 140.0
-            },
-            {
-              "x": -160.0,
-              "y": 140.0
-            },
-            {
-              "x": -100.0,
-              "y": 140.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge-1",
-          "from": "j1",
-          "to": "gateway",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
@@ -104,6 +75,35 @@
           "stroke_dasharray": null
         },
         {
+          "id": "edge-1",
+          "from": "j1",
+          "to": "gateway",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 180.0,
+              "y": 140.0
+            },
+            {
+              "x": 40.0,
+              "y": 140.0
+            },
+            {
+              "x": -100.0,
+              "y": 140.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge-2",
           "from": "client",
           "to": "j2",
@@ -111,15 +111,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": -260.0,
+              "x": -60.0,
               "y": 100.0
             },
             {
-              "x": -260.0,
+              "x": -60.0,
               "y": 40.0
             },
             {
-              "x": -260.0,
+              "x": -60.0,
               "y": -20.0
             }
           ],
@@ -140,7 +140,7 @@
           "to_cluster": null,
           "points": [
             {
-              "x": -260.0,
+              "x": -60.0,
               "y": -20.0
             },
             {
@@ -148,7 +148,7 @@
               "y": 40.0
             },
             {
-              "x": 140.0,
+              "x": -60.0,
               "y": 100.0
             }
           ],
@@ -169,15 +169,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 180.0,
+              "x": -20.0,
               "y": 140.0
             },
             {
-              "x": 240.0,
+              "x": 40.0,
               "y": 140.0
             },
             {
-              "x": 300.0,
+              "x": 100.0,
               "y": 140.0
             }
           ],
@@ -198,15 +198,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 300.0,
+              "x": 100.0,
               "y": 140.0
             },
             {
-              "x": 240.0,
+              "x": 40.0,
               "y": 140.0
             },
             {
-              "x": 180.0,
+              "x": -20.0,
               "y": 140.0
             }
           ],
@@ -221,9 +221,9 @@
         }
       ],
       "bounds": {
-        "min_x": -300.0,
+        "min_x": -100.0,
         "min_y": -100.0,
-        "max_x": 380.0,
+        "max_x": 180.0,
         "max_y": 180.0
       }
     }

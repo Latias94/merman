@@ -45,8 +45,12 @@ struct ArchitectureEdgeModel {
     rhs_id: String,
     #[serde(default, rename = "lhsDir")]
     lhs_dir: Option<String>,
+    #[serde(default, rename = "lhsInto")]
+    lhs_into: Option<bool>,
     #[serde(default, rename = "rhsDir")]
     rhs_dir: Option<String>,
+    #[serde(default, rename = "rhsInto")]
+    rhs_into: Option<bool>,
     #[serde(default, rename = "lhsGroup")]
     lhs_group: Option<bool>,
     #[serde(default, rename = "rhsGroup")]
@@ -98,7 +102,9 @@ struct ArchitectureEdgeView<'a> {
     lhs_id: &'a str,
     rhs_id: &'a str,
     lhs_dir: Option<char>,
+    lhs_into: Option<bool>,
     rhs_dir: Option<char>,
+    rhs_into: Option<bool>,
     lhs_group: Option<bool>,
     rhs_group: Option<bool>,
 }
@@ -145,7 +151,9 @@ impl<'a> ArchitectureModelView<'a> {
                 lhs_id: e.lhs_id.as_str(),
                 rhs_id: e.rhs_id.as_str(),
                 lhs_dir: e.lhs_dir.as_deref().and_then(|s| s.chars().next()),
+                lhs_into: e.lhs_into,
                 rhs_dir: e.rhs_dir.as_deref().and_then(|s| s.chars().next()),
+                rhs_into: e.rhs_into,
                 lhs_group: e.lhs_group,
                 rhs_group: e.rhs_group,
             })
@@ -195,7 +203,9 @@ impl<'a> ArchitectureModelView<'a> {
                 lhs_id: e.lhs_id.as_str(),
                 rhs_id: e.rhs_id.as_str(),
                 lhs_dir: Some(e.lhs_dir),
+                lhs_into: e.lhs_into,
                 rhs_dir: Some(e.rhs_dir),
+                rhs_into: e.rhs_into,
                 lhs_group: e.lhs_group,
                 rhs_group: e.rhs_group,
             })
@@ -268,7 +278,6 @@ fn layout_architecture_diagram_model(
         emit_nodes: std::time::Duration,
         manatee_prepare: std::time::Duration,
         manatee_layout: std::time::Duration,
-        group_separation: std::time::Duration,
         build_edges: std::time::Duration,
         bounds: std::time::Duration,
     }
@@ -369,111 +378,95 @@ fn layout_architecture_diagram_model(
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
-    // Build adjacency list in Mermaid's insertion order:
-    // - Outer order: `model.nodes` order.
-    // - Inner order: `node.edges` list order, preserving first-insertion order for each dir pair.
-    let mut adjacency: std::collections::HashMap<&str, IndexMap<&'static str, &str>> =
-        std::collections::HashMap::with_capacity(model.nodes.len().saturating_mul(2));
-    for n in &model.nodes {
-        adjacency.insert(n.id, IndexMap::new());
-    }
-
-    for n in &model.nodes {
-        let Some(entry) = adjacency.get_mut(n.id) else {
-            continue;
-        };
-        if !n.edge_indices.is_empty() {
-            for &idx in n.edge_indices {
-                let Some(e) = model.edges.get(idx) else {
-                    continue;
-                };
-
-                let (Some(lhs_dir), Some(rhs_dir)) = (
-                    e.lhs_dir.and_then(Dir::from_char),
-                    e.rhs_dir.and_then(Dir::from_char),
-                ) else {
-                    continue;
-                };
-
-                if e.lhs_id == n.id {
-                    if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                        entry.insert(pair, e.rhs_id);
-                    }
-                } else if e.rhs_id == n.id {
-                    if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                        entry.insert(pair, e.lhs_id);
-                    }
-                }
-            }
-        } else if let Some(node_edges) = n.edges {
-            for e in node_edges {
-                let (Some(lhs_dir), Some(rhs_dir)) = (
-                    e.lhs_dir
-                        .as_deref()
-                        .and_then(|s| s.chars().next())
-                        .and_then(Dir::from_char),
-                    e.rhs_dir
-                        .as_deref()
-                        .and_then(|s| s.chars().next())
-                        .and_then(Dir::from_char),
-                ) else {
-                    continue;
-                };
-
-                if e.lhs_id == n.id {
-                    if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                        entry.insert(pair, e.rhs_id.as_str());
-                    }
-                } else if e.rhs_id == n.id {
-                    if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                        entry.insert(pair, e.lhs_id.as_str());
-                    }
-                }
-            }
-        }
-    }
-
     // Mermaid's Architecture layout uses Cytoscape FCoSE with constraints derived from BFS spatial
     // maps. As a deterministic scaffold (pre-FCoSE port), we reproduce the BFS spatial maps and
     // place nodes on a grid in a way that is close to upstream fixtures.
     //
     // IMPORTANT: `shiftPositionByArchitectureDirectionPair` uses a y-up convention; when mapping
     // to SVG coordinates we invert the sign to keep y-down in pixel space.
-    let mut components: Vec<std::collections::BTreeMap<&str, (i32, i32)>> = Vec::new();
+    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id).collect();
+
+    // Mermaid Architecture derives spatial maps by BFS over a per-node adjacency map:
+    // - adjacency keys are direction pairs (e.g. `RL`, `TB`)
+    // - multiple edges with the same direction pair overwrite the neighbor, but keep the original
+    //   key insertion order (JS object semantics)
+    //
+    // Reference: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureDb.ts`
+    let mut incident_edges: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
+    incident_edges.reserve(model.nodes.len().saturating_mul(2));
+    for (edge_idx, e) in model.edges.iter().enumerate() {
+        incident_edges.entry(e.lhs_id).or_default().push(edge_idx);
+        incident_edges.entry(e.rhs_id).or_default().push(edge_idx);
+    }
+
+    let mut adj_list: FxHashMap<&str, IndexMap<&'static str, &str>> = FxHashMap::default();
+    adj_list.reserve(model.nodes.len().saturating_mul(2));
+    for &id in &node_order {
+        let mut adj: IndexMap<&'static str, &str> = IndexMap::new();
+        let Some(edges) = incident_edges.get(id) else {
+            adj_list.insert(id, adj);
+            continue;
+        };
+        for &edge_idx in edges {
+            let e = &model.edges[edge_idx];
+            let (rhs_id, lhs_dir, rhs_dir) = if e.lhs_id == id {
+                (e.rhs_id, e.lhs_dir, e.rhs_dir)
+            } else {
+                (e.lhs_id, e.rhs_dir, e.lhs_dir)
+            };
+            let (Some(lhs_dir), Some(rhs_dir)) = (
+                lhs_dir.and_then(Dir::from_char),
+                rhs_dir.and_then(Dir::from_char),
+            ) else {
+                continue;
+            };
+            let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) else {
+                continue;
+            };
+            if let Some(existing) = adj.get_mut(pair) {
+                *existing = rhs_id;
+            } else {
+                adj.insert(pair, rhs_id);
+            }
+        }
+        adj_list.insert(id, adj);
+    }
 
     // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
-    // `node_order` and taking the first not-yet-assigned id for each component.
-    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id).collect();
-    let mut assigned: std::collections::HashSet<&str> =
-        std::collections::HashSet::with_capacity(model.nodes.len().saturating_mul(2));
+    // `node_order` and taking the first not-yet-visited id for each component.
+    let mut components: Vec<IndexMap<&str, (i32, i32)>> = Vec::new();
+    let mut visited: FxHashSet<&str> = FxHashSet::default();
+    visited.reserve(model.nodes.len().saturating_mul(2));
     for &start_id in &node_order {
-        if assigned.contains(start_id) {
+        if visited.contains(start_id) {
             continue;
         }
-        // BFS over this component, assigning coordinates.
-        use std::collections::VecDeque;
-        let mut spatial: std::collections::BTreeMap<&str, (i32, i32)> =
-            std::collections::BTreeMap::new();
-        let mut q: VecDeque<&str> = VecDeque::new();
-        spatial.insert(start_id, (0, 0));
-        q.push_back(start_id);
-        assigned.insert(start_id);
 
-        while let Some(id) = q.pop_front() {
-            let Some(&(x, y)) = spatial.get(id) else {
+        let mut spatial: IndexMap<&str, (i32, i32)> = IndexMap::new();
+        spatial.insert(start_id, (0, 0));
+
+        let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
+        queue.push_back(start_id);
+
+        while let Some(id) = queue.pop_front() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(&(pos_x, pos_y)) = spatial.get(id) else {
                 continue;
             };
-            let Some(adj) = adjacency.get(id) else {
+            let Some(adj) = adj_list.get(id) else {
                 continue;
             };
-            for (pair, &rhs_id) in adj.iter() {
-                if spatial.contains_key(rhs_id) {
+            for (&pair, &rhs_id) in adj.iter() {
+                if visited.contains(rhs_id) {
                     continue;
                 }
-                let (nx, ny) = shift_position_by_arch_pair(x, y, pair);
+                let (nx, ny) = shift_position_by_arch_pair(pos_x, pos_y, pair);
+                // NOTE: Mermaid updates `spatialMap[rhsId]` even if the node is already enqueued,
+                // because `visited[rhsId]` is only set when the node is dequeued.
                 spatial.insert(rhs_id, (nx, ny));
-                q.push_back(rhs_id);
-                assigned.insert(rhs_id);
+                queue.push_back(rhs_id);
             }
         }
 
@@ -498,7 +491,7 @@ fn layout_architecture_diagram_model(
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
 
-        for (id, (gx, gy)) in spatial {
+        for (id, (gx, gy)) in spatial.iter() {
             let x = (*gx as f64) * grid_step;
             let y = -(*gy as f64) * grid_step;
             min_x = min_x.min(x);
@@ -669,7 +662,7 @@ fn layout_architecture_diagram_model(
         }
 
         // Build spatial maps in Mermaid's coordinate space (y-up), keyed by node id.
-        let spatial_maps: &[std::collections::BTreeMap<&str, (i32, i32)>] = &components;
+        let spatial_maps: &[IndexMap<&str, (i32, i32)>] = &components;
 
         // AlignmentConstraint.
         let mut horizontal_all: Vec<Vec<String>> = Vec::new();
@@ -884,72 +877,80 @@ fn layout_architecture_diagram_model(
         }
 
         // RelativePlacementConstraint (gap between borders).
+        //
+        // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
+        // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
+        // input even when the underlying spatial map discovery is approximate.
         let mut relative: Vec<manatee::RelativePlacementConstraint> = Vec::new();
+        let gap = 1.5 * icon_size;
         for spatial_map in spatial_maps {
             let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
             inv.reserve(spatial_map.len().saturating_mul(2));
-            for (id, (x, y)) in spatial_map {
+            for (id, (x, y)) in spatial_map.iter() {
                 inv.insert((*x, *y), *id);
             }
 
-            let mut queue: std::collections::VecDeque<(i32, i32)> =
+            let mut pos_queue: std::collections::VecDeque<(i32, i32)> =
                 std::collections::VecDeque::new();
-            let mut visited: FxHashSet<(i32, i32)> = FxHashSet::default();
-            queue.push_back((0, 0));
+            let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
+            visited_pos.reserve(spatial_map.len().saturating_mul(2));
+            pos_queue.push_back((0, 0));
 
-            let dirs: [(&str, (i32, i32)); 4] =
-                [("L", (-1, 0)), ("R", (1, 0)), ("T", (0, 1)), ("B", (0, -1))];
+            // Preserve Mermaid's direction iteration order: L, R, T, B.
+            const DIRS: [(char, (i32, i32)); 4] =
+                [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
 
-            while let Some(curr) = queue.pop_front() {
-                if !visited.insert(curr) {
+            while let Some(curr) = pos_queue.pop_front() {
+                if !visited_pos.insert(curr) {
                     continue;
                 }
                 let Some(&curr_id) = inv.get(&curr) else {
                     continue;
                 };
-
-                for (dir, (dx, dy)) in dirs {
-                    let np = (curr.0 + dx, curr.1 + dy);
-                    let Some(&new_id) = inv.get(&np) else {
+                for (dir, (sx, sy)) in DIRS {
+                    let new_pos = (curr.0 + sx, curr.1 + sy);
+                    let Some(&new_id) = inv.get(&new_pos) else {
                         continue;
                     };
-                    if visited.contains(&np) {
+                    if visited_pos.contains(&new_pos) {
                         continue;
                     }
-                    queue.push_back(np);
+                    pos_queue.push_back(new_pos);
 
-                    let gap = 1.5 * icon_size;
-                    match dir {
-                        "L" => relative.push(manatee::RelativePlacementConstraint {
+                    // `ArchitectureDirectionName[dir] = newId`
+                    // `ArchitectureDirectionName[getOppositeArchitectureDirection(dir)] = currId`
+                    let c = match dir {
+                        'L' => manatee::RelativePlacementConstraint {
                             left: Some(new_id.to_string()),
                             right: Some(curr_id.to_string()),
                             top: None,
                             bottom: None,
                             gap,
-                        }),
-                        "R" => relative.push(manatee::RelativePlacementConstraint {
+                        },
+                        'R' => manatee::RelativePlacementConstraint {
                             left: Some(curr_id.to_string()),
                             right: Some(new_id.to_string()),
                             top: None,
                             bottom: None,
                             gap,
-                        }),
-                        "T" => relative.push(manatee::RelativePlacementConstraint {
+                        },
+                        'T' => manatee::RelativePlacementConstraint {
                             left: None,
                             right: None,
                             top: Some(new_id.to_string()),
                             bottom: Some(curr_id.to_string()),
                             gap,
-                        }),
-                        "B" => relative.push(manatee::RelativePlacementConstraint {
+                        },
+                        'B' => manatee::RelativePlacementConstraint {
                             left: None,
                             right: None,
                             top: Some(curr_id.to_string()),
                             bottom: Some(new_id.to_string()),
                             gap,
-                        }),
-                        _ => {}
-                    }
+                        },
+                        _ => continue,
+                    };
+                    relative.push(c);
                 }
             }
         }
@@ -1827,26 +1828,6 @@ fn layout_architecture_diagram_model(
                 }
             }
         }
-
-        let group_separation_start = timing_enabled.then(std::time::Instant::now);
-        let top_level_groups = model
-            .groups
-            .iter()
-            .filter(|g| g.in_group.is_none())
-            .take(2)
-            .count();
-        if top_level_groups >= 2 {
-            resolve_top_level_group_separation(
-                &mut nodes,
-                &model,
-                icon_size,
-                padding_px,
-                font_size_px,
-            );
-        }
-        if let Some(s) = group_separation_start {
-            timings.group_separation = s.elapsed();
-        }
     }
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
@@ -1887,9 +1868,124 @@ fn layout_architecture_diagram_model(
 
         let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir, icon_size, half_icon);
         let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir, icon_size, half_icon);
-        let mid = LayoutPoint {
-            x: (sx + tx) / 2.0,
-            y: (sy + ty) / 2.0,
+
+        fn cytoscape_segments_weight_distance_for_point(
+            source: (f64, f64),
+            target: (f64, f64),
+            point: (f64, f64),
+        ) -> Option<(f64, f64)> {
+            // Mermaid Architecture uses Cytoscape `curve-style: segments` for XY edges and derives
+            // `segment-weights`/`segment-distances` from a chosen 90° bend point.
+            //
+            // Reference: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts`
+            let (s_x, s_y) = source;
+            let (t_x, t_y) = target;
+            let (p_x, p_y) = point;
+
+            if s_x == t_x || s_y == t_y {
+                return None;
+            }
+
+            let denom_x = s_x - t_x;
+            if denom_x == 0.0 {
+                return None;
+            }
+
+            let slope = (s_y - t_y) / denom_x;
+            let d =
+                (p_y - s_y + ((s_x - p_x) * (s_y - t_y)) / denom_x) / (1.0 + slope * slope).sqrt();
+
+            let w = ((p_y - s_y).powi(2) + (p_x - s_x).powi(2) - d.powi(2))
+                .max(0.0)
+                .sqrt();
+            let dist_ab = ((t_x - s_x).powi(2) + (t_y - s_y).powi(2)).sqrt();
+            if dist_ab == 0.0 {
+                return None;
+            }
+            let mut w = w / dist_ab;
+
+            // Ensure that the sign of `d` matches the left/right side of the line from source to
+            // target, and that the sign of `w` matches whether the point is "behind" the source.
+            let delta1 = (t_x - s_x) * (p_y - s_y) - (t_y - s_y) * (p_x - s_x);
+            let delta1 = if delta1 >= 0.0 { 1.0 } else { -1.0 };
+            let delta2 = (t_x - s_x) * (p_x - s_x) + (t_y - s_y) * (p_y - s_y);
+            let delta2 = if delta2 >= 0.0 { 1.0 } else { -1.0 };
+
+            let d = d.abs() * delta1;
+            w *= delta2;
+
+            Some((w, d))
+        }
+
+        fn cytoscape_segments_point_from_weight_distance(
+            source: (f64, f64),
+            target: (f64, f64),
+            weight: f64,
+            distance: f64,
+        ) -> Option<(f64, f64)> {
+            // Cytoscape "segments" curve point (for a single segment) is defined by:
+            // - `weight`: normalized distance along the source->target vector
+            // - `distance`: signed perpendicular offset from the line
+            //
+            // We reconstruct the implied bend point so our headless routing matches the
+            // upstream browser output.
+            let (s_x, s_y) = source;
+            let (t_x, t_y) = target;
+            let dx = t_x - s_x;
+            let dy = t_y - s_y;
+            let dist_ab = (dx * dx + dy * dy).sqrt();
+            if dist_ab == 0.0 {
+                return None;
+            }
+
+            let ux = dx / dist_ab;
+            let uy = dy / dist_ab;
+            // Left-hand normal of the line.
+            let nx = -uy;
+            let ny = ux;
+
+            let along = weight * dist_ab;
+            Some((
+                s_x + ux * along + nx * distance,
+                s_y + uy * along + ny * distance,
+            ))
+        }
+        // Mirror Mermaid Architecture edge routing:
+        //
+        // - Non-XY edges use Cytoscape `curve-style: straight`, and Mermaid draws a 3-point
+        //   polyline using `edge.midpoint()`, which is the midpoint of the straight segment.
+        // - XY edges (`curve-style: segments`) are post-processed to create a single 90° bend.
+        //   Mermaid then draws a 3-point polyline where the midpoint corresponds to that bend.
+        //
+        // Note: Group/junction endpoint shifts are applied later during SVG emission; these
+        // layout points represent the raw Cytoscape endpoints.
+        let is_xy = match (
+            e.lhs_dir.and_then(Dir::from_char),
+            e.rhs_dir.and_then(Dir::from_char),
+        ) {
+            (Some(a), Some(b)) => a.is_x() != b.is_x(),
+            _ => false,
+        };
+        let mid = if is_xy {
+            let (point_x, point_y) = if matches!(e.lhs_dir, Some('T' | 'B')) {
+                (sx, ty)
+            } else {
+                (tx, sy)
+            };
+            let (w, d) = cytoscape_segments_weight_distance_for_point(
+                (sx, sy),
+                (tx, ty),
+                (point_x, point_y),
+            )
+            .unwrap_or((0.0, 0.0));
+            let (mx, my) = cytoscape_segments_point_from_weight_distance((sx, sy), (tx, ty), w, d)
+                .unwrap_or((point_x, point_y));
+            LayoutPoint { x: mx, y: my }
+        } else {
+            LayoutPoint {
+                x: (sx + tx) / 2.0,
+                y: (sy + ty) / 2.0,
+            }
         };
         edges.push(LayoutEdge {
             id: format!("edge-{idx}"),
@@ -1925,14 +2021,13 @@ fn layout_architecture_diagram_model(
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[layout-timing] diagram=architecture total={:?} adjacency={:?} positions={:?} emit_nodes={:?} manatee_prepare={:?} manatee_layout={:?} group_separation={:?} build_edges={:?} bounds={:?} nodes={} edges={} groups={} use_manatee_layout={}",
+            "[layout-timing] diagram=architecture total={:?} adjacency={:?} positions={:?} emit_nodes={:?} manatee_prepare={:?} manatee_layout={:?} build_edges={:?} bounds={:?} nodes={} edges={} groups={} use_manatee_layout={}",
             timings.total,
             timings.build_adjacency_and_components,
             timings.positions_and_centering,
             timings.emit_nodes,
             timings.manatee_prepare,
             timings.manatee_layout,
-            timings.group_separation,
             timings.build_edges,
             timings.bounds,
             nodes.len(),

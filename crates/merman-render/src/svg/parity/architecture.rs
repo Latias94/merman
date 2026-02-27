@@ -584,6 +584,190 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         std::borrow::Cow::Owned(out)
     }
 
+    fn normalize_xhtml_fragment_for_foreign_object(raw: &str) -> String {
+        // Mermaid inserts sanitized HTML into `<foreignObject>` (XHTML). Browser DOM serialization
+        // normalizes attribute quoting and void-tag closure (e.g. `<img src=x>` becomes
+        // `<img src="x" />`). Our DOMPurify-like sanitizer operates on raw HTML text and does not
+        // perform that normalization, which can yield SVG that is not well-formed XML.
+        //
+        // This is a best-effort, minimal XHTML normalization pass tailored for Mermaid's
+        // `sanitizeText()` output (no scripts, small tag surface).
+        fn is_void_tag(name: &str) -> bool {
+            matches!(
+                name,
+                "area"
+                    | "base"
+                    | "br"
+                    | "col"
+                    | "embed"
+                    | "hr"
+                    | "img"
+                    | "input"
+                    | "link"
+                    | "meta"
+                    | "param"
+                    | "source"
+                    | "track"
+                    | "wbr"
+            )
+        }
+
+        let mut out = String::with_capacity(raw.len() + 16);
+        let mut i = 0usize;
+        let bytes = raw.as_bytes();
+        while i < bytes.len() {
+            let Some(lt_rel) = raw[i..].find('<') else {
+                out.push_str(&raw[i..]);
+                break;
+            };
+            let lt = i + lt_rel;
+            out.push_str(&raw[i..lt]);
+            let Some(gt_rel) = raw[lt..].find('>') else {
+                out.push_str(&raw[lt..]);
+                break;
+            };
+            let gt = lt + gt_rel;
+            let inner = raw[lt + 1..gt].trim();
+
+            if inner.is_empty() {
+                out.push_str("<>");
+                i = gt + 1;
+                continue;
+            }
+
+            let first = inner.as_bytes()[0] as char;
+            if matches!(first, '/' | '!' | '?') {
+                out.push('<');
+                out.push_str(inner);
+                out.push('>');
+                i = gt + 1;
+                continue;
+            }
+
+            let mut j = 0usize;
+            let inner_bytes = inner.as_bytes();
+            while j < inner_bytes.len() && inner_bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let name_start = j;
+            while j < inner_bytes.len() {
+                let c = inner_bytes[j] as char;
+                if c.is_ascii_whitespace() || c == '/' {
+                    break;
+                }
+                j += 1;
+            }
+            let tag_name = inner[name_start..j].trim();
+            if tag_name.is_empty() {
+                out.push('<');
+                out.push_str(inner);
+                out.push('>');
+                i = gt + 1;
+                continue;
+            }
+            let tag_name_lc = tag_name.to_ascii_lowercase();
+
+            let mut rest = inner[j..].trim();
+            let mut self_close = false;
+            if rest.ends_with('/') {
+                self_close = true;
+                rest = rest[..rest.len().saturating_sub(1)].trim_end();
+            }
+
+            out.push('<');
+            out.push_str(tag_name);
+
+            let mut k = 0usize;
+            let rest_bytes = rest.as_bytes();
+            while k < rest_bytes.len() {
+                while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+                if k >= rest_bytes.len() {
+                    break;
+                }
+
+                let attr_start = k;
+                while k < rest_bytes.len() {
+                    let c = rest_bytes[k] as char;
+                    if c.is_ascii_whitespace() || c == '=' {
+                        break;
+                    }
+                    k += 1;
+                }
+                let attr_name = rest[attr_start..k].trim();
+                if attr_name.is_empty() {
+                    break;
+                }
+                while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+
+                if k < rest_bytes.len() && rest_bytes[k] as char == '=' {
+                    k += 1;
+                    while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                        k += 1;
+                    }
+                    if k >= rest_bytes.len() {
+                        out.push(' ');
+                        out.push_str(attr_name);
+                        out.push_str("=\"\"");
+                        break;
+                    }
+                    let q = rest_bytes[k] as char;
+                    if q == '"' || q == '\'' {
+                        let quote = q;
+                        k += 1;
+                        let val_start = k;
+                        while k < rest_bytes.len() && rest_bytes[k] as char != quote {
+                            k += 1;
+                        }
+                        let val = &rest[val_start..k];
+                        if k < rest_bytes.len() {
+                            k += 1;
+                        }
+                        out.push(' ');
+                        out.push_str(attr_name);
+                        out.push_str("=\"");
+                        out.push_str(val);
+                        out.push('"');
+                    } else {
+                        let val_start = k;
+                        while k < rest_bytes.len() {
+                            let c = rest_bytes[k] as char;
+                            if c.is_ascii_whitespace() {
+                                break;
+                            }
+                            k += 1;
+                        }
+                        let val = &rest[val_start..k];
+                        out.push(' ');
+                        out.push_str(attr_name);
+                        out.push_str("=\"");
+                        out.push_str(val);
+                        out.push('"');
+                    }
+                } else {
+                    // Boolean attr: make it XML-friendly.
+                    out.push(' ');
+                    out.push_str(attr_name);
+                    out.push_str("=\"");
+                    out.push_str(attr_name);
+                    out.push('"');
+                }
+            }
+
+            let void_tag = is_void_tag(tag_name_lc.as_str());
+            if void_tag || self_close {
+                out.push_str(" />");
+            } else {
+                out.push('>');
+            }
+            i = gt + 1;
+        }
+        out
+    }
+
     fn arch_icon_body(name: &str) -> &'static str {
         // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
         //
@@ -625,83 +809,312 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         )
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum SvgWordType {
+        Normal,
+        Strong,
+        Em,
+    }
+
+    #[derive(Debug, Clone)]
+    struct SvgWord {
+        content: String,
+        word_type: SvgWordType,
+    }
+
+    type SvgLine = Vec<SvgWord>;
+
+    fn svg_line_plain_text(line: &[SvgWord]) -> String {
+        let mut out = String::new();
+        for (idx, w) in line.iter().enumerate() {
+            if idx > 0 {
+                out.push(' ');
+            }
+            out.push_str(&w.content);
+        }
+        out
+    }
+
     fn wrap_svg_words_to_lines(
         text: &str,
         max_width_px: f64,
         measurer: &dyn crate::text::TextMeasurer,
         style: &crate::text::TextStyle,
-    ) -> Vec<String> {
-        // Mermaid Architecture uses SVG `<text>` output (no `<foreignObject>`), and its wrapping
-        // behavior breaks long tokens by character when they do not fit the available width.
+    ) -> Vec<SvgLine> {
+        // Mirrors Mermaid `createText(..., { useHtmlLabels: false, width })` behavior for SVG text
+        // labels:
+        // - tokenization matches `markdownToLines(...)`:
+        //   - Markdown parsed (strong/em) into per-word style tags
+        //   - inline HTML is kept as an atomic "word" (even if it contains spaces)
+        //   - plain text splits on ASCII space and drops empties
+        // - long tokens are split by character when they do not fit (via `splitWordToFitWidth`)
+        // - lines are greedily constructed and then split further as needed (`splitLineToFitWidth`)
         //
-        // This differs from our generic word-wrapping helpers that keep long words intact.
-        // Preserve this behavior so upstream SVG baselines match for narrow edge labels.
-        let mut out: Vec<String> = Vec::new();
+        // References (Mermaid@11.12.x):
+        // - `packages/mermaid/src/rendering-util/createText.ts`
+        // - `packages/mermaid/src/rendering-util/splitText.ts`
+        // - `packages/mermaid/src/rendering-util/handle-markdown-text.ts`
+        let max_width_px = if max_width_px.is_finite() && max_width_px > 0.0 {
+            max_width_px
+        } else {
+            200.0
+        };
 
-        for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
-            let mut tokens = std::collections::VecDeque::from(
-                crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line),
-            );
-            let mut cur = String::new();
+        fn line_to_string(line: &[SvgWord]) -> String {
+            svg_line_plain_text(line)
+        }
 
-            while let Some(tok) = tokens.pop_front() {
-                if cur.is_empty() && tok == " " {
+        fn check_fit(
+            measurer: &dyn crate::text::TextMeasurer,
+            style: &crate::text::TextStyle,
+            max_width_px: f64,
+            line: &[SvgWord],
+        ) -> bool {
+            if line.is_empty() {
+                return true;
+            }
+            measurer.measure(line_to_string(line).as_str(), style).width <= max_width_px
+        }
+
+        fn split_word_to_fit_width(
+            measurer: &dyn crate::text::TextMeasurer,
+            style: &crate::text::TextStyle,
+            max_width_px: f64,
+            word: SvgWord,
+        ) -> (SvgWord, SvgWord) {
+            if word.content.is_empty() {
+                return (
+                    SvgWord {
+                        content: String::new(),
+                        word_type: word.word_type,
+                    },
+                    SvgWord {
+                        content: String::new(),
+                        word_type: word.word_type,
+                    },
+                );
+            }
+
+            let mut used = String::new();
+            let mut remaining: std::collections::VecDeque<char> =
+                word.content
+                    .chars()
+                    .collect::<std::collections::VecDeque<_>>();
+
+            while let Some(ch) = remaining.pop_front() {
+                let mut candidate = used.clone();
+                candidate.push(ch);
+                let candidate_word = SvgWord {
+                    content: candidate.clone(),
+                    word_type: word.word_type,
+                };
+                if check_fit(measurer, style, max_width_px, &[candidate_word.clone()]) {
+                    used = candidate;
                     continue;
                 }
 
-                let candidate = format!("{cur}{tok}");
-                let w = measurer.measure(candidate.trim_end(), style).width;
-                if cur.is_empty() || w <= max_width_px {
-                    cur = candidate;
+                if used.is_empty() {
+                    // If the first character does not fit, split it anyway (Mermaid behavior).
+                    used.push(ch);
+                } else {
+                    remaining.push_front(ch);
+                }
+                break;
+            }
+
+            let rest: String = remaining.into_iter().collect();
+            (
+                SvgWord {
+                    content: used,
+                    word_type: word.word_type,
+                },
+                SvgWord {
+                    content: rest,
+                    word_type: word.word_type,
+                },
+            )
+        }
+
+        fn split_line_to_fit_width(
+            measurer: &dyn crate::text::TextMeasurer,
+            style: &crate::text::TextStyle,
+            max_width_px: f64,
+            line: SvgLine,
+        ) -> Vec<SvgLine> {
+            let mut words: std::collections::VecDeque<SvgWord> =
+                line.into_iter().collect::<std::collections::VecDeque<_>>();
+            let mut lines: Vec<SvgLine> = Vec::new();
+            let mut new_line: SvgLine = Vec::new();
+
+            while let Some(next_word) = words.pop_front() {
+                let mut line_with_next = new_line.clone();
+                line_with_next.push(next_word.clone());
+
+                if check_fit(measurer, style, max_width_px, &line_with_next) {
+                    new_line = line_with_next;
                     continue;
                 }
 
-                if !cur.trim().is_empty() {
-                    out.push(cur.trim_end().to_string());
-                    cur.clear();
-                    tokens.push_front(tok);
+                if !new_line.is_empty() {
+                    lines.push(new_line);
+                    new_line = Vec::new();
+                    words.push_front(next_word);
                     continue;
                 }
 
-                // `tok` itself does not fit on an empty line: split it by characters.
-                if tok == " " {
-                    continue;
-                }
-
-                let mut head = String::new();
-                let mut consumed = 0usize;
-                for (idx, ch) in tok.chars().enumerate() {
-                    let next = format!("{head}{ch}");
-                    let w = measurer.measure(next.trim_end(), style).width;
-                    if !head.is_empty() && w > max_width_px {
-                        break;
+                if !next_word.content.is_empty() {
+                    let (head, rest) =
+                        split_word_to_fit_width(measurer, style, max_width_px, next_word);
+                    lines.push(vec![head]);
+                    if !rest.content.is_empty() {
+                        words.push_front(rest);
                     }
-                    head.push(ch);
-                    consumed = idx + 1;
-
-                    // If even a single character does not fit, keep making progress to avoid
-                    // an infinite loop.
-                    if head.len() == ch.len_utf8() && w > max_width_px {
-                        break;
-                    }
-                }
-
-                if !head.is_empty() {
-                    out.push(head.trim_end().to_string());
-                }
-                let tail: String = tok.chars().skip(consumed).collect();
-                if !tail.is_empty() {
-                    tokens.push_front(tail);
                 }
             }
 
-            out.push(cur.trim_end().to_string());
+            if !new_line.is_empty() {
+                lines.push(new_line);
+            }
+
+            lines
         }
 
-        out
+        fn preprocess_svg_markdown(text: &str) -> String {
+            // Mermaid preprocesses markdown before lexing:
+            // - replace `<br/>` with `\n`
+            // - collapse multiple newlines
+            // - dedent leading indentation
+            //
+            // We reuse our `<br>` normalization and trailing-empty trimming for determinism.
+            let joined =
+                crate::text::DeterministicTextMeasurer::normalized_text_lines(text).join("\n");
+
+            // Collapse multiple newlines to one (equivalent to `/\n{2,}/g -> "\n"`).
+            let mut collapsed = String::with_capacity(joined.len());
+            let mut prev_nl = false;
+            for ch in joined.chars() {
+                if ch == '\n' {
+                    if prev_nl {
+                        continue;
+                    }
+                    prev_nl = true;
+                    collapsed.push('\n');
+                } else {
+                    prev_nl = false;
+                    collapsed.push(ch);
+                }
+            }
+
+            let lines = collapsed
+                .split('\n')
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            let min_indent = lines
+                .iter()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| l.chars().take_while(|c| *c == ' ' || *c == '\t').count())
+                .min()
+                .unwrap_or(0);
+            if min_indent == 0 {
+                return lines.join("\n");
+            }
+            lines
+                .into_iter()
+                .map(|l| l.chars().skip(min_indent).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        let preprocessed = preprocess_svg_markdown(text);
+
+        let mut parsed_lines: Vec<SvgLine> = vec![Vec::new()];
+        let mut current_line: usize = 0;
+        let mut strong_depth: usize = 0;
+        let mut em_depth: usize = 0;
+
+        let parser = pulldown_cmark::Parser::new_ext(
+            preprocessed.as_str(),
+            pulldown_cmark::Options::ENABLE_TABLES
+                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                | pulldown_cmark::Options::ENABLE_TASKLISTS,
+        );
+
+        for ev in parser {
+            match ev {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                    strong_depth += 1;
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                    em_depth += 1;
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
+                    strong_depth = strong_depth.saturating_sub(1);
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                    em_depth = em_depth.saturating_sub(1);
+                }
+                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                    let word_type = if strong_depth > 0 {
+                        SvgWordType::Strong
+                    } else if em_depth > 0 {
+                        SvgWordType::Em
+                    } else {
+                        SvgWordType::Normal
+                    };
+
+                    let parts = t.split('\n').collect::<Vec<_>>();
+                    for (idx, part) in parts.iter().enumerate() {
+                        if idx != 0 {
+                            current_line += 1;
+                            parsed_lines.push(Vec::new());
+                        }
+                        for word in part.split(' ') {
+                            let word = word.replace("&#39;", "'");
+                            if !word.is_empty() {
+                                parsed_lines[current_line].push(SvgWord {
+                                    content: word,
+                                    word_type,
+                                });
+                            }
+                        }
+                    }
+                }
+                pulldown_cmark::Event::Html(t) => {
+                    // Mermaid `markdownToLines` keeps HTML as an atomic word (no whitespace split).
+                    parsed_lines[current_line].push(SvgWord {
+                        content: t.to_string(),
+                        word_type: SvgWordType::Normal,
+                    });
+                }
+                pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                    current_line += 1;
+                    parsed_lines.push(Vec::new());
+                }
+                _ => {}
+            }
+        }
+
+        let mut out: Vec<SvgLine> = Vec::new();
+        for line in parsed_lines {
+            if line.is_empty() {
+                out.push(Vec::new());
+                continue;
+            }
+            if check_fit(measurer, style, max_width_px, &line) {
+                out.push(line);
+            } else {
+                out.extend(split_line_to_fit_width(measurer, style, max_width_px, line));
+            }
+        }
+
+        if out.is_empty() {
+            vec![Vec::new()]
+        } else {
+            out
+        }
     }
 
-    fn write_svg_text_lines(out: &mut String, lines: &[String]) {
+    fn write_svg_text_lines(out: &mut String, lines: &[SvgLine]) {
         out.push_str(r#"<text y="-10.1" style="">"#);
         if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
             out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
@@ -726,19 +1139,21 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     );
                 }
             }
-            for (word_idx, word) in line
-                .split_whitespace()
-                .filter(|s| !s.is_empty())
-                .enumerate()
-            {
-                out.push_str(
-                    r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
+            for (word_idx, word) in line.iter().enumerate() {
+                let (font_style, font_weight) = match word.word_type {
+                    SvgWordType::Normal => ("normal", "normal"),
+                    SvgWordType::Strong => ("normal", "bold"),
+                    SvgWordType::Em => ("italic", "normal"),
+                };
+                let _ = write!(
+                    out,
+                    r#"<tspan font-style="{font_style}" class="text-inner-tspan" font-weight="{font_weight}">"#,
                 );
                 if word_idx == 0 {
-                    escape_xml_into(out, word);
+                    escape_xml_into(out, word.content.as_str());
                 } else {
                     out.push(' ');
-                    escape_xml_into(out, word);
+                    escape_xml_into(out, word.content.as_str());
                 }
                 out.push_str("</tspan>");
             }
@@ -764,21 +1179,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             y = fmt(icon_size_px)
         );
         write_svg_text_lines(out, &lines);
-        out.push_str("</g></g>");
-    }
-
-    fn write_architecture_service_title_forced_lines(
-        out: &mut String,
-        icon_size_px: f64,
-        lines: &[String],
-    ) {
-        let _ = write!(
-            out,
-            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
-            x = fmt(icon_size_px / 2.0),
-            y = fmt(icon_size_px)
-        );
-        write_svg_text_lines(out, lines);
         out.push_str("</g></g>");
     }
 
@@ -935,7 +1335,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             let mut bbox_left = 0.0f64;
             let mut bbox_right = 0.0f64;
             for line in &lines {
-                let (l, r) = text_measurer.measure_svg_text_bbox_x(line, &text_style);
+                let s = svg_line_plain_text(line);
+                let (l, r) = text_measurer.measure_svg_text_bbox_x(s.as_str(), &text_style);
                 bbox_left = bbox_left.max(l);
                 bbox_right = bbox_right.max(r);
             }
@@ -1150,108 +1551,138 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let group_edge_label_bottom_px = 18.0;
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
-    let edge_points = |edge: ArchitectureEdgeRef<'_>| -> (f64, f64, f64, f64, f64, f64) {
-        let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-        let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+    let layout_edge_points: Vec<(f64, f64, f64, f64, f64, f64)> = layout
+        .edges
+        .iter()
+        .map(|e| {
+            // Architecture layout edges are expected to be 3-point polylines.
+            // Be defensive and fall back to zeros if the snapshot is malformed.
+            let p0 = e.points.first().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+            let pm = e.points.get(1).map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+            let p2 = e.points.last().map(|p| (p.x, p.y)).unwrap_or((0.0, 0.0));
+            (p0.0, p0.1, pm.0, pm.1, p2.0, p2.1)
+        })
+        .collect();
 
-        // Raw endpoints (before group/junction shifts).
-        let (raw_start_x, raw_start_y) = match edge.lhs_dir {
-            'L' => (sx, sy + half_icon),
-            'R' => (sx + icon_size_px, sy + half_icon),
-            'T' => (sx + half_icon, sy),
-            'B' => (sx + half_icon, sy + icon_size_px),
-            _ => (sx + half_icon, sy + half_icon),
+    let edge_points =
+        |edge_idx: usize, edge: ArchitectureEdgeRef<'_>| -> (f64, f64, f64, f64, f64, f64) {
+            // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
+            //
+            // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
+            // endpoint shifts later, during SVG emission.
+            let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout_edge_points
+                .get(edge_idx)
+                .copied()
+                .unwrap_or_else(|| {
+                    let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+                    let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+
+                    let (sx, sy) = match edge.lhs_dir {
+                        'L' => (sx, sy + half_icon),
+                        'R' => (sx + icon_size_px, sy + half_icon),
+                        'T' => (sx + half_icon, sy),
+                        'B' => (sx + half_icon, sy + icon_size_px),
+                        _ => (sx + half_icon, sy + half_icon),
+                    };
+                    let (tx, ty) = match edge.rhs_dir {
+                        'L' => (tx, ty + half_icon),
+                        'R' => (tx + icon_size_px, ty + half_icon),
+                        'T' => (tx + half_icon, ty),
+                        'B' => (tx + half_icon, ty + icon_size_px),
+                        _ => (tx + half_icon, ty + half_icon),
+                    };
+
+                    let (mx, my) = if (sx - tx).abs() > 1e-6 && (sy - ty).abs() > 1e-6 {
+                        // Match upstream Mermaid: choose the bend based on the *source* dir.
+                        if is_arch_dir_y(edge.lhs_dir) {
+                            (sx, ty)
+                        } else {
+                            (tx, sy)
+                        }
+                    } else {
+                        ((sx + tx) / 2.0, (sy + ty) / 2.0)
+                    };
+                    (sx, sy, mx, my, tx, ty)
+                });
+
+            let mut start_x = raw_start_x;
+            let mut start_y = raw_start_y;
+            let mut end_x = raw_end_x;
+            let mut end_y = raw_end_y;
+
+            let lhs_group = edge.lhs_group.unwrap_or(false);
+            if lhs_group {
+                if is_arch_dir_x(edge.lhs_dir) {
+                    start_x += if edge.lhs_dir == 'L' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift
+                    };
+                } else {
+                    start_y += if edge.lhs_dir == 'T' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift + group_edge_label_bottom_px
+                    };
+                }
+            }
+            if !lhs_group && is_junction(edge.lhs_id) {
+                if is_arch_dir_x(edge.lhs_dir) {
+                    start_x += if edge.lhs_dir == 'L' {
+                        half_icon
+                    } else {
+                        -half_icon
+                    };
+                } else {
+                    start_y += if edge.lhs_dir == 'T' {
+                        half_icon
+                    } else {
+                        -half_icon
+                    };
+                }
+            }
+
+            let rhs_group = edge.rhs_group.unwrap_or(false);
+            if rhs_group {
+                if is_arch_dir_x(edge.rhs_dir) {
+                    end_x += if edge.rhs_dir == 'L' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift
+                    };
+                } else {
+                    end_y += if edge.rhs_dir == 'T' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift + group_edge_label_bottom_px
+                    };
+                }
+            }
+            if !rhs_group && is_junction(edge.rhs_id) {
+                if is_arch_dir_x(edge.rhs_dir) {
+                    end_x += if edge.rhs_dir == 'L' {
+                        half_icon
+                    } else {
+                        -half_icon
+                    };
+                } else {
+                    end_y += if edge.rhs_dir == 'T' {
+                        half_icon
+                    } else {
+                        -half_icon
+                    };
+                }
+            }
+
+            (start_x, start_y, mid_x, mid_y, end_x, end_y)
         };
-        let (raw_end_x, raw_end_y) = match edge.rhs_dir {
-            'L' => (tx, ty + half_icon),
-            'R' => (tx + icon_size_px, ty + half_icon),
-            'T' => (tx + half_icon, ty),
-            'B' => (tx + half_icon, ty + icon_size_px),
-            _ => (tx + half_icon, ty + half_icon),
-        };
-
-        // Cytoscape midpoint is computed before Mermaid applies endpoint shifts.
-        let mid_x = (raw_start_x + raw_end_x) / 2.0;
-        let mid_y = (raw_start_y + raw_end_y) / 2.0;
-
-        let mut start_x = raw_start_x;
-        let mut start_y = raw_start_y;
-        let mut end_x = raw_end_x;
-        let mut end_y = raw_end_y;
-
-        let lhs_group = edge.lhs_group.unwrap_or(false);
-        if lhs_group {
-            if is_arch_dir_x(edge.lhs_dir) {
-                start_x += if edge.lhs_dir == 'L' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift
-                };
-            } else {
-                start_y += if edge.lhs_dir == 'T' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift + group_edge_label_bottom_px
-                };
-            }
-        }
-        if !lhs_group && is_junction(edge.lhs_id) {
-            if is_arch_dir_x(edge.lhs_dir) {
-                start_x += if edge.lhs_dir == 'L' {
-                    half_icon
-                } else {
-                    -half_icon
-                };
-            } else {
-                start_y += if edge.lhs_dir == 'T' {
-                    half_icon
-                } else {
-                    -half_icon
-                };
-            }
-        }
-
-        let rhs_group = edge.rhs_group.unwrap_or(false);
-        if rhs_group {
-            if is_arch_dir_x(edge.rhs_dir) {
-                end_x += if edge.rhs_dir == 'L' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift
-                };
-            } else {
-                end_y += if edge.rhs_dir == 'T' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift + group_edge_label_bottom_px
-                };
-            }
-        }
-        if !rhs_group && is_junction(edge.rhs_id) {
-            if is_arch_dir_x(edge.rhs_dir) {
-                end_x += if edge.rhs_dir == 'L' {
-                    half_icon
-                } else {
-                    -half_icon
-                };
-            } else {
-                end_y += if edge.rhs_dir == 'T' {
-                    half_icon
-                } else {
-                    -half_icon
-                };
-            }
-        }
-
-        (start_x, start_y, mid_x, mid_y, end_x, end_y)
-    };
 
     // Edges (including conservative label bounds).
     if model.edges_len() != 0 {
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
-        for edge in model.edges() {
-            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
+        for (edge_idx, edge) in model.edges().enumerate() {
+            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge_idx, edge);
 
             extend_bounds(
                 &mut content_bounds,
@@ -1315,41 +1746,17 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 } else {
                     200.0
                 };
-                let mut lines =
-                    wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
-                if diagram_id == "stress_architecture_edge_labels_quotes_and_urls_037"
-                    && axis == "X"
-                    && label == "CACHE"
-                {
-                    lines = vec!["CAC".to_string(), "HE".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch3_port_matrix_and_labels_049"
-                    && label == "disk"
-                {
-                    lines = vec!["dis".to_string(), "k".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch3_bidirectional_and_mixed_arrows_054"
-                    && label == "oneway"
-                {
-                    lines = vec!["onewa".to_string(), "y".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch4_init_small_icons_061"
-                    && label == "write"
-                {
-                    lines = vec!["writ".to_string(), "e".to_string()];
-                } else if axis == "XY"
-                    && diagram_id == "stress_architecture_batch4_mixed_arrows_xy_labels_068"
-                    && label == "diag"
-                    && edge.lhs_dir == 'B'
-                    && edge.rhs_dir == 'L'
-                {
-                    lines = vec!["di".to_string(), "ag".to_string()];
-                }
+                let lines = wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
 
                 let mut bbox_w = 0.0f64;
                 for line in &lines {
-                    let m =
-                        text_measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
+                    let s = svg_line_plain_text(line);
+                    let m = text_measurer.measure_wrapped(
+                        s.as_str(),
+                        &text_style,
+                        None,
+                        WrapMode::SvgLike,
+                    );
                     bbox_w = bbox_w.max(m.width);
                 }
                 let bbox_h = (lines.len().max(1) as f64) * svg_font_size_px * 1.1875;
@@ -1434,8 +1841,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
 
-        for edge in model.edges() {
-            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
+        for (edge_idx, edge) in model.edges().enumerate() {
+            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge_idx, edge);
 
             out.push_str("<g>");
             let id = edge_id("L", edge.lhs_id, edge.rhs_id, 0);
@@ -1509,106 +1916,16 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 } else {
                     200.0
                 };
-                let mut lines =
-                    wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
-                if diagram_id == "stress_architecture_edge_labels_quotes_and_urls_037"
-                    && axis == "X"
-                    && label == "CACHE"
-                {
-                    lines = vec!["CAC".to_string(), "HE".to_string()];
-                } else if diagram_id
-                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
-                    && axis == "X"
-                    && label == "read path v1 users id with many words for wrapping"
-                {
-                    lines = vec![
-                        "read path v1".to_string(),
-                        "users id with".to_string(),
-                        "many words for".to_string(),
-                        "wrapping".to_string(),
-                    ];
-                } else if diagram_id
-                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
-                    && axis == "Y"
-                    && label == "write then invalidate cache ttl 30s retries 3 extra words"
-                {
-                    // Upstream wraps this very aggressively at this vertical label width, including
-                    // splitting a single long token across multiple lines.
-                    lines = vec![
-                        "write".to_string(),
-                        "then".to_string(),
-                        "invalid".to_string(),
-                        "ate".to_string(),
-                        "cache".to_string(),
-                        "ttl 30s".to_string(),
-                        "retries".to_string(),
-                        "3 extra".to_string(),
-                        "words".to_string(),
-                    ];
-                } else if diagram_id
-                    == "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085"
-                    && axis == "X"
-                    && label == "refresh cache from db delta 0 05 wrap words"
-                {
-                    lines = vec![
-                        "refresh cache".to_string(),
-                        "from db delta 0".to_string(),
-                        "05 wrap words".to_string(),
-                    ];
-                } else if diagram_id
-                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
-                    && axis == "X"
-                    && label == "query long words wrap wrap wrap"
-                {
-                    lines = vec![
-                        "query long".to_string(),
-                        "words".to_string(),
-                        "wrap wrap".to_string(),
-                        "wrap".to_string(),
-                    ];
-                } else if diagram_id
-                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
-                    && axis == "Y"
-                    && label == "backup daily snapshot at 0200"
-                {
-                    lines = vec!["backup daily".to_string(), "snapshot at 0200".to_string()];
-                } else if diagram_id
-                    == "stress_architecture_batch6_mixed_arrow_styles_and_labels_092"
-                    && axis == "X"
-                    && label == "labeled"
-                {
-                    lines = vec!["label".to_string(), "ed".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch3_port_matrix_and_labels_049"
-                    && label == "disk"
-                {
-                    lines = vec!["dis".to_string(), "k".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch3_bidirectional_and_mixed_arrows_054"
-                    && label == "oneway"
-                {
-                    lines = vec!["onewa".to_string(), "y".to_string()];
-                } else if axis == "Y"
-                    && diagram_id == "stress_architecture_batch4_init_small_icons_061"
-                    && label == "write"
-                {
-                    lines = vec!["writ".to_string(), "e".to_string()];
-                } else if axis == "XY"
-                    && diagram_id == "stress_architecture_batch4_mixed_arrows_xy_labels_068"
-                    && label == "diag"
-                    && edge.lhs_dir == 'B'
-                    && edge.rhs_dir == 'L'
-                {
-                    lines = vec!["di".to_string(), "ag".to_string()];
-                }
+                let lines = wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
 
                 // Mermaid's XY label placement uses `getBoundingClientRect()` in the browser and
                 // composes a multi-step transform. Approximate the bbox headlessly so the DOM
                 // structure matches the upstream SVG baseline.
                 let mut bbox_w = 0.0f64;
                 for line in &lines {
+                    let s = svg_line_plain_text(line);
                     let w = text_measurer.measure_wrapped(
-                        line,
+                        s.as_str(),
                         &text_style,
                         None,
                         crate::text::WrapMode::SvgLike,
@@ -1639,13 +1956,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                         let diag = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
                         let t2x = xf * diag / 2.0;
                         let t2y = yf * diag / 2.0;
-                        let sep = if diagram_id
-                            == "stress_architecture_batch4_mixed_arrows_xy_labels_068"
-                        {
-                            "&#10;"
-                        } else {
-                            "\n"
-                        };
+                        // Mermaid CLI serializes newline characters inside attribute values as
+                        // XML entities (`&#10;`). Emit those explicitly so our SVG matches the
+                        // upstream baselines.
+                        let sep = "&#10;";
 
                         (
                             "auto",
@@ -1701,33 +2015,14 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
             if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
                 // Mermaid uses `width = iconSize * 1.5` for service titles.
-                if diagram_id == "stress_architecture_batch3_long_group_titles_wrapping_055"
-                    && title == "ServiceOneLongId"
-                {
-                    write_architecture_service_title_forced_lines(
-                        &mut out,
-                        icon_size_px,
-                        &["ServiceOneLongI".to_string(), "d".to_string()],
-                    );
-                } else if diagram_id
-                    == "stress_architecture_batch6_init_fontsize_icon_size_wrap_093"
-                    && title == "Database"
-                {
-                    write_architecture_service_title_forced_lines(
-                        &mut out,
-                        icon_size_px,
-                        &["Databas".to_string(), "e".to_string()],
-                    );
-                } else {
-                    write_architecture_service_title(
-                        &mut out,
-                        title,
-                        icon_size_px,
-                        icon_size_px * 1.5,
-                        &text_measurer,
-                        &text_style,
-                    );
-                }
+                write_architecture_service_title(
+                    &mut out,
+                    title,
+                    icon_size_px,
+                    icon_size_px * 1.5,
+                    &text_measurer,
+                    &text_style,
+                );
             }
 
             out.push_str("<g>");
@@ -1748,6 +2043,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                         ((icon_size_px - 2.0) / svg_font_size_px).floor().max(1.0) as i64;
                     let sanitized =
                         merman_core::sanitize::sanitize_text(icon_text.trim(), &sanitize_config);
+                    let sanitized = normalize_xhtml_fragment_for_foreign_object(&sanitized);
                     let sanitized = escape_xml_ampersands_preserving_xml_entities(&sanitized);
                     let _ = write!(
                         &mut out,
@@ -1838,18 +2134,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 .map(str::trim)
                 .filter(|t| !t.is_empty())
             {
-                let mut lines = vec![title.to_string()];
-                if diagram_id == "stress_architecture_batch6_long_group_titles_wrapping_extreme_095"
-                    && title
-                        == "This is a very long group title with many words and spaces that should wrap"
-                {
-                    // Fixture-scoped wrap parity: upstream wraps this long group title into two lines
-                    // based on the (browser) group bbox width, which differs under our headless layout.
-                    lines = vec![
-                        "This is a very long group title with many words and spaces".to_string(),
-                        "that should wrap".to_string(),
-                    ];
-                }
+                let lines = wrap_svg_words_to_lines(title, w, &text_measurer, &text_style);
                 let _ = write!(
                     &mut out,
                     r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,

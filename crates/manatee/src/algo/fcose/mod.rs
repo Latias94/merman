@@ -128,6 +128,8 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
 struct SimNode {
     id: String,
     parent: Option<String>,
+    owner_idx: usize,
+    is_compound: bool,
     width: f64,
     height: f64,
     // Top-left anchored rectangle (layout-base `LNode.rect` style).
@@ -138,6 +140,15 @@ struct SimNode {
     spring_fy: f64,
     repulsion_fx: f64,
     repulsion_fy: f64,
+    gravitation_fx: f64,
+    gravitation_fy: f64,
+
+    // layout-base `LNode.noOfChildren` weight (leaf descendants count).
+    no_of_children: f64,
+
+    // Compound padding (Cytoscape style `padding`, mapped onto layout-base `paddingLeft/...`).
+    // Used as a margin when computing child graph bounds.
+    padding: f64,
 
     // layout-base FR-grid repulsion caches a per-node "surrounding" list, refreshed periodically.
     surrounding: Vec<usize>,
@@ -601,14 +612,39 @@ struct SimGraph {
     edges: Vec<SimEdge>,
     id_to_idx: FxHashMap<String, usize>,
     compound_parent: FxHashMap<String, Option<String>>,
+    leaf_count: usize,
+    // Owner graph identity for repulsion/gravity: each node belongs to the child graph of its
+    // parent compound, or the root graph.
+    root_owner_idx: usize,
+    // Immediate children list for each owner graph (owner idx is a compound node idx, or
+    // `root_owner_idx` for the root graph).
+    children_by_owner: Vec<Vec<usize>>,
+    // Compound node indices in descending inclusion depth (deepest first), for updateBounds.
+    compounds_deep_first: Vec<usize>,
+    // Descendant leaf indices for each node (empty for leaves).
+    descendant_leaves: Vec<Vec<usize>>,
+    // Estimated size for each owner graph (static; computed from node sizes).
+    owner_estimated_size: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct OwnerBounds {
+    left: Vec<f64>,
+    right: Vec<f64>,
+    top: Vec<f64>,
+    bottom: Vec<f64>,
 }
 
 impl SimGraph {
     const DEFAULT_EDGE_LENGTH: f64 = 50.0;
     const DEFAULT_SPRING_STRENGTH: f64 = 0.45;
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0;
-    const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // cytoscape-fcose default `gravity`
-    const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // cytoscape-fcose default `gravityRange`
+    const DEFAULT_GRAVITY_STRENGTH: f64 = 0.4; // layout-base `FDLayoutConstants.DEFAULT_GRAVITY_STRENGTH`
+    const DEFAULT_COMPOUND_GRAVITY_STRENGTH: f64 = 1.0; // layout-base `FDLayoutConstants.DEFAULT_COMPOUND_GRAVITY_STRENGTH`
+    const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // layout-base `FDLayoutConstants.DEFAULT_GRAVITY_RANGE_FACTOR`
+    const DEFAULT_COMPOUND_GRAVITY_RANGE_FACTOR: f64 = 1.5; // layout-base `FDLayoutConstants.DEFAULT_COMPOUND_GRAVITY_RANGE_FACTOR`
+    const DEFAULT_GRAPH_MARGIN: f64 = 15.0; // layout-base `LayoutConstants.DEFAULT_GRAPH_MARGIN`
+    const EMPTY_COMPOUND_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
     const DEFAULT_COOLING_FACTOR_INCREMENTAL: f64 = 0.3; // layout-base `FDLayoutConstants.DEFAULT_COOLING_FACTOR_INCREMENTAL`
     const FINAL_TEMPERATURE: f64 = 0.04; // cose-base `CoSELayout.initSpringEmbedder()`
     const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
@@ -619,9 +655,10 @@ impl SimGraph {
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
-        let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
+        let leaf_count = graph.nodes.len();
+        let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len() + graph.compounds.len());
         let mut id_to_idx: FxHashMap<String, usize> = FxHashMap::default();
-        id_to_idx.reserve(graph.nodes.len().saturating_mul(2));
+        id_to_idx.reserve((graph.nodes.len() + graph.compounds.len()).saturating_mul(2));
 
         for (idx, n) in graph.nodes.iter().enumerate() {
             let w = n.width.max(1.0);
@@ -629,6 +666,8 @@ impl SimGraph {
             nodes.push(SimNode {
                 id: n.id.clone(),
                 parent: n.parent.clone(),
+                owner_idx: usize::MAX,
+                is_compound: false,
                 width: w,
                 height: h,
                 left: n.x - w / 2.0,
@@ -637,6 +676,10 @@ impl SimGraph {
                 spring_fy: 0.0,
                 repulsion_fx: 0.0,
                 repulsion_fy: 0.0,
+                gravitation_fx: 0.0,
+                gravitation_fy: 0.0,
+                no_of_children: 1.0,
+                padding: 0.0,
                 surrounding: Vec::new(),
                 grid_start_x: 0,
                 grid_finish_x: 0,
@@ -650,6 +693,35 @@ impl SimGraph {
         compound_parent.reserve(graph.compounds.len().saturating_mul(2));
         for c in &graph.compounds {
             compound_parent.insert(c.id.clone(), c.parent.clone());
+        }
+
+        // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
+        for c in &graph.compounds {
+            let idx = nodes.len();
+            nodes.push(SimNode {
+                id: c.id.clone(),
+                parent: c.parent.clone(),
+                owner_idx: usize::MAX,
+                is_compound: true,
+                width: Self::EMPTY_COMPOUND_NODE_SIZE,
+                height: Self::EMPTY_COMPOUND_NODE_SIZE,
+                left: 0.0,
+                top: 0.0,
+                spring_fx: 0.0,
+                spring_fy: 0.0,
+                repulsion_fx: 0.0,
+                repulsion_fy: 0.0,
+                gravitation_fx: 0.0,
+                gravitation_fy: 0.0,
+                no_of_children: 1.0,
+                padding: 0.0,
+                surrounding: Vec::new(),
+                grid_start_x: 0,
+                grid_finish_x: 0,
+                grid_start_y: 0,
+                grid_finish_y: 0,
+            });
+            id_to_idx.insert(c.id.clone(), idx);
         }
 
         let mut edges: Vec<SimEdge> = Vec::new();
@@ -684,11 +756,146 @@ impl SimGraph {
             });
         }
 
+        let root_owner_idx = nodes.len();
+
+        // Resolve owner graph identities (`node.getOwner()` in layout-base): nodes repel only
+        // within the same owner graph (i.e. same parent compound).
+        for n in &mut nodes {
+            let owner_idx = n
+                .parent
+                .as_deref()
+                .and_then(|p| id_to_idx.get(p).copied())
+                .unwrap_or(root_owner_idx);
+            n.owner_idx = owner_idx;
+        }
+
+        let mut children_by_owner: Vec<Vec<usize>> = vec![Vec::new(); nodes.len() + 1];
+        for (idx, n) in nodes.iter().enumerate() {
+            children_by_owner[n.owner_idx].push(idx);
+        }
+
+        // Compute compound inclusion depths (root-level nodes depth=1), and build a stable
+        // deepest-first compound node order for updateBounds.
+        let mut inclusion_depth: Vec<usize> = vec![1; nodes.len()];
+        fn depth_of(
+            idx: usize,
+            nodes: &[SimNode],
+            memo: &mut [Option<usize>],
+            guard: &mut usize,
+        ) -> usize {
+            if let Some(v) = memo[idx] {
+                return v;
+            }
+            *guard += 1;
+            if *guard > 4096 {
+                return 1;
+            }
+            let d = match nodes[idx].owner_idx {
+                owner if owner >= nodes.len() => 1,
+                parent_idx => depth_of(parent_idx, nodes, memo, guard).saturating_add(1),
+            };
+            memo[idx] = Some(d);
+            d
+        }
+        let mut memo: Vec<Option<usize>> = vec![None; nodes.len()];
+        for i in 0..nodes.len() {
+            let mut guard = 0usize;
+            inclusion_depth[i] = depth_of(i, &nodes, &mut memo, &mut guard);
+        }
+        let mut compounds_deep_first: Vec<usize> = nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, n)| n.is_compound.then_some(idx))
+            .collect();
+        compounds_deep_first.sort_by_key(|&idx| std::cmp::Reverse(inclusion_depth[idx]));
+
+        // Compute `no_of_children` weights and descendant leaf lists.
+        let mut descendant_leaves: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+        let mut no_of_children: Vec<f64> = vec![1.0; nodes.len()];
+
+        // Initialize leaf descendants for leaves.
+        for idx in 0..nodes.len() {
+            if !nodes[idx].is_compound {
+                descendant_leaves[idx] = vec![idx];
+                no_of_children[idx] = 1.0;
+            }
+        }
+
+        // For compounds, aggregate descendant leaves from immediate children (postorder).
+        for &cidx in &compounds_deep_first {
+            let children = &children_by_owner[cidx];
+            let mut leaves: Vec<usize> = Vec::new();
+            for &child in children {
+                leaves.extend(descendant_leaves[child].iter().copied());
+            }
+            leaves.sort_unstable();
+            leaves.dedup();
+            if leaves.is_empty() {
+                descendant_leaves[cidx] = Vec::new();
+                no_of_children[cidx] = 1.0;
+            } else {
+                no_of_children[cidx] = leaves.len() as f64;
+                descendant_leaves[cidx] = leaves;
+            }
+        }
+
+        // Compute estimated sizes (used for gravity ranges, and to match layout-base defaults).
+        let mut est_size: Vec<f64> = vec![0.0; nodes.len()];
+        for idx in 0..nodes.len() {
+            if !nodes[idx].is_compound {
+                est_size[idx] = (nodes[idx].width + nodes[idx].height) / 2.0;
+            }
+        }
+        // Deepest-first postorder (children first).
+        for &cidx in &compounds_deep_first {
+            let children = &children_by_owner[cidx];
+            let sum: f64 = children.iter().map(|&ch| est_size[ch]).sum();
+            let size = if children.is_empty() {
+                Self::EMPTY_COMPOUND_NODE_SIZE
+            } else {
+                (sum / (children.len() as f64).sqrt()).max(1.0)
+            };
+            est_size[cidx] = size;
+        }
+        // Apply compound node estimated size onto its rect size (layout-base `LNode.calcEstimatedSize`).
+        for &cidx in &compounds_deep_first {
+            let size = est_size[cidx].max(1.0);
+            nodes[cidx].width = size;
+            nodes[cidx].height = size;
+        }
+
+        let mut owner_estimated_size: Vec<f64> =
+            vec![Self::EMPTY_COMPOUND_NODE_SIZE; nodes.len() + 1];
+        // For compound owners, estimated size is the compound node's estimated size.
+        for &cidx in &compounds_deep_first {
+            owner_estimated_size[cidx] = est_size[cidx].max(1.0);
+        }
+        // Root owner estimated size is computed from its immediate children.
+        {
+            let children = &children_by_owner[root_owner_idx];
+            let sum: f64 = children.iter().map(|&ch| est_size[ch]).sum();
+            owner_estimated_size[root_owner_idx] = if children.is_empty() {
+                Self::EMPTY_COMPOUND_NODE_SIZE
+            } else {
+                (sum / (children.len() as f64).sqrt()).max(1.0)
+            };
+        }
+
+        for (idx, n) in nodes.iter_mut().enumerate() {
+            n.no_of_children = no_of_children[idx].max(1.0);
+        }
+
         Self {
             nodes,
             edges,
             id_to_idx,
             compound_parent,
+            leaf_count,
+            root_owner_idx,
+            children_by_owner,
+            compounds_deep_first,
+            descendant_leaves,
+            owner_estimated_size,
         }
     }
 
@@ -717,6 +924,115 @@ impl SimGraph {
             return None;
         }
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
+    }
+
+    fn update_bounds(&mut self) -> OwnerBounds {
+        debug_assert_eq!(self.root_owner_idx, self.nodes.len());
+
+        let owner_count = self.nodes.len() + 1;
+        let mut left: Vec<f64> = vec![f64::INFINITY; owner_count];
+        let mut right: Vec<f64> = vec![f64::NEG_INFINITY; owner_count];
+        let mut top: Vec<f64> = vec![f64::INFINITY; owner_count];
+        let mut bottom: Vec<f64> = vec![f64::NEG_INFINITY; owner_count];
+
+        // Mirror layout-base `graphManager.updateBounds()`:
+        // - update child compound bounds first
+        // - then compute each graph bounds with a margin derived from parent compound padding
+        for &cidx in &self.compounds_deep_first {
+            let children = &self.children_by_owner[cidx];
+            if children.is_empty() {
+                // Empty compound: keep its current rect as-is.
+                left[cidx] = self.nodes[cidx].left - self.nodes[cidx].padding;
+                right[cidx] = self.nodes[cidx].right() + self.nodes[cidx].padding;
+                top[cidx] = self.nodes[cidx].top - self.nodes[cidx].padding;
+                bottom[cidx] = self.nodes[cidx].bottom() + self.nodes[cidx].padding;
+                continue;
+            }
+
+            let mut min_x = f64::INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+            for &ch in children {
+                min_x = min_x.min(self.nodes[ch].left);
+                min_y = min_y.min(self.nodes[ch].top);
+                max_x = max_x.max(self.nodes[ch].right());
+                max_y = max_y.max(self.nodes[ch].bottom());
+            }
+            let margin = self.nodes[cidx].padding.max(0.0);
+            min_x -= margin;
+            min_y -= margin;
+            max_x += margin;
+            max_y += margin;
+
+            left[cidx] = min_x;
+            right[cidx] = max_x;
+            top[cidx] = min_y;
+            bottom[cidx] = max_y;
+
+            // Update compound node rect to wrap its child graph.
+            self.nodes[cidx].left = min_x;
+            self.nodes[cidx].top = min_y;
+            self.nodes[cidx].width = (max_x - min_x).max(1.0);
+            self.nodes[cidx].height = (max_y - min_y).max(1.0);
+        }
+
+        // Root graph bounds (margin defaults to LayoutConstants.DEFAULT_GRAPH_MARGIN).
+        {
+            let children = &self.children_by_owner[self.root_owner_idx];
+            if children.is_empty() {
+                left[self.root_owner_idx] = 0.0;
+                right[self.root_owner_idx] = 0.0;
+                top[self.root_owner_idx] = 0.0;
+                bottom[self.root_owner_idx] = 0.0;
+            } else {
+                let mut min_x = f64::INFINITY;
+                let mut min_y = f64::INFINITY;
+                let mut max_x = f64::NEG_INFINITY;
+                let mut max_y = f64::NEG_INFINITY;
+                for &ch in children {
+                    min_x = min_x.min(self.nodes[ch].left);
+                    min_y = min_y.min(self.nodes[ch].top);
+                    max_x = max_x.max(self.nodes[ch].right());
+                    max_y = max_y.max(self.nodes[ch].bottom());
+                }
+                let margin = Self::DEFAULT_GRAPH_MARGIN;
+                left[self.root_owner_idx] = min_x - margin;
+                right[self.root_owner_idx] = max_x + margin;
+                top[self.root_owner_idx] = min_y - margin;
+                bottom[self.root_owner_idx] = max_y + margin;
+            }
+        }
+
+        OwnerBounds {
+            left,
+            right,
+            top,
+            bottom,
+        }
+    }
+
+    fn max_compound_nesting_depth(&self) -> usize {
+        if self.compound_parent.is_empty() {
+            return 0;
+        }
+
+        let mut max_depth: usize = 0;
+        for n in &self.nodes {
+            let mut depth: usize = 0;
+            let mut cur = n.parent.as_deref();
+            let mut guard: usize = 0;
+            while let Some(id) = cur {
+                depth += 1;
+                max_depth = max_depth.max(depth);
+                guard += 1;
+                if guard > 1024 {
+                    break;
+                }
+                cur = self.compound_parent.get(id).and_then(|p| p.as_deref());
+            }
+        }
+        max_depth
     }
 
     fn run_spring_embedder(
@@ -759,13 +1075,27 @@ impl SimGraph {
             t.opts_prep = s.elapsed();
         }
 
+        // Apply uniform compound padding (Cytoscape style `padding`).
+        let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
+        for n in &mut self.nodes {
+            if n.is_compound {
+                n.padding = compound_padding;
+            }
+        }
+
         // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
         // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
         // make this explicit and deterministic via `random_seed`.
         let spectral_start = timing_enabled.then(std::time::Instant::now);
+        let spectral_edges: Vec<SimEdge> = self
+            .edges
+            .iter()
+            .copied()
+            .filter(|e| e.a < self.leaf_count && e.b < self.leaf_count)
+            .collect();
         let spectral_applied = spectral::apply_spectral_start_positions(
-            &mut self.nodes,
-            &self.edges,
+            &mut self.nodes[..self.leaf_count],
+            &spectral_edges,
             &self.compound_parent,
             &mut rng,
         );
@@ -779,72 +1109,13 @@ impl SimGraph {
         //
         // `repulsionRange = 2 * (level + 1) * idealEdgeLength`
         //
-        // `cose-base` initializes `level=0`, so this collapses to `2 * DEFAULT_EDGE_LENGTH`.
-        // Keeping repulsion unbounded tends to over-spread disconnected or sparse graphs (notably
-        // the "no edges" fixtures), which cascades into parity-root `viewBox` / `max-width` drift.
+        // Cytoscape FCoSE runs the compound graph in a single CoSE pass with `level=0`, so this
+        // reduces to `2 * idealEdgeLength`.
         let repulsion_range = (2.0 * default_edge_length).max(1.0);
-
-        let estimated_size = self.estimated_size();
-        let gravity_range = estimated_size * Self::DEFAULT_GRAVITY_RANGE_FACTOR;
 
         // layout-base uses the FR-grid repulsion variant by default, which caches each node's
         // surrounding set and refreshes it every `GRID_CALCULATION_CHECK_PERIOD` iterations.
         let mut repulsion_grid: Option<RepulsionGrid> = None;
-
-        let root_compound_start = timing_enabled.then(std::time::Instant::now);
-        // Precompute root compound membership for each node.
-        //
-        // Most Mermaid Architecture fixtures have 0 or 1 top-level root compound; in those cases
-        // compound overlap separation is a no-op. Avoid allocating root maps unless we actually
-        // observe multiple distinct roots.
-        let root_to_nodes: Option<std::collections::BTreeMap<String, Vec<usize>>> =
-            if self.compound_parent.is_empty() || !self.nodes.iter().any(|n| n.parent.is_some()) {
-                None
-            } else {
-                fn root_of<'a>(
-                    n: &'a SimNode,
-                    compound_parent: &'a FxHashMap<String, Option<String>>,
-                ) -> Option<&'a str> {
-                    let mut cur = n.parent.as_deref()?;
-                    while let Some(Some(p)) = compound_parent.get(cur) {
-                        cur = p.as_str();
-                    }
-                    Some(cur)
-                }
-
-                let mut first_root: Option<&str> = None;
-                let mut has_multiple_roots = false;
-                for n in &self.nodes {
-                    let Some(root) = root_of(n, &self.compound_parent) else {
-                        continue;
-                    };
-                    match first_root {
-                        Some(r0) if r0 != root => {
-                            has_multiple_roots = true;
-                            break;
-                        }
-                        None => first_root = Some(root),
-                        _ => {}
-                    }
-                }
-
-                if !has_multiple_roots {
-                    None
-                } else {
-                    let mut root_to_nodes: std::collections::BTreeMap<String, Vec<usize>> =
-                        std::collections::BTreeMap::new();
-                    for (idx, n) in self.nodes.iter().enumerate() {
-                        if let Some(root) = root_of(n, &self.compound_parent) {
-                            root_to_nodes.entry(root.to_string()).or_default().push(idx);
-                        }
-                    }
-                    Some(root_to_nodes)
-                }
-            };
-        let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
-        if let (Some(t), Some(s)) = (timings.as_deref_mut(), root_compound_start) {
-            t.root_compound = s.elapsed();
-        }
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
@@ -864,7 +1135,7 @@ impl SimGraph {
             && constraints.relative.is_empty())
         {
             let pre_constraints_start = timing_enabled.then(std::time::Instant::now);
-            handle_constraints_pre_layout(&mut self.nodes, constraints);
+            handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
                 t.pre_constraints = s.elapsed();
             }
@@ -930,6 +1201,9 @@ impl SimGraph {
 
             let mut total_displacement = 0.0f64;
 
+            // Match `cose-base` tick order: update compound bounds (with padding) before forces.
+            let bounds = self.update_bounds();
+
             // Spring forces (per-edge ideal lengths).
             for e in &self.edges {
                 let (a, b) = (e.a, e.b);
@@ -980,6 +1254,9 @@ impl SimGraph {
                     for i in 0..self.nodes.len() {
                         self.nodes[i].surrounding.clear();
                         for j in (i + 1)..self.nodes.len() {
+                            if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
+                                continue;
+                            }
                             let dx = (self.nodes[i].center_x() - self.nodes[j].center_x()).abs()
                                 - (self.nodes[i].half_w() + self.nodes[j].half_w());
                             let dy = (self.nodes[i].center_y() - self.nodes[j].center_y()).abs()
@@ -1022,6 +1299,9 @@ impl SimGraph {
                         if i >= j {
                             continue;
                         }
+                        if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
+                            continue;
+                        }
                         let (rfx, rfy) = calc_repulsion_force(
                             &self.nodes[i],
                             &self.nodes[j],
@@ -1043,6 +1323,9 @@ impl SimGraph {
                 // Fallback: unbounded repulsion (all pairs).
                 for i in 0..self.nodes.len() {
                     for j in (i + 1)..self.nodes.len() {
+                        if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
+                            continue;
+                        }
                         let (rfx, rfy) = calc_repulsion_force(
                             &self.nodes[i],
                             &self.nodes[j],
@@ -1057,19 +1340,43 @@ impl SimGraph {
                 }
             }
 
-            // Gravity forces (approx): apply only when the current distance exceeds the gravity
-            // range. In upstream `cose-base` this runs every tick, but usually only affects nodes
-            // that drift far from the component center.
-            if gravity_range.is_finite() && gravity_range > 0.0 {
-                let (cx, cy) = self.bounding_box_center().unwrap_or((0.0, 0.0));
-                for n in &mut self.nodes {
-                    let dx = n.center_x() - cx;
-                    let dy = n.center_y() - cy;
-                    let abs_dx = dx.abs() + n.half_w();
-                    let abs_dy = dy.abs() + n.half_h();
-                    if abs_dx > gravity_range || abs_dy > gravity_range {
-                        n.spring_fx += -gravity_constant * dx;
-                        n.spring_fy += -gravity_constant * dy;
+            // Gravity forces (layout-base `FDLayout.calcGravitationalForce`), per owner graph.
+            for n in &mut self.nodes {
+                n.gravitation_fx = 0.0;
+                n.gravitation_fy = 0.0;
+
+                let owner = n.owner_idx;
+                let (l, r, t, b) = (
+                    bounds.left.get(owner).copied().unwrap_or(0.0),
+                    bounds.right.get(owner).copied().unwrap_or(0.0),
+                    bounds.top.get(owner).copied().unwrap_or(0.0),
+                    bounds.bottom.get(owner).copied().unwrap_or(0.0),
+                );
+                if !(l.is_finite() && r.is_finite() && t.is_finite() && b.is_finite()) {
+                    continue;
+                }
+                let cx = (l + r) / 2.0;
+                let cy = (t + b) / 2.0;
+
+                let dx = n.center_x() - cx;
+                let dy = n.center_y() - cy;
+                let abs_dx = dx.abs() + n.half_w();
+                let abs_dy = dy.abs() + n.half_h();
+
+                let (range_factor, compound_mul) = if owner == self.root_owner_idx {
+                    (Self::DEFAULT_GRAVITY_RANGE_FACTOR, 1.0)
+                } else {
+                    (
+                        Self::DEFAULT_COMPOUND_GRAVITY_RANGE_FACTOR,
+                        Self::DEFAULT_COMPOUND_GRAVITY_STRENGTH,
+                    )
+                };
+                let estimated =
+                    self.owner_estimated_size.get(owner).copied().unwrap_or(0.0) * range_factor;
+                if estimated.is_finite() && estimated > 0.0 {
+                    if abs_dx > estimated || abs_dy > estimated {
+                        n.gravitation_fx = -gravity_constant * dx * compound_mul;
+                        n.gravitation_fy = -gravity_constant * dy * compound_mul;
                     }
                 }
             }
@@ -1082,8 +1389,11 @@ impl SimGraph {
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
             let max_d = cooling_factor * max_node_displacement;
             for (idx, n) in self.nodes.iter().enumerate() {
-                let mut mdx = cooling_factor * (n.spring_fx + n.repulsion_fx);
-                let mut mdy = cooling_factor * (n.spring_fy + n.repulsion_fy);
+                let denom = n.no_of_children.max(1.0);
+                let mut mdx =
+                    cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx) / denom;
+                let mut mdy =
+                    cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy) / denom;
                 if mdx.abs() > max_d {
                     mdx = max_d * mdx.signum();
                 }
@@ -1092,6 +1402,24 @@ impl SimGraph {
                 }
                 if let Some(slot) = disps.get_mut(idx) {
                     *slot = (mdx, mdy);
+                }
+            }
+
+            // Propagate compound displacements to descendant leaves (layout-base `CoSENode.propogateDisplacementToChildren`).
+            for &cidx in &self.compounds_deep_first {
+                if self.children_by_owner[cidx].is_empty() {
+                    continue;
+                }
+                let (dx, dy) = disps.get(cidx).copied().unwrap_or((0.0, 0.0));
+                if dx == 0.0 && dy == 0.0 {
+                    continue;
+                }
+                for &leaf in &self.descendant_leaves[cidx] {
+                    if leaf >= disps.len() {
+                        continue;
+                    }
+                    disps[leaf].0 += dx;
+                    disps[leaf].1 += dy;
                 }
             }
 
@@ -1107,26 +1435,25 @@ impl SimGraph {
             } else {
                 apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
             }
-            if let Some(root_to_nodes) = root_to_nodes.as_ref() {
-                apply_root_compound_overlap_separation_to_displacements(
-                    &self.nodes,
-                    root_to_nodes,
-                    compound_padding,
-                    half_default_edge_length,
-                    max_d,
-                    &mut disps,
-                );
-            }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
                 let (mdx, mdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
-                n.move_by(mdx, mdy);
-                total_displacement += mdx.abs() + mdy.abs();
+                let is_non_empty_compound = n.is_compound
+                    && !self
+                        .children_by_owner
+                        .get(idx)
+                        .is_some_and(|v| v.is_empty());
+                if !is_non_empty_compound {
+                    n.move_by(mdx, mdy);
+                    total_displacement += mdx.abs() + mdy.abs();
+                }
 
                 n.spring_fx = 0.0;
                 n.spring_fy = 0.0;
                 n.repulsion_fx = 0.0;
                 n.repulsion_fy = 0.0;
+                n.gravitation_fx = 0.0;
+                n.gravitation_fy = 0.0;
             }
 
             last_total_displacement = total_displacement;
@@ -2531,6 +2858,8 @@ mod tests {
         SimNode {
             id: "n".to_string(),
             parent: None,
+            owner_idx: 0,
+            is_compound: false,
             width: w,
             height: h,
             left,
@@ -2539,6 +2868,10 @@ mod tests {
             spring_fy: 0.0,
             repulsion_fx: 0.0,
             repulsion_fy: 0.0,
+            gravitation_fx: 0.0,
+            gravitation_fy: 0.0,
+            no_of_children: 1.0,
+            padding: 0.0,
             surrounding: Vec::new(),
             grid_start_x: 0,
             grid_finish_x: 0,
@@ -2671,7 +3004,19 @@ fn calc_repulsion_force(
         let (ox, oy) = calc_separation_amount(a, b, separation_buffer);
         let repulsion_fx = 2.0 * ox;
         let repulsion_fy = 2.0 * oy;
-        (-0.5 * repulsion_fx, -0.5 * repulsion_fy)
+
+        // layout-base: scale overlap separation by a children constant so large compounds move
+        // more slowly than leaves (and to reduce oscillation).
+        let denom = (a.no_of_children + b.no_of_children).max(1.0);
+        let children_constant = (a.no_of_children * b.no_of_children) / denom;
+
+        // Return a force delta to be applied as:
+        // - nodeA += rfx/rfy
+        // - nodeB -= rfx/rfy
+        (
+            -children_constant * repulsion_fx,
+            -children_constant * repulsion_fy,
+        )
     } else {
         let (ax, ay) = rect_clip_point_towards(a, b);
         let (bx, by) = rect_clip_point_towards(b, a);
@@ -2697,12 +3042,15 @@ fn calc_repulsion_force(
         if dist_sq == 0.0 || dist == 0.0 {
             return (0.0, 0.0);
         }
-        // layout-base: `(nodeA.nodeRepulsion/2 + nodeB.nodeRepulsion/2) / dist^2`.
-        // FCoSE default `nodeRepulsion` is a constant 4500, so this collapses to 4500/dist^2.
-        let repulsion_force = SimGraph::DEFAULT_REPULSION_STRENGTH / dist_sq;
-        let rfx = repulsion_force * dx / dist;
-        let rfy = repulsion_force * dy / dist;
-        (-rfx, -rfy)
+
+        // layout-base:
+        // `(nodeA.nodeRepulsion/2 + nodeB.nodeRepulsion/2) * noOfChildrenA * noOfChildrenB / dist^2`.
+        // Default node repulsion is 4500 for both nodes.
+        let repulsion_force =
+            SimGraph::DEFAULT_REPULSION_STRENGTH * a.no_of_children * b.no_of_children / dist_sq;
+        let repulsion_fx = repulsion_force * dx / dist;
+        let repulsion_fy = repulsion_force * dy / dist;
+        (-repulsion_fx, -repulsion_fy)
     }
 }
 
@@ -2816,6 +3164,9 @@ impl RepulsionGrid {
                         continue;
                     }
                     if seen[other] {
+                        continue;
+                    }
+                    if nodes[node_idx].owner_idx != nodes[other].owner_idx {
                         continue;
                     }
 
