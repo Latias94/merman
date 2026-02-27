@@ -314,9 +314,9 @@ gantt
 
 ### Stress gallery (more fixtures)
 
-| Architecture (dense services + cross edges) | Mindmap (deep + wide) |
+| Architecture (ports + routing) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: dense services + cross edges" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd`](fixtures/architecture/stress_architecture_batch5_dense_group_services_073.mmd) | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: ports + routing" src="docs/assets/showcase/architecture_dense.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_ports_matrix_stress_082.mmd`](fixtures/architecture/stress_architecture_batch5_ports_matrix_stress_082.mmd)<br/><sub>Note: Architecture geometry/viewport parity is still being tightened (layout ports in progress); see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md).</sub> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
 
 ## Quality gates
 
@@ -342,6 +342,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_readable_sync()`.
+- Architecture layout/edge routing is still being aligned to upstream Cytoscape/FCoSE; expect differences in dense compound graphs (see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
 
 ## Crates

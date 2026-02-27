@@ -6,6 +6,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Not Released / WIP
+
+- Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
+  Cytoscape/FCoSE. SVG DOM parity is compared in `dom-mode parity`, so expect occasional layout snapshot churn while we
+  tighten numeric fidelity.
+
+## [0.3.0] - 2026-02-27
+
+### Fixed
+
+- Architecture: improved compound/nesting layout alignment by extending the FCoSE port with a compound graph model and
+  closer-to-upstream bounds/centroid propagation behavior.
+- Architecture: improved edge parsing/modeling compatibility (including `lhsInto`/`rhsInto` metadata when present).
+- Architecture: removed fixture-id keyed label wrapping/formatting special-cases by tightening `createText(...)`-like
+  SVG label wrapping and matching Mermaid CLI attribute newline serialization (`&#10;`).
+- `xtask` SVG DOM compares: stabilized anonymous edge wrapper ordering for Architecture and reduced non-actionable text
+  diffs caused by line wrapping sensitivity.
+- README: fixed the Stress gallery Architecture fixture reference and refreshed the Architecture showcase render.
+
 ## [0.2.0] - 2026-02-26
 
 ### Added

@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "dugong"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "dugong-graphlib",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "hashbrown 0.16.1",
  "rustc-hash",
@@ -1598,7 +1598,7 @@ dependencies = [
 
 [[package]]
 name = "manatee"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "indexmap",
  "nalgebra",
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "merman"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "image",
@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "merman-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "merman",
@@ -1660,7 +1660,7 @@ dependencies = [
 
 [[package]]
 name = "merman-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "euclid",
@@ -1686,7 +1686,7 @@ dependencies = [
 
 [[package]]
 name = "merman-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "chrono",
@@ -3612,7 +3612,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64",
  "chrono",
