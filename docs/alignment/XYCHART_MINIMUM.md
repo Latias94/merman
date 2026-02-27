@@ -2,7 +2,7 @@
 
 This document defines the initial, test-driven minimum slice for XYChart parsing in `merman`.
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 Upstream references:
 

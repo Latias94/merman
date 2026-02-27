@@ -1,4 +1,4 @@
-# Alignment Milestones (Mermaid@11.12.2)
+# Alignment Milestones (Mermaid@11.12.3)
 
 This document tracks high-level alignment milestones for the pinned Mermaid baseline.
 
@@ -8,7 +8,7 @@ fixture corpus grows. For the detailed post-parity hardening phases, see:
 
 ## Baseline
 
-- Mermaid baseline: `repo-ref/mermaid` at `mermaid@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+- Mermaid baseline: `repo-ref/mermaid` at `mermaid@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 - DOM gate: `parity-root` (root `<svg>` viewport + DOM structure, decimals = 3).
 
 ## Milestones

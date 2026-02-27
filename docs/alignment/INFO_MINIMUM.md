@@ -1,4 +1,4 @@
-# Info Diagram Minimum (mermaid@11.12.2)
+# Info Diagram Minimum (mermaid@11.12.3)
 
 This document tracks the current `info` parser alignment status in `merman-core`.
 

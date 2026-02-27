@@ -212,10 +212,10 @@ Convention:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by Mermaid CLI `@11.12.2` (Langium parser), often due to shorthand syntax.
+rejected by Mermaid CLI `@11.12.3` (Langium parser), often due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
-comparisons, we add `*_normalized` variants that rewrite the input into the Mermaid@11.12.2 grammar.
+comparisons, we add `*_normalized` variants that rewrite the input into the Mermaid@11.12.3 grammar.
 
 Rule of thumb:
 
@@ -246,7 +246,7 @@ Notes:
 - Mermaid derives C4 type-line `textLength` values from browser font metrics
   (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
   `merman-render` vendors the observed `textLength` values for built-in C4 shape types
-  at Mermaid `11.12.2` (generated file: `crates/merman-render/src/generated/c4_type_textlength_11_12_2.rs`).
+  at Mermaid `11.12.3` (generated file: `crates/merman-render/src/generated/c4_type_textlength_11_12_2.rs`).
 - Regenerate the table from upstream baselines:
   - `cargo run -p xtask -- gen-c4-textlength`
 
@@ -388,7 +388,7 @@ output (DOM signature comparison):
 
 Notes:
 
-- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.2).
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.3).
 - `fixtures/class/upstream_parser_class_spec.mmd` is excluded because the upstream SVG contains
   prototype-key rendering artifacts (nested `g.root` / `translate(NaN, ...)`), while `merman`
   renders deterministically.
@@ -453,7 +453,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
   Mermaid when not explicitly specified. Baseline verification uses a structure-level DOM signature
   by default.
 
-## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.12.2)
+## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.12.3)
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).

@@ -1,4 +1,4 @@
-# GitGraph Upstream Test Coverage (Mermaid@11.12.2)
+# GitGraph Upstream Test Coverage (Mermaid@11.12.3)
 
 This document tracks which upstream Mermaid GitGraph parser tests are covered in `merman` via:
 
@@ -13,7 +13,7 @@ Rendering parity for the same fixture set is tracked separately via:
   - root viewport (`viewBox` / `style max-width`) parity:
     - `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
-Scope: Mermaid tag `@11.12.2`.
+Scope: Mermaid tag `@11.12.3`.
 
 ## `gitGraph.spec.ts`
 

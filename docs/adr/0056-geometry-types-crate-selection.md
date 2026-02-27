@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` targets full SVG DOM parity with Mermaid `@11.12.2`. Across parsing, layout, and rendering,
+`merman` targets full SVG DOM parity with Mermaid `@11.12.3`. Across parsing, layout, and rendering,
 we routinely need:
 
 - 2D points/vectors (node positions, label anchors)

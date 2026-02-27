@@ -1,4 +1,4 @@
-# Strict SVG Canonical XML Backlog (Mermaid@11.12.2)
+# Strict SVG Canonical XML Backlog (Mermaid@11.12.3)
 
 This note tracks the current gaps for byte-level **canonical SVG XML** parity when running:
 
@@ -52,7 +52,7 @@ Recently resolved:
   `crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` to exactly match
   upstream `getBoundingClientRect()` / `getBBox()` lattice values (1/64px / binary fractions).
 - `<strong>/<b>` HTML runs use a full bold delta model in `crates/merman-render/src/text.rs` to
-  match Mermaid@11.12.2 upstream fixtures.
+  match Mermaid@11.12.3 upstream fixtures.
 - When text metrics change, some layout goldens may need regeneration via
   `cargo run -p xtask -- update-layout-snapshots --filter <fixture>`.
 

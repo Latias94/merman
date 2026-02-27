@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` is a 1:1 clone of `mermaid@11.12.2`. Many Mermaid diagrams are implemented with Jison,
+`merman` is a 1:1 clone of `mermaid@11.12.3`. Many Mermaid diagrams are implemented with Jison,
 using:
 
 - a stateful lexer (multiple lexer modes/states), and

@@ -2,7 +2,7 @@
 
 This document defines the minimum slice for Mermaid `error` diagram support in `merman`.
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 ## Supported (current)
 

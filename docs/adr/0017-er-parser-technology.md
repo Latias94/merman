@@ -11,7 +11,7 @@ Mermaid `erDiagram` (Mermaid `er` type) is defined by a Jison lexer+parser in th
 
 We need:
 
-- Deterministic, testable parsing behavior aligned to Mermaid `@11.12.2`.
+- Deterministic, testable parsing behavior aligned to Mermaid `@11.12.3`.
 - A headless semantic model suitable for rendering in other crates (SVG, CLI, GUI integrations).
 - A maintainable approach that can be iterated diagram-by-diagram.
 

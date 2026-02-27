@@ -1,4 +1,4 @@
-# C4 Layout Upstream Test Coverage (Mermaid@11.12.2)
+# C4 Layout Upstream Test Coverage (Mermaid@11.12.3)
 
 This document tracks which **upstream Mermaid C4 layout behaviors** are covered in `merman` via:
 
@@ -9,7 +9,7 @@ This document tracks which **upstream Mermaid C4 layout behaviors** are covered 
 - the automated DOM parity report:
   `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
-Scope: Mermaid tag `@11.12.2`.
+Scope: Mermaid tag `@11.12.3`.
 
 ## Upstream sources (layout algorithm)
 

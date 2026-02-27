@@ -10,7 +10,7 @@ implemented in the core Mermaid parser/render pipeline and may have distinct syn
 rendering behavior.
 
 `merman` treats upstream Mermaid as the spec and aims for parity. For ZenUML, full parity would
-require implementing ZenUML’s behavior as observed in Mermaid `@11.12.2` when the external diagram
+require implementing ZenUML’s behavior as observed in Mermaid `@11.12.3` when the external diagram
 is registered. Upstream Mermaid’s ZenUML integration renders via `@zenuml/core` inside a browser
 `<foreignObject>`, which is not available in headless pure-Rust contexts.
 

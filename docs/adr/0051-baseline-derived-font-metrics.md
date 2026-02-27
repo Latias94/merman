@@ -4,7 +4,7 @@ Date: 2026-01-21
 
 ## Context
 
-Mermaid `@11.12.2` derives most label dimensions (and therefore layout and the final SVG viewport)
+Mermaid `@11.12.3` derives most label dimensions (and therefore layout and the final SVG viewport)
 from browser DOM measurements:
 
 - HTML labels are sized based on DOM/layout measurements and then written into the SVG as
@@ -24,7 +24,7 @@ by text-measurement drift:
 
 ## Decision
 
-For Mermaid `@11.12.2`, we will introduce a deterministic, version-scoped text measurement mode
+For Mermaid `@11.12.3`, we will introduce a deterministic, version-scoped text measurement mode
 based on **baseline-derived font metrics**:
 
 1. Add an `xtask` generator that reads the pinned upstream SVG baselines and extracts explicit text

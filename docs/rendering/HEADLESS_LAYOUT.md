@@ -4,7 +4,7 @@ This document describes the first rendering milestone for `merman`:
 produce a deterministic **headless layout model** (node positions + edge routes) without
 generating SVG.
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 ## Goals
 

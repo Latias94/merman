@@ -11,7 +11,7 @@ flowchart-v2). In strict SVG XML parity mode, even sub-millipixel numeric differ
 DOM equality (e.g. `data-points` is `Base64(JSON.stringify(points))` and therefore sensitive to
 the exact floating-point results).
 
-To achieve 1:1 parity against `mermaid@11.12.2` we need a Rust implementation that matches Dagre's
+To achieve 1:1 parity against `mermaid@11.12.3` we need a Rust implementation that matches Dagre's
 algorithms, ordering, and tie-breaking behavior closely enough to reproduce upstream coordinates
 bit-for-bit where required.
 

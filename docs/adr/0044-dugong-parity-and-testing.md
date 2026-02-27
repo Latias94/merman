@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` is a headless, pure-Rust reimplementation of Mermaid `@11.12.2`. Achieving rendering parity
+`merman` is a headless, pure-Rust reimplementation of Mermaid `@11.12.3`. Achieving rendering parity
 for DAG-based diagrams requires a Dagre-class layout engine plus a Graphlib-like graph container.
 
 We will implement Dagre in Rust as a general-purpose library named `dugong`, with the graph container

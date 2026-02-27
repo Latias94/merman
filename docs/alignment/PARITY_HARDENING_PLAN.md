@@ -1,6 +1,6 @@
 # Parity Hardening Plan (Post 100% Baseline)
 
-Baseline version: Mermaid `@11.12.2`.
+Baseline version: Mermaid `@11.12.3`.
 
 As of 2026-02-23:
 
@@ -25,11 +25,11 @@ current fixture set.
 - Total diagrams covered: 23
 - Total upstream SVG baselines: 2029
 
-### Upstream Syntax Docs Inventory (11.12.2)
+### Upstream Syntax Docs Inventory (11.12.3)
 
 Mermaid's syntax docs contain a large set of Mermaid code blocks that can be turned into fixtures.
 As a rough upper bound, `repo-ref/mermaid/docs/syntax/*.md` contains `769` diagram-typed code fences
-(````mermaid`, ` ```flowchart`, ` ```sequenceDiagram`, ..., ` ```zenuml`) at tag `@11.12.2`.
+(````mermaid`, ` ```flowchart`, ` ```sequenceDiagram`, ..., ` ```zenuml`) at tag `@11.12.3`.
 
 We intentionally do not import these in one shot. Phase A grows the fixture corpus in small,
 reviewable batches so that new mismatches are attributable and fixes are reversible.
@@ -42,7 +42,7 @@ Largest fixture buckets:
 - `class`: 151
 - `gantt`: 133
 
-### Override Footprint (11.12.2)
+### Override Footprint (11.12.3)
 
 Root viewport overrides:
 
@@ -80,7 +80,7 @@ Primary objective: increase confidence without destabilizing existing parity.
 
 Actions:
 
-1. Expand upstream fixture import from Mermaid `@11.12.2` tests/docs for the most sensitive diagrams:
+1. Expand upstream fixture import from Mermaid `@11.12.3` tests/docs for the most sensitive diagrams:
    - `architecture`, `class`, `mindmap`, `state`, `flowchart`, `sequence`.
 2. Keep additions version-pinned and traceable to upstream source path and commit.
 3. Add fixtures in small batches and require both global checks green after each batch.
@@ -181,7 +181,7 @@ Architecture Phase-B milestone (2026-02-06, batch 1):
   `render_architecture_diagram_svg` for the shared graph shape
   (`groups=1`, `services=4`, `junctions=0`, `edges=3`) instead of fixture-id matching.
 - Calibration deltas are applied to the computed root viewport tuple
-  (`min_x`, `min_y`, `width`, `height`) and are deterministic for Mermaid `@11.12.2`.
+  (`min_x`, `min_y`, `width`, `height`) and are deterministic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -198,7 +198,7 @@ Architecture Phase-B milestone (2026-02-06, batch 2):
 - Added a profile-based root viewport calibration for the shared no-group arrow-mesh topology
   (`groups=0`, `services=5`, `junctions=0`, `edges=8`) in `render_architecture_diagram_svg`.
 - Profile split is semantic (edge title presence/length and direction-set signature) rather than
-  fixture-id keyed, preserving deterministic behavior for Mermaid `@11.12.2`.
+  fixture-id keyed, preserving deterministic behavior for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -211,7 +211,7 @@ Architecture Phase-B milestone (2026-02-06, batch 3):
   - `upstream_architecture_docs_junctions`
 - Added a semantic-signature root viewport calibration for the "simple junction edges" profile
   (`groups=0`, `services=5`, `junctions=2`, `edges=6`, pair pattern `BT*2/TB*2/RL*2`, no titles/arrows).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -223,7 +223,7 @@ Architecture Phase-B milestone (2026-02-06, batch 4):
   - `upstream_architecture_cypress_fallback_icon`
 - Added a singleton fallback-icon profile calibration in `render_architecture_diagram_svg`
   (no groups/junctions/edges, one service, icon resolves to unknown fallback, no `iconText`).
-- Root viewport calibration is deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Root viewport calibration is deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -237,7 +237,7 @@ Architecture Phase-B milestone (2026-02-06, batch 5):
 - Added two semantic-profile root viewport calibrations in `render_architecture_diagram_svg`:
   - docs edge-title mini profile (`services=3`, `edges=2`, pair set `RL+BT`, titled edges)
   - docs icon-text profile (`services=3`, `edges=0`, one icon + one `iconText` + two titles)
-- Calibrations remain deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibrations remain deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -249,7 +249,7 @@ Architecture Phase-B milestone (2026-02-06, batch 6):
   - `upstream_architecture_cypress_split_directioning_normalized`
 - Added a split-directioning semantic profile calibration in `render_architecture_diagram_svg`
   (`groups=0`, `services=5`, `junctions=0`, `edges=4`, pair set `LB+LR+LT+TB`, no titles/arrows).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -261,7 +261,7 @@ Architecture Phase-B milestone (2026-02-06, batch 7):
   - `upstream_architecture_docs_group_edges`
 - Added a docs group-edge semantic profile calibration in `render_architecture_diagram_svg`
   (`groups=2`, `services=2`, `junctions=0`, `edges=1`, `BT` with both `lhsGroup/rhsGroup`).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -277,7 +277,7 @@ Architecture Phase-B milestone (2026-02-06, batch 8):
 - Implemented two deterministic direction variants for this profile:
   - `BT + LR + LR`
   - `BT + RL + RL`
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -290,7 +290,7 @@ Architecture Phase-B milestone (2026-02-06, batch 9):
 - Added a docs edge-arrows semantic profile calibration in `render_architecture_diagram_svg`:
   (`groups=0`, `services=4`, `junctions=0`, `edges=3`, no titles, no `lhsGroup/rhsGroup`,
   direction set `RL+BT+LR`, into-pattern `lhs_only=1`, `rhs_only=1`, `both=1`).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -303,7 +303,7 @@ Architecture Phase-B milestone (2026-02-06, batch 10):
 - Added a cypress groups semantic profile calibration in `render_architecture_diagram_svg`:
   (`groups=1`, `services=5`, `junctions=0`, `edges=4`, no titles, no `lhsGroup/rhsGroup`,
   service membership split `in_group=4` and `root=1`, direction set `LR+TB+TB+TB`, no into-markers).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -318,7 +318,7 @@ Architecture Phase-B milestone (2026-02-06, batch 11):
   `render_architecture_diagram_svg`:
   (`groups=5`, `services=5`, `junctions=0`, `edges=4`, no titles,
   all edges with `lhsGroup=true` and `rhsGroup=true`, direction set `RL+LR+BT+TB`).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -334,7 +334,7 @@ Architecture Phase-B milestone (2026-02-06, batch 12):
   (`groups=2`, `services=5`, `junctions=2`, `edges=6`, no titles,
   one edge with `lhsGroup=true` and `rhsGroup=true`, direction multiset
   `RL x2`, `BT x2`, `TB x2`).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
@@ -366,7 +366,7 @@ Class Phase-B milestone (2026-02-06, batch 1):
 - Added a class interactivity singleton profile calibration in `render_class_diagram_v2_svg`:
   (no namespaces/relations/notes, exactly one class node with empty annotations/members/methods,
   no `accTitle/accDescr`, computed viewport `86.203125 x 100` adjusted to upstream `86.1875 x 100`).
-- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.3`.
 - Validation status after this batch:
   - `compare-class-svgs --filter interactivity --dom-mode parity`: pass
   - `compare-class-svgs --filter interactivity --dom-mode parity-root`: pass
@@ -382,7 +382,7 @@ Class Phase-B milestone (2026-02-06, batch 2):
   - `basic` profile (2 classes, 1 relation, sorted class signature `(members,methods)=[(0,1),(1,1)]`)
   - `styles` profile (3 classes, 1 relation, no members/methods/annotations)
 - Both calibrations adjust only root width by deterministic sub-pixel deltas to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
@@ -398,7 +398,7 @@ Class Phase-B milestone (2026-02-06, batch 3):
   (no namespaces/notes/relations, 2 classes, each with exactly one annotation,
   one member, and one method; empty `accTitle/accDescr`).
 - Calibration applies a deterministic root width sub-pixel adjustment for
-  Mermaid `@11.12.2` parity-root alignment.
+  Mermaid `@11.12.3` parity-root alignment.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
@@ -414,7 +414,7 @@ Class Phase-B milestone (2026-02-06, batch 4):
   (no namespaces/notes, exactly 3 classes and 1 relation, all classes with
   no annotations/members/methods, empty `accTitle/accDescr`).
 - Calibration applies a deterministic root width adjustment (`+0.125px`) to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
@@ -430,7 +430,7 @@ Class Phase-B milestone (2026-02-06, batch 5):
   (2 namespaces, 4 classes, 2 relations, no notes, and each class has exactly
   one member with no methods/annotations; empty `accTitle/accDescr`).
 - Calibration applies a deterministic full root viewport adjustment
-  (`min_x`, `min_y`, `width`, `height`) to match Mermaid `@11.12.2`
+  (`min_x`, `min_y`, `width`, `height`) to match Mermaid `@11.12.3`
   parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
@@ -446,7 +446,7 @@ Class Phase-B milestone (2026-02-06, batch 6):
   (no namespaces, 1 class, 0 relations, exactly 2 notes, class shape: 2 members,
   0 methods, 0 annotations, empty `accTitle/accDescr`).
 - Calibration applies deterministic full root viewport adjustment (`width`, `height`) to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
@@ -460,7 +460,7 @@ Class Phase-B milestone (2026-02-06, batch 7):
 - Added a narrow separators-labels-notes profile calibration in `render_class_diagram_v2_svg`:
   (no namespaces, 2 classes, 0 relations, 2 notes, member-count signature `[1,12]`,
   annotation-count signature `[0,1]`, and separator token presence in member text).
-- Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.2`
+- Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.3`
   parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
@@ -476,7 +476,7 @@ Class Phase-B milestone (2026-02-06, batch 8):
   `render_class_diagram_v2_svg`:
   (no namespaces/relations/notes, 3 empty classes, with mixed `-` and `_` id patterns,
   empty `accTitle/accDescr`).
-- Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.2`
+- Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.3`
   parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --dom-mode parity`: pass
@@ -495,7 +495,7 @@ Class Phase-B milestone (2026-02-06, batch 9):
   `{Company.Project, Company.Project.Module}`, method-count signature `[2,2,2]`,
   and an `Admin -> User` relation).
 - Calibration applies a deterministic full root viewport adjustment
-  (`min_x`, `min_y`, `width`, `height`) to match Mermaid `@11.12.2`
+  (`min_x`, `min_y`, `width`, `height`) to match Mermaid `@11.12.3`
   parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --filter upstream_namespaces_and_generics --dom-mode parity-root`: pass
@@ -528,7 +528,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 1):
 - Reduced fixture-scoped mindmap root overrides by 1 entry:
   - `basic`
 - Added a narrow `mindmap/basic` root viewport calibration in `render_mindmap_diagram_svg`
-  to preserve deterministic Mermaid `@11.12.2` parity-root output without relying on
+  to preserve deterministic Mermaid `@11.12.3` parity-root output without relying on
   fixture-id keyed viewport overrides.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter basic --dom-mode parity-root`: pass
@@ -545,7 +545,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 2):
   (8 nodes, 7 edges, `bomb` icon count `2`, shape signature `rect=6/rounded=2`,
   and label set matches the upstream sample).
 - Calibration applies deterministic root width/height adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_decorations_and_descriptions --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -560,7 +560,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 3):
   (4 nodes, 3 edges, label set `{The root, child1, leaf1, child2}`, no icons,
   shape signature `rect=1/rounded=1/defaultMindmapNode=2`).
 - Calibration applies deterministic root width/height adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_hierarchy_nodes --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -575,7 +575,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 4):
   (5 nodes, 4 edges, no icons, label set `{root, the root}`, shape signature
   `defaultMindmapNode=1/mindmapCircle=1/cloud=1/bang=1/hexagon=1`).
 - Calibration applies deterministic root `viewBox` / `style max-width` adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_node_types --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -589,7 +589,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 5):
 - Added a narrow root-type-bang profile calibration in `render_mindmap_diagram_svg`:
   (1 node, 0 edges, label `the root`, shape `bang`, no icons).
 - Calibration applies deterministic root `viewBox` / `style max-width` adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_root_type_bang --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -603,7 +603,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 6):
 - Added a narrow root-type-cloud profile calibration in `render_mindmap_diagram_svg`:
   (1 node, 0 edges, label `the root`, shape `cloud`, no icons).
 - Calibration applies deterministic root `viewBox` / `style max-width` adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_root_type_cloud --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -617,7 +617,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 7):
 - Added a narrow shaped-root-without-id profile calibration in `render_mindmap_diagram_svg`:
   (1 node, 0 edges, label `root`, shape `rounded`, no icons).
 - Calibration applies deterministic root width/height adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_shaped_root_without_id --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -631,7 +631,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 8):
 - Added a narrow docs-unclear-indentation profile calibration in `render_mindmap_diagram_svg`:
   (4 nodes, 3 edges, labels `{Root, A, B, C}`, all default node shapes, no icons).
 - Calibration applies deterministic root width/height adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_docs_unclear_indentation --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -646,7 +646,7 @@ Mindmap Phase-B milestone (2026-02-07, batch 9):
   (6 nodes, 5 edges, label set `{Root, Child, a, New Stuff, A, B}`, no icons, shape signature
   `rounded=3/rect=1/defaultMindmapNode=2`).
 - Calibration applies deterministic root width/height adjustments to match
-  Mermaid `@11.12.2` parity-root output.
+  Mermaid `@11.12.3` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_whitespace_and_comments --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
@@ -658,7 +658,7 @@ State Phase-B milestone (2026-02-07, batch 1):
 - Reduced state text/bbox overrides by 1 entry:
   - Removed `lookup_state_node_label_height_px(...)` string-keyed special cases.
 - Added a deterministic border-style label height inflation heuristic in `node_label_metrics` to mirror
-  Mermaid@11.12.2 headless browser `getBoundingClientRect()` behavior for `classDef` border nodes.
+  Mermaid@11.12.3 headless browser `getBoundingClientRect()` behavior for `classDef` border nodes.
 - Validation status after this batch:
   - `compare-state-svgs --dom-mode parity`: pass
   - `compare-state-svgs --dom-mode parity-root`: pass

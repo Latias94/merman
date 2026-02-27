@@ -1,0 +1,705 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "mindmap",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "Origins",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Origins",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "Long history",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "fa fa-book",
+        "level": 4,
+        "nodeId": "Long history",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "Popularisation",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Popularisation",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "British popular psychology author Tony Buzan",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "British popular psychology author Tony Buzan",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "Research",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Research",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "6",
+        "domId": "node_6",
+        "label": "On effectiveness<br/>and features",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "On effectiveness<br/>and features",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "7",
+        "domId": "node_7",
+        "label": "On Automatic creation",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "On Automatic creation",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "8",
+        "domId": "node_8",
+        "label": "Uses",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "Uses",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "9",
+        "domId": "node_9",
+        "label": "Creative techniques",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 10,
+        "nodeId": "Creative techniques",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "10",
+        "domId": "node_10",
+        "label": "Strategic planning",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 10,
+        "nodeId": "Strategic planning",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "11",
+        "domId": "node_11",
+        "label": "Argument mapping",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 10,
+        "nodeId": "Argument mapping",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "12",
+        "domId": "node_12",
+        "label": "Tools",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Tools",
+        "type": 0,
+        "section": 2
+      },
+      {
+        "id": "13",
+        "domId": "node_13",
+        "label": "Pen and paper",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Pen and paper",
+        "type": 0,
+        "section": 2
+      },
+      {
+        "id": "14",
+        "domId": "node_14",
+        "label": "Mermaid",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Mermaid",
+        "type": 0,
+        "section": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_1_3",
+        "start": "1",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_3_4",
+        "start": "3",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_0_5",
+        "start": "0",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_5_6",
+        "start": "5",
+        "end": "6",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_5_7",
+        "start": "5",
+        "end": "7",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_7_8",
+        "start": "7",
+        "end": "8",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-5",
+        "depth": 4,
+        "section": 1
+      },
+      {
+        "id": "edge_8_9",
+        "start": "8",
+        "end": "9",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-7",
+        "depth": 6,
+        "section": 1
+      },
+      {
+        "id": "edge_8_10",
+        "start": "8",
+        "end": "10",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-7",
+        "depth": 6,
+        "section": 1
+      },
+      {
+        "id": "edge_8_11",
+        "start": "8",
+        "end": "11",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-7",
+        "depth": 6,
+        "section": 1
+      },
+      {
+        "id": "edge_0_12",
+        "start": "0",
+        "end": "12",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-1",
+        "depth": 0,
+        "section": 2
+      },
+      {
+        "id": "edge_12_13",
+        "start": "12",
+        "end": "13",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-3",
+        "depth": 2,
+        "section": 2
+      },
+      {
+        "id": "edge_12_14",
+        "start": "12",
+        "end": "14",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-3",
+        "depth": 2,
+        "section": 2
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "mindmap",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "Origins",
+          "level": 2,
+          "descr": "Origins",
+          "type": 0,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "Long history",
+              "level": 4,
+              "descr": "Long history",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0,
+              "icon": "fa fa-book"
+            },
+            {
+              "id": 3,
+              "nodeId": "Popularisation",
+              "level": 4,
+              "descr": "Popularisation",
+              "type": 0,
+              "children": [
+                {
+                  "id": 4,
+                  "nodeId": "British popular psychology author Tony Buzan",
+                  "level": 6,
+                  "descr": "British popular psychology author Tony Buzan",
+                  "type": 0,
+                  "children": [],
+                  "width": 200,
+                  "padding": 10,
+                  "section": 0
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 0
+        },
+        {
+          "id": 5,
+          "nodeId": "Research",
+          "level": 2,
+          "descr": "Research",
+          "type": 0,
+          "children": [
+            {
+              "id": 6,
+              "nodeId": "On effectiveness<br/>and features",
+              "level": 4,
+              "descr": "On effectiveness<br/>and features",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            },
+            {
+              "id": 7,
+              "nodeId": "On Automatic creation",
+              "level": 4,
+              "descr": "On Automatic creation",
+              "type": 0,
+              "children": [
+                {
+                  "id": 8,
+                  "nodeId": "Uses",
+                  "level": 6,
+                  "descr": "Uses",
+                  "type": 0,
+                  "children": [
+                    {
+                      "id": 9,
+                      "nodeId": "Creative techniques",
+                      "level": 10,
+                      "descr": "Creative techniques",
+                      "type": 0,
+                      "children": [],
+                      "width": 200,
+                      "padding": 10,
+                      "section": 1
+                    },
+                    {
+                      "id": 10,
+                      "nodeId": "Strategic planning",
+                      "level": 10,
+                      "descr": "Strategic planning",
+                      "type": 0,
+                      "children": [],
+                      "width": 200,
+                      "padding": 10,
+                      "section": 1
+                    },
+                    {
+                      "id": 11,
+                      "nodeId": "Argument mapping",
+                      "level": 10,
+                      "descr": "Argument mapping",
+                      "type": 0,
+                      "children": [],
+                      "width": 200,
+                      "padding": 10,
+                      "section": 1
+                    }
+                  ],
+                  "width": 200,
+                  "padding": 10,
+                  "section": 1
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 1
+        },
+        {
+          "id": 12,
+          "nodeId": "Tools",
+          "level": 2,
+          "descr": "Tools",
+          "type": 0,
+          "children": [
+            {
+              "id": 13,
+              "nodeId": "Pen and paper",
+              "level": 4,
+              "descr": "Pen and paper",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 2
+            },
+            {
+              "id": 14,
+              "nodeId": "Mermaid",
+              "level": 4,
+              "descr": "Mermaid",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 2
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 2
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "2": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "3": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "4": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "5": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "6": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "7": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "8": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "9": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "10": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "11": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "12": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "13": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "14": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      }
+    }
+  }
+}

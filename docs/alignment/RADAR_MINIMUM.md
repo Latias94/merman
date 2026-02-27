@@ -2,7 +2,7 @@
 
 This document defines the initial, test-driven minimum slice for Radar parsing in `merman`.
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 Note: Mermaid exposes this diagram as `radar-beta` but registers it with diagram id `radar`.
 

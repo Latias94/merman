@@ -1,6 +1,6 @@
-# Architecture SVG Parity Gaps (Mermaid@11.12.2)
+# Architecture SVG Parity Gaps (Mermaid@11.12.3)
 
-Baseline: Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 
 This document tracks what is still missing for Architecture SVG DOM parity beyond the current
 minimum fixture set. It complements:
@@ -12,6 +12,9 @@ minimum fixture set. It complements:
 
 - The Architecture SVG compare passes for the non-parser-only fixture set:
   - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Note: this is **DOM parity** in `dom-mode parity`, where geometry numbers are normalized to reduce
+  cross-platform drift. Visual/geometry fidelity (edge routing coordinates, exact bboxes) is still
+  being tightened incrementally.
 - Stage B now derives the root SVG `viewBox` and `max-width` from the rendered element bounds
   (Mermaid-like `setupGraphViewbox()` behavior) and honors `architecture.{padding,iconSize,fontSize}`.
   Header-only diagrams continue to render the `80x80` fallback viewBox.
@@ -51,26 +54,25 @@ the pinned upstream SVG baselines.
 
 Missing pieces likely include:
 
-- A Rust port of the upstream Cytoscape layout stack (see `docs/adr/0053-cytoscape-layout-ports.md`).
-- The current layout is a deterministic scaffold that reproduces Mermaid's BFS spatial-map topology
-  and places nodes on a grid (with a few centering heuristics). It is stable enough for layout
-  snapshots, but it does not match upstream FCoSE coordinates and should be treated as a stepping
-  stone only.
-- `merman-render` can optionally run a `manatee`-based refinement pass (FCoSE scaffold) when
-  `LayoutOptions.use_manatee_layout = true` (enabled by `xtask compare-all-svgs`), using
-  Mermaid-equivalent alignment/relative placement constraints derived from the BFS spatial maps.
-  This is intentionally *not* used for `*.layout.golden.json` snapshots yet (we keep the grid
-  scaffold as the stable baseline until the FCoSE port is closer to parity).
-- Stage B applies an additional deterministic post-pass for **top-level group separation** based on
-  inter-group edge directions (e.g. `groupA:R -- L:groupB` implies `groupA` is left of `groupB`).
-  This approximates Cytoscape compound node behavior and reduces severe root viewport drift in
-  `parity-root` mode, without introducing group nodes into the layout snapshot model.
+- A closer match for upstream Cytoscape + FCoSE compound behavior (see `docs/adr/0053-cytoscape-layout-ports.md`).
+  `manatee` now contains the FCoSE port and is used as a refinement pass from `merman-render`.
+- Architecture currently relies on `manatee` (FCoSE port) for compound/nesting mechanics, but the
+  numeric/viewport fidelity is still being tightened incrementally. Avoid baking “one-off” layout
+  corrections into Stage B unless they can be expressed as topology/semantics-driven rules.
 - The `manatee` FCoSE port now includes a spectral initialization (SVD + power iteration) matching
   the upstream `cytoscape-fcose` pipeline. Randomness is made explicit via a seed to keep headless
   outputs deterministic for tests.
 - Deterministic placement strategy for nodes and groups matching the upstream CLI outputs (FCoSE),
   including the exact floating-point behavior and constraint handling.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.
+  - Upstream sets Cytoscape edge styles (`curve-style: segments`) and post-adjusts XY edges via
+    `segment-distances`/`segment-weights` derived from `edge.sourceEndpoint()`/`edge.targetEndpoint()`
+    (see `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts`).
+  - `merman-render` now mirrors the upstream `getSegmentWeights(...)` math when constructing the
+    3-point polyline stored in layout snapshots (so Stage B can render Mermaid-like bends using
+    the layout-provided `LayoutEdge.points`): `crates/merman-render/src/architecture.rs`.
+  - Remaining work is primarily about *overall geometry fidelity* (FCoSE placements, group bounds,
+    root viewBox/max-width), not the “segments vs straight” polyline shape itself.
 - Group padding/title height rules affecting group bounds and edge endpoints.
   - Upstream `svgDraw.ts` documents an extra `+18px` on the *bottom* side of group bounds due to
     service label height (used when routing `{group}` edges). Our Stage B bounds estimator must
@@ -117,17 +119,12 @@ Next:
 
 - Upstream Cypress rendering specs explicitly skip some cases due to non-deterministic layout.
   For `merman`, the parity target is the pinned upstream SVG baseline generated via the official
-  Mermaid CLI at `@11.12.2`, so we should keep promotions incremental and backed by DOM parity checks.
+  Mermaid CLI at `@11.12.3`, so we should keep promotions incremental and backed by DOM parity checks.
 
-- Known parity debt (to eliminate):
-  - `stress_architecture_edge_labels_quotes_and_urls_037`: the upstream CLI baseline splits the
-    edge label `CACHE` into two lines (`CAC` / `HE`) due to upstream `createText()` width-driven
-    wrapping. Our current Stage B layout yields a different edge geometry for this fixture, so the
-    wrap width differs and would normally produce a single-line `CACHE`. To keep the global
-    `parity-root` gate green while expanding fixtures, the Stage B Architecture renderer currently
-    forces the upstream line split for this specific fixture/label. The long-term target is to
-    remove this special-case by converging the headless layout/measurement chain so the wrap
-    decision matches upstream naturally.
+- Wrap sensitivity: upstream Architecture label wrapping is width-driven (`createText()`), so any
+  geometry drift (layout placements, edge endpoints, group bounds) can cascade into different line
+  breaks. Prefer fixing the underlying geometry/measurement chain (layout + bbox estimation) over
+  adding fixture-id keyed renderer special-cases.
 
 - Baseline determinism: Architecture uses Cytoscape `fcose`, whose spectral initialization relies on
   `Math.random()`. `xtask gen-upstream-svgs --diagram architecture` seeds browser-side randomness
@@ -166,21 +163,21 @@ This writes:
   comparison to avoid flaky fixture updates.
 
 - Some upstream Cypress Architecture fixtures use a shorthand edge syntax like `db L--R server`.
-  Mermaid CLI `@11.12.2` renders these as an error SVG ("Syntax error in text"), so we currently keep
+  Mermaid CLI `@11.12.3` renders these as an error SVG ("Syntax error in text"), so we currently keep
   those fixtures in `*_parser_only_` form until we decide whether to align to the CLI parser behavior
   (Langium grammar requires `db:L -- R:server`) or to the browser-only parser behavior.
 
 - Some upstream Cypress Architecture fixtures use parenthesized port pairs like `servC (L--R) servL`.
-  Mermaid CLI `@11.12.2` also renders these as an error SVG, so these remain `*_parser_only_` until the
+  Mermaid CLI `@11.12.3` also renders these as an error SVG, so these remain `*_parser_only_` until the
   baseline source is clarified (CLI vs browser/Cypress).
 
 - Some upstream Cypress Architecture fixtures use label shorthands like `servC L-[Label]-R servL`.
-  Mermaid CLI `@11.12.2` renders these as an error SVG as well, so these stay `*_parser_only_` for now.
+  Mermaid CLI `@11.12.3` renders these as an error SVG as well, so these stay `*_parser_only_` for now.
 
 - Some upstream Cypress Architecture fixtures use `{group}` boundary traversal combined with shorthand
-  edges like `left_disk{group} (R--L) center_disk{group}`. Mermaid CLI `@11.12.2` renders these as an
+  edges like `left_disk{group} (R--L) center_disk{group}`. Mermaid CLI `@11.12.3` renders these as an
   error SVG, so they remain `*_parser_only_` for now.
 
 - To preserve the original Cypress strings while still enabling CLI baselines + DOM parity, we add
-  `*_normalized` fixture variants that rewrite shorthand into Mermaid@11.12.2's Langium syntax.
+  `*_normalized` fixture variants that rewrite shorthand into Mermaid@11.12.3's Langium syntax.
   See `docs/alignment/ARCHITECTURE_UPSTREAM_TEST_COVERAGE.md` for the exact list.

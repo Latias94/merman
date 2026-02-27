@@ -6,7 +6,7 @@ Superseded by ADR 0043
 
 ## Context
 
-`merman` targets 1:1 parity with Mermaid `@11.12.2`. We already have a headless parser that produces
+`merman` targets 1:1 parity with Mermaid `@11.12.3`. We already have a headless parser that produces
 a stable semantic JSON model and a fixture-based snapshot parity harness.
 
 The remaining large milestone is rendering (primarily SVG) and layout. Upstream Mermaid rendering
@@ -39,7 +39,7 @@ Cons:
 ### B) JS-backed renderer embedded in Rust (canonical parity path)
 
 Embed a JavaScript runtime (e.g. QuickJS/V8 via a Rust binding) and run the upstream Mermaid
-rendering pipeline pinned to `@11.12.2` to produce SVG. The Rust API stays headless and deterministic.
+rendering pipeline pinned to `@11.12.3` to produce SVG. The Rust API stays headless and deterministic.
 
 Pros:
 - highest chance of true 1:1 rendering parity

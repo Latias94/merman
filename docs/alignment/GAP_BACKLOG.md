@@ -1,6 +1,6 @@
-# Gap Backlog (Mermaid@11.12.2)
+# Gap Backlog (Mermaid@11.12.3)
 
-Baseline: Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 
 This document tracks **known gaps vs “perfect” Mermaid parity** and a plan to systematically
 eliminate them without regressing the global parity gates.
@@ -39,9 +39,11 @@ Legend:
 ### P0: Parity debt (must eliminate)
 
 1. **Remove fixture-scoped renderer special-cases**
-   - Current example: Architecture edge-label wrap split for `stress_architecture_edge_labels_quotes_and_urls_037`.
-   - Target: no diagram-specific code paths keyed by fixture id.
-   - Risk: M (wrap/measurement changes can ripple through many fixtures).
+   - Target: no diagram-specific code paths keyed by fixture id; replace with topology/semantics-driven rules or
+     fully align measurement + edge routing so upstream parity emerges naturally.
+   - Current status: Architecture Stage B is now free of fixture-id keyed wrapping / formatting adjustments; keep it
+     that way as we tighten geometry-level fidelity.
+   - Risk: M (wrap/measurement and geometry changes can ripple through many fixtures).
 
 2. **Converge headless layout/measurement so wrap decisions match upstream**
    - In practice: align “effective” `createText()` width and `getComputedTextLength()` behavior

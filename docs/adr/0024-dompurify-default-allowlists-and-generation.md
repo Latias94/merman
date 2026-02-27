@@ -26,7 +26,7 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 
 ## Decision
 
-- Pin DOMPurify baseline to Mermaid's dependency version (`dompurify@3.2.5` for `mermaid@11.12.2`).
+- Pin DOMPurify baseline to Mermaid's dependency version (`dompurify@3.2.5` for `mermaid@11.12.3`).
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`

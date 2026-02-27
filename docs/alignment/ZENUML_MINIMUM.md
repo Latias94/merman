@@ -8,7 +8,7 @@ small ZenUML subset into Mermaid `sequenceDiagram` syntax.
 
 Baseline references:
 
-- Mermaid: `@11.12.2` (`repo-ref/mermaid`, see `tools/upstreams/REPOS.lock.json`)
+- Mermaid: `@11.12.3` (`repo-ref/mermaid`, see `tools/upstreams/REPOS.lock.json`)
 - ZenUML core: `v3.45.4` (`repo-ref/zenuml-core`, see `tools/upstreams/REPOS.lock.json`)
 
 ## Supported (current)

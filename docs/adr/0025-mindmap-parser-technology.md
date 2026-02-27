@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-01-11
-- Baseline: Mermaid `@11.12.2`
+- Baseline: Mermaid `@11.12.3`
 
 ## Context
 

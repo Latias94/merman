@@ -1,4 +1,4 @@
-# Pie Diagram Minimum (mermaid@11.12.2)
+# Pie Diagram Minimum (mermaid@11.12.3)
 
 This document tracks the current `pie` parser alignment status in `merman-core`.
 

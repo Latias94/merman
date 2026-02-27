@@ -1,6 +1,6 @@
-# Mindmap SVG Parity Gaps (mermaid@11.12.2)
+# Mindmap SVG Parity Gaps (mermaid@11.12.3)
 
-Baseline: Mermaid `@11.12.2` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
 
 This document tracks the remaining gaps for Mindmap SVG output parity against upstream baselines.
 

@@ -12,7 +12,7 @@ and populated into `StateDB` (`repo-ref/mermaid/packages/mermaid/src/diagrams/st
 
 We need:
 
-- Deterministic, testable parsing behavior aligned to Mermaid `@11.12.2`.
+- Deterministic, testable parsing behavior aligned to Mermaid `@11.12.3`.
 - A headless semantic model suitable for renderer integration in other crates (SVG, CLI, GUI).
 - A maintainable approach consistent with other diagram parsers in `merman-core`.
 

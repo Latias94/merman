@@ -22,7 +22,7 @@ baselines.
 
 ## Decision
 
-For Mermaid `@11.12.2`, `merman-render` vendors a small set of DOM-derived font metrics that are:
+For Mermaid `@11.12.3`, `merman-render` vendors a small set of DOM-derived font metrics that are:
 
 - required for SVG DOM parity,
 - stable across the pinned upstream baselines,

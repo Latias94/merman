@@ -64,6 +64,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify");
     println!("  check-alignment");
     println!("  import-upstream-docs");
+    println!("  import-upstream-examples");
     println!("  import-upstream-html");
     println!("  import-upstream-cypress");
     println!("  import-upstream-pkg-tests");
@@ -138,6 +139,7 @@ fn main() -> Result<(), XtaskError> {
         "verify" => cmd::verify(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
+        "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),
         "import-upstream-cypress" => cmd::import_upstream_cypress(args.collect()),
         "import-upstream-pkg-tests" => cmd::import_upstream_pkg_tests(args.collect()),

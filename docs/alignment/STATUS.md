@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-- Current corpus (2026-02-26): 3412 baselines across 23 diagrams.
+- Current corpus (2026-02-27): 3428 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -65,6 +65,9 @@ Notes:
 
 - Mermaid `error` is a registered diagram type upstream, but it is currently tracked as parse/snapshot-only
   (see `docs/alignment/ERROR_UPSTREAM_TEST_COVERAGE.md`). We do not yet maintain upstream SVG baselines for it.
+- Architecture: SVG parity currently compares in `dom-mode parity` (geometry numbers are normalized); compound/nesting
+  layout and XY edge routing are still being aligned to upstream Cytoscape/FCoSE, so expect occasional layout snapshot
+  churn as we tighten geometry-level fidelity.
 - Mermaid `zenuml` is provided as an external diagram plugin upstream and rendered via browser-only `@zenuml/core`.
   `merman` provides a headless compatibility mode that translates a small ZenUML subset into a `sequenceDiagram` model.
   This is not currently covered by upstream SVG baselines.
@@ -83,6 +86,9 @@ Recent progress (2026-02-11): imported additional Flowchart docs fixtures (shape
 + small directive examples) with upstream SVG baselines, keeping the global parity-root gate green.
 Recent progress (2026-02-12): imported additional fixtures from Mermaid config docs (`packages/mermaid/src/docs/config/*.md`),
 including accessibility examples and mindmap `tidy-tree`, keeping `parity-root` green.
+Recent progress (2026-02-27): Architecture spatial-map BFS + relative-placement constraints now mirror upstream Mermaid
+(`architectureDb.ts` + `architectureRenderer.ts`), and the FCoSE port gained a compound graph model closer to upstream
+(`cytoscape-fcose` + `cose-base`). This fixes several stress-fixture layout and edge-label parity issues.
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 Recent progress (2026-02-13): imported Sequence Cypress rendering fixtures (with upstream SVG baselines) and
@@ -319,7 +325,7 @@ overrides (`fast`/`slow`) and matching Chromium `getBBox()` float32 quantization
 This reduced `compare-state-svgs` `parity-root` mismatches from 18 → 17.
 
 Recent progress (2026-02-06): state edge label sizing parity improved by applying edge label width overrides
-(`Transition 1/2/3`) and sizing `stateEnd` nodes using the same path-derived `getBBox().width` as Mermaid@11.12.2.
+(`Transition 1/2/3`) and sizing `stateEnd` nodes using the same path-derived `getBBox().width` as Mermaid@11.12.3.
 This reduced `compare-state-svgs` `parity-root` mismatches from 17 → 13.
 
 Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
@@ -505,7 +511,7 @@ while preserving the common `next_up(f32)` rounding artifacts seen in upstream b
 As of 2026-01-27, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 0 flowchart
 mismatches.
 As of 2026-01-29, `xtask compare-svg-xml --diagram requirement --dom-mode strict --dom-decimals 3` reports 0
-requirement mismatches (for the pinned Mermaid@11.12.2 upstream baselines).
+requirement mismatches (for the pinned Mermaid@11.12.3 upstream baselines).
 As of 2026-01-29, `xtask compare-svg-xml --diagram gantt --dom-mode strict --dom-decimals 3` reports 0 gantt mismatches.
 As of 2026-02-05, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` reports 175 total strict XML mismatches
 (state=43, architecture=25, block=22, class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=7).

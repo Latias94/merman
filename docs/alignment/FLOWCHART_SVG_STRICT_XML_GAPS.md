@@ -1,4 +1,4 @@
-# Flowchart Strict SVG XML Gaps (Mermaid@11.12.2)
+# Flowchart Strict SVG XML Gaps (Mermaid@11.12.3)
 
 This note tracks the remaining gaps for byte-level SVG XML parity when running `xtask compare-svg-xml`
 in `strict` mode for flowchart-v2.

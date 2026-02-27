@@ -1,4 +1,4 @@
-# ADR-0001: Upstream Baseline (mermaid@11.12.2)
+# ADR-0001: Upstream Baseline (mermaid@11.12.3)
 
 ## Status
 
@@ -11,8 +11,8 @@ project must pin an upstream baseline (tag + commit) that all alignment tests an
 
 ## Decision
 
-- Baseline tag: `mermaid@11.12.2`
-- Baseline commit (reference checkout): `bd85b51e2`
+- Baseline tag: `mermaid@11.12.3`
+- Baseline commit (reference checkout): `de0a5800944da7e3f0a040a55d2e91893c2b7bdb`
 - Reference source location: `repo-ref/mermaid` (optional local checkout at the baseline commit)
 - Pinned revisions are tracked in `tools/upstreams/REPOS.lock.json` (not git submodules).
 

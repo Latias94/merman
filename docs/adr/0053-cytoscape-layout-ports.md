@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Mermaid `@11.12.2` relies on Cytoscape-based layout engines for multiple diagrams:
+Mermaid `@11.12.3` relies on Cytoscape-based layout engines for multiple diagrams:
 
 - Mindmap: `cose-bilkent` (via `cytoscape-cose-bilkent`)
 - Architecture: `fcose` (via `cytoscape-fcose`) with additional alignment/relative constraints derived

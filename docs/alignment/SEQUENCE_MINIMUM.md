@@ -5,7 +5,7 @@ This document defines the initial, test-driven minimum slice for `sequenceDiagra
 
 ## Baseline
 
-Upstream baseline: `mermaid@11.12.2` (see `docs/adr/0001-upstream-baseline.md`).
+Upstream baseline: `mermaid@11.12.3` (see `docs/adr/0001-upstream-baseline.md`).
 
 ## Supported (current)
 

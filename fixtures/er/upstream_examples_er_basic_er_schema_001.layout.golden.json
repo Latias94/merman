@@ -1,0 +1,151 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CUSTOMER-0",
+          "x": 77.508,
+          "y": 85.5,
+          "width": 126.063,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 77.508,
+          "y": 357.5,
+          "width": 155.015,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER_ITEM-2",
+          "x": 217.135,
+          "y": 608.125,
+          "width": 136.88,
+          "height": 128.25,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PRODUCT-3",
+          "x": 356.763,
+          "y": 357.5,
+          "width": 123.495,
+          "height": 171.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 77.508,
+              "y": 171.0
+            },
+            {
+              "x": 77.508,
+              "y": 221.5
+            },
+            {
+              "x": 77.508,
+              "y": 272.0
+            }
+          ],
+          "label": {
+            "x": 77.508,
+            "y": 221.5,
+            "width": 39.531,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-ORDER-1",
+          "to": "entity-ORDER_ITEM-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 77.508,
+              "y": 443.0
+            },
+            {
+              "x": 77.508,
+              "y": 493.5
+            },
+            {
+              "x": 148.695,
+              "y": 551.94
+            }
+          ],
+          "label": {
+            "x": 77.508,
+            "y": 493.5,
+            "width": 52.313,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-PRODUCT-3",
+          "to": "entity-ORDER_ITEM-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 356.763,
+              "y": 443.0
+            },
+            {
+              "x": 356.763,
+              "y": 493.5
+            },
+            {
+              "x": 285.575,
+              "y": 551.94
+            }
+          ],
+          "label": {
+            "x": 356.763,
+            "y": 493.5,
+            "width": 43.96,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 418.51,
+        "max_y": 672.25
+      }
+    }
+  }
+}

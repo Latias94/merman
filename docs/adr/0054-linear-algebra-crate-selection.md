@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` aims for full SVG DOM parity with Mermaid `@11.12.2`, including diagrams whose upstream
+`merman` aims for full SVG DOM parity with Mermaid `@11.12.3`, including diagrams whose upstream
 layouts rely on Cytoscape engines:
 
 - Architecture: `cytoscape-fcose` (spectral initialization + CoSE refinement)

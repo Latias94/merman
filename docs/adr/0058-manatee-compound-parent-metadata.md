@@ -4,7 +4,7 @@ Date: 2026-02-04
 
 ## Context
 
-Mermaid `@11.12.2` Architecture uses Cytoscape-FCoSE with compound nodes (groups). Several downstream
+Mermaid `@11.12.3` Architecture uses Cytoscape-FCoSE with compound nodes (groups). Several downstream
 layout behaviors depend on the inclusion tree:
 
 - inter-graph (`isInterGraph`) edge classification

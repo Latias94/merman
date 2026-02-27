@@ -4,7 +4,7 @@ This document describes the user-visible parsing pipeline we need to match.
 
 ## Baseline
 
-Upstream baseline: `mermaid@11.12.2` (see `docs/adr/0001-upstream-baseline.md`).
+Upstream baseline: `mermaid@11.12.3` (see `docs/adr/0001-upstream-baseline.md`).
 
 ## High-level steps
 

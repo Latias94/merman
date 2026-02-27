@@ -9,7 +9,7 @@ Accepted
 Mermaid `utils.formatUrl()` delegates URL sanitization to `@braintree/sanitize-url` when
 `securityLevel !== 'loose'`.
 
-For a 1:1 clone pinned to `mermaid@11.12.2`, the effective URL sanitization behavior is therefore
+For a 1:1 clone pinned to `mermaid@11.12.3`, the effective URL sanitization behavior is therefore
 the combination of:
 
 - Mermaid's `formatUrl` contract (trim + conditional sanitization), and

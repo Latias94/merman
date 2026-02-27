@@ -1,7 +1,7 @@
 # ER Diagram Debug SVG
 
 This debug exporter is for development only. It visualizes the **headless layout output**
-from `merman-render` for Mermaid `erDiagram` (Mermaid `@11.12.2`).
+from `merman-render` for Mermaid `erDiagram` (Mermaid `@11.12.3`).
 
 It is **not** intended to be Mermaid-parity SVG output (Stage B). It exists to quickly spot layout
 issues (overlaps, broken routes, incorrect label placement).

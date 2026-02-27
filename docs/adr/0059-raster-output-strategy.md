@@ -4,7 +4,7 @@ Date: 2026-02-09
 
 ## Context
 
-This repository targets a 1:1 re-implementation of Mermaid pinned to Mermaid `@11.12.2`.
+This repository targets a 1:1 re-implementation of Mermaid pinned to Mermaid `@11.12.3`.
 
 The primary parity contract is **SVG DOM parity** against upstream baselines stored under
 `fixtures/upstream-svgs/**`.

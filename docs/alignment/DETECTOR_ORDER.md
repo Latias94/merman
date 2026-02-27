@@ -1,4 +1,4 @@
-# Detector Order (mermaid@11.12.2)
+# Detector Order (mermaid@11.12.3)
 
 Mermaid type detection is order-dependent: the first matching detector wins.
 

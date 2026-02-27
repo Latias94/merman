@@ -1,6 +1,6 @@
 # C4 Layout Minimum Slice (Phase 1)
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 This document defines the initial, test-driven minimum slice for **headless layout** of C4
 diagrams in `merman-render`.

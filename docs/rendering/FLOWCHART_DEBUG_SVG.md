@@ -1,6 +1,6 @@
 # Flowchart Debug SVG
 
-Baseline: Mermaid `@11.12.2`.
+Baseline: Mermaid `@11.12.3`.
 
 This is a **developer tool** that turns the headless `flowchart-v2` layout output into a simple SVG
 for visual inspection. It is **not** the parity renderer (Stage B).

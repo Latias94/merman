@@ -12,7 +12,7 @@ Some Mermaid diagrams derive layout geometry from browser/DOM state rather than 
 diagram definition and Mermaid config. A notable example is C4, where the renderer uses
 `screen.availWidth` as the root `widthLimit` for row wrapping in `c4Renderer.js`.
 
-In `merman`, the core goal is full parity with Mermaid `@11.12.2` while remaining **headless** and
+In `merman`, the core goal is full parity with Mermaid `@11.12.3` while remaining **headless** and
 usable by multiple UI frameworks. This requires a deterministic, explicit replacement for
 DOM/screen-derived values.
 

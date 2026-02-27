@@ -1,7 +1,7 @@
 # Class Diagram Debug SVG
 
 This debug exporter is for development only. It visualizes the **headless layout output**
-from `merman-render` for Mermaid `classDiagram` (Mermaid `@11.12.2`).
+from `merman-render` for Mermaid `classDiagram` (Mermaid `@11.12.3`).
 
 It is **not** intended to be Mermaid-parity SVG output (Stage B). It exists to make it easy to
 spot obvious layout issues (overlaps, broken routes, missing cluster bounds, terminal label placement).

@@ -12,7 +12,7 @@ for 1:1 parity work.
 For most Mermaid diagrams, the Mermaid CLI output is stable enough to treat as a byte-level golden
 (or, at worst, a DOM-signature golden with minor numeric normalization).
 
-However, Architecture diagrams in Mermaid `@11.12.2` rely on Cytoscape `fcose`, whose spectral
+However, Architecture diagrams in Mermaid `@11.12.3` rely on Cytoscape `fcose`, whose spectral
 initialization uses `Math.random()`. This means:
 
 - Re-generating upstream Architecture SVG baselines can produce different root viewports

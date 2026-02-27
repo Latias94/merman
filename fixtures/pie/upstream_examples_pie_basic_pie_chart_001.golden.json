@@ -1,0 +1,24 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "Pets adopted by volunteers",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      {
+        "label": "Dogs",
+        "value": 386.0
+      },
+      {
+        "label": "Cats",
+        "value": 85.0
+      },
+      {
+        "label": "Rats",
+        "value": 15.0
+      }
+    ]
+  }
+}

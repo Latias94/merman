@@ -1,4 +1,4 @@
-# Flowchart Root SVG Parity Gaps (Mermaid@11.12.2)
+# Flowchart Root SVG Parity Gaps (Mermaid@11.12.3)
 
 This note tracks current gaps when comparing Flowchart Stage-B output against upstream Mermaid
 SVG baselines **including** root `<svg>` viewport attributes (`viewBox`, `style="max-width: ..."`).

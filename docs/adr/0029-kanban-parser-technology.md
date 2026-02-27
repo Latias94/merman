@@ -1,8 +1,8 @@
-# ADR 0029: Kanban Parser Technology (Mermaid@11.12.2 parity)
+# ADR 0029: Kanban Parser Technology (Mermaid@11.12.3 parity)
 
 - Status: Accepted
 - Date: 2026-01-11
-- Baseline: Mermaid `@11.12.2`
+- Baseline: Mermaid `@11.12.3`
 
 ## Context
 

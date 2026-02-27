@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` targets full 1:1 behavioral parity with `mermaid@11.12.2` for `classDiagram`.
+`merman` targets full 1:1 behavioral parity with `mermaid@11.12.3` for `classDiagram`.
 
 Mermaid implements `classDiagram` parsing using a Jison lexer with multiple lexer states
 (e.g. class body, namespace body, strings, generics, accessibility blocks) and a grammar that

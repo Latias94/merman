@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` aims for 1:1 parity with Mermaid `@11.12.2`. We already use:
+`merman` aims for 1:1 parity with Mermaid `@11.12.3`. We already use:
 
 - semantic golden snapshots (`*.golden.json`) to lock parsing behavior
 - upstream SVG fixtures (`fixtures/upstream-svgs/**`) to lock end-to-end rendering output (see

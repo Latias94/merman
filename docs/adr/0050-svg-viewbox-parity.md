@@ -11,7 +11,7 @@ Mermaid renders SVG using a browser DOM and then derives the final SVG viewport 
 - `svgElem.attr('viewBox', ...)` based on that bounding box
 - `configureSvgSize(...)` which sets `width="100%"` and `style="max-width: ...px;"` when `useMaxWidth=true`
 
-In `merman`, we aim for 1:1 parity with Mermaid `@11.12.2` while staying headless (no browser DOM).
+In `merman`, we aim for 1:1 parity with Mermaid `@11.12.3` while staying headless (no browser DOM).
 
 Historically, our DOM parity tooling (`xtask` SVG DOM signatures) ignored the root `<svg>` `viewBox`
 and `style` attributes in parity modes to reduce noise while iterating on layout and shape output.
@@ -53,5 +53,5 @@ without being noticed if they are always excluded from parity checks.
   `viewBox` comparisons against upstream baselines.
 - This is an incremental step toward full SVG XML parity while keeping the headless design goals.
 
-For Mermaid `@11.12.2`, Flowchart root SVG viewport calculation now also follows this approach by
+For Mermaid `@11.12.3`, Flowchart root SVG viewport calculation now also follows this approach by
 including the diagram title in the headless bounding box before emitting the root `viewBox`.

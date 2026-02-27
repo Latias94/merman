@@ -1,4 +1,4 @@
-# ER Diagram Minimum (mermaid@11.12.2)
+# ER Diagram Minimum (mermaid@11.12.3)
 
 This document tracks the current `erDiagram` / `er` parser alignment status in `merman-core`.
 

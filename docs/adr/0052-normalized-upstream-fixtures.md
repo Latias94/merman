@@ -4,11 +4,11 @@ Date: 2026-01-25
 
 ## Context
 
-`merman` targets 1:1 parity with Mermaid `@11.12.2`. Our authoritative end-to-end baselines are
+`merman` targets 1:1 parity with Mermaid `@11.12.3`. Our authoritative end-to-end baselines are
 generated via the official Mermaid CLI pinned under `tools/mermaid-cli/`.
 
 Some upstream inputs (notably Cypress rendering specs) include shorthand syntax that is
-accepted by the browser bundle but rejected by the Mermaid CLI `@11.12.2` Langium parser. When the
+accepted by the browser bundle but rejected by the Mermaid CLI `@11.12.3` Langium parser. When the
 CLI rejects an input, it produces an "error SVG", which cannot be used for SVG DOM parity with a
 successful local render.
 
@@ -21,7 +21,7 @@ We will support **two fixture representations** when an upstream input is not CL
 1. Keep the upstream string as a `*_parser_only_` fixture.
    - This fixture is semantic-only (`*.golden.json`) and is excluded from layout snapshots and
      upstream SVG baseline generation.
-2. Add a `*_normalized` fixture variant that rewrites the input into Mermaid `@11.12.2`'s Langium
+2. Add a `*_normalized` fixture variant that rewrites the input into Mermaid `@11.12.3`'s Langium
    grammar, making it **CLI-compatible**.
    - This fixture is eligible for:
      - layout golden snapshots (`*.layout.golden.json`)
@@ -62,7 +62,7 @@ The Architecture Cypress spec contains lines like:
 - `servC (L--R) servL`
 - `servC L-[Label]-R servL`
 
-These are rejected by Mermaid CLI `@11.12.2`, so we keep the raw strings as `*_parser_only_` and add
+These are rejected by Mermaid CLI `@11.12.3`, so we keep the raw strings as `*_parser_only_` and add
 normalized variants using the Langium grammar, e.g.:
 
 - `db:L -- R:server`

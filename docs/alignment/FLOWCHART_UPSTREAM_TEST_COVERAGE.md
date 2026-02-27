@@ -566,7 +566,7 @@ upstream SVG baselines under `fixtures/upstream-svgs/flowchart/`:
 
 ## SVG DOM parity notes (Flowchart v2)
 
-These are upstream Mermaid `@11.12.2` behaviors worth calling out explicitly because they are
+These are upstream Mermaid `@11.12.3` behaviors worth calling out explicitly because they are
 counter-intuitive and easy to break while refactoring:
 
 - Rough.js PRNG stream continuity (even when `roughness: 0`):

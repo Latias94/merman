@@ -1,4 +1,4 @@
-# State Diagram Minimum (mermaid@11.12.2)
+# State Diagram Minimum (mermaid@11.12.3)
 
 This document tracks the current `stateDiagram` parser alignment status in `merman-core`.
 

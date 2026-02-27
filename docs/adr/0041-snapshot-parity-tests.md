@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` aims for 1:1 parity with Mermaid `@11.12.2`. As more diagrams and edge-cases are added, the
+`merman` aims for 1:1 parity with Mermaid `@11.12.3`. As more diagrams and edge-cases are added, the
 main risk is silent behavior drift (especially across refactors).
 
 We already have a stable headless output model (`ParsedDiagram.model`) and a CLI capable of printing

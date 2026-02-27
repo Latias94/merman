@@ -14,7 +14,7 @@
 - mermaid-cli: "11.12.0"
 - merman: `c5f37268acefb276b13256bb54811ae3b2f49f82`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
-- mermaid-js: `mermaid@11.12.2`
+- mermaid-js: `mermaid@11.12.3`
 - Rust:
 
 ```

@@ -1,4 +1,4 @@
-# Requirement Diagram Upstream Test Coverage (Mermaid@11.12.2)
+# Requirement Diagram Upstream Test Coverage (Mermaid@11.12.3)
 
 This document tracks which upstream Mermaid requirementDiagram behaviors are covered in `merman` via:
 
@@ -8,7 +8,7 @@ This document tracks which upstream Mermaid requirementDiagram behaviors are cov
 - SVG DOM parity compare via `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - strict canonical SVG XML compare via `cargo run -p xtask -- compare-svg-xml --diagram requirement --dom-mode strict --dom-decimals 3`
 
-Scope: Mermaid tag `@11.12.2`.
+Scope: Mermaid tag `@11.12.3`.
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requirementDiagram.spec.js`
 

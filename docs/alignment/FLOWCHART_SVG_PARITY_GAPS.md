@@ -1,4 +1,4 @@
-# Flowchart SVG Parity Gaps (Mermaid@11.12.2)
+# Flowchart SVG Parity Gaps (Mermaid@11.12.3)
 
 This note tracks known remaining `compare-flowchart-svgs` DOM parity mismatches for the Stage B
 flowchart renderer.
