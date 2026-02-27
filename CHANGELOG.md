@@ -11,6 +11,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
   Cytoscape/FCoSE. SVG DOM parity is compared in `dom-mode parity`, so expect occasional layout snapshot churn while we
   tighten numeric fidelity.
+- `xtask`: added `audit-gaps` to summarize parser-only fixtures and deferred corpus status (helps drive “missing
+  implementation” work off reproducible reports).
 
 ## [0.3.0] - 2026-02-27
 

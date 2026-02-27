@@ -63,6 +63,7 @@ fn print_help(topic: Option<&str>) {
     println!("Common commands:");
     println!("  verify");
     println!("  check-alignment");
+    println!("  audit-gaps");
     println!("  import-upstream-docs");
     println!("  import-upstream-examples");
     println!("  import-upstream-html");
@@ -148,6 +149,7 @@ fn main() -> Result<(), XtaskError> {
             cmd::update_layout_snapshots(args.collect())
         }
         "check-alignment" => cmd::check_alignment(args.collect()),
+        "audit-gaps" => cmd::audit_gaps(args.collect()),
         "gen-debug-svgs" => cmd::gen_debug_svgs(args.collect()),
         "gen-er-svgs" => cmd::gen_er_svgs(args.collect()),
         "gen-flowchart-svgs" => cmd::gen_flowchart_svgs(args.collect()),

@@ -18,6 +18,21 @@ Global gates (must stay green):
 - `cargo nextest run`
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
+## Automated audits
+
+This repo contains a lightweight “gap audit” command to keep parity work driven by repeatable data instead of ad-hoc
+spot checks:
+
+- Generate a report: `cargo run -p xtask -- audit-gaps --out target/audit/gaps.md`
+- Output is intentionally written under `target/` (do not commit it); only summarize conclusions here.
+
+As of `2026-02-27` (see the generated report for details):
+
+- Parser-only fixtures: `18` (not included in SVG DOM parity gates)
+- Deferred fixtures (`fixtures/_deferred`): `66` parse OK, `80` parse ERR
+- Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
+  parser correctness issues.
+
 ## Gap Index
 
 Per-diagram details:
@@ -67,6 +82,11 @@ Legend:
    - Policy: Mermaid CLI output is the baseline for upstream SVG baselines; browser-only behavior
      stays snapshot-gated or normalized.
    - Risk: L (documentation + fixture policy).
+
+6. **Reduce “parser-only” fixtures by implementing missing semantics**
+   - Candidates (from `xtask audit-gaps`): Treemap compiled styles (`classDef`/CSS), Sankey identifier edge cases
+     (e.g. `proto`), XYChart title/header variants, and any Architecture Cypress fixtures that should be CLI-compatible.
+   - Risk: M (can touch parsing + rendering + DOM parity).
 
 ### P2: Beyond core parity (optional expansions)
 
