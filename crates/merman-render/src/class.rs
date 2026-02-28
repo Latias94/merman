@@ -758,7 +758,18 @@ fn class_box_dimensions(
         style: &TextStyle,
         wrap_mode: WrapMode,
     ) -> crate::text::TextMetrics {
-        measurer.measure_wrapped(text, style, None, wrap_mode)
+        // Mermaid class diagram text uses `createText(..., { classes: 'markdown-node-label' })`,
+        // which applies Markdown formatting for both SVG-label and HTML-label modes.
+        //
+        // The common case is plain text; keep the fast path for labels that do not appear to use
+        // Markdown markers.
+        if text.contains('*') || text.contains('_') || text.contains('`') {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer, text, style, None, wrap_mode,
+            )
+        } else {
+            measurer.measure_wrapped(text, style, None, wrap_mode)
+        }
     }
 
     fn label_rect(m: crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
@@ -774,9 +785,6 @@ fn class_box_dimensions(
         let y = y_offset - (h / (2.0 * lines));
         Some(Rect::from_min_max(0.0, y, w, y + h))
     }
-
-    let mut label_style_bold = text_style.clone();
-    label_style_bold.font_weight = Some("bolder".to_string());
 
     // Annotation group: Mermaid only renders the first annotation.
     let mut annotation_rect: Option<Rect> = None;
@@ -795,7 +803,13 @@ fn class_box_dimensions(
     if !use_html_labels && title_text.starts_with('\\') {
         title_text = title_text.trim_start_matches('\\').to_string();
     }
-    let title_metrics = measure_label(measurer, &title_text, &label_style_bold, wrap_mode);
+    // Mermaid renders class titles as bold (`font-weight: bolder`) and sizes boxes via SVG bbox.
+    // The vendored text measurer does not model bold glyph widths, so apply the same flowchart
+    // bold deltas used for Markdown `<strong>` spans.
+    let title_md = format!("**{title_text}**");
+    let title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+        measurer, &title_md, text_style, None, wrap_mode,
+    );
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
 

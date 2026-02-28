@@ -151,6 +151,102 @@ pub(super) fn roughjs_paths_for_svg_path(
     ))
 }
 
+pub(super) fn roughjs_paths_for_svg_path_single_set(
+    svg_path_data: &str,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    seed: u64,
+) -> Option<(String, String)> {
+    // Variant of `roughjs_paths_for_svg_path(...)` that always takes RoughJS' `sets.length === 1`
+    // branch (fill path via `svgPath(...)` with `disableMultiStroke=true`), avoiding the
+    // `pointsOnPath(...)` step which can overflow on complex paths.
+    let fill = parse_hex_color_to_srgba(fill)?;
+    let stroke = parse_hex_color_to_srgba(stroke)?;
+    let dash = stroke_dasharray.trim().replace(',', " ");
+    let nums: Vec<f32> = dash
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f32>().ok())
+        .collect();
+    let (dash0, dash1) = match nums.as_slice() {
+        [a] => (*a, *a),
+        [a, b, ..] => (*a, *b),
+        _ => (0.0, 0.0),
+    };
+    let base_options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.0)
+        .bowing(1.0)
+        .fill(fill)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+        let mut out = String::new();
+        for op in &opset.ops {
+            match op.op {
+                roughr::core::OpType::Move => {
+                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                }
+                roughr::core::OpType::BCurveTo => {
+                    let _ = write!(
+                        &mut out,
+                        "C{} {}, {} {}, {} {} ",
+                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                    );
+                }
+                roughr::core::OpType::LineTo => {
+                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                }
+            }
+        }
+        out.trim_end().to_string()
+    }
+
+    // Keep call ordering consistent with RoughJS: stroke pass advances the PRNG before fill.
+    let mut stroke_opts = base_options.clone();
+    let stroke_opset =
+        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
+
+    let mut fill_opts = stroke_opts.clone();
+    fill_opts.disable_multi_stroke = Some(true);
+    let base_rough = fill_opts.roughness.unwrap_or(1.0);
+    fill_opts.roughness = Some(if base_rough != 0.0 {
+        base_rough + 0.8
+    } else {
+        0.0
+    });
+    let mut fill_opset =
+        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
+    fill_opset.ops = fill_opset
+        .ops
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter_map(|(idx, op)| {
+            if idx != 0 && op.op == roughr::core::OpType::Move {
+                return None;
+            }
+            Some(op)
+        })
+        .collect();
+
+    Some((
+        ops_to_svg_path_d(&fill_opset),
+        ops_to_svg_path_d(&stroke_opset),
+    ))
+}
+
 pub(super) fn roughjs_stroke_path_for_svg_path(
     svg_path_data: &str,
     stroke: &str,

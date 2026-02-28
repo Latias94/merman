@@ -2,10 +2,13 @@
 
 use super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
+use crate::entities::decode_entities_minimal;
 use crate::entities::decode_entities_minimal_cow;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 // Class diagram SVG renderer implementation (split from parity.rs).
+
+type Rect = merman_core::geom::Box2;
 
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,
@@ -2006,219 +2009,629 @@ pub(super) fn render_class_diagram_v2_svg_model(
         );
         out.push_str("</g>");
 
-        let title_text = decode_entities_minimal_cow(node.text.trim());
-        let title_metrics =
-            measurer.measure_wrapped(title_text.as_ref(), &text_style, None, WrapMode::HtmlLike);
-        let ann_rows = node.annotations.len();
-        let members_rows = node.members.len();
-        let methods_rows = node.methods.len();
-        let half_lh = line_height / 2.0;
-        let class_row_metrics = layout.class_row_metrics_by_id.get(n.id.as_str());
-
-        let title_y = top + (ann_rows as f64 + 1.0) * line_height;
-        let annotation_group_y = if ann_rows == 0 {
-            title_y
-        } else {
-            top + line_height
-        };
-        let divider1_y = top + (ann_rows as f64 + 2.0) * line_height;
-        let members_group_y = top + (ann_rows as f64 + 3.0) * line_height;
-        let divider2_y = members_group_y + (members_rows as f64) * line_height;
-        let bottom = h / 2.0;
-        let methods_group_y = if methods_rows > 0 {
-            bottom - (methods_rows as f64) * line_height
-        } else {
-            // Upstream still emits a `methods-group` even when empty; keep it deterministic.
-            divider2_y + line_height
-        };
-
-        let title_x = -title_metrics.width.max(0.0) / 2.0;
-
-        let mut ann_max_w: f64 = 0.0;
-        let mut ann_label_buf = String::new();
-        for a in &node.annotations {
-            let decoded = decode_entities_minimal_cow(a.trim());
-            ann_label_buf.clear();
-            ann_label_buf.push('\u{00AB}');
-            ann_label_buf.push_str(decoded.as_ref());
-            ann_label_buf.push('\u{00BB}');
-            let m = measurer.measure_wrapped(&ann_label_buf, &text_style, None, WrapMode::HtmlLike);
-            ann_max_w = ann_max_w.max(m.width);
-        }
-        let ann_x = -ann_max_w.max(0.0) / 2.0;
-        let members_x = left + half_lh;
-
-        // Annotation group.
-        if node.annotations.is_empty() {
-            let _ = write!(
-                &mut out,
-                r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
-                fmt(annotation_group_y)
+        let use_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+        if use_html_labels {
+            let title_text = decode_entities_minimal_cow(node.text.trim());
+            let title_metrics = measurer.measure_wrapped(
+                title_text.as_ref(),
+                &text_style,
+                None,
+                WrapMode::HtmlLike,
             );
-        } else {
-            let _ = write!(
-                &mut out,
-                r#"<g class="annotation-group text" transform="translate({}, {})">"#,
-                fmt(ann_x),
-                fmt(annotation_group_y)
-            );
-            for (idx, a) in node.annotations.iter().enumerate() {
+            let ann_rows = node.annotations.len();
+            let members_rows = node.members.len();
+            let methods_rows = node.methods.len();
+            let half_lh = line_height / 2.0;
+            let class_row_metrics = layout.class_row_metrics_by_id.get(n.id.as_str());
+
+            let title_y = top + (ann_rows as f64 + 1.0) * line_height;
+            let annotation_group_y = if ann_rows == 0 {
+                title_y
+            } else {
+                top + line_height
+            };
+            let divider1_y = top + (ann_rows as f64 + 2.0) * line_height;
+            let members_group_y = top + (ann_rows as f64 + 3.0) * line_height;
+            let divider2_y = members_group_y + (members_rows as f64) * line_height;
+            let bottom = h / 2.0;
+            let methods_group_y = if methods_rows > 0 {
+                bottom - (methods_rows as f64) * line_height
+            } else {
+                // Upstream still emits a `methods-group` even when empty; keep it deterministic.
+                divider2_y + line_height
+            };
+
+            let title_x = -title_metrics.width.max(0.0) / 2.0;
+
+            let mut ann_max_w: f64 = 0.0;
+            let mut ann_label_buf = String::new();
+            for a in &node.annotations {
                 let decoded = decode_entities_minimal_cow(a.trim());
                 ann_label_buf.clear();
                 ann_label_buf.push('\u{00AB}');
                 ann_label_buf.push_str(decoded.as_ref());
                 ann_label_buf.push('\u{00BB}');
-                let y = (idx as f64) * line_height - half_lh;
+                let m =
+                    measurer.measure_wrapped(&ann_label_buf, &text_style, None, WrapMode::HtmlLike);
+                ann_max_w = ann_max_w.max(m.width);
+            }
+            let ann_x = -ann_max_w.max(0.0) / 2.0;
+            let members_x = left + half_lh;
+
+            // Annotation group.
+            if node.annotations.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-                    fmt(y),
-                    fmt(ann_max_w.max(1.0)),
-                    fmt(line_height.max(1.0))
+                    r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
+                    fmt(annotation_group_y)
                 );
-                render_class_html_label(
-                    &mut out,
-                    "nodeLabel",
-                    ann_label_buf.as_str(),
-                    true,
-                    Some("markdown-node-label"),
-                );
-                out.push_str("</div></foreignObject></g>");
-            }
-            out.push_str("</g>");
-        }
-
-        // Label group (class name).
-        let _ = write!(
-            &mut out,
-            r#"<g class="label-group text" transform="translate({}, {})"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-            fmt(title_x),
-            fmt(title_y),
-            fmt(title_metrics.width.max(1.0)),
-            fmt(title_metrics.height.max(line_height).max(1.0))
-        );
-        render_class_html_label(
-            &mut out,
-            "nodeLabel",
-            title_text.as_ref(),
-            true,
-            Some("markdown-node-label"),
-        );
-        out.push_str("</div></foreignObject></g></g>");
-
-        // Members.
-        if node.members.is_empty() {
-            let _ = write!(
-                &mut out,
-                r#"<g class="members-group text" transform="translate({}, {})"/>"#,
-                fmt(members_x),
-                fmt(members_group_y)
-            );
-        } else {
-            let _ = write!(
-                &mut out,
-                r#"<g class="members-group text" transform="translate({}, {})">"#,
-                fmt(members_x),
-                fmt(members_group_y)
-            );
-            for (idx, m) in node.members.iter().enumerate() {
-                let t = decode_entities_minimal_cow(m.display_text.trim());
-                let mm = class_row_metrics
-                    .and_then(|m| m.members.get(idx).copied())
-                    .unwrap_or_else(|| {
-                        measurer.measure_wrapped(t.as_ref(), &text_style, None, WrapMode::HtmlLike)
-                    });
-                let y = (idx as f64) * line_height - half_lh;
+            } else {
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-                    fmt(y),
-                    fmt(mm.width.max(1.0)),
-                    fmt(mm.height.max(line_height).max(1.0))
+                    r#"<g class="annotation-group text" transform="translate({}, {})">"#,
+                    fmt(ann_x),
+                    fmt(annotation_group_y)
                 );
-                render_class_html_label(
-                    &mut out,
-                    "nodeLabel",
-                    t.as_ref(),
-                    true,
-                    Some("markdown-node-label"),
-                );
-                out.push_str("</div></foreignObject></g>");
-            }
-            out.push_str("</g>");
-        }
-
-        // Methods.
-        if node.methods.is_empty() {
-            let _ = write!(
-                &mut out,
-                r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
-                fmt(members_x),
-                fmt(methods_group_y)
-            );
-        } else {
-            let _ = write!(
-                &mut out,
-                r#"<g class="methods-group text" transform="translate({}, {})">"#,
-                fmt(members_x),
-                fmt(methods_group_y)
-            );
-            for (idx, m) in node.methods.iter().enumerate() {
-                let t = decode_entities_minimal_cow(m.display_text.trim());
-                let mm = class_row_metrics
-                    .and_then(|m| m.methods.get(idx).copied())
-                    .unwrap_or_else(|| {
-                        measurer.measure_wrapped(t.as_ref(), &text_style, None, WrapMode::HtmlLike)
-                    });
-                let y = (idx as f64) * line_height - half_lh;
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-                    fmt(y),
-                    fmt(mm.width.max(1.0)),
-                    fmt(mm.height.max(line_height).max(1.0))
-                );
-                render_class_html_label(
-                    &mut out,
-                    "nodeLabel",
-                    t.as_ref(),
-                    true,
-                    Some("markdown-node-label"),
-                );
-                out.push_str("</div></foreignObject></g>");
-            }
-            out.push_str("</g>");
-        }
-
-        // Dividers.
-        //
-        // Mermaid hides them when `class.hideEmptyMembersBox` is enabled and both members/methods
-        // are empty (see upstream docs fixture `members_box`).
-        if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
-            for y in [divider1_y, divider2_y] {
-                out.push_str(r#"<g class="divider" style="">"#);
-                let (d, d_pb) = class_rough_line_double_path_and_bounds(
-                    left,
-                    y,
-                    left + w,
-                    y,
-                    rough_seed ^ 0x55,
-                );
-                let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
-                if let Some(s) = path_bounds_start {
-                    detail.path_bounds += s.elapsed();
-                    detail.path_bounds_calls += 1;
+                for (idx, a) in node.annotations.iter().enumerate() {
+                    let decoded = decode_entities_minimal_cow(a.trim());
+                    ann_label_buf.clear();
+                    ann_label_buf.push('\u{00AB}');
+                    ann_label_buf.push_str(decoded.as_ref());
+                    ann_label_buf.push('\u{00BB}');
+                    let y = (idx as f64) * line_height - half_lh;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                        fmt(y),
+                        fmt(ann_max_w.max(1.0)),
+                        fmt(line_height.max(1.0))
+                    );
+                    render_class_html_label(
+                        &mut out,
+                        "nodeLabel",
+                        ann_label_buf.as_str(),
+                        true,
+                        Some("markdown-node-label"),
+                    );
+                    out.push_str("</div></foreignObject></g>");
                 }
+                out.push_str("</g>");
+            }
+
+            // Label group (class name).
+            let _ = write!(
+                &mut out,
+                r#"<g class="label-group text" transform="translate({}, {})"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                fmt(title_x),
+                fmt(title_y),
+                fmt(title_metrics.width.max(1.0)),
+                fmt(title_metrics.height.max(line_height).max(1.0))
+            );
+            render_class_html_label(
+                &mut out,
+                "nodeLabel",
+                title_text.as_ref(),
+                true,
+                Some("markdown-node-label"),
+            );
+            out.push_str("</div></foreignObject></g></g>");
+
+            // Members.
+            if node.members.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
-                    escape_attr_display(&d),
-                    escape_attr_display(node_stroke),
-                    escape_attr_display(node_stroke_width),
-                    escape_attr_display(node_stroke_dasharray),
+                    r#"<g class="members-group text" transform="translate({}, {})"/>"#,
+                    fmt(members_x),
+                    fmt(members_group_y)
                 );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="members-group text" transform="translate({}, {})">"#,
+                    fmt(members_x),
+                    fmt(members_group_y)
+                );
+                for (idx, m) in node.members.iter().enumerate() {
+                    let t = decode_entities_minimal_cow(m.display_text.trim());
+                    let mm = class_row_metrics
+                        .and_then(|m| m.members.get(idx).copied())
+                        .unwrap_or_else(|| {
+                            measurer.measure_wrapped(
+                                t.as_ref(),
+                                &text_style,
+                                None,
+                                WrapMode::HtmlLike,
+                            )
+                        });
+                    let y = (idx as f64) * line_height - half_lh;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                        fmt(y),
+                        fmt(mm.width.max(1.0)),
+                        fmt(mm.height.max(line_height).max(1.0))
+                    );
+                    render_class_html_label(
+                        &mut out,
+                        "nodeLabel",
+                        t.as_ref(),
+                        true,
+                        Some("markdown-node-label"),
+                    );
+                    out.push_str("</div></foreignObject></g>");
+                }
                 out.push_str("</g>");
+            }
+
+            // Methods.
+            if node.methods.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
+                    fmt(members_x),
+                    fmt(methods_group_y)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="methods-group text" transform="translate({}, {})">"#,
+                    fmt(members_x),
+                    fmt(methods_group_y)
+                );
+                for (idx, m) in node.methods.iter().enumerate() {
+                    let t = decode_entities_minimal_cow(m.display_text.trim());
+                    let mm = class_row_metrics
+                        .and_then(|m| m.methods.get(idx).copied())
+                        .unwrap_or_else(|| {
+                            measurer.measure_wrapped(
+                                t.as_ref(),
+                                &text_style,
+                                None,
+                                WrapMode::HtmlLike,
+                            )
+                        });
+                    let y = (idx as f64) * line_height - half_lh;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                        fmt(y),
+                        fmt(mm.width.max(1.0)),
+                        fmt(mm.height.max(line_height).max(1.0))
+                    );
+                    render_class_html_label(
+                        &mut out,
+                        "nodeLabel",
+                        t.as_ref(),
+                        true,
+                        Some("markdown-node-label"),
+                    );
+                    out.push_str("</div></foreignObject></g>");
+                }
+                out.push_str("</g>");
+            }
+
+            // Dividers.
+            if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
+                for y in [divider1_y, divider2_y] {
+                    out.push_str(r#"<g class="divider" style="">"#);
+                    let (d, d_pb) = class_rough_line_double_path_and_bounds(
+                        left,
+                        y,
+                        left + w,
+                        y,
+                        rough_seed ^ 0x55,
+                    );
+                    let path_bounds_start = timing_enabled.then(std::time::Instant::now);
+                    include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
+                    if let Some(s) = path_bounds_start {
+                        detail.path_bounds += s.elapsed();
+                        detail.path_bounds_calls += 1;
+                    }
+                    let _ = write!(
+                        &mut out,
+                        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
+                        escape_attr_display(&d),
+                        escape_attr_display(node_stroke),
+                        escape_attr_display(node_stroke_width),
+                        escape_attr_display(node_stroke_dasharray),
+                    );
+                    out.push_str("</g>");
+                }
+            }
+        } else {
+            #[derive(Debug, Clone)]
+            struct LabelRun {
+                text: String,
+                style: String,
+                metrics: crate::text::TextMetrics,
+                y_offset: f64,
+            }
+
+            fn label_rect(m: &crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
+                if !(m.width.is_finite() && m.height.is_finite()) {
+                    return None;
+                }
+                let w = m.width.max(0.0);
+                let h = m.height.max(0.0);
+                if w <= 0.0 || h <= 0.0 {
+                    return None;
+                }
+                let lines = m.line_count.max(1) as f64;
+                let y = y_offset - (h / (2.0 * lines));
+                Some(Rect::from_min_max(0.0, y, w, y + h))
+            }
+
+            let padding = _class_padding.max(0.0);
+            let gap = padding;
+            let text_padding = 3.0;
+
+            let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
+            if title_text.starts_with('\\') {
+                title_text = title_text.trim_start_matches('\\').to_string();
+            }
+            let title_md = format!("**{title_text}**");
+            let title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                &title_md,
+                &text_style,
+                None,
+                WrapMode::SvgLike,
+            );
+
+            // Annotation group: Mermaid only renders the first annotation.
+            let mut annotation_runs: Vec<LabelRun> = Vec::new();
+            let mut annotation_rect: Option<Rect> = None;
+            let mut annotation_group_height: f64 = 0.0;
+            let mut annotation_group_width: f64 = 0.0;
+            if let Some(a) = node.annotations.first() {
+                let decoded = decode_entities_minimal(a.trim());
+                let text = format!("\u{00AB}{decoded}\u{00BB}");
+                let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    measurer,
+                    &text,
+                    &text_style,
+                    None,
+                    WrapMode::SvgLike,
+                );
+                annotation_group_width = metrics.width.max(0.0);
+                if let Some(r) = label_rect(&metrics, 0.0) {
+                    annotation_group_height = r.height().max(0.0);
+                    annotation_rect = Some(r);
+                }
+                annotation_runs.push(LabelRun {
+                    text,
+                    style: String::new(),
+                    metrics,
+                    y_offset: 0.0,
+                });
+            }
+
+            let title_rect = label_rect(&title_metrics, 0.0);
+            let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+            let label_group_width = title_metrics.width.max(0.0);
+
+            let mut members_runs: Vec<LabelRun> = Vec::new();
+            let mut members_rect: Option<Rect> = None;
+            let mut members_group_width: f64 = 0.0;
+            {
+                let mut y_offset = 0.0;
+                for m in &node.members {
+                    let mut t = decode_entities_minimal(m.display_text.trim());
+                    if t.starts_with('\\') {
+                        t = t.trim_start_matches('\\').to_string();
+                    }
+                    let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                        measurer,
+                        &t,
+                        &text_style,
+                        None,
+                        WrapMode::SvgLike,
+                    );
+                    members_group_width = members_group_width.max(metrics.width.max(0.0));
+                    if let Some(r) = label_rect(&metrics, y_offset) {
+                        if let Some(cur) = members_rect.as_mut() {
+                            cur.union(r);
+                        } else {
+                            members_rect = Some(r);
+                        }
+                    }
+                    members_runs.push(LabelRun {
+                        text: t,
+                        style: m.css_style.trim().to_string(),
+                        metrics,
+                        y_offset,
+                    });
+                    y_offset += metrics.height.max(0.0) + text_padding;
+                }
+            }
+            let mut members_group_height = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+            if members_group_height <= 0.0 {
+                // Mermaid reserves half a gap when the members group is empty.
+                members_group_height = (gap / 2.0).max(0.0);
+            }
+
+            let mut methods_runs: Vec<LabelRun> = Vec::new();
+            let mut methods_rect: Option<Rect> = None;
+            let mut methods_group_width: f64 = 0.0;
+            {
+                let mut y_offset = 0.0;
+                for m in &node.methods {
+                    let mut t = decode_entities_minimal(m.display_text.trim());
+                    if t.starts_with('\\') {
+                        t = t.trim_start_matches('\\').to_string();
+                    }
+                    let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                        measurer,
+                        &t,
+                        &text_style,
+                        None,
+                        WrapMode::SvgLike,
+                    );
+                    methods_group_width = methods_group_width.max(metrics.width.max(0.0));
+                    if let Some(r) = label_rect(&metrics, y_offset) {
+                        if let Some(cur) = methods_rect.as_mut() {
+                            cur.union(r);
+                        } else {
+                            methods_rect = Some(r);
+                        }
+                    }
+                    methods_runs.push(LabelRun {
+                        text: t,
+                        style: m.css_style.trim().to_string(),
+                        metrics,
+                        y_offset,
+                    });
+                    y_offset += metrics.height.max(0.0) + text_padding;
+                }
+            }
+            let methods_group_height = methods_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+
+            // textHelper(...) pre-adjust group transforms.
+            let ann_tx = -annotation_group_width / 2.0;
+            let ann_ty = 0.0;
+            let label_tx = -label_group_width / 2.0;
+            let label_ty = annotation_group_height;
+            let members_tx = 0.0;
+            let members_ty = annotation_group_height + label_group_height + gap * 2.0;
+            let methods_tx = 0.0;
+            let methods_ty =
+                annotation_group_height + label_group_height + (members_group_height + gap * 4.0);
+
+            // Compute bbox returned by textHelper(...) after group transforms.
+            let mut bbox_opt: Option<Rect> = None;
+            if let Some(mut r) = annotation_rect {
+                r.translate(ann_tx, ann_ty);
+                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+                    cur.union(r);
+                    cur
+                } else {
+                    r
+                });
+            }
+            if let Some(mut r) = title_rect {
+                r.translate(label_tx, label_ty);
+                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+                    cur.union(r);
+                    cur
+                } else {
+                    r
+                });
+            }
+            if let Some(mut r) = members_rect {
+                r.translate(members_tx, members_ty);
+                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+                    cur.union(r);
+                    cur
+                } else {
+                    r
+                });
+            }
+            if let Some(mut r) = methods_rect {
+                r.translate(methods_tx, methods_ty);
+                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+                    cur.union(r);
+                    cur
+                } else {
+                    r
+                });
+            }
+            let bbox = bbox_opt.unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
+            let bbox_w = bbox.width().max(0.0);
+            let mut bbox_h = bbox.height().max(0.0);
+            let members_rows = node.members.len();
+            let methods_rows = node.methods.len();
+            if members_rows == 0 && methods_rows == 0 {
+                bbox_h += gap;
+            } else if members_rows > 0 && methods_rows == 0 {
+                bbox_h += gap * 2.0;
+            }
+            let x = -bbox_w / 2.0;
+            let y = -bbox_h / 2.0;
+
+            let render_extra_box =
+                members_rows == 0 && methods_rows == 0 && !hide_empty_members_box;
+            let adjust_term = if render_extra_box {
+                padding
+            } else if members_rows == 0 && methods_rows == 0 {
+                -padding / 2.0
+            } else {
+                0.0
+            };
+
+            // classBox.ts label adjustment stage.
+            let adjust_y = |ty: f64| ty + y + padding - adjust_term - 4.0;
+            let adjusted_label_group_x = -label_group_width / 2.0;
+            let adjusted_annotation_group_x = -annotation_group_width / 2.0;
+            let adjusted_text_group_x = x;
+
+            let ann_new_x = if annotation_runs.is_empty() {
+                0.0
+            } else {
+                adjusted_annotation_group_x
+            };
+            let ann_new_y = adjust_y(ann_ty);
+            if annotation_runs.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="annotation-group text" transform="translate({}, {})"/>"#,
+                    fmt(ann_new_x),
+                    fmt(ann_new_y)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="annotation-group text" transform="translate({}, {})">"#,
+                    fmt(ann_new_x),
+                    fmt(ann_new_y)
+                );
+                for run in &annotation_runs {
+                    let t_y = -run.metrics.height.max(0.0)
+                        / (2.0 * run.metrics.line_count.max(1) as f64)
+                        + run.y_offset;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
+                        escape_attr_display(run.style.as_str()),
+                        fmt(t_y)
+                    );
+                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+                        &mut out,
+                        run.text.as_str(),
+                        true,
+                    );
+                    out.push_str("</g></g>");
+                }
+                out.push_str("</g>");
+            }
+
+            let label_new_y = adjust_y(label_ty);
+            let _ = write!(
+                &mut out,
+                r#"<g class="label-group text" transform="translate({}, {})">"#,
+                fmt(adjusted_label_group_x),
+                fmt(label_new_y)
+            );
+            {
+                let t_y =
+                    -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight=""><tspan font-style="normal" class="text-inner-tspan" font-weight="">"#,
+                    fmt(t_y)
+                );
+                escape_xml_into(&mut out, title_text.as_str());
+                out.push_str("</tspan></tspan></text></g></g>");
+            }
+            out.push_str("</g>");
+
+            let members_new_y = adjust_y(members_ty);
+            if members_runs.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="members-group text" transform="translate({}, {})"/>"#,
+                    fmt(adjusted_text_group_x),
+                    fmt(members_new_y)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="members-group text" transform="translate({}, {})">"#,
+                    fmt(adjusted_text_group_x),
+                    fmt(members_new_y)
+                );
+                for run in &members_runs {
+                    let t_y = -run.metrics.height.max(0.0)
+                        / (2.0 * run.metrics.line_count.max(1) as f64)
+                        + run.y_offset;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
+                        escape_attr_display(run.style.as_str()),
+                        fmt(t_y)
+                    );
+                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+                        &mut out,
+                        run.text.as_str(),
+                        true,
+                    );
+                    out.push_str("</g></g>");
+                }
+                out.push_str("</g>");
+            }
+
+            let methods_new_y = adjust_y(methods_ty);
+            if methods_runs.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
+                    fmt(adjusted_text_group_x),
+                    fmt(methods_new_y)
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="methods-group text" transform="translate({}, {})">"#,
+                    fmt(adjusted_text_group_x),
+                    fmt(methods_new_y)
+                );
+                for run in &methods_runs {
+                    let t_y = -run.metrics.height.max(0.0)
+                        / (2.0 * run.metrics.line_count.max(1) as f64)
+                        + run.y_offset;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
+                        escape_attr_display(run.style.as_str()),
+                        fmt(t_y)
+                    );
+                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+                        &mut out,
+                        run.text.as_str(),
+                        true,
+                    );
+                    out.push_str("</g></g>");
+                }
+                out.push_str("</g>");
+            }
+
+            // Dividers (classBox.ts uses group bbox heights).
+            if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
+                let mut ann_h = annotation_group_height;
+                let mut label_h = label_group_height;
+                let mut members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+                if render_extra_box {
+                    let shrink = (padding / 2.0).max(0.0);
+                    ann_h = (ann_h - shrink).max(0.0);
+                    label_h = (label_h - shrink).max(0.0);
+                    members_h = (members_h - shrink).max(0.0);
+                }
+                let divider1_y = ann_h + label_h + y + padding;
+                let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
+                for y in [divider1_y, divider2_y] {
+                    out.push_str(r#"<g class="divider" style="">"#);
+                    let (d, d_pb) = class_rough_line_double_path_and_bounds(
+                        left,
+                        y,
+                        left + w,
+                        y,
+                        rough_seed ^ 0x55,
+                    );
+                    let path_bounds_start = timing_enabled.then(std::time::Instant::now);
+                    include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
+                    if let Some(s) = path_bounds_start {
+                        detail.path_bounds += s.elapsed();
+                        detail.path_bounds_calls += 1;
+                    }
+                    let _ = write!(
+                        &mut out,
+                        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
+                        escape_attr_display(&d),
+                        escape_attr_display(node_stroke),
+                        escape_attr_display(node_stroke_width),
+                        escape_attr_display(node_stroke_dasharray),
+                    );
+                    out.push_str("</g>");
+                }
             }
         }
 

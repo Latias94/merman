@@ -1,4 +1,4 @@
-//! Flowchart v2 icon square shape.
+//! Flowchart v2 icon shape.
 
 use std::fmt::Write as _;
 
@@ -7,39 +7,7 @@ use crate::svg::parity::flowchart::{
 };
 use crate::svg::parity::fmt;
 
-fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
-    // Port of Mermaid `createRoundedRectPathD(...)` (`roundedRectPath.ts`).
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        "M {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} Z",
-        fmt(x + r),
-        fmt(y),
-        fmt(x + w - r),
-        fmt(r),
-        fmt(r),
-        fmt(x + w),
-        fmt(y + r),
-        fmt(y + h - r),
-        fmt(r),
-        fmt(r),
-        fmt(x + w - r),
-        fmt(y + h),
-        fmt(x + r),
-        fmt(r),
-        fmt(r),
-        fmt(x),
-        fmt(y + h - r),
-        fmt(y + r),
-        fmt(r),
-        fmt(r),
-        fmt(x + r),
-        fmt(y),
-    );
-    out
-}
-
-pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
+pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     label_text: &str,
@@ -48,17 +16,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
     node_pos: Option<&str>,
     node_asset_width: Option<f64>,
     node_asset_height: Option<f64>,
-    _fill_color: &str,
     stroke_color: &str,
-    _stroke_width: f32,
-    _stroke_dasharray: &str,
-    _hand_drawn_seed: u64,
     wrapped_in_a: bool,
 ) -> bool {
-    // Port of Mermaid `iconSquare.ts` (`icon-shape default`).
+    // Port of Mermaid `icon.ts` (`icon-shape default`).
     if let Some(_icon_name) = node_icon.filter(|s| !s.trim().is_empty()) {
-        // Mermaid `labelHelper(...)` uses the flowchart `nodePadding` (15px) and returns `halfPadding`.
-        let half_padding = (ctx.node_padding / 2.0).max(0.0);
         let label_text_plain =
             flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
         let has_label = !label_text_plain.trim().is_empty();
@@ -69,8 +31,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
         let icon_size = asset_h.max(asset_w);
 
-        let height = icon_size + half_padding * 2.0;
-        let width = icon_size + half_padding * 2.0;
+        let height = icon_size;
+        let width = icon_size;
         let x = -width / 2.0;
         let y = -height / 2.0;
 
@@ -102,33 +64,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             -label_bbox_h / 2.0 - label_padding / 2.0
         };
 
-        let rounded_rect = rounded_rect_path_d(x, y, width, height, 0.1);
-        let (fill_d, stroke_d) = match super::super::roughjs::roughjs_paths_for_svg_path_single_set(
-            &rounded_rect,
-            _fill_color,
-            _fill_color,
-            1.3,
-            "0 0",
-            _hand_drawn_seed,
-        ) {
-            Some(v) => v,
-            None => return false,
-        };
-
-        // Icon border/background (RoughJS `rc.path(...)`) — emitted before labels and outer bbox.
-        // Mermaid uses `translate(0,18)` without a space after the comma.
+        // Icon border/background (Mermaid uses RoughJS `rc.rectangle(...)` with stroke/fill "none").
+        let icon_path = format!(
+            "M{} {} L{} {} L{} {} L{} {}",
+            fmt(x),
+            fmt(y),
+            fmt(x + width),
+            fmt(y),
+            fmt(x + width),
+            fmt(y + height),
+            fmt(x),
+            fmt(y + height)
+        );
         let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
         let _ = write!(
             out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
-            escape_attr(&fill_d),
-            escape_attr(_fill_color),
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"#,
-            escape_attr(&stroke_d),
-            escape_attr(_fill_color),
+            r#"<path d="{}" stroke="none" stroke-width="0" fill="none"/>"#,
+            escape_attr(&icon_path),
         );
         out.push_str("</g>");
 
@@ -145,12 +97,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             fmt(outer_x0),
             fmt(outer_y0 + outer_h)
         );
+
         let label_html =
             flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
         let label_y = if top_label {
-            -outer_h / 2.0 + half_padding
+            -outer_h / 2.0
         } else {
-            outer_h / 2.0 - label_bbox_h - half_padding
+            outer_h / 2.0 - label_bbox_h
         };
         let _ = write!(
             out,
@@ -169,9 +122,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             escape_attr(&outer_path)
         );
 
-        // Mermaid CLI baseline at 11.12.2 renders iconify-based icons via a browser-loaded icon
-        // set. In our pinned baselines, the upstream renderer falls back to a placeholder icon SVG
-        // (a blue square with a `?`). Mirror that placeholder output here.
+        // Mirror Mermaid's placeholder icon output (blue square with `?`).
         let icon_tx = -icon_size / 2.0;
         let icon_ty = icon_dy - icon_size / 2.0;
         let _ = write!(
@@ -189,8 +140,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             out.push_str("</a>");
         }
         return true;
-    } else {
-        // Fall back to a normal node if the icon name is missing.
     }
 
     false

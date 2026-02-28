@@ -476,112 +476,18 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
 }
 
 fn markdown_to_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool)>> {
-    // Mirrors Mermaid's `markdownToLines(...)` + `createFormattedText(...)` behavior at a high
-    // level for the subset used in Mermaid@11.12.2 flowchart baselines:
-    // - words are split on whitespace
-    // - each word carries `strong`/`em` style based on the active Markdown span
-    // - line breaks come from hard/soft breaks and explicit `\n` in text
-    let mut lines: Vec<Vec<(String, bool, bool)>> = vec![Vec::new()];
-
-    let mut strong_depth: usize = 0;
-    let mut em_depth: usize = 0;
-
-    let mut curr = String::new();
-    let mut curr_strong = false;
-    let mut curr_em = false;
-
-    let flush = |lines: &mut Vec<Vec<(String, bool, bool)>>,
-                 curr: &mut String,
-                 curr_strong: &mut bool,
-                 curr_em: &mut bool| {
-        if !curr.is_empty() {
-            lines
-                .last_mut()
-                .unwrap_or_else(|| unreachable!("lines always has at least one entry"))
-                .push((std::mem::take(curr), *curr_strong, *curr_em));
-        }
-        *curr_strong = false;
-        *curr_em = false;
-    };
-
-    let parser = pulldown_cmark::Parser::new_ext(
-        markdown,
-        pulldown_cmark::Options::ENABLE_TABLES
-            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-            | pulldown_cmark::Options::ENABLE_TASKLISTS,
-    )
-    .map(|ev| match ev {
-        pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-        other => other,
-    });
-
-    for ev in parser {
-        match ev {
-            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                strong_depth += 1;
-            }
-            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
-                em_depth += 1;
-            }
-            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
-                strong_depth = strong_depth.saturating_sub(1);
-            }
-            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
-                em_depth = em_depth.saturating_sub(1);
-            }
-            pulldown_cmark::Event::HardBreak => {
-                flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-                lines.push(Vec::new());
-            }
-            pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                for ch in t.chars() {
-                    if ch == '\n' {
-                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-                        lines.push(Vec::new());
-                        continue;
-                    }
-                    if ch.is_whitespace() {
-                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-                        continue;
-                    }
-
-                    let want_strong = strong_depth > 0;
-                    let want_em = em_depth > 0;
-                    if curr.is_empty() {
-                        curr_strong = want_strong;
-                        curr_em = want_em;
-                    } else if curr_strong != want_strong || curr_em != want_em {
-                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-                        curr_strong = want_strong;
-                        curr_em = want_em;
-                    }
-                    curr.push(ch);
-                }
-            }
-            pulldown_cmark::Event::Html(t) => {
-                // Mermaid's SVG-label markdown path keeps raw inline HTML tokens as literal text.
-                // Treat them as plain text here (whitespace-separated).
-                for ch in t.chars() {
-                    if ch.is_whitespace() {
-                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-                        continue;
-                    }
-                    if curr.is_empty() {
-                        curr_strong = strong_depth > 0;
-                        curr_em = em_depth > 0;
-                    }
-                    curr.push(ch);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
-    while lines.last().is_some_and(|l| l.is_empty()) && lines.len() > 1 {
-        lines.pop();
-    }
-    lines
+    crate::text::mermaid_markdown_to_lines(markdown, true)
+        .into_iter()
+        .map(|line| {
+            line.into_iter()
+                .map(|(w, ty)| {
+                    let is_strong = ty == crate::text::MermaidMarkdownWordType::Strong;
+                    let is_em = ty == crate::text::MermaidMarkdownWordType::Em;
+                    (w, is_strong, is_em)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>()
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(

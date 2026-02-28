@@ -338,7 +338,23 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 return true;
             }
         }
-        "icon" | "iconSquare" => {
+        "icon" => {
+            if super::try_render_icon(
+                out,
+                ctx,
+                *label_text,
+                *label_type,
+                node_icon,
+                node_pos,
+                node_asset_width,
+                node_asset_height,
+                stroke_color,
+                wrapped_in_a,
+            ) {
+                return true;
+            }
+        }
+        "iconSquare" => {
             if super::try_render_icon_square(
                 out,
                 ctx,

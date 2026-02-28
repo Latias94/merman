@@ -283,16 +283,18 @@ fn flowchart_default_bold_kern_delta_em(prev: char, next: char) -> f64 {
     }
 }
 
-fn flowchart_default_italic_delta_em(ch: char) -> f64 {
-    // Mermaid markdown labels render `<em>/<i>` as italic inside a `<foreignObject>`.
-    // Empirically (Trebuchet MS @16px) the width delta is small but measurable; we model it as a
-    // per-character additive delta in `em` space.
+fn flowchart_default_italic_delta_em(ch: char, wrap_mode: WrapMode) -> f64 {
+    // Mermaid markdown labels render `<em>/<i>` as italic. The measured width delta differs
+    // between HTML-label (DOM `getBoundingClientRect()`) and SVG-label (`<text>.getBBox()`).
     //
-    // This constant matches the observed delta for common ASCII letters in upstream fixtures:
-    // e.g. `<em>bat</em>` widens by `3/8px` at 16px, i.e. `1/128em`.
-    const DELTA_EM: f64 = 1.0 / 128.0;
+    // Model this as a per-character additive delta in `em` space for the default Mermaid font
+    // stack.
+    let delta_em: f64 = match wrap_mode {
+        WrapMode::HtmlLike => 1.0 / 128.0,
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 5.0 / 512.0,
+    };
     match ch {
-        'A'..='Z' | 'a'..='z' | '0'..='9' => DELTA_EM,
+        'A'..='Z' | 'a'..='z' | '0'..='9' => delta_em,
         _ => 0.0,
     }
 }
@@ -538,7 +540,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 }
                 if em_depth > 0 {
                     deltas_px_by_line[line_idx] +=
-                        flowchart_default_italic_delta_em(decoded) * font_size;
+                        flowchart_default_italic_delta_em(decoded, wrap_mode) * font_size;
                 }
                 *prev_char = Some(decoded);
                 *prev_is_strong = is_strong;
@@ -638,6 +640,253 @@ pub fn measure_html_with_flowchart_bold_deltas(
         height: base.height,
         line_count: base.line_count,
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MermaidMarkdownWordType {
+    Normal,
+    Strong,
+    Em,
+}
+
+/// Minimal, deterministic subset of Mermaid's `markdownToLines(...)` output.
+///
+/// This aims to match Mermaid's token boundaries for emphasis/strong delimiters (including `_`
+/// behavior) well enough to reproduce upstream SVG-label layout and baseline DOM.
+pub(crate) fn mermaid_markdown_to_lines(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
+        let markdown = markdown.replace("\r\n", "\n");
+
+        // Mermaid preprocessing:
+        // - Replace `<br/>` with `\n`
+        // - Replace multiple newlines with a single newline
+        // - Dedent common indentation
+        let mut s = markdown
+            .replace("<br/>", "\n")
+            .replace("<br />", "\n")
+            .replace("<br>", "\n");
+
+        // Collapse multiple consecutive newlines to a single `\n`.
+        let mut collapsed = String::with_capacity(s.len());
+        let mut prev_nl = false;
+        for ch in s.chars() {
+            if ch == '\n' {
+                if prev_nl {
+                    continue;
+                }
+                prev_nl = true;
+                collapsed.push('\n');
+            } else {
+                prev_nl = false;
+                collapsed.push(ch);
+            }
+        }
+        s = collapsed;
+
+        // Dedent: remove the smallest common leading indentation of non-empty lines.
+        let lines: Vec<&str> = s.split('\n').collect();
+        let mut min_indent: Option<usize> = None;
+        for l in &lines {
+            if l.trim().is_empty() {
+                continue;
+            }
+            let indent = l
+                .chars()
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .map(|c| if c == '\t' { 4 } else { 1 })
+                .sum::<usize>();
+            min_indent = Some(min_indent.map_or(indent, |m| m.min(indent)));
+        }
+        let min_indent = min_indent.unwrap_or(0);
+        if min_indent > 0 {
+            let mut dedented = String::with_capacity(s.len());
+            for (idx, l) in lines.iter().enumerate() {
+                if idx > 0 {
+                    dedented.push('\n');
+                }
+                let mut remaining = min_indent;
+                let mut it = l.chars().peekable();
+                while remaining > 0 {
+                    match it.peek().copied() {
+                        Some(' ') => {
+                            let _ = it.next();
+                            remaining = remaining.saturating_sub(1);
+                        }
+                        Some('\t') => {
+                            let _ = it.next();
+                            remaining = remaining.saturating_sub(4);
+                        }
+                        _ => break,
+                    }
+                }
+                for ch in it {
+                    dedented.push(ch);
+                }
+            }
+            s = dedented;
+        }
+
+        if !markdown_auto_wrap {
+            s = s.replace(' ', "&nbsp;");
+        }
+        s
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum DelimKind {
+        Strong,
+        Em,
+    }
+
+    fn is_punctuation(ch: char) -> bool {
+        !ch.is_whitespace() && !ch.is_alphanumeric()
+    }
+
+    fn mermaid_delim_can_open_close(
+        ch: char,
+        prev: Option<char>,
+        next: Option<char>,
+    ) -> (bool, bool) {
+        let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
+        let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+        let prev_is_punct = prev.is_some_and(is_punctuation);
+        let next_is_punct = next.is_some_and(is_punctuation);
+
+        let left_flanking = !next_is_ws && (!next_is_punct || prev_is_ws || prev_is_punct);
+        let right_flanking = !prev_is_ws && (!prev_is_punct || next_is_ws || next_is_punct);
+
+        if ch == '_' {
+            let can_open = left_flanking && (!right_flanking || prev_is_ws || prev_is_punct);
+            let can_close = right_flanking && (!left_flanking || next_is_ws || next_is_punct);
+            (can_open, can_close)
+        } else {
+            (left_flanking, right_flanking)
+        }
+    }
+
+    // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
+    // suppressing `**`/`_` formatting.
+    let markdown = markdown
+        .strip_prefix('`')
+        .and_then(|s| s.strip_suffix('`'))
+        .unwrap_or(markdown);
+
+    let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
+    let chars: Vec<char> = pre.chars().collect();
+
+    let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = vec![Vec::new()];
+    let mut line_idx: usize = 0;
+
+    let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
+    let mut word = String::new();
+    let mut word_ty = MermaidMarkdownWordType::Normal;
+
+    let mut flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+                          line_idx: &mut usize,
+                          word: &mut String,
+                          word_ty: MermaidMarkdownWordType| {
+        if word.is_empty() {
+            return;
+        }
+        let mut w = std::mem::take(word);
+        if w.contains("&#39;") {
+            w = w.replace("&#39;", "'");
+        }
+        out.get_mut(*line_idx)
+            .unwrap_or_else(|| unreachable!("line exists"))
+            .push((w, word_ty));
+    };
+
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if ch == '\n' {
+            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+            word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+            line_idx += 1;
+            out.push(Vec::new());
+            i += 1;
+            continue;
+        }
+        if ch == ' ' {
+            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+            word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+            i += 1;
+            continue;
+        }
+
+        if ch == '<' {
+            if let Some(end) = chars[i..].iter().position(|c| *c == '>') {
+                let end = i + end;
+                let html: String = chars[i..=end].iter().collect();
+                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+                out[line_idx].push((html, MermaidMarkdownWordType::Normal));
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                i = end + 1;
+                continue;
+            }
+        }
+
+        if ch == '*' || ch == '_' {
+            let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
+                2
+            } else {
+                1
+            };
+            let kind = if run_len == 2 {
+                DelimKind::Strong
+            } else {
+                DelimKind::Em
+            };
+            let prev = if i > 0 { Some(chars[i - 1]) } else { None };
+            let next = if i + run_len < chars.len() {
+                Some(chars[i + run_len])
+            } else {
+                None
+            };
+            let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
+
+            let want_ty = match kind {
+                DelimKind::Strong => MermaidMarkdownWordType::Strong,
+                DelimKind::Em => MermaidMarkdownWordType::Em,
+            };
+            let cur_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+
+            if can_close && cur_ty == want_ty {
+                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+                stack.pop();
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                i += run_len;
+                continue;
+            }
+            if can_open {
+                flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+                stack.push(want_ty);
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                i += run_len;
+                continue;
+            }
+        }
+
+        if word.is_empty() {
+            word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+        }
+        word.push(ch);
+        i += 1;
+    }
+
+    flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+    if out.is_empty() {
+        out.push(Vec::new());
+    }
+    while out.last().is_some_and(|l| l.is_empty()) && out.len() > 1 {
+        out.pop();
+    }
+    out
 }
 
 pub fn measure_markdown_with_flowchart_bold_deltas(
@@ -803,80 +1052,62 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
         }
     }
 
-    let mut plain = String::new();
-    let mut deltas_px_by_line: Vec<f64> = vec![0.0];
-    let mut strong_depth: usize = 0;
-    let mut em_depth: usize = 0;
-    let mut prev_char: Option<char> = None;
-    let mut prev_is_strong = false;
+    let parsed = mermaid_markdown_to_lines(markdown, true);
 
-    let parser = pulldown_cmark::Parser::new_ext(
-        markdown,
-        pulldown_cmark::Options::ENABLE_TABLES
-            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-            | pulldown_cmark::Options::ENABLE_TASKLISTS,
-    );
+    let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
+    let mut deltas_px_by_line: Vec<f64> = vec![0.0; parsed.len().max(1)];
 
-    for ev in parser {
-        match ev {
-            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
-                em_depth += 1;
-            }
-            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                strong_depth += 1;
-            }
-            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
-                em_depth = em_depth.saturating_sub(1);
-            }
-            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
-                strong_depth = strong_depth.saturating_sub(1);
-            }
-            pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                for ch in t.chars() {
-                    plain.push(ch);
-                    if ch == '\n' {
-                        deltas_px_by_line.push(0.0);
-                        prev_char = None;
-                        prev_is_strong = false;
-                        continue;
-                    }
-                    if is_flowchart_default_font(style) {
-                        let line_idx = deltas_px_by_line.len().saturating_sub(1);
-                        let font_size = style.font_size.max(1.0);
-                        let is_strong = strong_depth > 0;
-                        if let Some(prev) = prev_char {
-                            if prev_is_strong && is_strong {
-                                deltas_px_by_line[line_idx] +=
-                                    flowchart_default_bold_kern_delta_em(prev, ch)
-                                        * font_size
-                                        * bold_delta_scale;
-                            }
-                        }
-                        if is_strong {
-                            deltas_px_by_line[line_idx] +=
-                                flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
-                        }
-                        if em_depth > 0 {
-                            deltas_px_by_line[line_idx] +=
-                                flowchart_default_italic_delta_em(ch) * font_size;
-                        }
-                        prev_char = Some(ch);
-                        prev_is_strong = is_strong;
-                    } else {
-                        prev_char = Some(ch);
-                        prev_is_strong = strong_depth > 0;
+    for (line_idx, words) in parsed.iter().enumerate() {
+        let mut plain = String::new();
+        let mut prev_char: Option<char> = None;
+        let mut prev_is_strong = false;
+
+        for (word_idx, (w, ty)) in words.iter().enumerate() {
+            let is_strong = *ty == MermaidMarkdownWordType::Strong;
+            let is_em = *ty == MermaidMarkdownWordType::Em;
+
+            let mut push_char = |ch: char| {
+                plain.push(ch);
+                if !is_flowchart_default_font(style) {
+                    prev_char = Some(ch);
+                    prev_is_strong = is_strong;
+                    return;
+                }
+                let font_size = style.font_size.max(1.0);
+                if let Some(prev) = prev_char {
+                    if prev_is_strong && is_strong {
+                        deltas_px_by_line[line_idx] +=
+                            flowchart_default_bold_kern_delta_em(prev, ch)
+                                * font_size
+                                * bold_delta_scale;
                     }
                 }
+                if is_strong {
+                    deltas_px_by_line[line_idx] +=
+                        flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
+                }
+                if is_em {
+                    deltas_px_by_line[line_idx] +=
+                        flowchart_default_italic_delta_em(ch, wrap_mode) * font_size;
+                }
+                prev_char = Some(ch);
+                prev_is_strong = is_strong;
+            };
+
+            if word_idx > 0 {
+                // Mermaid's `<tspan>` runs include a leading space in each word after the first,
+                // so the space inherits the *next* word's style.
+                push_char(' ');
             }
-            pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
-                plain.push('\n');
-                deltas_px_by_line.push(0.0);
-                prev_char = None;
-                prev_is_strong = false;
+            for ch in w.chars() {
+                push_char(ch);
             }
-            _ => {}
         }
+
+        plain_lines.push(plain);
     }
+
+    let plain = plain_lines.join("\n");
 
     let plain = plain.trim().to_string();
     let base = measurer.measure_wrapped_raw(&plain, style, max_width, wrap_mode);
