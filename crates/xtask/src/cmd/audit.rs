@@ -6,8 +6,11 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 struct DeferredParseOk {
@@ -28,6 +31,43 @@ fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn sanitize_svg_id(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "diagram".to_string()
+    } else {
+        out
+    }
+}
+
+fn wait_with_timeout(
+    mut child: std::process::Child,
+    timeout: Duration,
+) -> Result<std::process::ExitStatus, std::io::Error> {
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "process timed out",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn collect_mmd_files_recursive(root: &Path) -> Result<Vec<PathBuf>, XtaskError> {
@@ -90,10 +130,204 @@ fn detect_out_of_scope(meta: &merman::ParseMetadata) -> Vec<String> {
     out
 }
 
+#[derive(Debug, Clone)]
+struct UpstreamRenderCheck {
+    fixture: String,
+    ok: bool,
+    error_key: Option<String>,
+}
+
+fn extract_upstream_error_key(stderr_text: &str) -> Option<String> {
+    // Mermaid CLI logs tend to be noisy (stack traces, repeated "Generating ..." lines).
+    // Try to pull out a stable "first meaningful" line.
+    for raw in stderr_text.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.eq_ignore_ascii_case("Generating single mermaid chart")
+            || line.eq_ignore_ascii_case("Generating single mermaid chart.")
+        {
+            continue;
+        }
+        return Some(normalize_error_key(line));
+    }
+    None
+}
+
+fn upstream_svg_is_error(svg_text: &str) -> bool {
+    // Mermaid error SVGs are still valid SVGs and may be produced with exit status 0.
+    // They are distinguished by `aria-roledescription="error"`.
+    svg_text.contains(r#"aria-roledescription="error""#)
+}
+
+fn extract_upstream_error_key_from_error_svg(svg_text: &str) -> Option<String> {
+    if !upstream_svg_is_error(svg_text) {
+        return None;
+    }
+
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r#"<text[^>]*class="error-text"[^>]*>([^<]+)</text>"#)
+            .expect("error svg regex must compile")
+    });
+
+    for cap in re.captures_iter(svg_text) {
+        let line = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.to_ascii_lowercase().starts_with("mermaid version") {
+            continue;
+        }
+        return Some(normalize_error_key(line));
+    }
+
+    Some("rendered error svg".to_string())
+}
+
+fn check_upstream_renderability_for_parser_only(
+    workspace_root: &Path,
+    diagram: &str,
+    mmd_path: &Path,
+    out_root: &Path,
+    timeout: Duration,
+) -> Result<UpstreamRenderCheck, XtaskError> {
+    let fixture_rel = mmd_path
+        .strip_prefix(workspace_root)
+        .unwrap_or(mmd_path)
+        .display()
+        .to_string();
+
+    let tools_root = workspace_root.join("tools").join("mermaid-cli");
+    let mmdc = crate::cmd::find_mmdc(&tools_root).ok_or_else(|| {
+        XtaskError::UpstreamSvgFailed(format!(
+            "mmdc not found under {} (run: `cargo run -p xtask -- gen-upstream-svgs --install`)",
+            tools_root.display()
+        ))
+    })?;
+
+    let node_cwd = tools_root.clone();
+    let pinned_config = node_cwd.join("mermaid-config.json");
+
+    let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+        return Ok(UpstreamRenderCheck {
+            fixture: fixture_rel,
+            ok: false,
+            error_key: Some("invalid fixture filename".to_string()),
+        });
+    };
+    let svg_id = sanitize_svg_id(stem);
+
+    let out_dir = out_root.join(diagram);
+    fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_dir.display().to_string(),
+        source,
+    })?;
+    let out_path = out_dir.join(format!("{stem}.svg"));
+    let log_path = out_dir.join(format!("{stem}.stderr.txt"));
+
+    let mut cmd = if cfg!(windows) {
+        match mmdc.extension().and_then(|s| s.to_str()) {
+            Some(ext) if ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat") => {
+                let mut cmd = Command::new("cmd.exe");
+                cmd.arg("/c").arg(&mmdc);
+                cmd
+            }
+            Some(ext) if ext.eq_ignore_ascii_case("ps1") => {
+                let mut cmd = Command::new("powershell.exe");
+                cmd.arg("-NoProfile")
+                    .arg("-ExecutionPolicy")
+                    .arg("Bypass")
+                    .arg("-File")
+                    .arg(&mmdc);
+                cmd
+            }
+            _ => Command::new(&mmdc),
+        }
+    } else {
+        Command::new(&mmdc)
+    };
+
+    let log_file = fs::File::create(&log_path).map_err(|source| XtaskError::WriteFile {
+        path: log_path.display().to_string(),
+        source,
+    })?;
+
+    cmd.current_dir(&node_cwd)
+        .arg("-i")
+        .arg(mmd_path)
+        .arg("-o")
+        .arg(&out_path)
+        .arg("-t")
+        .arg("default")
+        .arg("-c")
+        .arg(pinned_config)
+        .arg("--svgId")
+        .arg(svg_id)
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(log_file));
+
+    let child = cmd
+        .spawn()
+        .map_err(|err| XtaskError::UpstreamSvgFailed(format!("failed to spawn mmdc: {err}")))?;
+    let status = match wait_with_timeout(child, timeout) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+            return Ok(UpstreamRenderCheck {
+                fixture: fixture_rel,
+                ok: false,
+                error_key: Some("timeout".to_string()),
+            });
+        }
+        Err(e) => {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "mmdc execution failed: {e}"
+            )));
+        }
+    };
+
+    if status.success() {
+        let mut svg_text = String::new();
+        if let Ok(mut f) = fs::File::open(&out_path) {
+            let _ = f.read_to_string(&mut svg_text);
+        }
+
+        if let Some(key) = extract_upstream_error_key_from_error_svg(&svg_text) {
+            Ok(UpstreamRenderCheck {
+                fixture: fixture_rel,
+                ok: false,
+                error_key: Some(key),
+            })
+        } else {
+            let _ = fs::remove_file(&log_path);
+            Ok(UpstreamRenderCheck {
+                fixture: fixture_rel,
+                ok: true,
+                error_key: None,
+            })
+        }
+    } else {
+        let mut stderr_text = String::new();
+        if let Ok(mut f) = fs::File::open(&log_path) {
+            let _ = f.read_to_string(&mut stderr_text);
+        }
+        let key =
+            extract_upstream_error_key(&stderr_text).or_else(|| Some(format!("exit={status}")));
+        Ok(UpstreamRenderCheck {
+            fixture: fixture_rel,
+            ok: false,
+            error_key: key,
+        })
+    }
+}
+
 pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut limit: usize = 60;
+    let mut check_upstream_render: bool = false;
+    let mut upstream_timeout_secs: u64 = 60;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -111,6 +345,14 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 limit = args
                     .get(i)
                     .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(60);
+            }
+            "--check-upstream-render" => check_upstream_render = true,
+            "--upstream-timeout-secs" => {
+                i += 1;
+                upstream_timeout_secs = args
+                    .get(i)
+                    .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(60);
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
@@ -226,6 +468,15 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     if limit != 60 {
         let _ = write!(&mut report, " --limit {limit}");
     }
+    if check_upstream_render {
+        let _ = write!(&mut report, " --check-upstream-render");
+    }
+    if upstream_timeout_secs != 60 {
+        let _ = write!(
+            &mut report,
+            " --upstream-timeout-secs {upstream_timeout_secs}"
+        );
+    }
     let _ = writeln!(&mut report, "`\n");
 
     let parser_only_total: usize = parser_only_by_diagram.values().map(|v| v.len()).sum();
@@ -250,6 +501,142 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 );
             }
             let _ = writeln!(&mut report);
+        }
+    }
+
+    if check_upstream_render && parser_only_total > 0 {
+        let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
+        let out_root = workspace_root
+            .join("target")
+            .join("audit")
+            .join("upstream-render");
+        let out_root_rel = out_root.strip_prefix(&workspace_root).unwrap_or(&out_root);
+
+        let _ = writeln!(
+            &mut report,
+            "## Upstream renderability (parser-only)\n\n- Tool: Mermaid CLI (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
+            upstream_timeout_secs,
+            out_root_rel.display()
+        );
+
+        let mut results_by_diagram: BTreeMap<String, Vec<UpstreamRenderCheck>> = BTreeMap::new();
+        let mut failures_by_diagram: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+
+        for (diagram, files) in &parser_only_by_diagram {
+            for p in files {
+                let res = check_upstream_renderability_for_parser_only(
+                    &workspace_root,
+                    diagram,
+                    p,
+                    &out_root,
+                    timeout,
+                )?;
+                results_by_diagram
+                    .entry(diagram.clone())
+                    .or_default()
+                    .push(res.clone());
+                if !res.ok {
+                    let key = res
+                        .error_key
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
+                    *failures_by_diagram
+                        .entry(diagram.clone())
+                        .or_default()
+                        .entry(key)
+                        .or_default() += 1;
+                }
+            }
+        }
+
+        let mut actionable: Vec<(String, String)> = Vec::new();
+        for (diagram, results) in &results_by_diagram {
+            for r in results.iter().filter(|r| r.ok) {
+                actionable.push((diagram.clone(), r.fixture.clone()));
+            }
+        }
+        actionable.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+        let _ = writeln!(
+            &mut report,
+            "### Actionable gaps\n\nThese are parser-only fixtures that upstream Mermaid CLI can render successfully.\nThey indicate missing or intentionally-deferred renderer parity on the merman side.\n\nTotal: **{}**\n",
+            actionable.len()
+        );
+        if actionable.is_empty() {
+            let _ = writeln!(&mut report, "_None._\n");
+        } else {
+            for (diagram, fixture) in actionable.iter().take(limit) {
+                let _ = writeln!(&mut report, "- `{diagram}`: `{fixture}`");
+            }
+            if actionable.len() > limit {
+                let _ = writeln!(
+                    &mut report,
+                    "- _... {} more omitted (use `--limit` or `--filter`)_\n",
+                    actionable.len() - limit
+                );
+            } else {
+                let _ = writeln!(&mut report);
+            }
+        }
+
+        for (diagram, results) in &results_by_diagram {
+            let ok_count = results.iter().filter(|r| r.ok).count();
+            let fail_count = results.len() - ok_count;
+            let _ = writeln!(
+                &mut report,
+                "### `{diagram}`\n\n- Render OK: **{ok_count}**\n- Render FAIL: **{fail_count}**\n"
+            );
+
+            if ok_count > 0 {
+                let _ = writeln!(&mut report, "Render OK fixtures:\n");
+                for r in results.iter().filter(|r| r.ok).take(limit) {
+                    let _ = writeln!(&mut report, "- `{}`", r.fixture);
+                }
+                if ok_count > limit {
+                    let _ = writeln!(&mut report, "- _... {} more omitted_", ok_count - limit);
+                }
+                let _ = writeln!(&mut report);
+            }
+
+            if let Some(fails) = failures_by_diagram.get(diagram) {
+                let mut clusters: Vec<(String, usize)> =
+                    fails.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                clusters.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                let _ = writeln!(&mut report, "Failures (by key):\n");
+                for (k, n) in clusters.iter().take(limit.min(20)) {
+                    let _ = writeln!(&mut report, "- **{n}×** `{k}`");
+                }
+                if clusters.len() > limit.min(20) {
+                    let _ = writeln!(
+                        &mut report,
+                        "- _... {} more clusters omitted_",
+                        clusters.len() - limit.min(20)
+                    );
+                }
+                let _ = writeln!(&mut report, "\nFailure fixtures:\n");
+                let mut fail_rows: Vec<(String, String)> = results
+                    .iter()
+                    .filter(|r| !r.ok)
+                    .map(|r| {
+                        (
+                            r.fixture.clone(),
+                            r.error_key.clone().unwrap_or_else(|| "unknown".to_string()),
+                        )
+                    })
+                    .collect();
+                fail_rows.sort_by(|a, b| a.0.cmp(&b.0));
+                for (fixture, key) in fail_rows.iter().take(limit) {
+                    let _ = writeln!(&mut report, "- `{fixture}`: `{key}`");
+                }
+                if fail_rows.len() > limit {
+                    let _ = writeln!(
+                        &mut report,
+                        "- _... {} more omitted_",
+                        fail_rows.len() - limit
+                    );
+                }
+                let _ = writeln!(&mut report);
+            }
         }
     }
 

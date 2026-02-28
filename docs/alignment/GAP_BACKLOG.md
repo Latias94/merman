@@ -28,10 +28,16 @@ spot checks:
 
 As of `2026-02-27` (see the generated report for details):
 
-- Parser-only fixtures: `18` (not included in SVG DOM parity gates)
+- Parser-only fixtures: `10` (not included in SVG DOM parity gates)
 - Deferred fixtures (`fixtures/_deferred`): `66` parse OK, `80` parse ERR
 - Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
   parser correctness issues.
+
+Notes:
+
+- `xtask audit-gaps --check-upstream-render` highlights “actionable gaps”: parser-only fixtures that upstream Mermaid
+  CLI can render successfully. Currently, the actionable set is dominated by Flowchart HTML demo fixtures containing
+  `$$...$$` math labels (KaTeX in upstream).
 
 ## Gap Index
 
@@ -84,8 +90,8 @@ Legend:
    - Risk: L (documentation + fixture policy).
 
 6. **Reduce “parser-only” fixtures by implementing missing semantics**
-   - Candidates (from `xtask audit-gaps`): Treemap compiled styles (`classDef`/CSS), Sankey identifier edge cases
-     (e.g. `proto`), XYChart title/header variants, and any Architecture Cypress fixtures that should be CLI-compatible.
+   - Candidates (from `xtask audit-gaps --check-upstream-render`): Flowchart `$$...$$` math labels (KaTeX) via a
+     pluggable math backend (`merman_render::math::MathRenderer`).
    - Risk: M (can touch parsing + rendering + DOM parity).
 
 ### P2: Beyond core parity (optional expansions)
