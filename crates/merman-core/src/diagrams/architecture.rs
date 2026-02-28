@@ -789,131 +789,6 @@ fn is_arch_dir(ch: char) -> bool {
     matches!(ch, 'L' | 'R' | 'T' | 'B')
 }
 
-type EdgeMiddleShorthand<'a> = (
-    char,
-    Option<bool>,
-    Option<String>,
-    Option<bool>,
-    char,
-    &'a str,
-);
-
-fn parse_edge_middle_shorthand<'a>(input: &'a str) -> Option<EdgeMiddleShorthand<'a>> {
-    // Parses Mermaid Architecture "shorthand" edge forms used in some upstream fixtures:
-    //
-    // - `db L--R server`
-    // - `servC L-[Label]-R servL`
-    // - `servC (L--R) servL`
-    //
-    // Returns: (lhs_dir, lhs_into, title, rhs_into, rhs_dir, tail_after_middle)
-
-    let mut rest = input.trim_start();
-    if rest.is_empty() {
-        return None;
-    }
-
-    let token = if rest.starts_with('(') {
-        // Prefer `(L--R)` style, but accept unbalanced forms like `(B--T` used in an upstream fixture.
-        if let Some((inner, tail)) = take_bracketed(rest, '(', ')') {
-            rest = tail.trim_start();
-            inner.trim().to_string()
-        } else {
-            // Middle token is a single non-whitespace run (e.g. `(B--T`)
-            let mut end = 0;
-            for (idx, ch) in rest.char_indices() {
-                if ch.is_whitespace() {
-                    end = idx;
-                    break;
-                }
-            }
-            if end == 0 {
-                end = rest.len();
-            }
-            let token = rest[..end].to_string();
-            rest = rest[end..].trim_start();
-            token
-        }
-    } else {
-        // Middle token is a single non-whitespace run (e.g. `L--R` or `L-[x]-R`)
-        let mut end = 0;
-        for (idx, ch) in rest.char_indices() {
-            if ch.is_whitespace() {
-                end = idx;
-                break;
-            }
-        }
-        if end == 0 {
-            end = rest.len();
-        }
-        let token = rest[..end].to_string();
-        rest = rest[end..].trim_start();
-        token
-    };
-
-    // In some upstream fixtures (complex junction edges), the parens are used in an unbalanced way:
-    // `top_gateway (B--T juncR` and `juncC{group} R--L) juncR{group}`.
-    // We accept those by treating a leading `(` and trailing `)` as optional wrappers.
-    let mut token = token.trim();
-    if let Some(stripped) = token.strip_prefix('(') {
-        token = stripped.trim();
-    }
-    if let Some(stripped) = token.strip_suffix(')') {
-        token = stripped.trim();
-    }
-    let token = token.to_string();
-
-    let mut t = token.as_str().trim();
-    let lhs_dir = t.chars().next()?;
-    if !is_arch_dir(lhs_dir) {
-        return None;
-    }
-    t = &t[lhs_dir.len_utf8()..];
-
-    let mut lhs_into = None;
-    if let Some(ch) = t.chars().next() {
-        if ch == '<' || ch == '>' {
-            lhs_into = Some(true);
-            t = &t[ch.len_utf8()..];
-        }
-    }
-
-    let mut title: Option<String> = None;
-    if t.starts_with("--") {
-        t = &t[2..];
-    } else if t.starts_with('-') {
-        t = &t[1..];
-        t = t.trim_start();
-        let (lbl, tail) = take_bracketed(t, '[', ']')?;
-        title = Some(lbl.trim().to_string());
-        t = tail.trim_start();
-        t = t.strip_prefix('-')?;
-    } else {
-        return None;
-    }
-
-    let mut rhs_into = None;
-    t = t.trim_start();
-    if let Some(ch) = t.chars().next() {
-        if ch == '<' || ch == '>' {
-            rhs_into = Some(true);
-            t = &t[ch.len_utf8()..];
-        }
-    }
-
-    t = t.trim_start();
-    let rhs_dir = t.chars().next()?;
-    if !is_arch_dir(rhs_dir) {
-        return None;
-    }
-    t = &t[rhs_dir.len_utf8()..];
-    if !t.trim().is_empty() {
-        // The shorthand token should end after the rhs direction.
-        return None;
-    }
-
-    Some((lhs_dir, lhs_into, title, rhs_into, rhs_dir, rest))
-}
-
 fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let mut rest = line.trim_start();
     if rest.is_empty() {
@@ -938,74 +813,77 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let mut rhs_into = None;
     let mut title = None;
 
-    if let Some((ld, li, t, ri, rd, tail2)) = parse_edge_middle_shorthand(rest) {
-        lhs_dir = ld;
-        lhs_into = li;
-        title = t;
-        rhs_into = ri;
-        rhs_dir = rd;
-        rest = tail2;
-    } else {
-        rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
+    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
+        diagram_type: "architecture".to_string(),
+        message: "expected ':' for lhs port".to_string(),
+    })?;
+    rest = rest.trim_start();
+    lhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
+        diagram_type: "architecture".to_string(),
+        message: "expected lhs direction".to_string(),
+    })?;
+    if !is_arch_dir(lhs_dir) {
+        return Err(Error::DiagramParse {
             diagram_type: "architecture".to_string(),
-            message: "expected ':' for lhs port".to_string(),
-        })?;
-        rest = rest.trim_start();
-        lhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected lhs direction".to_string(),
-        })?;
-        rest = &rest[lhs_dir.len_utf8()..];
-
-        rest = rest.trim_start();
-        if let Some(ch) = rest.chars().next() {
-            if ch == '<' || ch == '>' {
-                lhs_into = Some(true);
-                rest = &rest[ch.len_utf8()..];
-            }
-        }
-
-        rest = rest.trim_start();
-        if rest.starts_with("--") {
-            rest = &rest[2..];
-        } else if rest.starts_with('-') {
-            rest = &rest[1..];
-            rest = rest.trim_start();
-            let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "expected edge title".to_string(),
-            })?;
-            title = Some(t.trim().to_string());
-            rest = tail.trim_start();
-            rest = rest.strip_prefix('-').ok_or_else(|| Error::DiagramParse {
-                diagram_type: "architecture".to_string(),
-                message: "expected '-' after edge title".to_string(),
-            })?;
-        } else {
-            return Ok(false);
-        }
-
-        rest = rest.trim_start();
-        if let Some(ch) = rest.chars().next() {
-            if ch == '<' || ch == '>' {
-                rhs_into = Some(true);
-                rest = &rest[ch.len_utf8()..];
-            }
-        }
-
-        rest = rest.trim_start();
-        rhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected rhs direction".to_string(),
-        })?;
-        rest = &rest[rhs_dir.len_utf8()..];
-
-        rest = rest.trim_start();
-        rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
-            diagram_type: "architecture".to_string(),
-            message: "expected ':' for rhs port".to_string(),
-        })?;
+            message: "invalid lhs direction".to_string(),
+        });
     }
+    rest = &rest[lhs_dir.len_utf8()..];
+
+    rest = rest.trim_start();
+    if let Some(ch) = rest.chars().next() {
+        if ch == '<' || ch == '>' {
+            lhs_into = Some(true);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+
+    rest = rest.trim_start();
+    if rest.starts_with("--") {
+        rest = &rest[2..];
+    } else if rest.starts_with('-') {
+        rest = &rest[1..];
+        rest = rest.trim_start();
+        let (t, tail) = take_bracketed(rest, '[', ']').ok_or_else(|| Error::DiagramParse {
+            diagram_type: "architecture".to_string(),
+            message: "expected edge title".to_string(),
+        })?;
+        title = Some(t.trim().to_string());
+        rest = tail.trim_start();
+        rest = rest.strip_prefix('-').ok_or_else(|| Error::DiagramParse {
+            diagram_type: "architecture".to_string(),
+            message: "expected '-' after edge title".to_string(),
+        })?;
+    } else {
+        return Ok(false);
+    }
+
+    rest = rest.trim_start();
+    if let Some(ch) = rest.chars().next() {
+        if ch == '<' || ch == '>' {
+            rhs_into = Some(true);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+
+    rest = rest.trim_start();
+    rhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
+        diagram_type: "architecture".to_string(),
+        message: "expected rhs direction".to_string(),
+    })?;
+    if !is_arch_dir(rhs_dir) {
+        return Err(Error::DiagramParse {
+            diagram_type: "architecture".to_string(),
+            message: "invalid rhs direction".to_string(),
+        });
+    }
+    rest = &rest[rhs_dir.len_utf8()..];
+
+    rest = rest.trim_start();
+    rest = rest.strip_prefix(':').ok_or_else(|| Error::DiagramParse {
+        diagram_type: "architecture".to_string(),
+        message: "expected ':' for rhs port".to_string(),
+    })?;
 
     rest = rest.trim_start();
     if rest.starts_with(':') {
@@ -1377,8 +1255,9 @@ mod tests {
     }
 
     #[test]
-    fn architecture_edge_shorthand_without_ports_colons_is_parsed() {
-        let model = parse("architecture-beta\n  service db\n  service server\n  db L--R server\n");
+    fn architecture_edge_with_ports_is_parsed() {
+        let model =
+            parse("architecture-beta\n  service db\n  service server\n  db:L -- R:server\n");
         let edges = model["edges"].as_array().unwrap();
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0]["lhsId"].as_str().unwrap(), "db");
@@ -1388,8 +1267,8 @@ mod tests {
     }
 
     #[test]
-    fn architecture_edge_shorthand_with_title_is_parsed() {
-        let model = parse("architecture-beta\n  service a\n  service b\n  a L-[Label]-R b\n");
+    fn architecture_edge_with_title_is_parsed() {
+        let model = parse("architecture-beta\n  service a\n  service b\n  a:L -[Label]- R:b\n");
         let edges = model["edges"].as_array().unwrap();
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0]["title"].as_str().unwrap(), "Label");
@@ -1398,23 +1277,14 @@ mod tests {
     }
 
     #[test]
-    fn architecture_edge_shorthand_with_parenthesized_ports_is_parsed() {
-        let model = parse("architecture-beta\n  service a\n  service b\n  a (T--B) b\n");
-        let edges = model["edges"].as_array().unwrap();
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0]["lhsDir"].as_str().unwrap(), "T");
-        assert_eq!(edges[0]["rhsDir"].as_str().unwrap(), "B");
-    }
-
-    #[test]
-    fn architecture_edge_shorthand_allows_unbalanced_parentheses_is_parsed() {
-        let model =
-            parse("architecture-beta\n  service a\n  service b\n  a (L--R b\n  a L--R) b\n");
-        let edges = model["edges"].as_array().unwrap();
-        assert_eq!(edges.len(), 2);
-        assert_eq!(edges[0]["lhsDir"].as_str().unwrap(), "L");
-        assert_eq!(edges[0]["rhsDir"].as_str().unwrap(), "R");
-        assert_eq!(edges[1]["lhsDir"].as_str().unwrap(), "L");
-        assert_eq!(edges[1]["rhsDir"].as_str().unwrap(), "R");
+    fn architecture_rejects_legacy_edge_shorthand() {
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(
+            "architecture-beta\n  service a\n  service b\n  a (T--B) b\n",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("expected ':' for lhs port") || msg.contains("unrecognized"));
     }
 }
