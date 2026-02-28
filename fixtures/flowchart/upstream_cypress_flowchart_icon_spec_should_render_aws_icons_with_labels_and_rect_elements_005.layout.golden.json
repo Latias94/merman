@@ -1,0 +1,100 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "Cloudwatch",
+          "x": 75.92,
+          "y": 35.0,
+          "width": 135.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Route53",
+          "x": 75.92,
+          "y": 139.0,
+          "width": 120.32,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "EKS",
+          "x": 75.92,
+          "y": 243.0,
+          "width": 128.8,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_Cloudwatch_Route53_0",
+          "from": "Cloudwatch",
+          "to": "Route53",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.92,
+              "y": 62.0
+            },
+            {
+              "x": 75.92,
+              "y": 87.0
+            },
+            {
+              "x": 75.92,
+              "y": 112.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Route53_EKS_0",
+          "from": "Route53",
+          "to": "EKS",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.92,
+              "y": 166.0
+            },
+            {
+              "x": 75.92,
+              "y": 191.0
+            },
+            {
+              "x": 75.92,
+              "y": 216.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 143.84,
+        "max_y": 270.0
+      }
+    }
+  }
+}
