@@ -56,6 +56,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
         &node_text_style,
         Some(ctx.wrapping_width),
         ctx.node_wrap_mode,
+        ctx.config,
+        ctx.math_renderer,
     );
     let span_css_height_parity = node_classes.iter().any(|c| {
         ctx.class_defs.get(c.as_str()).is_some_and(|styles| {

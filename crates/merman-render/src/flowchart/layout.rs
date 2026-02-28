@@ -1,3 +1,4 @@
+use crate::math::MathRenderer;
 use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
@@ -5,6 +6,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -590,8 +592,9 @@ fn extract_clusters_recursively(
 
 pub fn layout_flowchart_v2(
     semantic: &Value,
-    effective_config: &Value,
+    effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartV2Layout> {
     let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -606,6 +609,7 @@ pub fn layout_flowchart_v2(
         &model,
         effective_config,
         measurer,
+        math_renderer,
         timing_enabled,
         total_start,
         deserialize,
@@ -614,8 +618,9 @@ pub fn layout_flowchart_v2(
 
 pub fn layout_flowchart_v2_typed(
     model: &FlowchartV2Model,
-    effective_config: &Value,
+    effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartV2Layout> {
     let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -626,6 +631,7 @@ pub fn layout_flowchart_v2_typed(
         model,
         effective_config,
         measurer,
+        math_renderer,
         timing_enabled,
         total_start,
         std::time::Duration::default(),
@@ -634,8 +640,9 @@ pub fn layout_flowchart_v2_typed(
 
 fn layout_flowchart_v2_with_model(
     model: &FlowchartV2Model,
-    effective_config: &Value,
+    effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     timing_enabled: bool,
     total_start: Option<std::time::Instant>,
     deserialize: std::time::Duration,
@@ -657,6 +664,8 @@ fn layout_flowchart_v2_with_model(
 
     let mut timings = FlowchartLayoutTimings::default();
     timings.deserialize = deserialize;
+
+    let effective_config_value = effective_config.as_value();
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
@@ -715,15 +724,16 @@ fn layout_flowchart_v2_with_model(
 
     let build_graph_start = timing_enabled.then(std::time::Instant::now);
 
-    let nodesep = config_f64(effective_config, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
-    let ranksep = config_f64(effective_config, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
+    let nodesep = config_f64(effective_config_value, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
+    let ranksep = config_f64(effective_config_value, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
     // Mermaid's default config sets `flowchart.padding` to 15.
-    let node_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
+    let node_padding =
+        config_f64(effective_config_value, &["flowchart", "padding"]).unwrap_or(15.0);
     // Used by a few flowchart-v2 shapes (notably `forkJoin.ts`) to inflate Dagre node dimensions.
     // Mermaid default config sets `state.padding` to 8.
-    let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
+    let state_padding = config_f64(effective_config_value, &["state", "padding"]).unwrap_or(8.0);
     let wrapping_width =
-        config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+        config_f64(effective_config_value, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
     // Mermaid@11.12.2 renders subgraph titles via the `createText(...)` path and applies a default
     // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
     // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
@@ -731,11 +741,11 @@ fn layout_flowchart_v2_with_model(
     // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for *node* labels, while
     // subgraph titles + edge labels follow `flowchart.htmlLabels` (falling back to the global
     // toggle when unset).
-    let node_html_labels = effective_config
+    let node_html_labels = effective_config_value
         .get("htmlLabels")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let edge_html_labels = effective_config
+    let edge_html_labels = effective_config_value
         .get("flowchart")
         .and_then(|v| v.get("htmlLabels"))
         .and_then(Value::as_bool)
@@ -760,27 +770,27 @@ fn layout_flowchart_v2_with_model(
     // That value is separate from `flowchart.padding` (node padding) and `nodeSpacing`/`rankSpacing`.
     let cluster_padding = 8.0;
     let title_margin_top = config_f64(
-        effective_config,
+        effective_config_value,
         &["flowchart", "subGraphTitleMargin", "top"],
     )
     .unwrap_or(0.0);
     let title_margin_bottom = config_f64(
-        effective_config,
+        effective_config_value,
         &["flowchart", "subGraphTitleMargin", "bottom"],
     )
     .unwrap_or(0.0);
     let title_total_margin = title_margin_top + title_margin_bottom;
     let y_shift = title_total_margin / 2.0;
-    let inherit_dir = effective_config
+    let inherit_dir = effective_config_value
         .get("flowchart")
         .and_then(|v| v.get("inheritDir"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let font_family = config_string(effective_config, &["fontFamily"])
+    let font_family = config_string(effective_config_value, &["fontFamily"])
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
-    let font_weight = config_string(effective_config, &["fontWeight"]);
+    let font_size = config_f64(effective_config_value, &["fontSize"]).unwrap_or(16.0);
+    let font_weight = config_string(effective_config_value, &["fontWeight"]);
     let text_style = TextStyle {
         font_family,
         font_size,
@@ -857,6 +867,8 @@ fn layout_flowchart_v2_with_model(
             node_text_style.as_ref(),
             Some(wrapping_width),
             node_wrap_mode,
+            effective_config,
+            math_renderer,
         );
         let span_css_height_parity = n.classes.iter().any(|c| {
             model.class_defs.get(c.as_str()).is_some_and(|styles| {
@@ -908,6 +920,8 @@ fn layout_flowchart_v2_with_model(
             sg_text_style.as_ref(),
             Some(cluster_title_wrapping_width),
             node_wrap_mode,
+            effective_config,
+            math_renderer,
         );
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) =
@@ -1065,6 +1079,8 @@ fn layout_flowchart_v2_with_model(
                 edge_text_style.as_ref(),
                 Some(wrapping_width),
                 edge_wrap_mode,
+                effective_config,
+                math_renderer,
             );
             let (label_width, label_height) = if edge_html_labels {
                 (metrics.width.max(1.0), metrics.height.max(1.0))
@@ -1939,6 +1955,8 @@ fn layout_flowchart_v2_with_model(
                 text_style,
                 title_width_limit,
                 wrap_mode,
+                effective_config,
+                math_renderer,
             );
 
             let mut rect = if let Some(r) = content {
@@ -2230,6 +2248,8 @@ fn layout_flowchart_v2_with_model(
         text_style: &TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
+        config: &MermaidConfig,
+        math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
         cluster_padding: f64,
         title_total_margin: f64,
         _node_padding: f64,
@@ -2271,6 +2291,8 @@ fn layout_flowchart_v2_with_model(
                         text_style,
                         title_wrapping_width,
                         wrap_mode,
+                        config,
+                        math_renderer,
                         cluster_padding,
                         title_total_margin,
                         _node_padding,
@@ -2311,6 +2333,8 @@ fn layout_flowchart_v2_with_model(
             text_style,
             title_width_limit,
             wrap_mode,
+            config,
+            math_renderer,
         );
         let mut rect = if let Some(r) = content {
             r
@@ -2367,6 +2391,8 @@ fn layout_flowchart_v2_with_model(
             text_style: &TextStyle,
             title_wrapping_width: f64,
             wrap_mode: WrapMode,
+            config: &MermaidConfig,
+            math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
             title_total_margin: f64,
             cluster_padding: f64,
             add_title_total_margin: bool,
@@ -2379,6 +2405,8 @@ fn layout_flowchart_v2_with_model(
                 text_style,
                 title_width_limit,
                 wrap_mode,
+                config,
+                math_renderer,
             );
             let title_w = title_metrics.width.max(1.0);
             let title_h = title_metrics.height.max(1.0);
@@ -2431,6 +2459,8 @@ fn layout_flowchart_v2_with_model(
                         &text_style,
                         cluster_title_wrapping_width,
                         cluster_wrap_mode,
+                        effective_config,
+                        math_renderer,
                         cluster_padding,
                         title_total_margin,
                         node_padding,
@@ -2447,6 +2477,8 @@ fn layout_flowchart_v2_with_model(
                 &text_style,
                 cluster_title_wrapping_width,
                 cluster_wrap_mode,
+                effective_config,
+                math_renderer,
                 title_total_margin,
                 cluster_padding,
                 false,
@@ -2462,6 +2494,8 @@ fn layout_flowchart_v2_with_model(
                 &text_style,
                 cluster_title_wrapping_width,
                 cluster_wrap_mode,
+                effective_config,
+                math_renderer,
                 title_total_margin,
                 cluster_padding,
                 true,
@@ -2480,6 +2514,8 @@ fn layout_flowchart_v2_with_model(
                 &text_style,
                 cluster_title_wrapping_width,
                 cluster_wrap_mode,
+                effective_config,
+                math_renderer,
                 cluster_padding,
                 title_total_margin,
                 node_padding,
@@ -2496,6 +2532,8 @@ fn layout_flowchart_v2_with_model(
             &text_style,
             title_width_limit,
             cluster_wrap_mode,
+            effective_config,
+            math_renderer,
         );
         let title_label = LayoutLabel {
             x: cx,

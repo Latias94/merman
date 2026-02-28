@@ -109,6 +109,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
         font_size: 16.0,
         font_weight: None,
     };
+    let cfg = merman_core::MermaidConfig::default();
 
     let m = crate::flowchart::flowchart_label_metrics_for_layout(
         &measurer,
@@ -117,6 +118,8 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
         &style,
         Some(200.0),
         WrapMode::HtmlLike,
+        &cfg,
+        None,
     );
     assert_eq!(m.width, 45.015625);
     assert_eq!(m.height, 24.0);

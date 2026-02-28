@@ -68,6 +68,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
+                ctx.config,
+                ctx.math_renderer,
             );
             let span_css_height_parity = node_classes.iter().any(|c| {
                 ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
@@ -117,7 +119,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         out.push_str("</g></g></g>");
     } else {
         let label_html = label_html_timed(timing_enabled, details, || {
-            flowchart_label_html(label_text, label_type, ctx.config)
+            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
         });
         let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {

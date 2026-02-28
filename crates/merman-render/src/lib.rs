@@ -21,6 +21,7 @@ pub mod info;
 pub mod journey;
 mod json;
 pub mod kanban;
+pub mod math;
 pub mod mindmap;
 pub mod model;
 pub mod packet;
@@ -38,6 +39,7 @@ pub mod treemap;
 mod trig_tables;
 pub mod xychart;
 
+use crate::math::MathRenderer;
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
 use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
@@ -59,6 +61,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone)]
 pub struct LayoutOptions {
     pub text_measurer: Arc<dyn TextMeasurer + Send + Sync>,
+    /// Optional math renderer for `$$...$$` style labels.
+    pub math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     pub viewport_width: f64,
     pub viewport_height: f64,
     /// Enable experimental layout engines (e.g. Cytoscape COSE/FCoSE ports) for diagrams that
@@ -70,6 +74,7 @@ impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
             text_measurer: Arc::new(DeterministicTextMeasurer::default()),
+            math_renderer: None,
             viewport_width: 800.0,
             viewport_height: 600.0,
             use_manatee_layout: false,
@@ -94,6 +99,11 @@ impl LayoutOptions {
 
     pub fn with_text_measurer(mut self, measurer: Arc<dyn TextMeasurer + Send + Sync>) -> Self {
         self.text_measurer = measurer;
+        self
+    }
+
+    pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
+        self.math_renderer = Some(renderer);
         self
     }
 }
@@ -155,8 +165,9 @@ pub fn layout_parsed_layout_only(
         )?),
         "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
             &parsed.model,
-            effective_config,
+            &parsed.meta.effective_config,
             options.text_measurer.as_ref(),
+            options.math_renderer.as_deref(),
         )?),
         "stateDiagram" => LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2(
             &parsed.model,
@@ -287,8 +298,9 @@ pub fn layout_parsed_render_layout_only(
             Ok(LayoutDiagram::FlowchartV2(
                 flowchart::layout_flowchart_v2_typed(
                     model,
-                    effective_config,
+                    &parsed.meta.effective_config,
                     options.text_measurer.as_ref(),
+                    options.math_renderer.as_deref(),
                 )?,
             ))
         }
@@ -345,8 +357,9 @@ pub fn layout_parsed_render_layout_only(
                 )?),
                 "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
                     semantic,
-                    effective_config,
+                    &parsed.meta.effective_config,
                     options.text_measurer.as_ref(),
+                    options.math_renderer.as_deref(),
                 )?),
                 "stateDiagram" => LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2(
                     semantic,

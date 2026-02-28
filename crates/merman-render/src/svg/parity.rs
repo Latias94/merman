@@ -44,6 +44,7 @@ mod timing;
 mod treemap;
 mod util;
 mod xychart;
+use crate::math::MathRenderer;
 use css::{
     er_css, gantt_css, info_css, pie_css, requirement_css, sankey_css, treemap_css, xychart_css,
 };
@@ -91,6 +92,8 @@ pub struct SvgRenderOptions {
     /// Optional override for "current time" used by diagrams that render time-dependent markers
     /// (e.g. Gantt `today` line). This exists to make parity/golden comparisons reproducible.
     pub now_ms_override: Option<i64>,
+    /// Optional math renderer for `$$...$$` style labels.
+    pub math_renderer: Option<std::sync::Arc<dyn MathRenderer + Send + Sync>>,
 }
 
 impl Default for SvgRenderOptions {
@@ -105,6 +108,7 @@ impl Default for SvgRenderOptions {
             include_cluster_debug_markers: false,
             include_edge_id_labels: false,
             now_ms_override: None,
+            math_renderer: None,
         }
     }
 }

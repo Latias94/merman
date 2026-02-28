@@ -204,7 +204,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let label_html = if label_text.trim().is_empty() {
         String::new()
     } else {
-        flowchart_label_html(label_text, label_type, ctx.config)
+        flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
     };
 
     if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {

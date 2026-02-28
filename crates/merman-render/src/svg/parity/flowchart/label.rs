@@ -6,6 +6,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     label: &str,
     label_type: &str,
     config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
     if label.trim().is_empty() {
         return String::new();
@@ -241,6 +242,14 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         // FlowDB label type is `text`.
         label.contains("**") || label.contains("__")
     };
+
+    if let Some(r) = math_renderer {
+        if label.contains("$$") {
+            if let Some(html) = r.render_html_label(label, config) {
+                return xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
+            }
+        }
+    }
 
     match label_type {
         "markdown" => {

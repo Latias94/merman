@@ -50,6 +50,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
         );
         if !has_label {
             metrics.width = 0.0;
@@ -128,7 +130,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             out.push_str("</g>");
         }
 
-        let label_html = flowchart_label_html(label_text, label_type, ctx.config);
+        let label_html =
+            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
         let label_y = if top_label {
             -outer_h / 2.0
         } else {

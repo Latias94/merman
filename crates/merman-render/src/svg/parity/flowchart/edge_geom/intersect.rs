@@ -546,6 +546,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
         );
 
         let span_css_height_parity = flow_node.classes.iter().any(|c| {
@@ -643,6 +645,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
         );
 
         let span_css_height_parity = flow_node.classes.iter().any(|c| {

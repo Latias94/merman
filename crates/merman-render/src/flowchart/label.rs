@@ -1,5 +1,7 @@
+use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use merman_core::MermaidConfig;
 
 pub(crate) fn flowchart_label_metrics_for_layout(
     measurer: &dyn TextMeasurer,
@@ -8,8 +10,21 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     style: &TextStyle,
     max_width_px: Option<f64>,
     wrap_mode: WrapMode,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> crate::text::TextMetrics {
-    let mut metrics = if label_type == "markdown" {
+    let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
+        // Upstream Mermaid measures KaTeX-rendered HTML labels via DOM. Keep pure-Rust as the
+        // default behavior, but allow an optional backend to override label metrics.
+        math_renderer
+            .and_then(|r| r.measure_html_label(raw_label, config, style, max_width_px, wrap_mode))
+    } else {
+        None
+    };
+
+    let mut metrics = if let Some(m) = math_metrics {
+        m
+    } else if label_type == "markdown" {
         crate::text::measure_markdown_with_flowchart_bold_deltas(
             measurer,
             raw_label,

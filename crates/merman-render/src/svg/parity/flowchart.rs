@@ -779,6 +779,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         diagram_type,
         measurer,
         config: effective_config,
+        math_renderer: options.math_renderer.as_deref(),
         node_html_labels,
         edge_html_labels,
         class_defs: &model.class_defs,
@@ -1036,6 +1037,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     &node_text_style,
                                     Some(ctx.wrapping_width),
                                     ctx.node_wrap_mode,
+                                    ctx.config,
+                                    ctx.math_renderer,
                                 );
                                 let pre_w = if shape == "delay" {
                                     (metrics.width + 2.0 * node_padding).max(80.0)

@@ -367,6 +367,7 @@ fn run(args: Args) -> Result<(), CliError> {
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
                 text_measurer: measurer,
+                math_renderer: None,
                 // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
                 // manatee-backed layout engines. Prefer correctness for CLI output.
                 use_manatee_layout: true,
@@ -394,6 +395,7 @@ fn run(args: Args) -> Result<(), CliError> {
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
                 text_measurer: measurer,
+                math_renderer: None,
                 // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
                 // manatee-backed layout engines. Prefer correctness for CLI output.
                 use_manatee_layout: true,

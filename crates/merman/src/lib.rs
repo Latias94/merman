@@ -15,6 +15,7 @@ pub use merman_core::*;
 
 #[cfg(feature = "render")]
 pub mod render {
+    pub use merman_render::math::{MathRenderer, NoopMathRenderer};
     pub use merman_render::model::LayoutedDiagram;
     pub use merman_render::svg::{SvgRenderOptions, foreign_object_label_fallback_svg_text};
     pub use merman_render::text::{
@@ -322,6 +323,15 @@ pub mod render {
             measurer: std::sync::Arc<dyn TextMeasurer + Send + Sync>,
         ) -> Self {
             self.layout = self.layout.with_text_measurer(measurer);
+            self
+        }
+
+        pub fn with_math_renderer(
+            mut self,
+            renderer: std::sync::Arc<dyn MathRenderer + Send + Sync>,
+        ) -> Self {
+            self.layout = self.layout.with_math_renderer(renderer.clone());
+            self.svg.math_renderer = Some(renderer);
             self
         }
 

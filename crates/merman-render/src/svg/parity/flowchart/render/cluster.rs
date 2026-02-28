@@ -80,7 +80,8 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         return;
     }
 
-    let title_html = flowchart_label_html(&cluster.title, label_type, ctx.config);
+    let title_html =
+        flowchart_label_html(&cluster.title, label_type, ctx.config, ctx.math_renderer);
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;

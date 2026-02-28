@@ -104,6 +104,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
         );
         if !has_label {
             metrics.width = 0.0;
@@ -180,7 +182,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 
         // Label group uses a background class in Mermaid's image/icon helpers.
         let label_html = label_html_timed(timing_enabled, details, || {
-            flowchart_label_html(label_text, label_type, ctx.config)
+            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
         });
         let label_dy = if top_label {
             -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
