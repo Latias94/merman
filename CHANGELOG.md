@@ -6,6 +6,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Promoted additional in-scope deferred fixtures into the committed corpus (state parser specs, flowchart icon specs,
+  class diagram specs, and math examples) and generated upstream SVG baselines.
+
 ### Fixed
 
 - Radar: fixed detailed-entry parsing so decimal values like `3.2` are not misparsed as axis `3` with value `0.2`.
