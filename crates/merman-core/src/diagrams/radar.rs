@@ -421,6 +421,9 @@ fn parse_curves_stmt(input: &str) -> std::result::Result<Vec<CurveAst>, String> 
         .strip_prefix("curve")
         .ok_or_else(|| "expected curve".to_string())?
         .trim_start();
+    if rest.trim().is_empty() {
+        return Err("expected curve id".to_string());
+    }
 
     let chunks = split_top_level(rest, ',');
     let mut curves = Vec::new();
@@ -461,20 +464,17 @@ fn parse_curve(input: &str) -> std::result::Result<CurveAst, String> {
     }
 
     let entries_str = p.take_until_matching_brace()?;
-    let mut entries = parse_entries(&entries_str)?;
+    let entries = parse_entries(&entries_str)?;
 
     p.skip_ws();
     if !p.eof() {
         return Err("unexpected trailing tokens after curve".to_string());
     }
 
-    if !entries.is_empty() && entries[0].axis.is_some() {
-        // Detailed entries: allow optional colon per grammar.
-        for e in &mut entries {
-            if e.axis.is_none() {
-                return Err("mixed detailed and numeric entries are not supported".to_string());
-            }
-        }
+    let has_detailed = entries.iter().any(|e| e.axis.is_some());
+    let has_numeric = entries.iter().any(|e| e.axis.is_none());
+    if has_detailed && has_numeric {
+        return Err("mixed detailed and numeric entries are not supported".to_string());
     }
 
     Ok(CurveAst {
@@ -699,7 +699,7 @@ impl<'a> TokenParser<'a> {
         let s = &self.input[self.pos..];
         let mut chars = s.chars();
         let first = chars.next()?;
-        if !(first.is_ascii_alphanumeric() || first == '_') {
+        if !(first.is_ascii_alphabetic() || first == '_') {
             return None;
         }
         let mut idx = first.len_utf8();
@@ -938,6 +938,27 @@ max 10
             model["options"],
             json!({"showLegend": false, "ticks": 10, "max": 10, "min": 1, "graticule": "polygon"})
         );
+    }
+
+    #[test]
+    fn radar_errors_on_empty_curve_stmt() {
+        let err = parse_err(
+            r#"radar-beta
+axis my-axis
+curve
+"#,
+        );
+        assert_eq!(err, "expected curve id");
+    }
+
+    #[test]
+    fn radar_errors_on_mixed_numeric_and_detailed_curve_entries() {
+        let err = parse_err(
+            r#"radar-beta
+axis ax1, ax2
+curve my-curve { 1, ax1 2 }"#,
+        );
+        assert_eq!(err, "mixed detailed and numeric entries are not supported");
     }
 
     #[test]

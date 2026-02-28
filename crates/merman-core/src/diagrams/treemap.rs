@@ -451,10 +451,7 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 
 fn is_treemap_header(line: &str) -> bool {
     let t = line.trim_start();
-    t == "treemap"
-        || t == "treemap-beta"
-        || t.starts_with("treemap ")
-        || t.starts_with("treemap-beta ")
+    t == "treemap" || t == "treemap-beta"
 }
 
 fn split_indent(line: &str) -> (usize, &str) {
@@ -778,6 +775,18 @@ mod tests {
             msg.contains("unexpected trailing whitespace-only line"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn treemap_rejects_header_with_colon() {
+        let msg = parse_error("treemap:\n\"A\": 1\n");
+        assert!(msg.contains("expected treemap"), "{msg}");
+    }
+
+    #[test]
+    fn treemap_rejects_header_with_suffix_tokens() {
+        let msg = parse_error("treemap utilities\n\"A\": 1\n");
+        assert!(msg.contains("expected treemap"), "{msg}");
     }
 
     #[test]

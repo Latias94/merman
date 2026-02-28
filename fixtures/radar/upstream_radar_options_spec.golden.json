@@ -1,18 +1,18 @@
 {
   "diagramType": "radar",
   "model": {
-    "accDescr": null,
+    "type": "radar",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "axes": [],
     "curves": [],
     "options": {
-      "graticule": "polygon",
+      "showLegend": false,
+      "ticks": 10,
       "max": 10,
       "min": 1,
-      "showLegend": false,
-      "ticks": 10
-    },
-    "title": null,
-    "type": "radar"
+      "graticule": "polygon"
+    }
   }
 }
