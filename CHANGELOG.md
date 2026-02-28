@@ -6,6 +6,20 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Fixed
+
+- Radar: fixed detailed-entry parsing so decimal values like `3.2` are not misparsed as axis `3` with value `0.2`.
+- Treemap: tightened header parsing to match Mermaid CLI (`treemap:` / `treemap utilities` now fail) and preserved the
+  upstream behavior where trailing whitespace-only lines are treated as a syntax error.
+- `xtask audit-gaps`: avoid trimming trailing whitespace when parsing deferred fixtures (prevents false “parse OK” on
+  grammars like Treemap that treat trailing whitespace-only lines as an error).
+- `xtask audit-gaps`: added `--check-upstream-render-deferred-ok` to identify promotable deferred fixtures
+  (in-scope + upstream render OK).
+- `xtask` SVG DOM compares: further reduced noisy `parity-root` root viewport diffs by snapping `max-width`/`viewBox`
+  to a coarser lattice (0.25px).
+- `xtask gen-upstream-svgs` / `compare-state-svgs`: allow generating/validating upstream baselines for renderable state
+  parser fixtures while skipping the known upstream-crashing `upstream_state_parser_spec` fixture.
+
 ### Not Released / WIP
 
 - Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
