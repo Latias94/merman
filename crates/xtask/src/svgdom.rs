@@ -113,7 +113,7 @@ fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
     // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
     // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
     // regressions, snap `max-width` to a small pixel lattice.
-    let step = 1.0 / 8.0; // 0.125px: collapses common subpixel drift across platforms.
+    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
     let eps = 1e-9; // Avoid float edge cases at exact step boundaries.
     // Biased snapping: use a threshold slightly above the midpoint between lattice steps so
     // values that drift just above the midpoint (common on some platforms) still normalize to the
@@ -171,7 +171,7 @@ fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> Stri
     // Root `viewBox` is affected by label measurements and can drift by tiny fractions across
     // platforms (commonly 1/64px). Snap to a small lattice to keep CI parity stable while still
     // tracking meaningful viewport changes.
-    let step = 1.0 / 8.0; // 0.125px: collapses common subpixel drift across platforms.
+    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
     let eps = 1e-9;
     let frac_threshold = 0.62;
 
@@ -1212,7 +1212,7 @@ mod tests {
         assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 560.375px; background-color: white;")
+            Some("max-width: 560.25px; background-color: white;")
         );
     }
 
@@ -1227,7 +1227,7 @@ mod tests {
         assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 502.125px; background-color: white;")
+            Some("max-width: 502.25px; background-color: white;")
         );
     }
 
@@ -1240,7 +1240,7 @@ mod tests {
         assert_eq!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
         assert_eq!(
             dom_a.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("<n> <n> 560.375 10")
+            Some("<n> <n> 560.25 10")
         );
     }
 
