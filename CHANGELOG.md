@@ -13,6 +13,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Flowchart: align icon node shape rendering with upstream Mermaid (`icon` vs `iconSquare`) to avoid NaN path data and
+  restore SVG DOM parity for AWS icon fixtures.
+- Flowchart: improved `iconSquare` RoughJS path parity (rounded-rect path structure) for upstream icon shape fixtures.
+- Class: render `htmlLabels: false` labels via SVG `<text>/<tspan>` (avoid `<foreignObject>` DOM mismatches in parity
+  baselines).
+- Text: closer-to-upstream Mermaid Markdown tokenization for flowchart SVG labels and layout measurement (fixes
+  underscore/emphasis boundary edge cases).
 - Radar: fixed detailed-entry parsing so decimal values like `3.2` are not misparsed as axis `3` with value `0.2`.
 - Treemap: tightened header parsing to match Mermaid CLI (`treemap:` / `treemap utilities` now fail) and preserved the
   upstream behavior where trailing whitespace-only lines are treated as a syntax error.
@@ -30,6 +37,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
   Cytoscape/FCoSE. SVG DOM parity is compared in `dom-mode parity`, so expect occasional layout snapshot churn while we
   tighten numeric fidelity.
+- Flowchart/Sequence: `$$...$$` (KaTeX) label DOM parity remains deferred; compare tooling skips these fixtures when
+  `--check-dom` is enabled until a real `MathRenderer` backend exists.
+- Flowchart: `flowchart-elk` layout is not implemented yet; compare tooling skips those fixtures (still kept in the
+  corpus for parser coverage).
 - `merman-core`: dropped support for legacy Architecture edge shorthand (e.g. `a L--R b`, `a (L--R) b`) to align with
   Mermaid@11.12.3's Langium parser; use port-colon syntax instead (e.g. `a:L -- R:b`).
 - `merman-render`: introduced a pluggable `MathRenderer` interface for `$$...$$` math labels (no default KaTeX backend;

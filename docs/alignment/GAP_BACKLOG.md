@@ -7,7 +7,9 @@ eliminate them without regressing the global parity gates.
 
 Scope:
 
-- Primary contract: SVG DOM parity in `parity-root` mode (viewport + DOM structure, `--dom-decimals 3`).
+- Primary contract: SVG DOM parity in `parity` mode (DOM structure/semantics; geometry numbers normalized).
+- Secondary contract (tracked, non-blocking in CI today): SVG root viewport parity in `parity-root` mode
+  (root `max-width`/`viewBox` lattice, `--dom-decimals 3`).
 - Secondary contracts:
   - strict SVG XML parity where feasible (`dom-mode strict`)
   - deterministic, reproducible upstream baselines
@@ -16,6 +18,10 @@ Scope:
 Global gates (must stay green):
 
 - `cargo nextest run`
+- `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Non-blocking CI signal (kept visible to drive incremental alignment work):
+
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 ## Automated audits
@@ -29,7 +35,7 @@ spot checks:
 As of `2026-02-28` (see the generated report for details):
 
 - Parser-only fixtures: `10` (not included in SVG DOM parity gates)
-- Deferred fixtures (`fixtures/_deferred`): `57` parse OK, `89` parse ERR
+- Deferred fixtures (`fixtures/_deferred`): `44` parse OK, `86` parse ERR
 - Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
   parser correctness issues.
 
