@@ -1,0 +1,177 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "bigState1",
+          "x": 127.0,
+          "y": 203.5,
+          "width": 238.0,
+          "height": 115.0,
+          "is_cluster": true
+        },
+        {
+          "id": "bigState1InternalState",
+          "x": 127.0,
+          "y": 203.5,
+          "width": 168.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "bigState2",
+          "x": 415.0,
+          "y": 203.5,
+          "width": 238.0,
+          "height": 115.0,
+          "is_cluster": true
+        },
+        {
+          "id": "bigState2InternalState",
+          "x": 415.0,
+          "y": 203.5,
+          "width": 168.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "namedState1",
+          "x": 127.0,
+          "y": 28.0,
+          "width": 110.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "namedState2",
+          "x": 415.0,
+          "y": 28.0,
+          "width": 110.563,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "namedState1",
+          "to": "bigState1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 127.5,
+              "y": 48.5
+            },
+            {
+              "x": 127.0,
+              "y": 97.0
+            },
+            {
+              "x": 127.0,
+              "y": 203.5
+            }
+          ],
+          "label": {
+            "x": 127.0,
+            "y": 97.0,
+            "width": 200.0,
+            "height": 48.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "namedState2",
+          "to": "bigState2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 415.5,
+              "y": 48.5
+            },
+            {
+              "x": 415.0,
+              "y": 97.0
+            },
+            {
+              "x": 415.0,
+              "y": 203.5
+            }
+          ],
+          "label": {
+            "x": 415.0,
+            "y": 97.0,
+            "width": 200.0,
+            "height": 48.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "bigState1",
+          "x": 127.0,
+          "y": 203.5,
+          "width": 238.0,
+          "height": 115.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Big State 1",
+          "title_label": {
+            "x": 127.0,
+            "y": 159.0,
+            "width": 77.594,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "bigState2",
+          "x": 415.0,
+          "y": 203.5,
+          "width": 238.0,
+          "height": 115.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "bigState2",
+          "title_label": {
+            "x": 415.0,
+            "y": 159.0,
+            "width": 64.313,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 534.0,
+        "max_y": 261.0
+      }
+    }
+  }
+}

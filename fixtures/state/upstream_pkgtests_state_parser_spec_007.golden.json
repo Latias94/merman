@@ -1,0 +1,139 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Big State 1",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "bigState1",
+        "dir": "TB",
+        "domId": "state-bigState1-0",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "inner state 1",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "inner1",
+        "dir": null,
+        "domId": "state-inner1-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "bigState1",
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "inner state 2",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "inner2",
+        "dir": null,
+        "domId": "state-inner2-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "bigState1",
+        "centerLabel": true,
+        "description": []
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "inner1",
+        "end": "inner2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "bigState1": {
+        "id": "bigState1",
+        "type": "default",
+        "descriptions": [
+          "Big State 1"
+        ],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "inner1",
+            "type": "default",
+            "description": "inner state 1",
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "inner2",
+            "type": "default",
+            "description": "inner state 2",
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "inner1",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "inner2",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {}
+  }
+}
