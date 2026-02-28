@@ -126,6 +126,9 @@ fn detect_out_of_scope(meta: &merman::ParseMetadata) -> Vec<String> {
     if let Some(look) = meta.config.get_str("look") {
         out.push(format!("look={look}"));
     }
+    if meta.diagram_type.ends_with("-elk") {
+        out.push("layout=elk".to_string());
+    }
 
     out
 }
@@ -327,6 +330,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut limit: usize = 60;
     let mut check_upstream_render: bool = false;
+    let mut check_upstream_render_deferred_ok: bool = false;
     let mut upstream_timeout_secs: u64 = 60;
 
     let mut i = 0usize;
@@ -348,6 +352,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     .unwrap_or(60);
             }
             "--check-upstream-render" => check_upstream_render = true,
+            "--check-upstream-render-deferred-ok" => check_upstream_render_deferred_ok = true,
             "--upstream-timeout-secs" => {
                 i += 1;
                 upstream_timeout_secs = args
@@ -470,6 +475,9 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     }
     if check_upstream_render {
         let _ = write!(&mut report, " --check-upstream-render");
+    }
+    if check_upstream_render_deferred_ok {
+        let _ = write!(&mut report, " --check-upstream-render-deferred-ok");
     }
     if upstream_timeout_secs != 60 {
         let _ = write!(
@@ -704,6 +712,12 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
+            let in_scope: Vec<&DeferredParseOk> = oks
+                .iter()
+                .copied()
+                .filter(|ok| ok.out_of_scope.is_empty())
+                .collect();
+
             if !out_of_scope_counts.is_empty() {
                 let _ = writeln!(&mut report, "- Out-of-scope signals:");
                 for (k, v) in out_of_scope_counts {
@@ -716,27 +730,146 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 let _ = writeln!(&mut report, "  - {v}× `{k}`");
             }
 
-            let _ = writeln!(&mut report, "\nSample (first {}):\n", limit.min(20));
-            for ok in oks.iter().take(limit.min(20)) {
-                let rel = ok.path.strip_prefix(&workspace_root).unwrap_or(&ok.path);
-                if ok.out_of_scope.is_empty() {
+            let _ = writeln!(
+                &mut report,
+                "- In-scope fixtures (no `layout`/`look`): **{}**\n",
+                in_scope.len()
+            );
+
+            if !in_scope.is_empty() {
+                let _ = writeln!(&mut report, "Sample in-scope (first {}):\n", limit.min(20));
+                for ok in in_scope.iter().take(limit.min(20)) {
+                    let rel = ok.path.strip_prefix(&workspace_root).unwrap_or(&ok.path);
                     let _ = writeln!(
                         &mut report,
                         "- `{}` -> `{}`",
                         rel.display(),
                         ok.diagram_type
                     );
-                } else {
-                    let _ = writeln!(
-                        &mut report,
-                        "- `{}` -> `{}` ({})",
-                        rel.display(),
-                        ok.diagram_type,
-                        ok.out_of_scope.join(", ")
-                    );
+                }
+            } else {
+                let _ = writeln!(&mut report, "Sample (first {}):\n", limit.min(20));
+                for ok in oks.iter().take(limit.min(20)) {
+                    let rel = ok.path.strip_prefix(&workspace_root).unwrap_or(&ok.path);
+                    if ok.out_of_scope.is_empty() {
+                        let _ = writeln!(
+                            &mut report,
+                            "- `{}` -> `{}`",
+                            rel.display(),
+                            ok.diagram_type
+                        );
+                    } else {
+                        let _ = writeln!(
+                            &mut report,
+                            "- `{}` -> `{}` ({})",
+                            rel.display(),
+                            ok.diagram_type,
+                            ok.out_of_scope.join(", ")
+                        );
+                    }
                 }
             }
             let _ = writeln!(&mut report);
+        }
+    }
+
+    if check_upstream_render_deferred_ok && !deferred_ok.is_empty() {
+        let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
+        let out_root = workspace_root
+            .join("target")
+            .join("audit")
+            .join("upstream-render-deferred-ok");
+        let out_root_rel = out_root.strip_prefix(&workspace_root).unwrap_or(&out_root);
+
+        let _ = writeln!(
+            &mut report,
+            "### Upstream renderability (deferred parse OK)\n\n- Tool: Mermaid CLI (`tools/mermaid-cli`)\n- Timeout: `{}` seconds per chart\n- Output: `{}`\n",
+            upstream_timeout_secs,
+            out_root_rel.display()
+        );
+
+        let mut results_by_group: BTreeMap<String, Vec<UpstreamRenderCheck>> = BTreeMap::new();
+        let mut failures_by_group: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+        let mut promotable: Vec<String> = Vec::new();
+
+        for ok in &deferred_ok {
+            let res = check_upstream_renderability_for_parser_only(
+                &workspace_root,
+                &ok.expected_group,
+                &ok.path,
+                &out_root,
+                timeout,
+            )?;
+            results_by_group
+                .entry(ok.expected_group.clone())
+                .or_default()
+                .push(res.clone());
+
+            if res.ok && ok.out_of_scope.is_empty() {
+                promotable.push(res.fixture.clone());
+            }
+
+            if !res.ok {
+                let key = res
+                    .error_key
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                *failures_by_group
+                    .entry(ok.expected_group.clone())
+                    .or_default()
+                    .entry(key)
+                    .or_default() += 1;
+            }
+        }
+
+        promotable.sort();
+
+        let _ = writeln!(
+            &mut report,
+            "Promotable candidates (in-scope + upstream renders OK): **{}**\n",
+            promotable.len()
+        );
+        if promotable.is_empty() {
+            let _ = writeln!(&mut report, "_None._\n");
+        } else {
+            for f in promotable.iter().take(limit) {
+                let _ = writeln!(&mut report, "- `{f}`");
+            }
+            if promotable.len() > limit {
+                let _ = writeln!(
+                    &mut report,
+                    "- _... {} more omitted (use `--limit`)_",
+                    promotable.len() - limit
+                );
+            }
+            let _ = writeln!(&mut report);
+        }
+
+        for (group, results) in &results_by_group {
+            let ok_count = results.iter().filter(|r| r.ok).count();
+            let fail_count = results.len() - ok_count;
+            let _ = writeln!(
+                &mut report,
+                "#### `{group}`\n\n- Render OK: **{ok_count}**\n- Render FAIL: **{fail_count}**\n"
+            );
+
+            if let Some(fails) = failures_by_group.get(group) {
+                let mut clusters: Vec<(String, usize)> =
+                    fails.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                clusters.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                let _ = writeln!(&mut report, "Failures (by key):\n");
+                for (k, n) in clusters.iter().take(limit.min(20)) {
+                    let _ = writeln!(&mut report, "- **{n}×** `{k}`");
+                }
+                if clusters.len() > limit.min(20) {
+                    let _ = writeln!(
+                        &mut report,
+                        "- _... {} more clusters omitted_",
+                        clusters.len() - limit.min(20)
+                    );
+                }
+                let _ = writeln!(&mut report);
+            }
         }
     }
 

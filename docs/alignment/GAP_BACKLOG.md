@@ -26,10 +26,10 @@ spot checks:
 - Generate a report: `cargo run -p xtask -- audit-gaps --out target/audit/gaps.md`
 - Output is intentionally written under `target/` (do not commit it); only summarize conclusions here.
 
-As of `2026-02-27` (see the generated report for details):
+As of `2026-02-28` (see the generated report for details):
 
 - Parser-only fixtures: `10` (not included in SVG DOM parity gates)
-- Deferred fixtures (`fixtures/_deferred`): `66` parse OK, `80` parse ERR
+- Deferred fixtures (`fixtures/_deferred`): `62` parse OK, `84` parse ERR
 - Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
   parser correctness issues.
 
@@ -38,6 +38,8 @@ Notes:
 - `xtask audit-gaps --check-upstream-render` highlights “actionable gaps”: parser-only fixtures that upstream Mermaid
   CLI can render successfully. Currently, the actionable set is dominated by Flowchart HTML demo fixtures containing
   `$$...$$` math labels (KaTeX in upstream).
+- `xtask audit-gaps --check-upstream-render-deferred-ok` checks which deferred-but-parseable fixtures upstream CLI can
+  render, and lists “promotable candidates” (in-scope + upstream renders OK) to guide incremental fixture promotion.
 
 ## Gap Index
 
