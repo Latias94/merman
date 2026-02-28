@@ -76,8 +76,9 @@ pub(crate) fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if path
             .file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| n.contains("_parser_") || n.contains("_parser_spec"))
+            .is_some_and(|n| n == "upstream_state_parser_spec.mmd")
         {
+            // Mermaid upstream currently crashes on this input (kept for parser parity).
             continue;
         }
         if let Some(ref f) = filter {
