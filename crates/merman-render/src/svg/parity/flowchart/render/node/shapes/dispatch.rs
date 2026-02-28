@@ -338,7 +338,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 return true;
             }
         }
-        "iconSquare" => {
+        "icon" | "iconSquare" => {
             if super::try_render_icon_square(
                 out,
                 ctx,

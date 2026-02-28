@@ -874,8 +874,43 @@ pub(super) fn node_layout_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
     state_padding: f64,
+    node_icon: Option<&str>,
+    node_img: Option<&str>,
+    node_pos: Option<&str>,
+    node_asset_width: Option<f64>,
+    node_asset_height: Option<f64>,
 ) -> (f64, f64) {
     let shape = layout_shape.unwrap_or("squareRect");
+
+    if (shape == "imageSquare" || shape == "icon" || shape.starts_with("icon"))
+        && (node_icon.is_some() || node_img.is_some())
+    {
+        if shape == "imageSquare" {
+            if node_img.is_some_and(|s| !s.trim().is_empty()) {
+                let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
+                let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
+                return (asset_w, asset_h);
+            }
+        } else if node_icon.is_some_and(|s| !s.trim().is_empty()) {
+            let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+            let label_padding = if has_label { 8.0 } else { 0.0 };
+            let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
+            let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+
+            let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
+            let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
+            let icon_size = asset_h.max(asset_w);
+
+            let outer_w = icon_size.max(label_bbox_w);
+            let outer_h = icon_size + label_padding + label_bbox_h;
+
+            // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
+            // change the node's outer bbox.
+            let _ = node_pos;
+            return (outer_w, outer_h);
+        }
+    }
+
     let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding);
 
     // Mermaid `forkJoin.ts` inflates the Dagre node dimensions by `state.padding / 2` after

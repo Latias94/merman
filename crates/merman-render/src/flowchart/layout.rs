@@ -892,6 +892,11 @@ fn layout_flowchart_v2_with_model(
             metrics,
             node_padding,
             state_padding,
+            n.icon.as_deref(),
+            n.img.as_deref(),
+            n.pos.as_deref(),
+            n.asset_width,
+            n.asset_height,
         );
         leaf_node_labels.insert(
             n.id.clone(),
@@ -924,8 +929,17 @@ fn layout_flowchart_v2_with_model(
             math_renderer,
         );
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
-        let (width, height) =
-            node_layout_dimensions(Some("squareRect"), metrics, cluster_padding, state_padding);
+        let (width, height) = node_layout_dimensions(
+            Some("squareRect"),
+            metrics,
+            cluster_padding,
+            state_padding,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         leaf_node_labels.insert(
             sg.id.clone(),
             NodeLabel {

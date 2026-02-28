@@ -7,8 +7,6 @@ use crate::svg::parity::flowchart::{
 };
 use crate::svg::parity::fmt;
 
-use super::super::roughjs::roughjs_paths_for_svg_path;
-
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
@@ -18,11 +16,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
     node_pos: Option<&str>,
     node_asset_width: Option<f64>,
     node_asset_height: Option<f64>,
-    fill_color: &str,
+    _fill_color: &str,
     stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
+    _stroke_width: f32,
+    _stroke_dasharray: &str,
+    _hand_drawn_seed: u64,
     wrapped_in_a: bool,
 ) -> bool {
     // Port of Mermaid `iconSquare.ts` (`icon-shape default`).
@@ -37,9 +35,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
         let icon_size = asset_h.max(asset_w);
 
-        let half_padding = ctx.node_padding / 2.0;
-        let height = icon_size + half_padding * 2.0;
-        let width = icon_size + half_padding * 2.0;
+        let height = icon_size;
+        let width = icon_size;
         let x = -width / 2.0;
         let y = -height / 2.0;
 
@@ -65,86 +62,22 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         let outer_w = width.max(label_bbox_w);
         let outer_h = height + label_bbox_h + label_padding;
 
-        fn rounded_rect_path_d(x: f64, y: f64, w: f64, h: f64, r: f64) -> String {
-            // Mermaid `roundedRectPath.ts`.
-            format!(
-                "M {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} H {} A {} {} 0 0 1 {} {} V {} A {} {} 0 0 1 {} {} Z",
-                x + r,
-                y,
-                x + w - r,
-                r,
-                r,
-                x + w,
-                y + r,
-                y + h - r,
-                r,
-                r,
-                x + w - r,
-                y + h,
-                x + r,
-                r,
-                r,
-                x,
-                y + h - r,
-                y + r,
-                r,
-                r,
-                x + r,
-                y,
-            )
-        }
-
-        // Mermaid sets `options.stroke = fill ?? mainBkg` for iconSquare, so the outline
-        // stroke matches the fill color (not the node border color).
-        let icon_path = rounded_rect_path_d(x, y, width, height, 0.1);
-        if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
-            &icon_path,
-            fill_color,
-            fill_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        ) {
-            let icon_dy = if top_label {
-                label_bbox_h / 2.0 + label_padding / 2.0
-            } else {
-                -label_bbox_h / 2.0 - label_padding / 2.0
-            };
-
-            // Mermaid uses `translate(0,18)` without a space after the comma.
-            let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
-                escape_attr(&fill_d),
-                escape_attr(fill_color)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_attr(&stroke_d),
-                escape_attr(fill_color),
-                fmt(stroke_width as f64),
-                escape_attr(stroke_dasharray)
-            );
-            out.push_str("</g>");
-        }
-
-        let label_html =
-            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
-        let label_y = if top_label {
-            -outer_h / 2.0
+        let icon_dy = if top_label {
+            label_bbox_h / 2.0 + label_padding / 2.0
         } else {
-            outer_h / 2.0 - label_bbox_h
+            -label_bbox_h / 2.0 - label_padding / 2.0
         };
-        let _ = write!(
-            out,
-            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
-            fmt(-label_bbox_w / 2.0),
-            fmt(label_y),
-            fmt(label_bbox_w),
-            fmt(label_bbox_h),
-            label_html
+
+        let icon_path = format!(
+            "M{} {} L{} {} L{} {} L{} {}",
+            fmt(x),
+            fmt(y),
+            fmt(x + width),
+            fmt(y),
+            fmt(x + width),
+            fmt(y + height),
+            fmt(x),
+            fmt(y + height)
         );
 
         // Outer bbox helper node (transparent fill, no stroke).
@@ -167,15 +100,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             escape_attr(&outer_path)
         );
 
-        // Mermaid CLI baseline at 11.12.2 renders Font Awesome icons via a browser-loaded
-        // icon set. In our baselines, the upstream renderer falls back to a placeholder
-        // icon SVG (a blue square with a `?`). Mirror that placeholder output here.
+        // Mermaid uses `translate(0,18)` without a space after the comma.
+        let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="none" stroke-width="0" fill="none"/>"#,
+            escape_attr(&icon_path)
+        );
+        out.push_str("</g>");
+
+        // Mermaid CLI baseline at 11.12.2 renders iconify-based icons via a browser-loaded icon
+        // set. In our pinned baselines, the upstream renderer falls back to a placeholder icon SVG
+        // (a blue square with a `?`). Mirror that placeholder output here.
         let icon_tx = -icon_size / 2.0;
-        let icon_ty = if top_label {
-            label_bbox_h / 2.0 + label_padding / 2.0 - icon_size / 2.0
-        } else {
-            -label_bbox_h / 2.0 - label_padding / 2.0 - icon_size / 2.0
-        };
+        let icon_ty = icon_dy - icon_size / 2.0;
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" style="color: {};"><g><svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg></g></g>"#,
@@ -184,6 +122,23 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             escape_attr(stroke_color),
             fmt(icon_size),
             fmt(icon_size),
+        );
+
+        let label_html =
+            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
+        let label_y = if top_label {
+            -outer_h / 2.0
+        } else {
+            outer_h / 2.0 - label_bbox_h
+        };
+        let _ = write!(
+            out,
+            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
+            fmt(-label_bbox_w / 2.0),
+            fmt(label_y),
+            fmt(label_bbox_w),
+            fmt(label_bbox_h),
+            label_html
         );
 
         out.push_str("</g>");
