@@ -218,7 +218,9 @@ fn strip_inline_comment(line: &str) -> &str {
 
 fn is_packet_header(line: &str) -> bool {
     let t = line.trim_start();
-    t == "packet" || t == "packet-beta" || t.starts_with("packet ") || t.starts_with("packet-beta ")
+    // Mermaid CLI treats the header keyword as a standalone token.
+    // Do not accept arbitrary trailing text like `packet diagrams`.
+    t == "packet" || t == "packet-beta"
 }
 
 fn parse_title(line: &str) -> Option<String> {
@@ -382,6 +384,11 @@ mod tests {
     fn packet_header_is_accepted() {
         let model = parse("packet");
         assert_eq!(model["packet"], json!([]));
+    }
+
+    #[test]
+    fn packet_header_does_not_accept_trailing_text() {
+        assert_eq!(parse_err("packet diagrams"), "expected packet");
     }
 
     #[test]

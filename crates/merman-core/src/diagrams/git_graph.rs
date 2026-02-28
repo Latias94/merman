@@ -847,7 +847,12 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
                             "msg" => commit_db.msg = v,
                             "tag" => commit_db.tags.push(v),
                             "type" => commit_db.commit_type = parse_commit_type(&v)?,
-                            _ => {}
+                            other => {
+                                return Err(Error::DiagramParse {
+                                    diagram_type: "gitGraph".to_string(),
+                                    message: format!("unexpected commit field: {other}"),
+                                });
+                            }
                         }
                     }
                 }
@@ -1091,6 +1096,13 @@ mod tests {
             commits[0]["tags"].as_array().unwrap()[0].as_str().unwrap(),
             "test tag"
         );
+    }
+
+    #[test]
+    fn commit_errors_on_unknown_fields() {
+        let err =
+            parse_err("gitGraph\ncommit id:\"2\" msg:\"Malformed commit\" oops:\"ignored\"\n");
+        assert_eq!(err, "unexpected commit field: oops");
     }
 
     #[test]

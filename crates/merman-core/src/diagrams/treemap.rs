@@ -82,12 +82,29 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
     let mut rows: Vec<TreemapRow> = Vec::new();
+    let mut saw_body_statement = false;
+    let mut pending_trailing_ws_only_line = false;
 
     for raw in lines {
-        let t = strip_inline_comment_aware(raw);
-        if t.trim().is_empty() {
+        let raw = raw.trim_end_matches('\r');
+        if raw.trim_start().starts_with("%%") {
             continue;
         }
+
+        let t = strip_inline_comment_aware(raw);
+        if t.is_empty() {
+            continue;
+        }
+
+        if t.trim().is_empty() {
+            if saw_body_statement {
+                pending_trailing_ws_only_line = true;
+            }
+            continue;
+        }
+
+        pending_trailing_ws_only_line = false;
+        saw_body_statement = true;
 
         if let Some(v) = parse_title(t) {
             title = Some(v);
@@ -118,6 +135,14 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
             message,
         })?;
         rows.push(TreemapRow::Item(item));
+    }
+
+    // Mermaid CLI treats trailing whitespace-only lines as a syntax error for treemap.
+    if pending_trailing_ws_only_line {
+        return Err(Error::DiagramParse {
+            diagram_type: "treemap".to_string(),
+            message: "unexpected trailing whitespace-only line".to_string(),
+        });
     }
 
     let mut classes: Map<String, Value> = Map::new();
@@ -738,6 +763,27 @@ mod tests {
     fn treemap_accepts_treemap_header() {
         let model = parse("treemap\n\"A\"");
         assert_eq!(model["root"]["children"][0]["name"], json!("A"));
+    }
+
+    fn parse_error(text: &str) -> String {
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        err.to_string()
+    }
+
+    #[test]
+    fn treemap_errors_on_trailing_whitespace_only_line() {
+        let msg = parse_error("treemap\n\"A\": 1\n    \n");
+        assert!(
+            msg.contains("unexpected trailing whitespace-only line"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn treemap_allows_whitespace_only_lines_in_the_middle() {
+        let model = parse("treemap\n\"A\": 1\n    \n\"B\": 2\n");
+        assert_eq!(model["root"]["children"].as_array().unwrap().len(), 2);
     }
 
     #[test]

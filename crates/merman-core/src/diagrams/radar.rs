@@ -211,6 +211,12 @@ pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
         if let Some(rest) = t.strip_prefix("axis") {
             let rest = rest.trim_start();
+            if rest.is_empty() {
+                return Err(Error::DiagramParse {
+                    diagram_type: "radar".to_string(),
+                    message: "axis statement must include at least one axis".to_string(),
+                });
+            }
             axes.extend(
                 parse_axes_list(rest).map_err(|message| Error::DiagramParse {
                     diagram_type: "radar".to_string(),
@@ -869,6 +875,17 @@ mod tests {
             r#"radar-beta
 axis A,B,C
 curve mycurve{1,2,3}"#,
+        );
+    }
+
+    #[test]
+    fn radar_errors_on_empty_axis_statement() {
+        assert_eq!(
+            parse_err(
+                r#"radar-beta
+axis"#,
+            ),
+            "axis statement must include at least one axis"
         );
     }
 
