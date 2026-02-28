@@ -46,16 +46,16 @@ inputs, including shorthand edge syntax that appears in examples. Some Cypress s
 renderable by Mermaid CLI `@11.12.3`; for those, we keep parser-only fixtures plus CLI-compatible
 normalized variants.
 
-- groups + services + shorthand edges (`db L--R server`): `fixtures/architecture/upstream_architecture_cypress_groups_parser_only_.mmd`
+- groups + services + shorthand edges (`db L--R server`): `fixtures/architecture/upstream_architecture_cypress_groups_normalized.mmd`
 - title + accessibility + colon-style ports: `fixtures/architecture/upstream_architecture_cypress_title_and_accessibilities.mmd`
-- nested groups within groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_parser_only_.mmd`
+- nested groups within groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_normalized.mmd`
 - fallback icon handling: `fixtures/architecture/upstream_architecture_cypress_fallback_icon.mmd`
-- split directioning (mixed port pairs): `fixtures/architecture/upstream_architecture_cypress_split_directioning_parser_only_.mmd`
-- directional arrows via parenthesized port pairs (`(L--R)`): `fixtures/architecture/upstream_architecture_cypress_directional_arrows_parser_only_.mmd`
-- group boundary traversal edges (`{group}` modifier): `fixtures/architecture/upstream_architecture_cypress_group_edges_parser_only_.mmd`
-- edge label shorthand (`L-[Label]-R`): `fixtures/architecture/upstream_architecture_cypress_edge_labels_parser_only_.mmd`
-- simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_parser_only_.mmd`
-- complex junction edges (unbalanced parenthesis in shorthand ports): `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_parser_only_.mmd`
+- split directioning (mixed port pairs): `fixtures/architecture/upstream_architecture_cypress_split_directioning_normalized.mmd`
+- directional arrows via parenthesized port pairs (`(L--R)`): `fixtures/architecture/upstream_architecture_cypress_directional_arrows_normalized.mmd`
+- group boundary traversal edges (`{group}` modifier): `fixtures/architecture/upstream_architecture_cypress_group_edges_normalized.mmd`
+- edge label shorthand (`L-[Label]-R`): `fixtures/architecture/upstream_architecture_cypress_edge_labels_normalized.mmd`
+- simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_normalized.mmd`
+- complex junction edges (unbalanced parenthesis in shorthand ports): `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_normalized.mmd`
 - “reasonable height” stress case: `fixtures/architecture/upstream_architecture_cypress_reasonable_height.mmd`
 
 Direct Cypress (raw formatting) fixtures (parity-gated with upstream SVG baselines):
