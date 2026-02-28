@@ -421,7 +421,12 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let text = read_text_normalized(&p)?;
+            // Do NOT `trim_end()` here: some upstream grammars treat trailing whitespace-only
+            // lines as a syntax error (e.g. Treemap at Mermaid CLI @11.12.3).
+            let mut text = read_text(&p)?;
+            if text.contains("\r\n") {
+                text = text.replace("\r\n", "\n");
+            }
             match futures::executor::block_on(
                 engine.parse_diagram(&text, merman::ParseOptions::default()),
             ) {
