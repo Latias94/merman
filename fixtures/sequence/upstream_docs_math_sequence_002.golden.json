@@ -1,0 +1,90 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "1",
+      "2"
+    ],
+    "actors": {
+      "1": {
+        "name": "1",
+        "description": "$$\\alpha$$",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "2": {
+        "name": "2",
+        "description": "$$\\beta$$",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "1",
+        "to": "2",
+        "message": "Solve: $$\\sqrt{2+2}$$",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "2",
+        "to": "1",
+        "message": "Answer: $$2$$",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "2",
+        "to": "2",
+        "message": "$$\\sqrt{2+2}=\\sqrt{4}=2$$",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      }
+    ],
+    "notes": [
+      {
+        "actor": "2",
+        "placement": 1,
+        "message": "$$\\sqrt{2+2}=\\sqrt{4}=2$$",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
