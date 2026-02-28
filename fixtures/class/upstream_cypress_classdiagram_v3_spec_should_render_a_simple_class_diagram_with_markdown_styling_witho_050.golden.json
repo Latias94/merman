@@ -1,0 +1,111 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class10": {
+        "id": "Class10",
+        "type": "",
+        "label": "Class10",
+        "text": "Class10",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "_italicmethod_",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "_italicmethod_()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "__boldmethod__",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "__boldmethod__()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "_+_swim_",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "a_",
+            "displayText": "_+_swim_() : a_",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "__+quack",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "test__",
+            "displayText": "__+quack() : test__",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "attribute *italic*",
+            "classifier": "*",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+attribute *italic*",
+            "cssStyle": "font-style:italic;"
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "~",
+            "id": "attribute **bold**",
+            "classifier": "*",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "~attribute **bold**",
+            "cssStyle": "font-style:italic;"
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class10-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
