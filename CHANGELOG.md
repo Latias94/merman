@@ -11,8 +11,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
   Cytoscape/FCoSE. SVG DOM parity is compared in `dom-mode parity`, so expect occasional layout snapshot churn while we
   tighten numeric fidelity.
+- `merman-core`: dropped support for legacy Architecture edge shorthand (e.g. `a L--R b`, `a (L--R) b`) to align with
+  Mermaid@11.12.3's Langium parser; use port-colon syntax instead (e.g. `a:L -- R:b`).
+- `merman-render`: introduced a pluggable `MathRenderer` interface for `$$...$$` math labels (no default KaTeX backend;
+  pure-Rust remains the default).
 - `xtask`: added `audit-gaps` to summarize parser-only fixtures and deferred corpus status (helps drive “missing
   implementation” work off reproducible reports).
+- `xtask audit-gaps`: optionally probe upstream renderability for parser-only fixtures via Mermaid CLI (flags:
+  `--check-upstream-render`, `--upstream-timeout-secs`).
 
 ## [0.3.0] - 2026-02-27
 
