@@ -87,6 +87,98 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         format!("{s}\n")
     }
 
+    fn strip_yaml_frontmatter(body: &str) -> &str {
+        // Keep parity with other importers: Mermaid fixtures occasionally start with YAML
+        // frontmatter, so directive detection must ignore it.
+        let mut lines = body.lines();
+        let Some(first) = lines.next() else {
+            return body;
+        };
+        if first.trim() != "---" {
+            return body;
+        }
+        let mut consumed = first.len() + 1;
+        for l in lines {
+            consumed += l.len() + 1;
+            if l.trim() == "---" {
+                break;
+            }
+        }
+        body.get(consumed..).unwrap_or("")
+    }
+
+    fn has_any_directive(body: &str, directives: &[&str]) -> bool {
+        let body = strip_yaml_frontmatter(body);
+        let mut seen = 0usize;
+        for raw in body.lines() {
+            let line = raw.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let lower = line.to_ascii_lowercase();
+            if lower.starts_with("%%{init") || lower.starts_with("%%") {
+                // Allow a small amount of init/comment prelude.
+                seen += 1;
+                if seen > 25 {
+                    break;
+                }
+                continue;
+            }
+            for d in directives {
+                if lower.starts_with(&d.to_ascii_lowercase()) {
+                    return true;
+                }
+            }
+            seen += 1;
+            if seen > 25 {
+                break;
+            }
+        }
+        false
+    }
+
+    fn looks_like_mermaid_diagram(diagram_dir: &str, body: &str) -> bool {
+        // The detector registry can be permissive (e.g. "architecture ..." matches the
+        // Architecture detector even though Mermaid requires `architecture-beta`).
+        //
+        // Filter false positives early so `--with-baselines` doesn't churn `_deferred/` or spam
+        // upstream baseline generation with invalid inputs.
+        match diagram_dir {
+            "flowchart" => has_any_directive(body, &["flowchart", "graph"]),
+            "sequence" => has_any_directive(body, &["sequencediagram"]),
+            "class" => has_any_directive(body, &["classdiagram"]),
+            "state" => has_any_directive(body, &["statediagram"]),
+            "er" => has_any_directive(body, &["erdiagram"]),
+            "gantt" => has_any_directive(body, &["gantt"]),
+            "journey" => has_any_directive(body, &["journey"]),
+            "pie" => has_any_directive(body, &["pie"]),
+            "mindmap" => has_any_directive(body, &["mindmap"]),
+            "timeline" => has_any_directive(body, &["timeline"]),
+            "gitgraph" => has_any_directive(body, &["gitgraph"]),
+            "sankey" => has_any_directive(body, &["sankey"]),
+            "packet" => has_any_directive(body, &["packet"]),
+            "treemap" => has_any_directive(body, &["treemap"]),
+            "radar" => has_any_directive(body, &["radar"]),
+            "xychart" => has_any_directive(body, &["xychart"]),
+            "quadrantchart" => has_any_directive(body, &["quadrantchart"]),
+            "requirement" => has_any_directive(body, &["requirementdiagram"]),
+            "architecture" => has_any_directive(body, &["architecture-beta"]),
+            "block" => has_any_directive(body, &["block"]),
+            "c4" => has_any_directive(
+                body,
+                &[
+                    "c4context",
+                    "c4container",
+                    "c4component",
+                    "c4deployment",
+                    "c4dynamic",
+                ],
+            ),
+            "info" => has_any_directive(body, &["info"]),
+            _ => true,
+        }
+    }
+
     fn slugify(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
         let mut prev_us = false;
@@ -688,6 +780,9 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             let Some(diagram_dir) = normalize_diagram_dir(detected) else {
                 continue;
             };
+            if !looks_like_mermaid_diagram(diagram_dir.as_str(), body.as_str()) {
+                continue;
+            }
             if diagram_dir == "zenuml" {
                 continue;
             }
