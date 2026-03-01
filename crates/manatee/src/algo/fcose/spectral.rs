@@ -1,4 +1,3 @@
-use nalgebra::{DMatrix, DVector};
 use rustc_hash::FxHashMap;
 
 use super::{SimEdge, SimNode, XorShift64Star};
@@ -17,6 +16,7 @@ pub(super) fn apply_spectral_start_positions(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
     compound_parent: &FxHashMap<String, Option<String>>,
+    compound_ids_in_order: &[String],
     rng: &mut XorShift64Star,
 ) -> bool {
     if nodes.is_empty() {
@@ -24,7 +24,8 @@ pub(super) fn apply_spectral_start_positions(
     }
 
     let n_real = nodes.len();
-    let (adjacency, node_size) = build_transformed_adjacency(nodes, edges, compound_parent);
+    let (adjacency, node_size) =
+        build_transformed_adjacency(nodes, edges, compound_parent, compound_ids_in_order);
     if node_size <= 1 {
         return false;
     }
@@ -58,7 +59,8 @@ pub(super) fn apply_spectral_start_positions(
     }
 
     // Column sampling matrix (squared shortest-path distances).
-    let mut c = DMatrix::<f64>::zeros(node_size, sample_size);
+    // Keep this as a plain Vec-backed matrix to match upstream JS operation order more closely.
+    let mut c: Vec<Vec<f64>> = vec![vec![0.0; sample_size]; node_size];
     let mut samples: Vec<usize> = vec![0; sample_size];
     let mut min_dist: Vec<f64> = vec![INFINITY_HOPS; node_size];
 
@@ -81,16 +83,16 @@ pub(super) fn apply_spectral_start_positions(
     // Square distances for C.
     for i in 0..node_size {
         for j in 0..sample_size {
-            let v = c[(i, j)];
-            c[(i, j)] = v * v;
+            let v = c[i][j];
+            c[i][j] = v * v;
         }
     }
 
     // PHI is the intersection of sampled rows/columns.
-    let mut phi = DMatrix::<f64>::zeros(sample_size, sample_size);
+    let mut phi: Vec<Vec<f64>> = vec![vec![0.0; sample_size]; sample_size];
     for i in 0..sample_size {
         for j in 0..sample_size {
-            phi[(i, j)] = c[(samples[j], i)];
+            phi[i][j] = c[samples[j]][i];
         }
     }
 
@@ -114,6 +116,27 @@ pub(super) fn apply_spectral_start_positions(
         nodes[i].top = y - nodes[i].height / 2.0;
     }
 
+    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for n in nodes.iter().take(n_real) {
+            min_x = min_x.min(n.center_x());
+            min_y = min_y.min(n.center_y());
+            max_x = max_x.max(n.center_x());
+            max_y = max_y.max(n.center_y());
+        }
+        eprintln!(
+            "[manatee-fcose-spectral] n_real={} transformed_n={} sample_size={} x=[{:.3},{:.3}] y=[{:.3},{:.3}]",
+            n_real, node_size, sample_size, min_x, max_x, min_y, max_y
+        );
+    }
+
     true
 }
 
@@ -127,9 +150,12 @@ fn build_transformed_adjacency(
     nodes: &[SimNode],
     edges: &[SimEdge],
     compound_parent: &FxHashMap<String, Option<String>>,
+    compound_ids_in_order: &[String],
 ) -> (Vec<Vec<usize>>, usize) {
     let n_real = nodes.len();
 
+    // Transformed graph starts with all real (childless) nodes, then adds dummy nodes created by
+    // `aux.connectComponents(...)` (top-level first, then for each parent in insertion order).
     let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); n_real];
     for e in edges {
         if e.a < n_real && e.b < n_real {
@@ -144,10 +170,14 @@ fn build_transformed_adjacency(
 
     let leaf_deg: Vec<usize> = adjacency.iter().map(|v| v.len()).collect();
 
-    // Build a stable compound index so we can model auxiliary.connectComponents-like behavior in
-    // the transformed (leaf + dummy) graph used by spectral sampling.
-    let mut compound_ids: Vec<String> = compound_parent.keys().cloned().collect();
-    compound_ids.sort();
+    // Match upstream spectral.js ordering:
+    // - compound ids follow the Cytoscape insertion order (Mermaid adds groups first, then services)
+    // - we keep that order as provided by the caller (derived from `graph.compounds`)
+    let compound_ids: Vec<String> = compound_ids_in_order
+        .iter()
+        .filter(|id| compound_parent.contains_key(id.as_str()))
+        .cloned()
+        .collect();
     let mut compound_id_to_ix: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
     for (ix, id) in compound_ids.iter().enumerate() {
@@ -163,6 +193,15 @@ fn build_transformed_adjacency(
             .as_deref()
             .and_then(|p| compound_id_to_ix.get(p).copied());
         compound_parent_ix[ix] = parent_ix;
+    }
+
+    let mut compound_children: Vec<Vec<usize>> = vec![Vec::new(); compound_ids.len()];
+    for child_ix in 0..compound_ids.len() {
+        if let Some(parent_ix) = compound_parent_ix[child_ix] {
+            // Preserve Cytoscape insertion order (child compounds are appended in `compound_ids`
+            // order, which is itself insertion order).
+            compound_children[parent_ix].push(child_ix);
+        }
     }
 
     let mut leaf_chain: Vec<Vec<usize>> = vec![Vec::new(); n_real];
@@ -190,29 +229,56 @@ fn build_transformed_adjacency(
         }
     }
 
-    let mut compound_desc_leaves: Vec<Vec<usize>> = vec![Vec::new(); compound_ids.len()];
-    for (leaf, chain) in leaf_chain.iter().enumerate() {
-        for &cix in chain {
-            compound_desc_leaves[cix].push(leaf);
-        }
-    }
-
+    // Representative childless node per compound: mirror `spectral.js`'s `parentChildMap`.
+    //
+    // Important: upstream does *not* pick a global minimum-degree leaf from all descendants.
+    // Instead, it descends along `children.nodes()[0]` while the current level has no childless
+    // nodes, then picks the minimum-degree leaf among the childless nodes at that level.
     let mut compound_repr_leaf: Vec<Option<usize>> = vec![None; compound_ids.len()];
     for cix in 0..compound_ids.len() {
-        let desc = &compound_desc_leaves[cix];
-        if desc.is_empty() {
+        if !compound_used[cix] {
             continue;
         }
-        let mut best = desc[0];
-        let mut best_deg = leaf_deg[best];
-        for &leaf in desc {
-            let deg = leaf_deg[leaf];
-            if deg < best_deg || (deg == best_deg && leaf < best) {
-                best = leaf;
-                best_deg = deg;
+        let mut current = cix;
+        loop {
+            // Direct childless nodes at this level.
+            let mut best_leaf: Option<usize> = None;
+            let mut best_deg: usize = usize::MAX;
+            for leaf in 0..n_real {
+                if leaf_immediate_parent[leaf] != Some(current) {
+                    continue;
+                }
+                let deg = leaf_deg[leaf];
+                match best_leaf {
+                    None => {
+                        best_leaf = Some(leaf);
+                        best_deg = deg;
+                    }
+                    Some(_) if deg < best_deg => {
+                        best_leaf = Some(leaf);
+                        best_deg = deg;
+                    }
+                    _ => {}
+                }
             }
+            if best_leaf.is_some() {
+                compound_repr_leaf[cix] = best_leaf;
+                break;
+            }
+
+            // No direct leaves: descend into the first compound child (in insertion order).
+            let mut next_compound: Option<usize> = None;
+            for &child in &compound_children[current] {
+                if compound_used.get(child).copied().unwrap_or(false) {
+                    next_compound = Some(child);
+                    break;
+                }
+            }
+            let Some(next) = next_compound else {
+                break;
+            };
+            current = next;
         }
-        compound_repr_leaf[cix] = Some(best);
     }
 
     let elem_degree = |e: ElemKey| -> usize {
@@ -230,30 +296,28 @@ fn build_transformed_adjacency(
         }
     };
 
-    // Top-level connectComponents: connect root compounds (and any parentless leaves) via a dummy
-    // node so BFS sampling can traverse a connected transformed graph.
+    // Mirror `spectral.js` preprocessing:
+    // - `aux.connectComponents(cy, eles, aux.getTopMostNodes(nodes), dummyNodes);`
+    // - `parentNodes.forEach(ele => aux.connectComponents(... topMostNodes(ele.descendants()) ...));`
+
+    // Top-level connectComponents.
     {
-        let mut top_level: Vec<ElemKey> = Vec::new();
+        let mut top_most: Vec<ElemKey> = Vec::new();
         for cix in 0..compound_ids.len() {
-            if !compound_used[cix] {
-                continue;
-            }
-            if compound_parent_ix[cix].is_none() {
-                top_level.push(ElemKey::Compound(cix));
+            if compound_used[cix] && compound_parent_ix[cix].is_none() {
+                top_most.push(ElemKey::Compound(cix));
             }
         }
-        for (i, parent) in leaf_immediate_parent.iter().enumerate().take(n_real) {
-            if parent.is_none() {
-                top_level.push(ElemKey::Leaf(i));
+        for leaf in 0..n_real {
+            if leaf_immediate_parent[leaf].is_none() {
+                top_most.push(ElemKey::Leaf(leaf));
             }
         }
-        top_level.sort();
-        top_level.dedup();
 
         add_dummy_for_scope(
             &mut adjacency,
             edges,
-            &top_level,
+            &top_most,
             |leaf| {
                 Some(
                     leaf_root_compound[leaf]
@@ -266,39 +330,40 @@ fn build_transformed_adjacency(
         );
     }
 
-    // Compound-level connectComponents: mimic spectral.js' per-parent `connectComponents(...)` to
-    // avoid disconnected descendant subgraphs skewing the spectral initialization.
+    // Per-compound connectComponents (in parent insertion order).
     for scope_cix in 0..compound_ids.len() {
         if !compound_used[scope_cix] {
             continue;
         }
-        if compound_desc_leaves[scope_cix].is_empty() {
+
+        // `aux.getTopMostNodes(ele.descendants())` returns the immediate children of the parent.
+        let mut top_most: Vec<ElemKey> = Vec::new();
+        for &child in &compound_children[scope_cix] {
+            if compound_used.get(child).copied().unwrap_or(false) {
+                top_most.push(ElemKey::Compound(child));
+            }
+        }
+        for leaf in 0..n_real {
+            if leaf_immediate_parent[leaf] == Some(scope_cix) {
+                top_most.push(ElemKey::Leaf(leaf));
+            }
+        }
+
+        if top_most.len() <= 1 {
             continue;
         }
-
-        let mut in_scope: Vec<bool> = vec![false; n_real];
-        for &leaf in &compound_desc_leaves[scope_cix] {
-            in_scope[leaf] = true;
-        }
-
-        let mut top_most: Vec<ElemKey> = Vec::new();
-        for &leaf in &compound_desc_leaves[scope_cix] {
-            let Some(t) =
-                map_leaf_to_scope_top_most(scope_cix, leaf, &leaf_immediate_parent, &leaf_chain)
-            else {
-                continue;
-            };
-            top_most.push(t);
-        }
-        top_most.sort();
-        top_most.dedup();
 
         add_dummy_for_scope(
             &mut adjacency,
             edges,
             &top_most,
             |leaf| {
-                if !in_scope.get(leaf).copied().unwrap_or(false) {
+                // Restrict traversal to this compound's descendants (neighbors outside the scope
+                // are ignored because they don't intersect `topMostNodes` in upstream).
+                if !leaf_chain
+                    .get(leaf)
+                    .is_some_and(|chain| chain.iter().any(|&c| c == scope_cix))
+                {
                     return None;
                 }
                 map_leaf_to_scope_top_most(scope_cix, leaf, &leaf_immediate_parent, &leaf_chain)
@@ -355,8 +420,7 @@ fn add_dummy_for_scope(
         return;
     }
 
-    let mut elem_to_idx: std::collections::BTreeMap<ElemKey, usize> =
-        std::collections::BTreeMap::new();
+    let mut elem_to_idx: FxHashMap<ElemKey, usize> = FxHashMap::default();
     for (i, &e) in top_most.iter().enumerate() {
         elem_to_idx.insert(e, i);
     }
@@ -395,12 +459,14 @@ fn add_dummy_for_scope(
     transformed_adj.push(Vec::new());
 
     for comp in components {
+        // Mirror `aux.connectComponents(...)` selection: pick the minimum-degree top-most node
+        // in the component, and keep the first one on ties (JS uses `<`, not `<=`).
         let mut best = top_most[comp[0]];
         let mut best_deg = elem_degree(best);
-        for &i in &comp {
+        for &i in comp.iter().skip(1) {
             let e = top_most[i];
             let deg = elem_degree(e);
-            if deg < best_deg || (deg == best_deg && e < best) {
+            if deg < best_deg {
                 best = e;
                 best_deg = deg;
             }
@@ -441,7 +507,6 @@ fn connected_components(adjacency: &[Vec<usize>]) -> Vec<Vec<usize>> {
             }
         }
 
-        comp.sort_unstable();
         out.push(comp);
     }
 
@@ -453,7 +518,7 @@ fn bfs_fill_column(
     col: usize,
     adjacency: &[Vec<usize>],
     node_separation: f64,
-    c: &mut DMatrix<f64>,
+    c: &mut [Vec<f64>],
     mut min_dist: Option<&mut [f64]>,
 ) -> usize {
     let node_size = adjacency.len();
@@ -480,7 +545,7 @@ fn bfs_fill_column(
         } else {
             (dist[i] as f64) * node_separation
         };
-        c[(i, col)] = d;
+        c[i][col] = d;
 
         if let Some(min_dist) = min_dist.as_deref_mut() {
             if d < min_dist[i] {
@@ -496,68 +561,98 @@ fn bfs_fill_column(
     if min_dist.is_some() { max_idx } else { pivot }
 }
 
-fn regularized_inverse_from_svd(phi: &DMatrix<f64>) -> Option<DMatrix<f64>> {
-    let svd = nalgebra::linalg::SVD::new(phi.clone(), true, true);
-    let u = svd.u?;
-    let v_t = svd.v_t?;
-    let s = svd.singular_values;
-    if s.is_empty() {
+#[derive(Debug, Clone)]
+struct SvdResult {
+    u: Vec<Vec<f64>>,
+    v: Vec<Vec<f64>>,
+    s: Vec<f64>,
+}
+
+// Port of layout-base `util/SVD.js` (JamaJS-derived) + `spectral.js` regularized inverse.
+// This avoids relying on external linear algebra implementations whose numeric behavior can
+// diverge enough to change the spectral basis on symmetric graphs (which cascades into different
+// FCoSE results and parity-root viewports).
+fn regularized_inverse_from_svd(phi: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
+    let n = phi.len();
+    if n == 0 {
+        return None;
+    }
+    if phi.iter().any(|r| r.len() != n) {
         return None;
     }
 
-    let max_s = s[0] * s[0] * s[0];
-
-    let k = s.len();
-    let mut sig = DMatrix::<f64>::zeros(k, k);
-    for i in 0..k {
-        let si = s[i];
-        let si2 = si * si;
-        let denom = if si2 == 0.0 {
-            f64::INFINITY
-        } else {
-            si2 + (max_s / si2)
-        };
-        sig[(i, i)] = if denom.is_finite() && denom != 0.0 {
-            si / denom
-        } else {
-            0.0
-        };
+    let svd = svd_jama(phi)?;
+    if svd.s.is_empty() {
+        return None;
     }
 
-    let v = v_t.transpose();
-    Some(v * sig * u.transpose())
+    // layout-base spectral.js:
+    // max_s = q[0]^3 where q is sorted descending by the SVD routine.
+    let q0 = svd.s[0];
+    let max_s = q0 * q0 * q0;
+
+    // Diagonal regularization values (a_Sig[i][i]).
+    let mut sig_diag: Vec<f64> = vec![0.0; n];
+    for i in 0..n {
+        let qi = svd.s.get(i).copied().unwrap_or(0.0);
+        let qi2 = qi * qi;
+        if qi2 == 0.0 {
+            sig_diag[i] = 0.0;
+            continue;
+        }
+        sig_diag[i] = qi / (qi2 + (max_s / qi2));
+    }
+
+    // INV = V * Sig * U^T
+    let mut inv: Vec<Vec<f64>> = vec![vec![0.0; n]; n];
+    for i in 0..n {
+        for j in 0..n {
+            let mut sum = 0.0;
+            for k in 0..n {
+                sum += svd.v[i][k] * sig_diag[k] * svd.u[j][k];
+            }
+            inv[i][j] = sum;
+        }
+    }
+    Some(inv)
 }
 
 fn power_iteration(
     rng: &mut XorShift64Star,
-    c: &DMatrix<f64>,
-    inv: &DMatrix<f64>,
+    c: &[Vec<f64>],
+    inv: &[Vec<f64>],
     pi_tol: f64,
-) -> Option<(DVector<f64>, DVector<f64>)> {
-    let n = c.nrows();
+) -> Option<(Vec<f64>, Vec<f64>)> {
+    let n = c.len();
     if n == 0 {
         return None;
     }
+    let sample_size = c[0].len();
+    if inv.len() != sample_size || inv.iter().any(|r| r.len() != sample_size) {
+        return None;
+    }
 
-    let mut y1 = DVector::<f64>::from_fn(n, |_, _| rng.next_f64_unit());
-    let mut y2 = DVector::<f64>::from_fn(n, |_, _| rng.next_f64_unit());
+    let mut y1: Vec<f64> = (0..n).map(|_| rng.next_f64_unit()).collect();
+    let mut y2: Vec<f64> = (0..n).map(|_| rng.next_f64_unit()).collect();
     normalize_in_place(&mut y1);
     normalize_in_place(&mut y2);
 
     let (v1, theta1) = dominant_eigenvector(c, inv, y1, pi_tol)?;
     let (v2, theta2) = second_eigenvector(c, inv, &v1, y2, pi_tol)?;
 
-    let x = v1 * theta1.abs().sqrt();
-    let y = v2 * theta2.abs().sqrt();
+    let s1 = theta1.abs().sqrt();
+    let s2 = theta2.abs().sqrt();
+    let x: Vec<f64> = v1.iter().map(|v| v * s1).collect();
+    let y: Vec<f64> = v2.iter().map(|v| v * s2).collect();
     Some((x, y))
 }
 
 fn dominant_eigenvector(
-    c: &DMatrix<f64>,
-    inv: &DMatrix<f64>,
-    mut y: DVector<f64>,
+    c: &[Vec<f64>],
+    inv: &[Vec<f64>],
+    mut y: Vec<f64>,
     pi_tol: f64,
-) -> Option<(DVector<f64>, f64)> {
+) -> Option<(Vec<f64>, f64)> {
     let mut previous = SMALL;
     let mut theta = 0.0;
 
@@ -566,87 +661,544 @@ fn dominant_eigenvector(
         let t = mult_gamma(&v);
         let t = mult_l(&t, c, inv);
         let mut next = mult_gamma(&t);
-        theta = v.dot(&next);
+        theta = dot(&v, &next);
         normalize_in_place(&mut next);
 
-        let current = v.dot(&next);
-        let denom = if previous.abs() < SMALL {
-            SMALL
-        } else {
-            previous
-        };
-        let ratio = (current / denom).abs();
+        let current = dot(&v, &next);
+        let ratio = (current / previous).abs();
 
         y = next;
         if ratio <= 1.0 + pi_tol && ratio >= 1.0 {
             return Some((y, theta));
         }
         previous = current;
+        if previous.abs() < SMALL {
+            previous = SMALL;
+        }
     }
 
     Some((y, theta))
 }
 
 fn second_eigenvector(
-    c: &DMatrix<f64>,
-    inv: &DMatrix<f64>,
-    v1: &DVector<f64>,
-    mut y: DVector<f64>,
+    c: &[Vec<f64>],
+    inv: &[Vec<f64>],
+    v1: &[f64],
+    mut y: Vec<f64>,
     pi_tol: f64,
-) -> Option<(DVector<f64>, f64)> {
+) -> Option<(Vec<f64>, f64)> {
     let mut previous = SMALL;
     let mut theta = 0.0;
 
     for _ in 0..MAX_POWER_ITERATIONS {
         let mut v = y.clone();
-        let proj = v1.dot(&v);
-        v -= v1 * proj;
+        let proj = dot(v1, &v);
+        for i in 0..v.len() {
+            v[i] -= v1[i] * proj;
+        }
 
         let t = mult_gamma(&v);
         let t = mult_l(&t, c, inv);
         let mut next = mult_gamma(&t);
-        theta = v.dot(&next);
+        theta = dot(&v, &next);
         normalize_in_place(&mut next);
 
-        let current = v.dot(&next);
-        let denom = if previous.abs() < SMALL {
-            SMALL
-        } else {
-            previous
-        };
-        let ratio = (current / denom).abs();
+        let current = dot(&v, &next);
+        let ratio = (current / previous).abs();
 
         y = next;
         if ratio <= 1.0 + pi_tol && ratio >= 1.0 {
             return Some((y, theta));
         }
         previous = current;
+        if previous.abs() < SMALL {
+            previous = SMALL;
+        }
     }
 
     Some((y, theta))
 }
 
-fn mult_gamma(v: &DVector<f64>) -> DVector<f64> {
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len());
+    let mut sum = 0.0;
+    for i in 0..n {
+        sum += a[i] * b[i];
+    }
+    sum
+}
+
+fn mult_gamma(v: &[f64]) -> Vec<f64> {
     let n = v.len();
     if n == 0 {
-        return v.clone();
+        return Vec::new();
     }
-    let mean = v.iter().sum::<f64>() / (n as f64);
-    DVector::<f64>::from_fn(n, |i, _| v[i] - mean)
+    let mut sum = 0.0;
+    for &x in v {
+        sum += x;
+    }
+    let mean = sum / (n as f64);
+    let mut out = vec![0.0; n];
+    for i in 0..n {
+        out[i] = v[i] - mean;
+    }
+    out
 }
 
-fn mult_l(v: &DVector<f64>, c: &DMatrix<f64>, inv: &DMatrix<f64>) -> DVector<f64> {
-    // Nyström-style multiplication:
-    // L = -0.5 * C * INV * C^T
-    let t = c.transpose() * v;
-    let t = inv * t;
-    let out = c * t;
-    out * -0.5
+fn mult_l(v: &[f64], c: &[Vec<f64>], inv: &[Vec<f64>]) -> Vec<f64> {
+    // layout-base `Matrix.multL`:
+    // result = -0.5 * C * INV * C^T * v
+    let node_size = c.len();
+    if node_size == 0 {
+        return Vec::new();
+    }
+    let sample_size = c[0].len();
+
+    let mut temp1 = vec![0.0; sample_size];
+    for i in 0..sample_size {
+        let mut sum = 0.0;
+        for j in 0..node_size {
+            sum += -0.5 * c[j][i] * v[j];
+        }
+        temp1[i] = sum;
+    }
+
+    let mut temp2 = vec![0.0; sample_size];
+    for i in 0..sample_size {
+        let mut sum = 0.0;
+        for j in 0..sample_size {
+            sum += inv[i][j] * temp1[j];
+        }
+        temp2[i] = sum;
+    }
+
+    let mut out = vec![0.0; node_size];
+    for i in 0..node_size {
+        let mut sum = 0.0;
+        for j in 0..sample_size {
+            sum += c[i][j] * temp2[j];
+        }
+        out[i] = sum;
+    }
+    out
 }
 
-fn normalize_in_place(v: &mut DVector<f64>) {
-    let norm = v.norm();
+fn normalize_in_place(v: &mut [f64]) {
+    let mut sum_sq = 0.0;
+    for &x in v.iter() {
+        sum_sq += x * x;
+    }
+    let norm = sum_sq.sqrt();
     if norm.is_finite() && norm > 0.0 {
-        *v /= norm;
+        for x in v.iter_mut() {
+            *x /= norm;
+        }
     }
+}
+
+fn svd_hypot(a: f64, b: f64) -> f64 {
+    // layout-base `SVD.hypot`.
+    if a.abs() > b.abs() {
+        let r = b / a;
+        a.abs() * (1.0 + r * r).sqrt()
+    } else if b != 0.0 {
+        let r = a / b;
+        b.abs() * (1.0 + r * r).sqrt()
+    } else {
+        0.0
+    }
+}
+
+fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
+    let m = a_in.len();
+    if m == 0 {
+        return None;
+    }
+    let n = a_in[0].len();
+    if n == 0 || a_in.iter().any(|r| r.len() != n) {
+        return None;
+    }
+
+    let mut a: Vec<Vec<f64>> = a_in.to_vec();
+
+    let nu = m.min(n);
+    let mut s: Vec<f64> = vec![0.0; (m + 1).min(n)];
+    let mut u: Vec<Vec<f64>> = vec![vec![0.0; nu]; m];
+    let mut v: Vec<Vec<f64>> = vec![vec![0.0; n]; n];
+    let mut e: Vec<f64> = vec![0.0; n];
+    let mut work: Vec<f64> = vec![0.0; m];
+
+    let wantu = true;
+    let wantv = true;
+
+    let nct = (m.saturating_sub(1)).min(n);
+    let nrt = (n.saturating_sub(2)).min(m).max(0);
+
+    let k_max = nct.max(nrt);
+    for k in 0..k_max {
+        if k < nct {
+            s[k] = 0.0;
+            for i in k..m {
+                s[k] = svd_hypot(s[k], a[i][k]);
+            }
+            if s[k] != 0.0 {
+                if a[k][k] < 0.0 {
+                    s[k] = -s[k];
+                }
+                for i in k..m {
+                    a[i][k] /= s[k];
+                }
+                a[k][k] += 1.0;
+            }
+            s[k] = -s[k];
+        }
+
+        for j in (k + 1)..n {
+            if k < nct && s[k] != 0.0 {
+                let mut t = 0.0;
+                for i in k..m {
+                    t += a[i][k] * a[i][j];
+                }
+                t = -t / a[k][k];
+                for i in k..m {
+                    a[i][j] += t * a[i][k];
+                }
+            }
+            e[j] = a[k][j];
+        }
+
+        if wantu && k < nct {
+            for i in k..m {
+                u[i][k] = a[i][k];
+            }
+        }
+
+        if k < nrt {
+            e[k] = 0.0;
+            for i in (k + 1)..n {
+                e[k] = svd_hypot(e[k], e[i]);
+            }
+            if e[k] != 0.0 {
+                if e[k + 1] < 0.0 {
+                    e[k] = -e[k];
+                }
+                for i in (k + 1)..n {
+                    e[i] /= e[k];
+                }
+                e[k + 1] += 1.0;
+            }
+            e[k] = -e[k];
+
+            if (k + 1) < m && e[k] != 0.0 {
+                for i in (k + 1)..m {
+                    work[i] = 0.0;
+                }
+                for j in (k + 1)..n {
+                    for i in (k + 1)..m {
+                        work[i] += e[j] * a[i][j];
+                    }
+                }
+                for j in (k + 1)..n {
+                    let t = -e[j] / e[k + 1];
+                    for i in (k + 1)..m {
+                        a[i][j] += t * work[i];
+                    }
+                }
+            }
+
+            if wantv {
+                for i in (k + 1)..n {
+                    v[i][k] = e[i];
+                }
+            }
+        }
+    }
+
+    let p = n.min(m + 1);
+    if nct < n {
+        s[nct] = a[nct][nct];
+    }
+    if m < p {
+        s[p - 1] = 0.0;
+    }
+    if (nrt + 1) < p {
+        e[nrt] = a[nrt][p - 1];
+    }
+    e[p - 1] = 0.0;
+
+    if wantu {
+        for j in nct..nu {
+            for i in 0..m {
+                u[i][j] = 0.0;
+            }
+            u[j][j] = 1.0;
+        }
+
+        let mut k = nct as i32 - 1;
+        while k >= 0 {
+            let kk = k as usize;
+            if s[kk] != 0.0 {
+                for j in (kk + 1)..nu {
+                    let mut t = 0.0;
+                    for i in kk..m {
+                        t += u[i][kk] * u[i][j];
+                    }
+                    t = -t / u[kk][kk];
+                    for i in kk..m {
+                        u[i][j] += t * u[i][kk];
+                    }
+                }
+                for i in kk..m {
+                    u[i][kk] = -u[i][kk];
+                }
+                u[kk][kk] = 1.0 + u[kk][kk];
+                for i in 0..kk.saturating_sub(1) {
+                    u[i][kk] = 0.0;
+                }
+            } else {
+                for i in 0..m {
+                    u[i][kk] = 0.0;
+                }
+                u[kk][kk] = 1.0;
+            }
+            k -= 1;
+        }
+    }
+
+    if wantv {
+        let mut k = n as i32 - 1;
+        while k >= 0 {
+            let kk = k as usize;
+            if kk < nrt && e[kk] != 0.0 {
+                for j in (kk + 1)..nu {
+                    let mut t = 0.0;
+                    for i in (kk + 1)..n {
+                        t += v[i][kk] * v[i][j];
+                    }
+                    t = -t / v[kk + 1][kk];
+                    for i in (kk + 1)..n {
+                        v[i][j] += t * v[i][kk];
+                    }
+                }
+            }
+            for i in 0..n {
+                v[i][kk] = 0.0;
+            }
+            v[kk][kk] = 1.0;
+            k -= 1;
+        }
+    }
+
+    let mut p_i32 = p as i32;
+    let pp = (p - 1) as i32;
+    let mut iter = 0i32;
+    let eps = 2f64.powi(-52);
+    let tiny = 2f64.powi(-966);
+
+    while p_i32 > 0 {
+        let mut k: i32;
+        let kase: i32;
+
+        k = p_i32 - 2;
+        while k >= -1 {
+            if k == -1 {
+                break;
+            }
+            let kk = k as usize;
+            if e[kk].abs() <= tiny + eps * (s[kk].abs() + s[kk + 1].abs()) {
+                e[kk] = 0.0;
+                break;
+            }
+            k -= 1;
+        }
+
+        if k == p_i32 - 2 {
+            kase = 4;
+        } else {
+            let mut ks = p_i32 - 1;
+            while ks >= k {
+                if ks == k {
+                    break;
+                }
+                let ksu = ks as usize;
+                let t = (if ks != p_i32 { e[ksu].abs() } else { 0.0 })
+                    + (if ks != k + 1 { e[ksu - 1].abs() } else { 0.0 });
+                if s[ksu].abs() <= tiny + eps * t {
+                    s[ksu] = 0.0;
+                    break;
+                }
+                ks -= 1;
+            }
+
+            if ks == k {
+                kase = 3;
+            } else if ks == p_i32 - 1 {
+                kase = 1;
+            } else {
+                // kase = 2
+                k = ks;
+                kase = 2;
+            }
+        }
+
+        k += 1;
+        match kase {
+            1 => {
+                let mut f = e[(p_i32 - 2) as usize];
+                e[(p_i32 - 2) as usize] = 0.0;
+                let mut j = p_i32 - 2;
+                while j >= k {
+                    let ju = j as usize;
+                    let t = svd_hypot(s[ju], f);
+                    let cs = s[ju] / t;
+                    let sn = f / t;
+                    s[ju] = t;
+                    if j != k {
+                        f = -sn * e[(j - 1) as usize];
+                        e[(j - 1) as usize] = cs * e[(j - 1) as usize];
+                    }
+                    if wantv {
+                        for i in 0..n {
+                            let t2 = cs * v[i][ju] + sn * v[i][(p_i32 - 1) as usize];
+                            v[i][(p_i32 - 1) as usize] =
+                                -sn * v[i][ju] + cs * v[i][(p_i32 - 1) as usize];
+                            v[i][ju] = t2;
+                        }
+                    }
+                    j -= 1;
+                }
+            }
+            2 => {
+                let mut f = e[(k - 1) as usize];
+                e[(k - 1) as usize] = 0.0;
+                let mut j = k;
+                while j < p_i32 {
+                    let ju = j as usize;
+                    let t = svd_hypot(s[ju], f);
+                    let cs = s[ju] / t;
+                    let sn = f / t;
+                    s[ju] = t;
+                    f = -sn * e[ju];
+                    e[ju] = cs * e[ju];
+                    if wantu {
+                        for i in 0..m {
+                            let t2 = cs * u[i][ju] + sn * u[i][(k - 1) as usize];
+                            u[i][(k - 1) as usize] = -sn * u[i][ju] + cs * u[i][(k - 1) as usize];
+                            u[i][ju] = t2;
+                        }
+                    }
+                    j += 1;
+                }
+            }
+            3 => {
+                let scale = s[(p_i32 - 1) as usize]
+                    .abs()
+                    .max(s[(p_i32 - 2) as usize].abs())
+                    .max(e[(p_i32 - 2) as usize].abs())
+                    .max(s[k as usize].abs())
+                    .max(e[k as usize].abs());
+                let sp = s[(p_i32 - 1) as usize] / scale;
+                let spm1 = s[(p_i32 - 2) as usize] / scale;
+                let epm1 = e[(p_i32 - 2) as usize] / scale;
+                let sk = s[k as usize] / scale;
+                let ek = e[k as usize] / scale;
+                let b = ((spm1 + sp) * (spm1 - sp) + epm1 * epm1) / 2.0;
+                let c_val = (sp * epm1) * (sp * epm1);
+                let mut shift = 0.0;
+                if b != 0.0 || c_val != 0.0 {
+                    shift = (b * b + c_val).sqrt();
+                    if b < 0.0 {
+                        shift = -shift;
+                    }
+                    shift = c_val / (b + shift);
+                }
+                let mut f = (sk + sp) * (sk - sp) + shift;
+                let mut g = sk * ek;
+
+                let mut j = k;
+                while j < p_i32 - 1 {
+                    let ju = j as usize;
+                    let mut t = svd_hypot(f, g);
+                    let mut cs = f / t;
+                    let mut sn = g / t;
+                    if j != k {
+                        e[(j - 1) as usize] = t;
+                    }
+                    f = cs * s[ju] + sn * e[ju];
+                    e[ju] = cs * e[ju] - sn * s[ju];
+                    g = sn * s[ju + 1];
+                    s[ju + 1] = cs * s[ju + 1];
+                    if wantv {
+                        for i in 0..n {
+                            t = cs * v[i][ju] + sn * v[i][ju + 1];
+                            v[i][ju + 1] = -sn * v[i][ju] + cs * v[i][ju + 1];
+                            v[i][ju] = t;
+                        }
+                    }
+
+                    t = svd_hypot(f, g);
+                    cs = f / t;
+                    sn = g / t;
+                    s[ju] = t;
+                    f = cs * e[ju] + sn * s[ju + 1];
+                    s[ju + 1] = -sn * e[ju] + cs * s[ju + 1];
+                    g = sn * e[ju + 1];
+                    e[ju + 1] = cs * e[ju + 1];
+                    if wantu && (j as usize) < m.saturating_sub(1) {
+                        for i in 0..m {
+                            t = cs * u[i][ju] + sn * u[i][ju + 1];
+                            u[i][ju + 1] = -sn * u[i][ju] + cs * u[i][ju + 1];
+                            u[i][ju] = t;
+                        }
+                    }
+                    j += 1;
+                }
+                e[(p_i32 - 2) as usize] = f;
+                iter += 1;
+            }
+            4 => {
+                let ku = k as usize;
+                if s[ku] <= 0.0 {
+                    s[ku] = if s[ku] < 0.0 { -s[ku] } else { 0.0 };
+                    if wantv {
+                        for i in 0..=pp.max(0) as usize {
+                            v[i][ku] = -v[i][ku];
+                        }
+                    }
+                }
+                while k < pp {
+                    let ku = k as usize;
+                    if s[ku] >= s[ku + 1] {
+                        break;
+                    }
+                    s.swap(ku, ku + 1);
+                    if wantv && (k as usize) < n.saturating_sub(1) {
+                        for i in 0..n {
+                            let t = v[i][ku + 1];
+                            v[i][ku + 1] = v[i][ku];
+                            v[i][ku] = t;
+                        }
+                    }
+                    if wantu && (k as usize) < m.saturating_sub(1) {
+                        for i in 0..m {
+                            let t = u[i][ku + 1];
+                            u[i][ku + 1] = u[i][ku];
+                            u[i][ku] = t;
+                        }
+                    }
+                    k += 1;
+                }
+                iter = 0;
+                p_i32 -= 1;
+            }
+            _ => {}
+        }
+
+        // Prevent pathological infinite loops.
+        if iter > 10_000 {
+            break;
+        }
+    }
+
+    Some(SvdResult { u, v, s })
 }

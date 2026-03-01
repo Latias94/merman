@@ -54,29 +54,87 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
         timings.constraints = s.elapsed();
     }
 
-    // Mimic fcose's `aux.relocateComponent(...)`: keep the final component center aligned to the
-    // original component center to avoid arbitrary global translations affecting viewBox parity.
-    let orig_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
+    let mut rng = XorShift64Star::new(opts.random_seed);
+    let run_count = if opts.rerun { 2 } else { 1 };
+    let mut spring_stats = SpringStats::default();
 
-    let spring_start = timing_enabled.then(std::time::Instant::now);
-    let spring_stats = sim.run_spring_embedder(
-        &constraints,
-        opts,
-        if timing_enabled {
-            Some(&mut timings.spring)
-        } else {
-            None
-        },
-    );
-    if let Some(s) = spring_start {
-        timings.spring.total = s.elapsed();
-    }
+    for run_idx in 0..run_count {
+        // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
+        // ensuring compound rects wrap their current children before we compute `orig_center`.
+        let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
+        if compound_padding > 0.0 {
+            for n in &mut sim.nodes {
+                if n.is_compound {
+                    n.padding = compound_padding;
+                }
+            }
+        }
+        let _ = sim.update_bounds();
 
-    let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
-    let translate_start = timing_enabled.then(std::time::Instant::now);
-    sim.translate(orig_center.0 - new_center.0, orig_center.1 - new_center.1);
-    if let Some(s) = translate_start {
-        timings.translate = s.elapsed();
+        // Mimic fcose's `aux.relocateComponent(...)`: keep the final component center aligned to
+        // the original component center to avoid arbitrary global translations affecting viewBox
+        // parity.
+        //
+        // Upstream uses Cytoscape `eles.boundingBox()` to capture the pre-layout component center,
+        // and then relocates the final node rects to that center. Importantly, compounds are part
+        // of that bbox, and compound sizes include padding (and may include label sizing depending
+        // on style). Using leaves-only centers creates deterministic root drift for group-heavy
+        // diagrams (e.g. architecture groups-within-groups).
+        //
+        // Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` in `layoutstop`), so we
+        // repeat this per run while keeping the RNG stream continuous.
+        let orig_center = opts
+            .relocate_center
+            .or_else(|| sim.bounding_box_center())
+            .unwrap_or((0.0, 0.0));
+        let debug_relocate = std::env::var("MANATEE_FCOSE_DEBUG_RELOCATE")
+            .ok()
+            .as_deref()
+            == Some("1");
+
+        let spring_start = timing_enabled.then(std::time::Instant::now);
+        spring_stats = sim.run_spring_embedder(
+            &constraints,
+            opts,
+            &mut rng,
+            if timing_enabled {
+                Some(&mut timings.spring)
+            } else {
+                None
+            },
+        );
+        if let Some(s) = spring_start {
+            timings.spring.total = s.elapsed();
+        }
+
+        // Ensure compound node rectangles reflect the final child placements before we compute the
+        // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
+        let _ = sim.update_bounds();
+
+        let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
+        let translate_start = timing_enabled.then(std::time::Instant::now);
+        let disable_relocate = std::env::var("MANATEE_FCOSE_DISABLE_RELOCATE")
+            .ok()
+            .as_deref()
+            == Some("1");
+        if !disable_relocate {
+            let dx = orig_center.0 - new_center.0;
+            let dy = orig_center.1 - new_center.1;
+            if debug_relocate {
+                eprintln!(
+                    "[manatee-fcose-relocate] run={} orig=({:.6},{:.6}) new=({:.6},{:.6}) d=({:.6},{:.6})",
+                    run_idx, orig_center.0, orig_center.1, new_center.0, new_center.1, dx, dy
+                );
+            }
+            sim.translate(dx, dy);
+        }
+        if let Some(s) = translate_start {
+            timings.translate = s.elapsed();
+        }
+
+        if run_idx + 1 < run_count {
+            let _ = sim.update_bounds();
+        }
     }
 
     let output_start = timing_enabled.then(std::time::Instant::now);
@@ -132,6 +190,8 @@ struct SimNode {
     is_compound: bool,
     width: f64,
     height: f64,
+    // layout-base `LNode.estimatedSize` (stable across updateBounds mutations).
+    estimated_size: f64,
     // Top-left anchored rectangle (layout-base `LNode.rect` style).
     left: f64,
     top: f64,
@@ -189,6 +249,79 @@ impl SimNode {
     }
 }
 
+fn imath_sign(value: f64) -> f64 {
+    // layout-base `IMath.sign`: returns 1, -1, or 0 (and yields 0 for NaN).
+    if value > 0.0 {
+        1.0
+    } else if value < 0.0 {
+        -1.0
+    } else {
+        0.0
+    }
+}
+
+fn lca_owner_idx(nodes: &[SimNode], root_owner_idx: usize, a: usize, b: usize) -> usize {
+    let mut seen: Vec<bool> = vec![false; nodes.len() + 1];
+
+    let mut cur = nodes.get(a).map(|n| n.owner_idx).unwrap_or(root_owner_idx);
+    loop {
+        if cur >= seen.len() {
+            break;
+        }
+        seen[cur] = true;
+        if cur == root_owner_idx {
+            break;
+        }
+        cur = nodes
+            .get(cur)
+            .map(|n| n.owner_idx)
+            .unwrap_or(root_owner_idx);
+    }
+
+    let mut cur = nodes.get(b).map(|n| n.owner_idx).unwrap_or(root_owner_idx);
+    loop {
+        if cur < seen.len() && seen[cur] {
+            return cur;
+        }
+        if cur == root_owner_idx {
+            break;
+        }
+        cur = nodes
+            .get(cur)
+            .map(|n| n.owner_idx)
+            .unwrap_or(root_owner_idx);
+    }
+
+    root_owner_idx
+}
+
+fn node_in_lca_idx(
+    nodes: &[SimNode],
+    root_owner_idx: usize,
+    node_idx: usize,
+    lca_owner: usize,
+) -> usize {
+    let Some(node) = nodes.get(node_idx) else {
+        return node_idx;
+    };
+    if node.owner_idx == lca_owner {
+        return node_idx;
+    }
+
+    let mut owner = node.owner_idx;
+    while owner != root_owner_idx {
+        let Some(parent_owner) = nodes.get(owner).map(|n| n.owner_idx) else {
+            break;
+        };
+        if parent_owner == lca_owner {
+            return owner;
+        }
+        owner = parent_owner;
+    }
+
+    node_idx
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SimEdge {
     a: usize,
@@ -197,6 +330,7 @@ struct SimEdge {
     a_anchor: Option<Anchor>,
     #[allow(dead_code)]
     b_anchor: Option<Anchor>,
+    base_ideal_length: f64,
     ideal_length: f64,
     elasticity: f64,
 }
@@ -317,7 +451,7 @@ impl ConstraintRuntime {
         c: &Constraints,
         disps: &mut [(f64, f64)],
         total_iterations: usize,
-        max_d: f64,
+        _max_d: f64,
         rng: &mut XorShift64Star,
     ) {
         // Fixed nodes (not currently exposed by our public API).
@@ -361,31 +495,18 @@ impl ConstraintRuntime {
         }
 
         // Relative placements (match `cose-base` relax-movement mode).
-        self.horizontal
-            .refresh_temp_positions(nodes, Axis::Horizontal);
-        self.vertical.refresh_temp_positions(nodes, Axis::Vertical);
-
+        // Upstream keeps `nodeToTempPositionMap*` as a persistent accumulator across iterations:
+        // it starts from node centers and is advanced by the chosen displacements each tick.
+        // Do not re-seed from node centers here, or the relaxation order differs.
         if total_iterations.is_multiple_of(10) {
             self.horizontal.shuffle_tail_third(rng);
             self.vertical.shuffle_tail_third(rng);
         }
 
         self.horizontal
-            .apply_relative_relaxation(disps, max_d, Axis::Horizontal);
+            .apply_relative_relaxation(disps, Axis::Horizontal);
         self.vertical
-            .apply_relative_relaxation(disps, max_d, Axis::Vertical);
-
-        // Re-apply per-axis displacement caps (matching the upstream `calculateDisplacement` clamp).
-        if max_d.is_finite() && max_d > 0.0 {
-            for (dx, dy) in disps {
-                if dx.abs() > max_d {
-                    *dx = max_d * dx.signum();
-                }
-                if dy.abs() > max_d {
-                    *dy = max_d * dy.signum();
-                }
-            }
-        }
+            .apply_relative_relaxation(disps, Axis::Vertical);
     }
 }
 
@@ -500,14 +621,20 @@ impl AxisConstraintRuntime {
         if len <= 1 {
             return;
         }
-        let start = (2 * len) / 3;
+        // Upstream (`cose-base`) uses:
+        //
+        // `for (i = len - 1; i >= (2 * len / 3); i--)`
+        //
+        // where `(2 * len / 3)` is a JS Number (not integer division). Therefore the effective
+        // lower bound is `ceil(2 * len / 3)`.
+        let start = (2 * len + 2) / 3;
         for i in (start..len).rev() {
             let j = rng.next_usize(i + 1);
             self.nodes_in_relative.swap(i, j);
         }
     }
 
-    fn apply_relative_relaxation(&mut self, disps: &mut [(f64, f64)], max_d: f64, axis: Axis) {
+    fn apply_relative_relaxation(&mut self, disps: &mut [(f64, f64)], axis: Axis) {
         let n = self.node_count;
 
         for &key in &self.nodes_in_relative {
@@ -563,10 +690,6 @@ impl AxisConstraintRuntime {
                 }
             }
 
-            if max_d.is_finite() && max_d > 0.0 && displacement.abs() > max_d {
-                displacement = max_d * displacement.signum();
-            }
-
             self.temp_pos[key] += displacement;
 
             if key < n {
@@ -591,14 +714,17 @@ impl AxisConstraintRuntime {
 }
 
 fn map_align_lists(sim: &SimGraph, groups: &[Vec<String>]) -> Vec<Vec<usize>> {
-    let mut out = Vec::new();
+    // Preserve Mermaid/Cytoscape ordering (and duplicates) for alignment arrays.
+    //
+    // Upstream `ConstraintHandler` uses the *first* node id in each alignment group as the seed
+    // for dummy-node positions in the relative-placement enforcement phase. Sorting/deduping
+    // here changes that seed and can shift the entire layout in parity-root mode.
+    let mut out: Vec<Vec<usize>> = Vec::new();
     for g in groups {
-        let mut idxs: Vec<usize> = g
+        let idxs: Vec<usize> = g
             .iter()
             .filter_map(|id| sim.id_to_idx.get(id.as_str()).copied())
             .collect();
-        idxs.sort_unstable();
-        idxs.dedup();
         if idxs.len() > 1 {
             out.push(idxs);
         }
@@ -612,6 +738,7 @@ struct SimGraph {
     edges: Vec<SimEdge>,
     id_to_idx: FxHashMap<String, usize>,
     compound_parent: FxHashMap<String, Option<String>>,
+    compound_ids_in_order: Vec<String>,
     leaf_count: usize,
     // Owner graph identity for repulsion/gravity: each node belongs to the child graph of its
     // parent compound, or the root graph.
@@ -625,6 +752,8 @@ struct SimGraph {
     descendant_leaves: Vec<Vec<usize>>,
     // Estimated size for each owner graph (static; computed from node sizes).
     owner_estimated_size: Vec<f64>,
+    // layout-base `LNode.inclusionTreeDepth` (root-level nodes depth=1).
+    inclusion_depth: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -639,12 +768,15 @@ impl SimGraph {
     const DEFAULT_EDGE_LENGTH: f64 = 50.0;
     const DEFAULT_SPRING_STRENGTH: f64 = 0.45;
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0;
-    const DEFAULT_GRAVITY_STRENGTH: f64 = 0.4; // layout-base `FDLayoutConstants.DEFAULT_GRAVITY_STRENGTH`
+    // cytoscape-fcose default (overrides layout-base default 0.4 via `options.gravity`).
+    const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25;
     const DEFAULT_COMPOUND_GRAVITY_STRENGTH: f64 = 1.0; // layout-base `FDLayoutConstants.DEFAULT_COMPOUND_GRAVITY_STRENGTH`
     const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // layout-base `FDLayoutConstants.DEFAULT_GRAVITY_RANGE_FACTOR`
     const DEFAULT_COMPOUND_GRAVITY_RANGE_FACTOR: f64 = 1.5; // layout-base `FDLayoutConstants.DEFAULT_COMPOUND_GRAVITY_RANGE_FACTOR`
     const DEFAULT_GRAPH_MARGIN: f64 = 15.0; // layout-base `LayoutConstants.DEFAULT_GRAPH_MARGIN`
     const EMPTY_COMPOUND_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
+    const SIMPLE_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.SIMPLE_NODE_SIZE`
+    const PER_LEVEL_IDEAL_EDGE_LENGTH_FACTOR: f64 = 0.1; // layout-base `FDLayoutConstants.PER_LEVEL_IDEAL_EDGE_LENGTH_FACTOR`
     const DEFAULT_COOLING_FACTOR_INCREMENTAL: f64 = 0.3; // layout-base `FDLayoutConstants.DEFAULT_COOLING_FACTOR_INCREMENTAL`
     const FINAL_TEMPERATURE: f64 = 0.04; // cose-base `CoSELayout.initSpringEmbedder()`
     const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
@@ -670,6 +802,7 @@ impl SimGraph {
                 is_compound: false,
                 width: w,
                 height: h,
+                estimated_size: 0.0,
                 left: n.x - w / 2.0,
                 top: n.y - h / 2.0,
                 spring_fx: 0.0,
@@ -691,8 +824,10 @@ impl SimGraph {
 
         let mut compound_parent: FxHashMap<String, Option<String>> = FxHashMap::default();
         compound_parent.reserve(graph.compounds.len().saturating_mul(2));
+        let mut compound_ids_in_order: Vec<String> = Vec::with_capacity(graph.compounds.len());
         for c in &graph.compounds {
             compound_parent.insert(c.id.clone(), c.parent.clone());
+            compound_ids_in_order.push(c.id.clone());
         }
 
         // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
@@ -705,6 +840,7 @@ impl SimGraph {
                 is_compound: true,
                 width: Self::EMPTY_COMPOUND_NODE_SIZE,
                 height: Self::EMPTY_COMPOUND_NODE_SIZE,
+                estimated_size: Self::EMPTY_COMPOUND_NODE_SIZE,
                 left: 0.0,
                 top: 0.0,
                 spring_fx: 0.0,
@@ -751,6 +887,7 @@ impl SimGraph {
                 b,
                 a_anchor: e.source_anchor,
                 b_anchor: e.target_anchor,
+                base_ideal_length: ideal.max(1.0),
                 ideal_length: ideal.max(1.0),
                 elasticity,
             });
@@ -770,8 +907,34 @@ impl SimGraph {
         }
 
         let mut children_by_owner: Vec<Vec<usize>> = vec![Vec::new(); nodes.len() + 1];
-        for (idx, n) in nodes.iter().enumerate() {
-            children_by_owner[n.owner_idx].push(idx);
+        // Preserve Cytoscape insertion order within each owner graph:
+        // - parent (compound) nodes are created before non-parent nodes
+        // - within each category, relative order follows Mermaid's `addGroups(...)` and
+        //   `addServices/addJunctions(...)` array iteration order
+        //
+        // This ordering is observable in `graphManager.getGraphs()/getAllNodes()` iteration and
+        // affects deterministic parity for FR-grid repulsion (processed set ordering).
+        for c in &graph.compounds {
+            if let Some(&idx) = id_to_idx.get(c.id.as_str()) {
+                let owner = nodes
+                    .get(idx)
+                    .map(|n| n.owner_idx)
+                    .unwrap_or(root_owner_idx);
+                if owner < children_by_owner.len() {
+                    children_by_owner[owner].push(idx);
+                }
+            }
+        }
+        for n in &graph.nodes {
+            if let Some(&idx) = id_to_idx.get(n.id.as_str()) {
+                let owner = nodes
+                    .get(idx)
+                    .map(|n| n.owner_idx)
+                    .unwrap_or(root_owner_idx);
+                if owner < children_by_owner.len() {
+                    children_by_owner[owner].push(idx);
+                }
+            }
         }
 
         // Compute compound inclusion depths (root-level nodes depth=1), and build a stable
@@ -857,11 +1020,17 @@ impl SimGraph {
             };
             est_size[cidx] = size;
         }
-        // Apply compound node estimated size onto its rect size (layout-base `LNode.calcEstimatedSize`).
+        // layout-base `LNode.calcEstimatedSize()` also sets compound node `rect.width/height` to
+        // the estimated size. This is later overwritten by `updateBounds()`, but it affects
+        // early spring-embedder iterations (repulsion ranges, smart ideal edge length, etc.).
         for &cidx in &compounds_deep_first {
-            let size = est_size[cidx].max(1.0);
-            nodes[cidx].width = size;
-            nodes[cidx].height = size;
+            let s = est_size[cidx].max(1.0);
+            nodes[cidx].width = s;
+            nodes[cidx].height = s;
+        }
+
+        for idx in 0..nodes.len() {
+            nodes[idx].estimated_size = est_size[idx].max(1.0);
         }
 
         let mut owner_estimated_size: Vec<f64> =
@@ -890,12 +1059,14 @@ impl SimGraph {
             edges,
             id_to_idx,
             compound_parent,
+            compound_ids_in_order,
             leaf_count,
             root_owner_idx,
             children_by_owner,
             compounds_deep_first,
             descendant_leaves,
             owner_estimated_size,
+            inclusion_depth,
         }
     }
 
@@ -915,6 +1086,27 @@ impl SimGraph {
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
         for n in &self.nodes {
+            min_x = min_x.min(n.left);
+            min_y = min_y.min(n.top);
+            max_x = max_x.max(n.right());
+            max_y = max_y.max(n.bottom());
+        }
+        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
+            return None;
+        }
+        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
+    }
+
+    fn bounding_box_center_leaves(&self) -> Option<(f64, f64)> {
+        if self.leaf_count == 0 || self.nodes.is_empty() {
+            return None;
+        }
+        let end = self.leaf_count.min(self.nodes.len());
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for n in &self.nodes[..end] {
             min_x = min_x.min(n.left);
             min_y = min_y.min(n.top);
             max_x = max_x.max(n.right());
@@ -1035,10 +1227,55 @@ impl SimGraph {
         max_depth
     }
 
+    fn all_nodes_layout_order(&self) -> Vec<usize> {
+        // layout-base `graphManager.getAllNodes()` returns a flat list created by concatenating
+        // `graph.getNodes()` over `graphManager.getGraphs()` in graph creation order. Graphs are
+        // created recursively: root graph first, then each compound's child graph when that
+        // compound node is encountered.
+        //
+        // Reconstruct that order by visiting owner graphs in pre-order, following the
+        // `children_by_owner` inclusion tree.
+        let mut out: Vec<usize> = Vec::with_capacity(self.nodes.len());
+        let mut visited_graph: Vec<bool> = vec![false; self.nodes.len() + 1];
+
+        fn visit(owner: usize, sim: &SimGraph, out: &mut Vec<usize>, visited: &mut [bool]) {
+            if owner >= visited.len() {
+                return;
+            }
+            if visited[owner] {
+                return;
+            }
+            visited[owner] = true;
+
+            let nodes = sim
+                .children_by_owner
+                .get(owner)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            for &idx in nodes {
+                out.push(idx);
+            }
+            for &idx in nodes {
+                let is_compound = sim.nodes.get(idx).is_some_and(|n| n.is_compound);
+                let has_children = sim
+                    .children_by_owner
+                    .get(idx)
+                    .is_some_and(|v| !v.is_empty());
+                if is_compound && has_children {
+                    visit(idx, sim, out, visited);
+                }
+            }
+        }
+
+        visit(self.root_owner_idx, self, &mut out, &mut visited_graph);
+        out
+    }
+
     fn run_spring_embedder(
         &mut self,
         constraints: &Constraints,
         opts: &FcoseOptions,
+        rng: &mut XorShift64Star,
         mut timings: Option<&mut FcoseSpringTimings>,
     ) -> SpringStats {
         if self.nodes.is_empty() {
@@ -1046,11 +1283,42 @@ impl SimGraph {
         }
 
         let timing_enabled = timings.is_some();
-
-        let random_seed = opts.random_seed;
-        let mut rng = XorShift64Star::new(random_seed);
+        let debug_positions = std::env::var("MANATEE_FCOSE_DEBUG_POSITIONS")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let leaf_count = self.leaf_count;
+        let dump_positions = |tag: &str, nodes: &[SimNode]| {
+            if !debug_positions {
+                return;
+            }
+            // Limit output to leaf nodes; compounds can be inferred via `update_bounds`.
+            let n = leaf_count.min(nodes.len());
+            eprintln!("[manatee-fcose-pos] {tag} leaf_count={n}");
+            for i in 0..n {
+                eprintln!(
+                    "[manatee-fcose-pos] {tag} id={} center=({:.6},{:.6}) left_top=({:.6},{:.6}) size=({:.3},{:.3}) owner={}",
+                    nodes[i].id,
+                    nodes[i].center_x(),
+                    nodes[i].center_y(),
+                    nodes[i].left,
+                    nodes[i].top,
+                    nodes[i].width,
+                    nodes[i].height,
+                    nodes[i].owner_idx
+                );
+            }
+        };
 
         let opts_prep_start = timing_enabled.then(std::time::Instant::now);
+        // Recompute per-edge ideal lengths (layout-base `FDLayout.calcIdealEdgeLengths`).
+        // This must be re-applied on each run because Mermaid runs FCoSE twice.
+        //
+        // Important: the "global" default edge length constant (used for several heuristics) is
+        // derived from the *base* `idealEdgeLength` option before the smart inter-graph
+        // adjustments are applied. Reset first so the second run starts from the same baseline.
+        self.reset_edge_ideal_lengths();
+
         // layout-base/CoSE uses a *global* `DEFAULT_EDGE_LENGTH` for multiple heuristics (minimum
         // repulsion distance, overlap separation buffer, repulsion grid range, convergence
         // thresholds, etc.). In upstream Cytoscape FCoSE this value is derived from the
@@ -1067,6 +1335,30 @@ impl SimGraph {
                 }
             });
         let half_default_edge_length = default_edge_length / 2.0;
+
+        self.adjust_intergraph_ideal_edge_lengths();
+        if std::env::var("MANATEE_FCOSE_DEBUG_EDGE_LENGTHS")
+            .ok()
+            .as_deref()
+            == Some("1")
+        {
+            let mut inter = 0usize;
+            for e in &self.edges {
+                let intergraph = self.nodes[e.a].owner_idx != self.nodes[e.b].owner_idx;
+                if intergraph {
+                    inter += 1;
+                }
+                eprintln!(
+                    "[manatee-fcose-edge] a={} b={} inter={} base={:.6} ideal={:.6} elasticity={:.6}",
+                    e.a, e.b, intergraph, e.base_ideal_length, e.ideal_length, e.elasticity
+                );
+            }
+            eprintln!(
+                "[manatee-fcose-edge] edges={} intergraph={}",
+                self.edges.len(),
+                inter
+            );
+        }
         // CoSE updates `MIN_REPULSION_DIST` based on the effective `DEFAULT_EDGE_LENGTH` when
         // `idealEdgeLength` is set. For Mermaid Architecture this is always set (as a function),
         // so we scale the minimum repulsion distance with the average ideal length.
@@ -1097,13 +1389,39 @@ impl SimGraph {
             &mut self.nodes[..self.leaf_count],
             &spectral_edges,
             &self.compound_parent,
-            &mut rng,
+            &self.compound_ids_in_order,
+            rng,
         );
+        dump_positions("spectral", &self.nodes);
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), spectral_start) {
             t.spectral = s.elapsed();
         }
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
+        let debug_forces = std::env::var("MANATEE_FCOSE_DEBUG_FORCES").ok().as_deref() == Some("1");
+        let debug_edge_forces = std::env::var("MANATEE_FCOSE_DEBUG_EDGE_FORCES")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let debug_disps = std::env::var("MANATEE_FCOSE_DEBUG_DISPS").ok().as_deref() == Some("1");
+
+        // Upstream CoSE applies gravitational forces only to nodes that belong to a *disconnected*
+        // owner graph (see `CoSELayout.calculateNodesToApplyGravitationTo()`), where "connected"
+        // is evaluated in the compound graph using `LEdge.getOtherEndInGraph(...)` (i.e. edges
+        // incident to descendants can connect immediate children via ancestor lifting).
+        //
+        // Applying gravity to all nodes (a common simplification) makes sparse cross-compound
+        // Architecture graphs significantly more compact than Mermaid/Cytoscape, which in turn
+        // changes the root `viewBox/max-width` in parity-root comparisons.
+        let disable_gravity = std::env::var("MANATEE_FCOSE_DISABLE_GRAVITY")
+            .ok()
+            .as_deref()
+            == Some("1");
+        let apply_gravity: Vec<bool> = if disable_gravity {
+            vec![false; self.nodes.len()]
+        } else {
+            self.nodes_apply_gravity_mask()
+        };
 
         // Match `cose-base` repulsion cutoff (`CoSELayout.calcRepulsionRange()`):
         //
@@ -1120,7 +1438,7 @@ impl SimGraph {
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
             let collapse_start = timing_enabled.then(std::time::Instant::now);
-            self.collapse_start_positions(default_edge_length, &mut rng);
+            self.collapse_start_positions(default_edge_length, rng);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), collapse_start) {
                 t.collapse_start_positions = s.elapsed();
             }
@@ -1130,12 +1448,18 @@ impl SimGraph {
         // This can rotate/reflect the draft layout and enforce alignment/relative-placement
         // constraints in position space, which strongly affects overall orientation and the
         // parity-root root viewport.
-        if !(constraints.align_horizontal.is_empty()
-            && constraints.align_vertical.is_empty()
-            && constraints.relative.is_empty())
+        let disable_pre = std::env::var("MANATEE_FCOSE_DISABLE_PRE_CONSTRAINTS")
+            .ok()
+            .as_deref()
+            == Some("1");
+        if !disable_pre
+            && !(constraints.align_horizontal.is_empty()
+                && constraints.align_vertical.is_empty()
+                && constraints.relative.is_empty())
         {
             let pre_constraints_start = timing_enabled.then(std::time::Instant::now);
             handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
+            dump_positions("pre_constraints", &self.nodes);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
                 t.pre_constraints = s.elapsed();
             }
@@ -1169,10 +1493,15 @@ impl SimGraph {
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
+        let disable_convergence = std::env::var("MANATEE_FCOSE_DISABLE_CONVERGENCE")
+            .ok()
+            .as_deref()
+            == Some("1");
+
         let iterations_start = timing_enabled.then(std::time::Instant::now);
-        let small_repulsion = self.nodes.len() <= 64;
         let mut processed: Vec<bool> = vec![false; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
+        let all_nodes_in_layout_order = self.all_nodes_layout_order();
         loop {
             total_iterations += 1;
             if total_iterations == max_iterations {
@@ -1186,7 +1515,7 @@ impl SimGraph {
 
                 old_total_displacement = last_total_displacement;
 
-                if converged || oscilating {
+                if !disable_convergence && (converged || oscilating) {
                     break;
                 }
 
@@ -1207,25 +1536,27 @@ impl SimGraph {
             // Spring forces (per-edge ideal lengths).
             for e in &self.edges {
                 let (a, b) = (e.a, e.b);
+                if a == b {
+                    continue;
+                }
+                if a >= self.nodes.len() || b >= self.nodes.len() {
+                    continue;
+                }
                 if rects_intersect(&self.nodes[a], &self.nodes[b]) {
                     continue;
                 }
-                let (ax, ay) = rect_clip_point_towards(&self.nodes[a], &self.nodes[b]);
-                let (bx, by) = rect_clip_point_towards(&self.nodes[b], &self.nodes[a]);
+                let (ax, ay, bx, by) = rect_clip_points(&self.nodes[a], &self.nodes[b]);
                 let mut lx = bx - ax;
                 let mut ly = by - ay;
-
-                if lx.abs() < 1e-9 {
-                    lx = 0.0;
-                }
-                if ly.abs() < 1e-9 {
-                    ly = 0.0;
-                }
+                let raw_lx = lx;
+                let raw_ly = ly;
+                // layout-base `LEdge.updateLength()` clamps very small deltas to {-1, 0, 1}
+                // using `IMath.sign`, to avoid divide-by-zero instability.
                 if lx.abs() < 1.0 {
-                    lx = lx.signum();
+                    lx = imath_sign(lx);
                 }
                 if ly.abs() < 1.0 {
-                    ly = ly.signum();
+                    ly = imath_sign(ly);
                 }
                 let len = (lx * lx + ly * ly).sqrt();
                 if len == 0.0 {
@@ -1238,6 +1569,34 @@ impl SimGraph {
                 let spring_force = e.elasticity * (len - e.ideal_length.max(1.0));
                 let sfx = spring_force * (lx / len);
                 let sfy = spring_force * (ly / len);
+                if debug_edge_forces && total_iterations == 1 {
+                    let ida = self.nodes.get(a).map(|n| n.id.as_str()).unwrap_or("<oob>");
+                    let idb = self.nodes.get(b).map(|n| n.id.as_str()).unwrap_or("<oob>");
+                    eprintln!(
+                        "[manatee-fcose-edge-force] iter=1 a={} b={} a_ctr=({:.15},{:.15}) b_ctr=({:.15},{:.15}) clip_a=({:.15},{:.15}) clip_b=({:.15},{:.15}) raw_lx={:.20} raw_ly={:.20} raw_ly_bits={:#018x} lx={:.12} ly={:.12} len={:.12} ideal={:.12} elast={:.6} spring={:.12} sfx={:.12} sfy={:.12}",
+                        ida,
+                        idb,
+                        self.nodes[a].center_x(),
+                        self.nodes[a].center_y(),
+                        self.nodes[b].center_x(),
+                        self.nodes[b].center_y(),
+                        ax,
+                        ay,
+                        bx,
+                        by,
+                        raw_lx,
+                        raw_ly,
+                        raw_ly.to_bits(),
+                        lx,
+                        ly,
+                        len,
+                        e.ideal_length.max(1.0),
+                        e.elasticity,
+                        spring_force,
+                        sfx,
+                        sfy
+                    );
+                }
                 self.nodes[a].spring_fx += sfx;
                 self.nodes[a].spring_fy += sfy;
                 self.nodes[b].spring_fx -= sfx;
@@ -1250,32 +1609,30 @@ impl SimGraph {
             // then reuses those "stale" surrounding lists for the next 9 iterations.
             let refresh_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD) == 1;
             if refresh_surrounding {
-                if small_repulsion {
-                    for i in 0..self.nodes.len() {
-                        self.nodes[i].surrounding.clear();
-                        for j in (i + 1)..self.nodes.len() {
-                            if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
-                                continue;
-                            }
-                            let dx = (self.nodes[i].center_x() - self.nodes[j].center_x()).abs()
-                                - (self.nodes[i].half_w() + self.nodes[j].half_w());
-                            let dy = (self.nodes[i].center_y() - self.nodes[j].center_y()).abs()
-                                - (self.nodes[i].half_h() + self.nodes[j].half_h());
-                            if dx <= repulsion_range && dy <= repulsion_range {
-                                self.nodes[i].surrounding.push(j);
-                            }
-                        }
-                    }
-                    repulsion_grid = None;
-                } else {
-                    repulsion_grid = RepulsionGrid::build(&self.nodes, repulsion_range);
-                }
+                let (l, r, t, b) = (
+                    bounds.left[self.root_owner_idx],
+                    bounds.right[self.root_owner_idx],
+                    bounds.top[self.root_owner_idx],
+                    bounds.bottom[self.root_owner_idx],
+                );
+                repulsion_grid = RepulsionGrid::build(
+                    l,
+                    t,
+                    r,
+                    b,
+                    &mut self.nodes,
+                    repulsion_range,
+                    &all_nodes_in_layout_order,
+                );
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
                 processed.fill(false);
-                for i in 0..self.nodes.len() {
-                    if refresh_surrounding && !small_repulsion {
+                for &i in &all_nodes_in_layout_order {
+                    if i >= self.nodes.len() {
+                        continue;
+                    }
+                    if refresh_surrounding {
                         if let Some(g) = &repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
@@ -1296,9 +1653,6 @@ impl SimGraph {
                         if j >= self.nodes.len() {
                             continue;
                         }
-                        if i >= j {
-                            continue;
-                        }
                         if self.nodes[i].owner_idx != self.nodes[j].owner_idx {
                             continue;
                         }
@@ -1308,13 +1662,15 @@ impl SimGraph {
                             min_repulsion_dist,
                             half_default_edge_length,
                         );
-                        let (left, right) = self.nodes.split_at_mut(j);
-                        let a = &mut left[i];
-                        let b = &mut right[0];
-                        a.repulsion_fx += rfx;
-                        a.repulsion_fy += rfy;
-                        b.repulsion_fx -= rfx;
-                        b.repulsion_fy -= rfy;
+                        // Apply a symmetric pairwise force.
+                        //
+                        // Unlike `i < j` index-based deduping, upstream CoSE/FCoSE dedupes via a
+                        // processed set in `getAllNodes()` order. Here `surrounding` is already
+                        // filtered by `processed`, so we must not skip pairs where `j < i`.
+                        self.nodes[i].repulsion_fx += rfx;
+                        self.nodes[i].repulsion_fy += rfy;
+                        self.nodes[j].repulsion_fx -= rfx;
+                        self.nodes[j].repulsion_fy -= rfy;
                     }
                     self.nodes[i].surrounding = surrounding;
                     processed[i] = true;
@@ -1341,9 +1697,12 @@ impl SimGraph {
             }
 
             // Gravity forces (layout-base `FDLayout.calcGravitationalForce`), per owner graph.
-            for n in &mut self.nodes {
+            for (idx, n) in self.nodes.iter_mut().enumerate() {
                 n.gravitation_fx = 0.0;
                 n.gravitation_fy = 0.0;
+                if !apply_gravity.get(idx).copied().unwrap_or(false) {
+                    continue;
+                }
 
                 let owner = n.owner_idx;
                 let (l, r, t, b) = (
@@ -1381,6 +1740,25 @@ impl SimGraph {
                 }
             }
 
+            if debug_forces && total_iterations == 1 {
+                eprintln!("[manatee-fcose-force] iter=1 nodes={}", self.nodes.len());
+                for (idx, n) in self.nodes.iter().enumerate() {
+                    eprintln!(
+                        "[manatee-fcose-force] idx={} id={} owner={} compound={} spring=({:.6},{:.6}) rep=({:.6},{:.6}) grav=({:.6},{:.6})",
+                        idx,
+                        n.id,
+                        n.owner_idx,
+                        n.is_compound,
+                        n.spring_fx,
+                        n.spring_fy,
+                        n.repulsion_fx,
+                        n.repulsion_fy,
+                        n.gravitation_fx,
+                        n.gravitation_fy,
+                    );
+                }
+            }
+
             // Move nodes (with constraints applied to displacements).
             //
             // Upstream `cose-base` computes displacements from forces, then applies constraint
@@ -1388,40 +1766,56 @@ impl SimGraph {
             // positions after the move). Hard projection tends to over-separate constrained nodes
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
             let max_d = cooling_factor * max_node_displacement;
-            for (idx, n) in self.nodes.iter().enumerate() {
-                let denom = n.no_of_children.max(1.0);
-                let mut mdx =
-                    cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx) / denom;
-                let mut mdy =
-                    cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy) / denom;
-                if mdx.abs() > max_d {
-                    mdx = max_d * mdx.signum();
-                }
-                if mdy.abs() > max_d {
-                    mdy = max_d * mdy.signum();
-                }
-                if let Some(slot) = disps.get_mut(idx) {
-                    *slot = (mdx, mdy);
-                }
-            }
+            disps.fill((0.0, 0.0));
+            // Port of `CoSELayout.moveNodes()`:
+            // - displacements are calculated in `getAllNodes()` order
+            // - compound displacements are propagated to (leaf) descendants before those leaves
+            //   compute/clamp their own displacement
+            for &idx in &all_nodes_in_layout_order {
+                let Some(n) = self.nodes.get(idx) else {
+                    continue;
+                };
 
-            // Propagate compound displacements to descendant leaves (layout-base `CoSENode.propogateDisplacementToChildren`).
-            for &cidx in &self.compounds_deep_first {
-                if self.children_by_owner[cidx].is_empty() {
+                let denom = n.no_of_children.max(1.0);
+                let dx = cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx) / denom;
+                let dy = cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy) / denom;
+
+                if let Some(slot) = disps.get_mut(idx) {
+                    slot.0 += dx;
+                    slot.1 += dy;
+
+                    if slot.0.abs() > max_d {
+                        slot.0 = max_d * imath_sign(slot.0);
+                    }
+                    if slot.1.abs() > max_d {
+                        slot.1 = max_d * imath_sign(slot.1);
+                    }
+                }
+
+                let is_non_empty_compound = n.is_compound
+                    && self
+                        .children_by_owner
+                        .get(idx)
+                        .is_some_and(|v| !v.is_empty());
+                if !is_non_empty_compound {
                     continue;
                 }
-                let (dx, dy) = disps.get(cidx).copied().unwrap_or((0.0, 0.0));
-                if dx == 0.0 && dy == 0.0 {
+
+                let (pdx, pdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
+                if pdx == 0.0 && pdy == 0.0 {
                     continue;
                 }
-                for &leaf in &self.descendant_leaves[cidx] {
+                for &leaf in self.descendant_leaves.get(idx).into_iter().flatten() {
                     if leaf >= disps.len() {
                         continue;
                     }
-                    disps[leaf].0 += dx;
-                    disps[leaf].1 += dy;
+                    disps[leaf].0 += pdx;
+                    disps[leaf].1 += pdy;
                 }
             }
+
+            let disps_before_constraints =
+                (debug_disps && total_iterations == 1).then(|| disps.clone());
 
             if let Some(rt) = constraint_rt.as_mut() {
                 rt.update_displacements(
@@ -1430,10 +1824,39 @@ impl SimGraph {
                     &mut disps,
                     total_iterations,
                     max_d,
-                    &mut rng,
+                    rng,
                 );
             } else {
                 apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
+            }
+
+            if debug_disps && total_iterations == 1 {
+                if let Some(before) = disps_before_constraints {
+                    eprintln!("[manatee-fcose-disp] iter=1 phase=before_constraints");
+                    for (idx, (dx, dy)) in before.iter().copied().enumerate() {
+                        let id = self
+                            .nodes
+                            .get(idx)
+                            .map(|n| n.id.as_str())
+                            .unwrap_or("<oob>");
+                        eprintln!(
+                            "[manatee-fcose-disp] idx={} id={} disp=({:.6},{:.6})",
+                            idx, id, dx, dy
+                        );
+                    }
+                }
+                eprintln!("[manatee-fcose-disp] iter=1 phase=after_constraints");
+                for (idx, (dx, dy)) in disps.iter().copied().enumerate() {
+                    let id = self
+                        .nodes
+                        .get(idx)
+                        .map(|n| n.id.as_str())
+                        .unwrap_or("<oob>");
+                    eprintln!(
+                        "[manatee-fcose-disp] idx={} id={} disp=({:.6},{:.6})",
+                        idx, id, dx, dy
+                    );
+                }
             }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
@@ -1457,14 +1880,188 @@ impl SimGraph {
             }
 
             last_total_displacement = total_displacement;
+
+            if debug_positions && total_iterations == 1 {
+                dump_positions("iter1", &self.nodes);
+            }
         }
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), iterations_start) {
             t.iterations = s.elapsed();
         }
 
+        // Ensure compound rectangles reflect the final leaf positions before callers compute
+        // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
+        let _ = self.update_bounds();
+        dump_positions("final", &self.nodes);
+
         SpringStats {
             iterations: total_iterations,
             spectral_applied,
+        }
+    }
+
+    fn nodes_apply_gravity_mask(&self) -> Vec<bool> {
+        let owner_connected = self.owner_graph_connected_mask();
+        self.nodes
+            .iter()
+            .map(|n| !owner_connected.get(n.owner_idx).copied().unwrap_or(true))
+            .collect()
+    }
+
+    fn owner_graph_connected_mask(&self) -> Vec<bool> {
+        let owner_count = self.nodes.len() + 1;
+        let mut edges_by_node: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
+        for (eidx, e) in self.edges.iter().enumerate() {
+            if e.a < self.nodes.len() {
+                edges_by_node[e.a].push(eidx);
+            }
+            if e.b < self.nodes.len() {
+                edges_by_node[e.b].push(eidx);
+            }
+        }
+
+        let mut connected: Vec<bool> = vec![true; owner_count];
+        for owner in 0..owner_count {
+            let nodes_in_graph = self
+                .children_by_owner
+                .get(owner)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            if nodes_in_graph.is_empty() {
+                connected[owner] = true;
+                continue;
+            }
+
+            let mut visited: Vec<bool> = vec![false; self.nodes.len()];
+            let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+
+            let mut push_with_children =
+                |start: usize,
+                 visited: &mut [bool],
+                 queue: &mut std::collections::VecDeque<usize>| {
+                    let mut stack: Vec<usize> = vec![start];
+                    while let Some(cur) = stack.pop() {
+                        if cur >= visited.len() {
+                            continue;
+                        }
+                        if visited[cur] {
+                            continue;
+                        }
+                        visited[cur] = true;
+                        queue.push_back(cur);
+                        if let Some(ch) = self.children_by_owner.get(cur) {
+                            for &kid in ch {
+                                stack.push(kid);
+                            }
+                        }
+                    }
+                };
+
+            push_with_children(nodes_in_graph[0], &mut visited, &mut queue);
+
+            while let Some(cur) = queue.pop_front() {
+                if cur >= self.nodes.len() {
+                    continue;
+                }
+                for &eidx in edges_by_node.get(cur).map(|v| v.as_slice()).unwrap_or(&[]) {
+                    let e = &self.edges[eidx];
+                    let other = if e.a == cur {
+                        e.b
+                    } else if e.b == cur {
+                        e.a
+                    } else {
+                        continue;
+                    };
+                    let Some(mapped) = self.map_node_to_owner_graph(other, owner) else {
+                        continue;
+                    };
+                    if !visited.get(mapped).copied().unwrap_or(false) {
+                        push_with_children(mapped, &mut visited, &mut queue);
+                    }
+                }
+            }
+
+            connected[owner] = nodes_in_graph
+                .iter()
+                .all(|&nidx| visited.get(nidx).copied().unwrap_or(false));
+        }
+
+        connected
+    }
+
+    fn map_node_to_owner_graph(
+        &self,
+        mut node_idx: usize,
+        owner_graph_idx: usize,
+    ) -> Option<usize> {
+        let root_owner_idx = self.root_owner_idx;
+        loop {
+            if node_idx >= self.nodes.len() {
+                return None;
+            }
+            if self.nodes[node_idx].owner_idx == owner_graph_idx {
+                return Some(node_idx);
+            }
+            let owner = self.nodes[node_idx].owner_idx;
+            if owner == root_owner_idx {
+                break;
+            }
+            node_idx = owner;
+        }
+        None
+    }
+
+    fn reset_edge_ideal_lengths(&mut self) {
+        for e in &mut self.edges {
+            e.ideal_length = e.base_ideal_length;
+        }
+    }
+
+    fn adjust_intergraph_ideal_edge_lengths(&mut self) {
+        if self.edges.is_empty() || self.nodes.is_empty() {
+            return;
+        }
+
+        let nodes: &[SimNode] = &self.nodes;
+        let inclusion_depth: &[usize] = &self.inclusion_depth;
+        let root_owner_idx = self.root_owner_idx;
+
+        for e in &mut self.edges {
+            if nodes[e.a].owner_idx == nodes[e.b].owner_idx {
+                continue;
+            }
+
+            let original = e.base_ideal_length.max(1.0);
+
+            let lca_owner = lca_owner_idx(nodes, root_owner_idx, e.a, e.b);
+            let lca_depth = if lca_owner == root_owner_idx {
+                1usize
+            } else {
+                inclusion_depth.get(lca_owner).copied().unwrap_or(1).max(1)
+            };
+
+            let src_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.a, lca_owner);
+            let tgt_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.b, lca_owner);
+
+            // layout-base `DEFAULT_USE_SMART_IDEAL_EDGE_LENGTH_CALCULATION = true`.
+            let size_src = nodes
+                .get(src_in_lca)
+                .map(|n| n.estimated_size)
+                .unwrap_or(Self::SIMPLE_NODE_SIZE);
+            let size_tgt = nodes
+                .get(tgt_in_lca)
+                .map(|n| n.estimated_size)
+                .unwrap_or(Self::SIMPLE_NODE_SIZE);
+            e.ideal_length += size_src + size_tgt - 2.0 * Self::SIMPLE_NODE_SIZE;
+
+            let src_depth = inclusion_depth.get(e.a).copied().unwrap_or(1).max(1);
+            let tgt_depth = inclusion_depth.get(e.b).copied().unwrap_or(1).max(1);
+            let hops = (src_depth + tgt_depth).saturating_sub(2 * lca_depth);
+            e.ideal_length += original * Self::PER_LEVEL_IDEAL_EDGE_LENGTH_FACTOR * (hops as f64);
+
+            if !e.ideal_length.is_finite() || e.ideal_length <= 0.0 {
+                e.ideal_length = 1.0;
+            }
         }
     }
 
@@ -1855,37 +2452,18 @@ fn procrustes_transform_from_pairs(
         return None;
     }
 
-    let a = m[(0, 0)];
-    let b = m[(0, 1)];
-    let c = m[(1, 0)];
-    let d = m[(1, 1)];
-
-    let x1 = a + d;
-    let y1 = c - b;
-    let s1 = x1.hypot(y1);
-
-    let x2 = a - d;
-    let y2 = b + c;
-    let s2 = x2.hypot(y2);
-
-    if !(s1.is_finite() && s2.is_finite()) {
-        return None;
-    }
-    if s1 < 1e-12 && s2 < 1e-12 {
-        return None;
-    }
-
-    if s1 >= s2 {
-        let inv = 1.0 / s1.max(1e-12);
-        let cos = x1 * inv;
-        let sin = y1 * inv;
-        Some(na::Matrix2::new(cos, -sin, sin, cos))
-    } else {
-        let inv = 1.0 / s2.max(1e-12);
-        let cos = x2 * inv;
-        let sin = y2 * inv;
-        Some(na::Matrix2::new(cos, sin, sin, -cos))
-    }
+    // Mirror layout-base `ConstraintHandler`:
+    //
+    // - `tempMatrix = A'B` where A is target, B is source (mean-centered)
+    // - `SVD(tempMatrix) = U S V'`
+    // - `transformationMatrix = V U'`
+    //
+    // Use nalgebra SVD for this 2x2 case; this keeps the code closer to the upstream definition
+    // than the previous closed-form branch selection and avoids subtle transpose/sign mistakes.
+    let svd = na::linalg::SVD::new(m, true, true);
+    let u = svd.u?;
+    let v_t = svd.v_t?;
+    Some(v_t.transpose() * u.transpose())
 }
 
 fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
@@ -2548,166 +3126,6 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
     }
 }
 
-fn apply_root_compound_overlap_separation_to_displacements(
-    nodes: &[SimNode],
-    root_to_nodes: &std::collections::BTreeMap<String, Vec<usize>>,
-    padding: f64,
-    separation_buffer: f64,
-    max_d: f64,
-    disps: &mut [(f64, f64)],
-) {
-    if root_to_nodes.len() <= 1 {
-        return;
-    }
-    if nodes.is_empty() || disps.is_empty() {
-        return;
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    struct Rect {
-        left: f64,
-        top: f64,
-        width: f64,
-        height: f64,
-    }
-
-    fn rect_from_node_with_disp(n: &SimNode, dx: f64, dy: f64) -> Rect {
-        Rect {
-            left: n.left + dx,
-            top: n.top + dy,
-            width: n.width,
-            height: n.height,
-        }
-    }
-
-    fn rect_union(a: Rect, b: Rect) -> Rect {
-        let min_x = a.left.min(b.left);
-        let min_y = a.top.min(b.top);
-        let max_x = (a.left + a.width).max(b.left + b.width);
-        let max_y = (a.top + a.height).max(b.top + b.height);
-        Rect {
-            left: min_x,
-            top: min_y,
-            width: (max_x - min_x).max(0.0),
-            height: (max_y - min_y).max(0.0),
-        }
-    }
-
-    fn expand_rect(r: Rect, pad: f64) -> Rect {
-        Rect {
-            left: r.left - pad,
-            top: r.top - pad,
-            width: (r.width + 2.0 * pad).max(0.0),
-            height: (r.height + 2.0 * pad).max(0.0),
-        }
-    }
-
-    fn rects_intersect(a: Rect, b: Rect) -> bool {
-        a.left < b.left + b.width
-            && a.left + a.width > b.left
-            && a.top < b.top + b.height
-            && a.top + a.height > b.top
-    }
-
-    fn calc_separation_amount_rect(a: Rect, b: Rect, buffer: f64) -> (f64, f64) {
-        // Equivalent to `IGeometry.calcSeparationAmount(...)` for overlapping rectangles, with the
-        // same `DEFAULT_EDGE_LENGTH / 2` buffer used by layout-base.
-        //
-        // We compute the minimal translation vector to separate the rectangles, preferring the
-        // axis with smaller overlap.
-        let overlap_x1 = (a.left + a.width + buffer) - b.left;
-        let overlap_x2 = (b.left + b.width + buffer) - a.left;
-        let overlap_y1 = (a.top + a.height + buffer) - b.top;
-        let overlap_y2 = (b.top + b.height + buffer) - a.top;
-
-        let ox = if overlap_x1.abs() < overlap_x2.abs() {
-            overlap_x1
-        } else {
-            -overlap_x2
-        };
-        let oy = if overlap_y1.abs() < overlap_y2.abs() {
-            overlap_y1
-        } else {
-            -overlap_y2
-        };
-
-        if ox.abs() < oy.abs() {
-            (ox, 0.0)
-        } else {
-            (0.0, oy)
-        }
-    }
-
-    let mut rects: Vec<(String, Rect)> = Vec::with_capacity(root_to_nodes.len());
-    for (root, members) in root_to_nodes {
-        let mut any = false;
-        let mut bb = Rect {
-            left: 0.0,
-            top: 0.0,
-            width: 0.0,
-            height: 0.0,
-        };
-        for &idx in members {
-            if idx >= nodes.len() || idx >= disps.len() {
-                continue;
-            }
-            let r = rect_from_node_with_disp(&nodes[idx], disps[idx].0, disps[idx].1);
-            bb = if any { rect_union(bb, r) } else { r };
-            any = true;
-        }
-        if any {
-            rects.push((root.clone(), expand_rect(bb, padding)));
-        }
-    }
-    if rects.len() <= 1 {
-        return;
-    }
-
-    // Deterministic, gentle overlap separation: translate all descendants of each root compound.
-    // This approximates Cytoscape's compound repulsion without implementing full compound nodes.
-    let strength = 0.35;
-    for i in 0..rects.len() {
-        for j in (i + 1)..rects.len() {
-            let (ref a_id, a_rect) = rects[i];
-            let (ref b_id, b_rect) = rects[j];
-            if !rects_intersect(a_rect, b_rect) {
-                continue;
-            }
-            let (ox, oy) = calc_separation_amount_rect(a_rect, b_rect, separation_buffer);
-            if ox == 0.0 && oy == 0.0 {
-                continue;
-            }
-            let (dx_a, dy_a) = (-0.5 * ox * strength, -0.5 * oy * strength);
-            let (dx_b, dy_b) = (0.5 * ox * strength, 0.5 * oy * strength);
-
-            if let Some(members) = root_to_nodes.get(a_id) {
-                for &idx in members {
-                    disps[idx].0 += dx_a;
-                    disps[idx].1 += dy_a;
-                }
-            }
-            if let Some(members) = root_to_nodes.get(b_id) {
-                for &idx in members {
-                    disps[idx].0 += dx_b;
-                    disps[idx].1 += dy_b;
-                }
-            }
-        }
-    }
-
-    // Cap displacements after compound separation, matching the upstream displacement clamp.
-    if max_d.is_finite() && max_d > 0.0 {
-        for (dx, dy) in disps {
-            if dx.abs() > max_d {
-                *dx = max_d * dx.signum();
-            }
-            if dy.abs() > max_d {
-                *dy = max_d * dy.signum();
-            }
-        }
-    }
-}
-
 fn apply_constraints_to_displacements(
     nodes: &[SimNode],
     c: &Constraints,
@@ -2785,10 +3203,10 @@ fn apply_constraints_to_displacements(
     if max_d.is_finite() && max_d > 0.0 {
         for (dx, dy) in disps {
             if dx.abs() > max_d {
-                *dx = max_d * dx.signum();
+                *dx = max_d * imath_sign(*dx);
             }
             if dy.abs() > max_d {
-                *dy = max_d * dy.signum();
+                *dy = max_d * imath_sign(*dy);
             }
         }
     }
@@ -2862,6 +3280,7 @@ mod tests {
             is_compound: false,
             width: w,
             height: h,
+            estimated_size: (w + h) / 2.0,
             left,
             top,
             spring_fx: 0.0,
@@ -2964,34 +3383,211 @@ mod tests {
         let gap = (nodes[1].center_x() + disps[1].0) - (nodes[0].center_x() + disps[0].0);
         assert!((gap - 50.0).abs() < 1e-9, "gap: got {gap}");
     }
+
+    #[test]
+    fn rect_clip_points_matches_layout_base_igeometry_getintersection2() {
+        // Expected values computed via layout-base@2.0.1:
+        //
+        // `IGeometry.getIntersection(rectA, rectB, out)` where:
+        // - rectA = (-274.090946,-129.901919,80,80)
+        // - rectB = (512.630977,-782.722296,80,80)
+        let a = node_at(-274.090_946, -129.901_919, 80.0, 80.0);
+        let b = node_at(512.630_977, -782.722_296, 80.0, 80.0);
+        let (ax, ay, bx, by) = super::rect_clip_points(&a, &b);
+
+        let eps = 1e-6;
+        assert!((ax - -194.090_946).abs() < eps, "ax: got {ax}");
+        assert!((ay - -123.093_844_020_246_31).abs() < eps, "ay: got {ay}");
+        assert!((bx - 512.630_977).abs() < eps, "bx: got {bx}");
+        assert!((by - -709.530_370_979_753_7).abs() < eps, "by: got {by}");
+    }
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
-    a.left < b.right() && a.right() > b.left && a.top < b.bottom() && a.bottom() > b.top
+    // Mirror layout-base `RectangleD.intersects`: touching edges count as intersection.
+    !(a.right() < b.left || a.bottom() < b.top || b.right() < a.left || b.bottom() < a.top)
 }
 
-fn rect_clip_point_towards(a: &SimNode, b: &SimNode) -> (f64, f64) {
-    let ax = a.center_x();
-    let ay = a.center_y();
-    let bx = b.center_x();
-    let by = b.center_y();
-    let dx = bx - ax;
-    let dy = by - ay;
+fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
+    if slope > slope_prime {
+        line
+    } else {
+        1 + (line % 4)
+    }
+}
 
-    if dx == 0.0 && dy == 0.0 {
-        return (ax, ay);
+fn rect_clip_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
+    // Port of layout-base `IGeometry.getIntersection2(rectA, rectB, result)`.
+    //
+    // result[0-1] contains clip point on rectA; result[2-3] contains clip point on rectB.
+    let p1x = a.center_x();
+    let p1y = a.center_y();
+    let p2x = b.center_x();
+    let p2y = b.center_y();
+
+    if rects_intersect(a, b) {
+        return (p1x, p1y, p2x, p2y);
     }
 
-    let mut t_x = f64::INFINITY;
-    let mut t_y = f64::INFINITY;
-    if dx != 0.0 {
-        t_x = (a.half_w() / dx.abs()).max(0.0);
+    let top_left_ax = a.left;
+    let top_left_ay = a.top;
+    let top_right_ax = a.right();
+    let bottom_left_ax = a.left;
+    let bottom_left_ay = a.bottom();
+    let bottom_right_ax = a.right();
+    let half_width_a = a.half_w();
+    let half_height_a = a.half_h();
+
+    let top_left_bx = b.left;
+    let top_left_by = b.top;
+    let top_right_bx = b.right();
+    let bottom_left_bx = b.left;
+    let bottom_left_by = b.bottom();
+    let bottom_right_bx = b.right();
+    let half_width_b = b.half_w();
+    let half_height_b = b.half_h();
+
+    let mut clip_ax = p1x;
+    let mut clip_ay = p1y;
+    let mut clip_bx = p2x;
+    let mut clip_by = p2y;
+
+    if p1x == p2x {
+        if p1y > p2y {
+            return (p1x, top_left_ay, p2x, bottom_left_by);
+        } else if p1y < p2y {
+            return (p1x, bottom_left_ay, p2x, top_left_by);
+        }
+    } else if p1y == p2y {
+        if p1x > p2x {
+            return (top_left_ax, p1y, top_right_bx, p2y);
+        } else if p1x < p2x {
+            return (top_right_ax, p1y, top_left_bx, p2y);
+        }
+    } else {
+        let slope_a = a.height / a.width;
+        let slope_b = b.height / b.width;
+        let slope_prime = (p2y - p1y) / (p2x - p1x);
+
+        let mut clip_a_found = false;
+        let mut clip_b_found = false;
+
+        if -slope_a == slope_prime {
+            if p1x > p2x {
+                clip_ax = bottom_left_ax;
+                clip_ay = bottom_left_ay;
+                clip_a_found = true;
+            } else {
+                clip_ax = top_right_ax;
+                clip_ay = top_left_ay;
+                clip_a_found = true;
+            }
+        } else if slope_a == slope_prime {
+            if p1x > p2x {
+                clip_ax = top_left_ax;
+                clip_ay = top_left_ay;
+                clip_a_found = true;
+            } else {
+                clip_ax = bottom_right_ax;
+                clip_ay = bottom_left_ay;
+                clip_a_found = true;
+            }
+        }
+
+        if -slope_b == slope_prime {
+            if p2x > p1x {
+                clip_bx = bottom_left_bx;
+                clip_by = bottom_left_by;
+                clip_b_found = true;
+            } else {
+                clip_bx = top_right_bx;
+                clip_by = top_left_by;
+                clip_b_found = true;
+            }
+        } else if slope_b == slope_prime {
+            if p2x > p1x {
+                clip_bx = top_left_bx;
+                clip_by = top_left_by;
+                clip_b_found = true;
+            } else {
+                clip_bx = bottom_right_bx;
+                clip_by = bottom_left_by;
+                clip_b_found = true;
+            }
+        }
+
+        if !clip_a_found || !clip_b_found {
+            let (card_a, card_b) = if p1x > p2x {
+                if p1y > p2y {
+                    (
+                        get_cardinal_direction(slope_a, slope_prime, 4),
+                        get_cardinal_direction(slope_b, slope_prime, 2),
+                    )
+                } else {
+                    (
+                        get_cardinal_direction(-slope_a, slope_prime, 3),
+                        get_cardinal_direction(-slope_b, slope_prime, 1),
+                    )
+                }
+            } else if p1y > p2y {
+                (
+                    get_cardinal_direction(-slope_a, slope_prime, 1),
+                    get_cardinal_direction(-slope_b, slope_prime, 3),
+                )
+            } else {
+                (
+                    get_cardinal_direction(slope_a, slope_prime, 2),
+                    get_cardinal_direction(slope_b, slope_prime, 4),
+                )
+            };
+
+            if !clip_a_found {
+                match card_a {
+                    1 => {
+                        clip_ay = top_left_ay;
+                        clip_ax = p1x + -half_height_a / slope_prime;
+                    }
+                    2 => {
+                        clip_ax = bottom_right_ax;
+                        clip_ay = p1y + half_width_a * slope_prime;
+                    }
+                    3 => {
+                        clip_ay = bottom_left_ay;
+                        clip_ax = p1x + half_height_a / slope_prime;
+                    }
+                    4 => {
+                        clip_ax = bottom_left_ax;
+                        clip_ay = p1y + -half_width_a * slope_prime;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !clip_b_found {
+                match card_b {
+                    1 => {
+                        clip_by = top_left_by;
+                        clip_bx = p2x + -half_height_b / slope_prime;
+                    }
+                    2 => {
+                        clip_bx = bottom_right_bx;
+                        clip_by = p2y + half_width_b * slope_prime;
+                    }
+                    3 => {
+                        clip_by = bottom_left_by;
+                        clip_bx = p2x + half_height_b / slope_prime;
+                    }
+                    4 => {
+                        clip_bx = bottom_left_bx;
+                        clip_by = p2y + -half_width_b * slope_prime;
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
-    if dy != 0.0 {
-        t_y = (a.half_h() / dy.abs()).max(0.0);
-    }
-    let t = t_x.min(t_y);
-    (ax + t * dx, ay + t * dy)
+
+    (clip_ax, clip_ay, clip_bx, clip_by)
 }
 
 fn calc_repulsion_force(
@@ -3018,23 +3614,15 @@ fn calc_repulsion_force(
             -children_constant * repulsion_fy,
         )
     } else {
-        let (ax, ay) = rect_clip_point_towards(a, b);
-        let (bx, by) = rect_clip_point_towards(b, a);
+        let (ax, ay, bx, by) = rect_clip_points(a, b);
         let mut dx = bx - ax;
         let mut dy = by - ay;
 
-        if dx.abs() < 1e-9 {
-            dx = 0.0;
-        }
-        if dy.abs() < 1e-9 {
-            dy = 0.0;
-        }
-
         if dx.abs() < min_repulsion_dist {
-            dx = dx.signum() * min_repulsion_dist;
+            dx = imath_sign(dx) * min_repulsion_dist;
         }
         if dy.abs() < min_repulsion_dist {
-            dy = dy.signum() * min_repulsion_dist;
+            dy = imath_sign(dy) * min_repulsion_dist;
         }
 
         let dist_sq = dx * dx + dy * dy;
@@ -3073,49 +3661,65 @@ impl RepulsionGrid {
         &self.cells[self.idx(x, y)]
     }
 
-    fn build(nodes: &[SimNode], repulsion_range: f64) -> Option<Self> {
+    fn build(
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+        nodes: &mut [SimNode],
+        repulsion_range: f64,
+        node_order: &[usize],
+    ) -> Option<Self> {
         if nodes.is_empty() {
             return None;
         }
         if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
             return None;
         }
-
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-        for n in nodes {
-            min_x = min_x.min(n.left);
-            min_y = min_y.min(n.top);
-            max_x = max_x.max(n.right());
-            max_y = max_y.max(n.bottom());
-        }
-        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
+        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
             return None;
         }
 
-        let w = (max_x - min_x).max(1.0);
-        let h = (max_y - min_y).max(1.0);
-        let size_x = ((w / repulsion_range).floor() as i32 + 1).max(1);
-        let size_y = ((h / repulsion_range).floor() as i32 + 1).max(1);
+        let w = (right - left).max(1.0);
+        let h = (bottom - top).max(1.0);
+        if !(w.is_finite() && h.is_finite()) {
+            return None;
+        }
+
+        // layout-base `FDLayout.calcGrid`: size = ceil((graph.right - graph.left) / repulsionRange).
+        let size_x = ((w / repulsion_range).ceil() as i32).max(1);
+        let size_y = ((h / repulsion_range).ceil() as i32).max(1);
         let mut cells: Vec<Vec<usize>> = vec![Vec::new(); (size_x as usize) * (size_y as usize)];
 
         // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
         // node's rect, using top-left anchored coordinates.
-        for (idx, n) in nodes.iter().enumerate() {
-            let mut start_x = ((n.left - min_x) / repulsion_range).floor() as i32;
-            let mut finish_x = ((n.right() - min_x) / repulsion_range).floor() as i32;
-            let mut start_y = ((n.top - min_y) / repulsion_range).floor() as i32;
-            let mut finish_y = ((n.bottom() - min_y) / repulsion_range).floor() as i32;
+        //
+        // Important: layout-base inserts nodes into the grid in `getAllNodes()` order (see
+        // `FDLayout.updateGrid()`), which is observable because the surrounding list is built
+        // by iterating over the grid cells and preserving insertion order. Matching this order
+        // reduces floating-point accumulation drift in parity tests.
+        for &idx in node_order {
+            let Some(n) = nodes.get_mut(idx) else {
+                continue;
+            };
+            let start_x = ((n.left - left) / repulsion_range).floor() as i32;
+            let finish_x = ((n.right() - left) / repulsion_range).floor() as i32;
+            let start_y = ((n.top - top) / repulsion_range).floor() as i32;
+            let finish_y = ((n.bottom() - top) / repulsion_range).floor() as i32;
 
-            start_x = start_x.clamp(0, size_x - 1);
-            finish_x = finish_x.clamp(0, size_x - 1);
-            start_y = start_y.clamp(0, size_y - 1);
-            finish_y = finish_y.clamp(0, size_y - 1);
+            n.grid_start_x = start_x;
+            n.grid_finish_x = finish_x;
+            n.grid_start_y = start_y;
+            n.grid_finish_y = finish_y;
 
             for gx in start_x..=finish_x {
+                if gx < 0 || gx >= size_x {
+                    continue;
+                }
                 for gy in start_y..=finish_y {
+                    if gy < 0 || gy >= size_y {
+                        continue;
+                    }
                     let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
                     cells[cell_idx].push(idx);
                 }
@@ -3123,8 +3727,8 @@ impl RepulsionGrid {
         }
 
         Some(Self {
-            left: min_x,
-            top: min_y,
+            left,
+            top,
             size_x,
             size_y,
             cells,
@@ -3138,12 +3742,10 @@ impl RepulsionGrid {
         processed: &[bool],
         repulsion_range: f64,
     ) {
-        let (start_x, finish_x, start_y, finish_y) =
-            self.node_grid_coords(node_idx, nodes, repulsion_range);
-        nodes[node_idx].grid_start_x = start_x;
-        nodes[node_idx].grid_finish_x = finish_x;
-        nodes[node_idx].grid_start_y = start_y;
-        nodes[node_idx].grid_finish_y = finish_y;
+        let start_x = nodes[node_idx].grid_start_x;
+        let finish_x = nodes[node_idx].grid_finish_x;
+        let start_y = nodes[node_idx].grid_start_y;
+        let finish_y = nodes[node_idx].grid_finish_y;
 
         let mut seen: Vec<bool> = vec![false; nodes.len()];
         let mut surrounding: Vec<usize> = Vec::new();
@@ -3183,26 +3785,6 @@ impl RepulsionGrid {
         }
 
         nodes[node_idx].surrounding = surrounding;
-    }
-
-    fn node_grid_coords(
-        &self,
-        node_idx: usize,
-        nodes: &[SimNode],
-        repulsion_range: f64,
-    ) -> (i32, i32, i32, i32) {
-        let n = &nodes[node_idx];
-        let mut start_x = ((n.left - self.left) / repulsion_range).floor() as i32;
-        let mut finish_x = ((n.right() - self.left) / repulsion_range).floor() as i32;
-        let mut start_y = ((n.top - self.top) / repulsion_range).floor() as i32;
-        let mut finish_y = ((n.bottom() - self.top) / repulsion_range).floor() as i32;
-
-        start_x = start_x.clamp(0, self.size_x - 1);
-        finish_x = finish_x.clamp(0, self.size_x - 1);
-        start_y = start_y.clamp(0, self.size_y - 1);
-        finish_y = finish_y.clamp(0, self.size_y - 1);
-
-        (start_x, finish_x, start_y, finish_y)
     }
 }
 

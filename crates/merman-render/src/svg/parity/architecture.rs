@@ -1227,6 +1227,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         font_size: svg_font_size_px,
         font_weight: None,
     };
+    let compound_text_style = crate::text::TextStyle {
+        font_family: text_style.font_family.clone(),
+        font_size: arch_font_size_px,
+        font_weight: None,
+    };
 
     let mut aria_attrs = String::new();
     let mut a11y_nodes = String::new();
@@ -1323,48 +1328,122 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     // computing a conservative bounds over the elements we emit.
     let mut content_bounds: Option<Bounds> = None;
 
+    // Mermaid `createText()` emits SVG `<text y="-10.1">` + `<tspan y="-0.1em" dy="1.1em">...`.
+    //
+    // In Chromium, `text.getBBox()` has:
+    // - per-line height ~= 19px at 16px font size
+    // - additional lines stacked by `dy="1.1em"` (i.e. 17.6px at 16px font size)
+    //
+    // Model this geometry in a scale-stable way so `setupGraphViewbox(svg.getBBox() + padding)`
+    // aligns in `parity-root` comparisons without browser-dependent measurement.
+    const CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM: f64 = 19.0 / 16.0;
+    const CREATE_TEXT_BBOX_LINE_DY_EM: f64 = 1.1;
+    // Empirical bottom extension (beyond the icon bottom) of Mermaid `createText()` output for a
+    // single-line label at 16px in Chromium, as observed in upstream Architecture baselines.
+    //
+    // This is notably larger than just `fontSize`, due to `createText()` using `<text y="-10.1">`
+    // and wrapper attributes like `dy="1em"`; Chromium's `getBBox()` includes that geometry.
+    const CREATE_TEXT_BBOX_ROOT_LABEL_EXTRA_BOTTOM_EM: f64 = 24.1875 / 16.0;
+
+    // Cytoscape compound bounds (`node.boundingBox()`) include labels but do *not* match
+    // Chromium's `text.getBBox()` exactly. In upstream Mermaid Architecture, group rectangles
+    // sized from Cytoscape compound bounds tend to extend below the icon by roughly
+    // `(fontSize + 1px)` for single-line service labels.
+    //
+    // If we reuse the larger root `getBBox()` extension for compounds, nested/group-heavy
+    // fixtures get a systematic viewBox height inflation (~7.1875px at 16px).
+    const CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM: f64 = 17.0 / 16.0;
+
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
     let mut service_count: usize = 0;
     for svc in model.services() {
         service_count += 1;
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
-        let mut b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
+        let b_icon = bounds_from_rect(x, y, icon_size_px, icon_size_px);
+        let mut b_full = b_icon.clone();
         if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
+            // Mermaid renders service labels via `createText(...)` with SVG-like wrapping.
             let lines =
                 wrap_svg_words_to_lines(title, icon_size_px * 1.5, &text_measurer, &text_style);
-            let mut bbox_left = 0.0f64;
-            let mut bbox_right = 0.0f64;
+            let mut bbox_left_root = 0.0f64;
+            let mut bbox_right_root = 0.0f64;
             for line in &lines {
                 let s = svg_line_plain_text(line);
                 let (l, r) = text_measurer.measure_svg_text_bbox_x(s.as_str(), &text_style);
-                bbox_left = bbox_left.max(l);
-                bbox_right = bbox_right.max(r);
+                bbox_left_root = bbox_left_root.max(l);
+                bbox_right_root = bbox_right_root.max(r);
             }
-            let bbox_h = (lines.len().max(1) as f64) * svg_font_size_px * 1.1875;
+            let line_count_root = lines.len().max(1);
+            let label_extra_bottom_root = svg_font_size_px
+                * (CREATE_TEXT_BBOX_ROOT_LABEL_EXTRA_BOTTOM_EM
+                    + (line_count_root.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
+
+            // Cytoscape compound sizing uses the Architecture `fontSize` and does not apply the
+            // same `createText(...)` wrapping behavior. For group rectangles (`node.boundingBox()`),
+            // treat service labels as single-line canvas text anchored at the icon center.
+            let (mut bbox_left_compound, mut bbox_right_compound) = {
+                let s = title;
+                let (l, r) = text_measurer
+                    .measure_svg_text_bbox_x_with_ascii_overhang(s, &compound_text_style);
+                (l, r)
+            };
+            // Cytoscape `boundingBox()` expands label bounds by a small margin-of-error padding.
+            // In practice this is ~2px on each side (see Cytoscape `updateBoundsFromLabel`).
+            let cytoscape_label_margin_px = 2.0;
+            bbox_left_compound += cytoscape_label_margin_px;
+            bbox_right_compound += cytoscape_label_margin_px;
+            let label_extra_bottom_compound = arch_font_size_px
+                * (CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM
+                    + 0.0 * CREATE_TEXT_BBOX_LINE_DY_EM);
 
             // Mermaid places the service label in a `<g transform="translate(iconSize/2, iconSize)">`
-            // and uses SVG text with `y="-10.1"` + tspans. In practice, the rendered label extends
-            // the *bottom* of a group's effective bounds by ~18px for the default 16px font-size
-            // (see Mermaid `svgDraw.ts`: group edge shift comment).
+            // and uses SVG text with `y="-10.1"` + tspans.
             //
             // We approximate the bbox relative to the service's top-left. The important part for
             // viewBox/group parity is the label's bottom extension beyond the icon.
             let cx = x + icon_size_px / 2.0;
-            // Empirically, treating the first line as starting ~1px above the icon bottom matches
-            // Mermaid's group bounds better than using the raw `-10.1` offset.
-            let text_top = y + icon_size_px - 1.0;
-            let text_left = cx - bbox_left;
-            let text_right = cx + bbox_right;
-            let text_bottom = text_top + bbox_h;
-            b = Bounds {
-                min_x: b.min_x.min(text_left),
-                min_y: b.min_y.min(text_top),
-                max_x: b.max_x.max(text_right),
-                max_y: b.max_y.max(text_bottom),
+            let text_left_root = cx - bbox_left_root;
+            let text_right_root = cx + bbox_right_root;
+            let text_bottom_root = y + icon_size_px + label_extra_bottom_root;
+
+            let text_left_compound = cx - bbox_left_compound;
+            let text_right_compound = cx + bbox_right_compound;
+            let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
+
+            // Use the smaller compound estimate for group sizing (Cytoscape), and keep the larger
+            // root estimate for the final `svg.getBBox()`-style viewBox expansion.
+            let b_compound = Bounds {
+                min_x: b_full.min_x.min(text_left_compound),
+                min_y: b_full.min_y,
+                max_x: b_full.max_x.max(text_right_compound),
+                max_y: b_full.max_y.max(text_bottom_compound),
+            };
+            let b_root = Bounds {
+                min_x: b_full.min_x.min(text_left_root),
+                min_y: b_full.min_y,
+                max_x: b_full.max_x.max(text_right_root),
+                max_y: b_full.max_y.max(text_bottom_root),
+            };
+
+            b_full = if svc.in_group.is_some() {
+                b_compound
+            } else {
+                b_root
             };
         }
-        service_bounds.insert(svc.id, b.clone());
-        extend_bounds(&mut content_bounds, b);
+        // Group rectangles (compound nodes) are sized by Cytoscape to include service labels, so
+        // extending the root `getBBox()` estimate with *in-group* label bounds can double-count
+        // and inflate the final `viewBox` / `max-width` in parity-root comparisons.
+        //
+        // Keep full label bounds for group sizing, but only union label extents into the root
+        // viewport bounds when the service is not inside a group.
+        service_bounds.insert(svc.id, b_full.clone());
+        if svc.in_group.is_none() {
+            // For top-level services, approximate Chromium `getBBox()` via the root label model.
+            extend_bounds(&mut content_bounds, b_full);
+        } else {
+            extend_bounds(&mut content_bounds, b_icon);
+        }
     }
 
     let mut junction_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
@@ -1463,6 +1542,17 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             }
         }
         if let Some(children) = child_groups.get(group_id) {
+            // Empirical correction for nested compounds:
+            //
+            // Mermaid draws group rects from Cytoscape `node.boundingBox()` values. When groups
+            // nest, Cytoscape's compound bounds update uses a children bounding box that is not
+            // a perfect "union of already-padded child group rects" in SVG space; treating child
+            // group rects as fully-inclusive inputs makes parent groups slightly too large in
+            // parity-root viewBox comparisons (notably in deep group chains).
+            //
+            // Approximate this by shrinking child group bounds by half the group border width
+            // (2px / 2 == 1px) before unioning them into the parent's content bounds.
+            let child_group_inset = 1.0;
             for child in children {
                 if let Some(b) = compute_group_rects(
                     child,
@@ -1475,6 +1565,18 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     group_rects,
                     visiting,
                 ) {
+                    let b = if (b.max_x - b.min_x) > 2.0 * child_group_inset
+                        && (b.max_y - b.min_y) > 2.0 * child_group_inset
+                    {
+                        Bounds {
+                            min_x: b.min_x + child_group_inset,
+                            min_y: b.min_y + child_group_inset,
+                            max_x: b.max_x - child_group_inset,
+                            max_y: b.max_y - child_group_inset,
+                        }
+                    } else {
+                        b
+                    };
                     let mut tmp = content;
                     extend_bounds(&mut tmp, b);
                     content = tmp;
@@ -1482,7 +1584,14 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             }
         }
 
-        let pad = icon_size_px / 2.0 + 2.5;
+        // Upstream Mermaid draws group rectangles from `cytoscape-node.boundingBox()` (default
+        // includes labels), then offsets by `halfIconSize`.
+        //
+        // The extra padding is a small empirical correction to approximate browser
+        // `boundingBox()` behavior in headless mode.
+        let _has_child_groups = child_groups.get(group_id).is_some_and(|v| !v.is_empty());
+        let extra = 2.5;
+        let pad = icon_size_px / 2.0 + extra;
         let b = if let Some(content) = content {
             Bounds {
                 min_x: content.min_x - pad,
@@ -1759,7 +1868,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     );
                     bbox_w = bbox_w.max(m.width);
                 }
-                let bbox_h = (lines.len().max(1) as f64) * svg_font_size_px * 1.1875;
+                let line_count = lines.len().max(1);
+                let bbox_h = svg_font_size_px
+                    * (CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM
+                        + (line_count.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
 
                 // AABB for rotated labels (90°/45° variants). Mermaid rotates Architecture edge
                 // labels depending on the edge direction; mimic Chromium `getBBox()`-like bounds
@@ -1932,9 +2044,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     );
                     bbox_w = bbox_w.max(w.width);
                 }
-                // For Mermaid's `createText()` SVG output with 16px font, one line bboxes to ~19px.
-                // Mirror this for parity-driven transforms (not for layout sizing).
-                let bbox_h = (lines.len().max(1) as f64) * text_style.font_size * 1.1875;
+                // Mirror Chromium `getBBox()`-like label height for parity-driven transforms.
+                let line_count = lines.len().max(1);
+                let bbox_h = text_style.font_size
+                    * (CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM
+                        + (line_count.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
                 let half_bbox_h = bbox_h / 2.0;
 
                 let (dominant_baseline, transform) = match axis {
@@ -2135,6 +2249,31 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 .filter(|t| !t.is_empty())
             {
                 let lines = wrap_svg_words_to_lines(title, w, &text_measurer, &text_style);
+                // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
+                // cannot "see" their extents. Union a conservative horizontal bbox so
+                // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
+                let mut title_bbox_w = 0.0f64;
+                for line in &lines {
+                    let s = svg_line_plain_text(line);
+                    let m = text_measurer.measure_wrapped(
+                        s.as_str(),
+                        &text_style,
+                        None,
+                        WrapMode::SvgLike,
+                    );
+                    title_bbox_w = title_bbox_w.max(m.width);
+                }
+                if title_bbox_w.is_finite() && title_bbox_w > 0.0 {
+                    let title_x = shifted_x1 + half_icon + 4.0;
+                    // Keep Y extents within the group rect; we only need this to expand X.
+                    let title_bounds = Bounds {
+                        min_x: title_x,
+                        min_y: y,
+                        max_x: title_x + title_bbox_w,
+                        max_y: y + h,
+                    };
+                    extend_bounds(&mut content_bounds, title_bounds);
+                }
                 let _ = write!(
                     &mut out,
                     r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
@@ -2182,606 +2321,497 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let groups_len = model.groups_len();
         let edges_len = model.edges_len();
 
-        // Mermaid@11.12.2 parity-root calibration:
-        // For the common "single group + 4 services + 3 edges" architecture topology, our
-        // headless FCoSE port produces a deterministic, topology-level root viewport drift
-        // (same deltas across fixtures generated from this graph shape). Keep the correction
-        // topology-driven (not fixture-id driven) so we can remove per-fixture root overrides.
-        if groups_len == 1 && service_count == 4 && junction_count == 0 && edges_len == 3 {
-            vb_min_x -= 0.0113901457049792;
-            vb_min_y += 0.993074195027134;
-            vb_w += 0.022780291409934;
-            vb_h = (vb_h - 0.986178907632393).max(1.0);
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the common 5-service arrow-mesh samples
-        // (no groups, no junctions, 8 directional edges).
-        //
-        // Upstream Cytoscape/FCoSE + browser text-bbox placement produces a stable root viewport
-        // profile family for this graph shape. Our headless pipeline keeps subtree parity but
-        // exhibits deterministic root viewport drift by semantic profile (titles / direction mix).
-        // Keep this profile-based (topology + edge semantics), not fixture-id based.
-        if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 8 {
-            // Base profile (no titles, non-inverse direction set).
-            vb_min_x += 21.4900800586474;
-            vb_min_y += 29.9168531299365;
-            vb_w += 0.0198704002832528;
-            vb_h += 6.20733988270513;
-
-            let mut titled_edges = 0usize;
-            let mut max_title_chars = 0usize;
-            for edge in model.edges() {
-                if let Some(title) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
-                    titled_edges += 1;
-                    max_title_chars = max_title_chars.max(title.chars().count());
-                }
+        let enable_viewport_calibration = std::env::var("MERMAN_ARCH_ENABLE_VIEWPORT_CALIBRATION")
+            .ok()
+            .as_deref()
+            == Some("1");
+        if enable_viewport_calibration {
+            // Mermaid@11.12.2 parity-root calibration:
+            // For the common "single group + 4 services + 3 edges" architecture topology, our
+            // headless FCoSE port produces a deterministic, topology-level root viewport drift
+            // (same deltas across fixtures generated from this graph shape). Keep the correction
+            // topology-driven (not fixture-id driven) so we can remove per-fixture root overrides.
+            if groups_len == 1 && service_count == 4 && junction_count == 0 && edges_len == 3 {
+                vb_min_x -= 0.0113901457049792;
+                vb_min_y += 0.993074195027134;
+                vb_w += 0.022780291409934;
+                vb_h = (vb_h - 0.986178907632393).max(1.0);
             }
-            let has_lb_pair = model
-                .edges()
-                .any(|edge| edge.lhs_dir == 'L' && edge.rhs_dir == 'B');
 
-            if titled_edges > 0 {
-                // Label-bearing profile shifts upward/downward envelope.
-                vb_min_y += 4.25;
+            // Mermaid@11.12.2 parity-root calibration for the common 5-service arrow-mesh samples
+            // (no groups, no junctions, 8 directional edges).
+            //
+            // Upstream Cytoscape/FCoSE + browser text-bbox placement produces a stable root viewport
+            // profile family for this graph shape. Our headless pipeline keeps subtree parity but
+            // exhibits deterministic root viewport drift by semantic profile (titles / direction mix).
+            // Keep this profile-based (topology + edge semantics), not fixture-id based.
+            if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 8 {
+                // Base profile (no titles, non-inverse direction set).
+                vb_min_x += 21.4900800586474;
+                vb_min_y += 29.9168531299365;
+                vb_w += 0.0198704002832528;
+                vb_h += 6.20733988270513;
 
-                // Long-label variant widens left-side pull and uses a slightly different
-                // width precision bucket in upstream output.
-                if max_title_chars > 10 {
-                    vb_min_x += 44.1767730712891;
+                let mut titled_edges = 0usize;
+                let mut max_title_chars = 0usize;
+                for edge in model.edges() {
+                    if let Some(title) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
+                        titled_edges += 1;
+                        max_title_chars = max_title_chars.max(title.chars().count());
+                    }
+                }
+                let has_lb_pair = model
+                    .edges()
+                    .any(|edge| edge.lhs_dir == 'L' && edge.rhs_dir == 'B');
+
+                if titled_edges > 0 {
+                    // Label-bearing profile shifts upward/downward envelope.
+                    vb_min_y += 4.25;
+
+                    // Long-label variant widens left-side pull and uses a slightly different
+                    // width precision bucket in upstream output.
+                    if max_title_chars > 10 {
+                        vb_min_x += 44.1767730712891;
+                        vb_w -= 0.000030517578125;
+                    } else {
+                        vb_min_x += 10.25;
+                    }
+                } else if has_lb_pair {
+                    // Inverse directional mesh variant has a tiny axis-skew delta.
+                    vb_min_x += 0.1767730712891;
+                    vb_min_y -= 0.1767730712891;
                     vb_w -= 0.000030517578125;
-                } else {
-                    vb_min_x += 10.25;
+                    vb_h += 0.000030517578125;
                 }
-            } else if has_lb_pair {
-                // Inverse directional mesh variant has a tiny axis-skew delta.
-                vb_min_x += 0.1767730712891;
-                vb_min_y -= 0.1767730712891;
-                vb_w -= 0.000030517578125;
-                vb_h += 0.000030517578125;
             }
-        }
 
-        // Mermaid@11.12.2 parity-root calibration for the common "simple junction edges"
-        // profile (no groups, 5 services, 2 junctions, 6 edges).
-        //
-        // Keep this semantic-signature driven so it is deterministic and not fixture-id keyed.
-        if groups_len == 0 && service_count == 5 && junction_count == 2 && edges_len == 6 {
-            let mut has_titles = false;
-            let mut has_arrows = false;
-            let mut pair_bt = 0usize;
-            let mut pair_tb = 0usize;
-            let mut pair_rl = 0usize;
+            // Mermaid@11.12.2 parity-root calibration for the common "simple junction edges"
+            // profile (no groups, 5 services, 2 junctions, 6 edges).
+            //
+            // Keep this semantic-signature driven so it is deterministic and not fixture-id keyed.
+            if groups_len == 0 && service_count == 5 && junction_count == 2 && edges_len == 6 {
+                let mut has_titles = false;
+                let mut has_arrows = false;
+                let mut pair_bt = 0usize;
+                let mut pair_tb = 0usize;
+                let mut pair_rl = 0usize;
 
-            for edge in model.edges() {
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
+                for edge in model.edges() {
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+                    if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
+                        has_arrows = true;
+                    }
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('B', 'T') => pair_bt += 1,
+                        ('T', 'B') => pair_tb += 1,
+                        ('R', 'L') => pair_rl += 1,
+                        _ => {}
+                    }
+                }
+
+                if !has_titles && !has_arrows && pair_bt == 2 && pair_tb == 2 && pair_rl == 2 {
+                    vb_min_x += 21.4773991599164;
+                    vb_min_y += 29.7362571475662;
+                    vb_w += 0.0452016801671107;
+                    vb_h += 6.21495518728955;
+                }
+            }
+
+            // Mermaid@11.12.2 parity-root calibration for fallback icon singleton sample.
+            //
+            // Profile: one service, no groups/junctions/edges, and the service icon resolves to the
+            // architecture unknown-icon fallback glyph.
+            if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
+                if let Some(service) = model.services().next() {
+                    let icon_name = service.icon.map(str::trim).filter(|n| !n.is_empty());
+                    let uses_unknown_fallback = icon_name
+                        .map(|name| arch_icon_body(name) == arch_icon_body("unknown"))
+                        .unwrap_or(false);
+                    let has_icon_text = service
+                        .icon_text
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty());
+
+                    if uses_unknown_fallback && !has_icon_text {
+                        vb_min_x -= 0.00390625;
+                        vb_min_y += 18.0;
+                        vb_w += 0.2578125;
+                        vb_h += 6.1875;
+                    }
+                }
+            }
+
+            // Mermaid@11.12.2 parity-root calibration for the docs edge-title mini profile.
+            //
+            // Profile: no groups/junctions, 3 services, 2 edges with pair-set {RL, BT}, both titled,
+            // and only the BT edge has a target arrow.
+            if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 2 {
+                let mut pair_rl = 0usize;
+                let mut pair_bt = 0usize;
+                let mut titled_edges = 0usize;
+                let mut lhs_into_count = 0usize;
+                let mut rhs_into_count = 0usize;
+
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('R', 'L') => pair_rl += 1,
+                        ('B', 'T') => pair_bt += 1,
+                        _ => {}
+                    }
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        titled_edges += 1;
+                    }
+                    if edge.lhs_into == Some(true) {
+                        lhs_into_count += 1;
+                    }
+                    if edge.rhs_into == Some(true) {
+                        rhs_into_count += 1;
+                    }
+                }
+
+                if pair_rl == 1
+                    && pair_bt == 1
+                    && titled_edges == 2
+                    && lhs_into_count == 0
+                    && rhs_into_count == 1
                 {
-                    has_titles = true;
-                }
-                if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
-                    has_arrows = true;
-                }
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('B', 'T') => pair_bt += 1,
-                    ('T', 'B') => pair_tb += 1,
-                    ('R', 'L') => pair_rl += 1,
-                    _ => {}
+                    vb_min_x += 32.2430647746693;
+                    vb_min_y += 29.7430647746693;
+                    vb_w += 0.0138704506613294;
+                    vb_h += 6.20137045066139;
                 }
             }
 
-            if !has_titles && !has_arrows && pair_bt == 2 && pair_tb == 2 && pair_rl == 2 {
-                vb_min_x += 21.4773991599164;
-                vb_min_y += 29.7362571475662;
-                vb_w += 0.0452016801671107;
-                vb_h += 6.21495518728955;
-            }
-        }
+            // Mermaid@11.12.2 parity-root calibration for the docs icon-text service profile.
+            //
+            // Profile: no groups/junctions/edges, 3 services with exactly one icon service, one
+            // iconText service, and two titled services.
+            if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 0 {
+                let mut icon_services = 0usize;
+                let mut icon_text_services = 0usize;
+                let mut titled_services = 0usize;
 
-        // Mermaid@11.12.2 parity-root calibration for fallback icon singleton sample.
-        //
-        // Profile: one service, no groups/junctions/edges, and the service icon resolves to the
-        // architecture unknown-icon fallback glyph.
-        if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
-            if let Some(service) = model.services().next() {
-                let icon_name = service.icon.map(str::trim).filter(|n| !n.is_empty());
-                let uses_unknown_fallback = icon_name
-                    .map(|name| arch_icon_body(name) == arch_icon_body("unknown"))
-                    .unwrap_or(false);
-                let has_icon_text = service
-                    .icon_text
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty());
+                for service in model.services() {
+                    if service
+                        .icon
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        icon_services += 1;
+                    }
+                    if service
+                        .icon_text
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        icon_text_services += 1;
+                    }
+                    if service
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        titled_services += 1;
+                    }
+                }
 
-                if uses_unknown_fallback && !has_icon_text {
-                    vb_min_x -= 0.00390625;
-                    vb_min_y += 18.0;
-                    vb_w += 0.2578125;
-                    vb_h += 6.1875;
+                if icon_services == 1 && icon_text_services == 1 && titled_services == 2 {
+                    vb_min_x += 12.6943903747896;
+                    vb_min_y += 23.3017603300687;
+                    vb_w = (vb_w - 0.244234240790206).max(1.0);
+                    vb_h += 0.583994598651714;
                 }
             }
-        }
 
-        // Mermaid@11.12.2 parity-root calibration for the docs edge-title mini profile.
-        //
-        // Profile: no groups/junctions, 3 services, 2 edges with pair-set {RL, BT}, both titled,
-        // and only the BT edge has a target arrow.
-        if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 2 {
-            let mut pair_rl = 0usize;
-            let mut pair_bt = 0usize;
-            let mut titled_edges = 0usize;
-            let mut lhs_into_count = 0usize;
-            let mut rhs_into_count = 0usize;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('R', 'L') => pair_rl += 1,
-                    ('B', 'T') => pair_bt += 1,
-                    _ => {}
+            // Mermaid@11.12.2 parity-root calibration for split-directioning profile.
+            //
+            // Profile: no groups/junctions, 5 services, 4 edges, pair-set {LB, LR, LT, TB}, no
+            // titles/arrows.
+            if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 4 {
+                let mut pair_lb = 0usize;
+                let mut pair_lr = 0usize;
+                let mut pair_lt = 0usize;
+                let mut pair_tb = 0usize;
+                let mut has_titles = false;
+                let mut has_arrows = false;
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('L', 'B') => pair_lb += 1,
+                        ('L', 'R') => pair_lr += 1,
+                        ('L', 'T') => pair_lt += 1,
+                        ('T', 'B') => pair_tb += 1,
+                        _ => {}
+                    }
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+                    if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
+                        has_arrows = true;
+                    }
                 }
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
+
+                if pair_lb == 1
+                    && pair_lr == 1
+                    && pair_lt == 1
+                    && pair_tb == 1
+                    && !has_titles
+                    && !has_arrows
                 {
-                    titled_edges += 1;
-                }
-                if edge.lhs_into == Some(true) {
-                    lhs_into_count += 1;
-                }
-                if edge.rhs_into == Some(true) {
-                    rhs_into_count += 1;
+                    vb_min_x += 21.6262664010664;
+                    vb_min_y += 28.342638280958;
+                    vb_w = (vb_w - 0.252532802132805).max(1.0);
+                    vb_h += 9.002223438084;
                 }
             }
 
-            if pair_rl == 1
-                && pair_bt == 1
-                && titled_edges == 2
-                && lhs_into_count == 0
-                && rhs_into_count == 1
-            {
-                vb_min_x += 32.2430647746693;
-                vb_min_y += 29.7430647746693;
-                vb_w += 0.0138704506613294;
-                vb_h += 6.20137045066139;
+            // Mermaid@11.12.2 parity-root calibration for docs group-edges mini profile.
+            //
+            // Profile: 2 top-level groups, 2 services, 0 junctions, 1 edge with BT direction and both
+            // group-boundary modifiers (`lhsGroup` + `rhsGroup`), no edge title.
+            if groups_len == 2 && service_count == 2 && junction_count == 0 && edges_len == 1 {
+                if let Some(edge) = model.edges().next() {
+                    let titled = edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty());
+                    if edge.lhs_dir == 'B'
+                        && edge.rhs_dir == 'T'
+                        && edge.lhs_group == Some(true)
+                        && edge.rhs_group == Some(true)
+                        && !titled
+                    {
+                        vb_min_y += 1.89439392089844;
+                        vb_h = (vb_h - 2.788818359375).max(1.0);
+                    }
+                }
             }
-        }
 
-        // Mermaid@11.12.2 parity-root calibration for the docs icon-text service profile.
-        //
-        // Profile: no groups/junctions/edges, 3 services with exactly one icon service, one
-        // iconText service, and two titled services.
-        if groups_len == 0 && service_count == 3 && junction_count == 0 && edges_len == 0 {
-            let mut icon_services = 0usize;
-            let mut icon_text_services = 0usize;
-            let mut titled_services = 0usize;
+            // Mermaid@11.12.2 parity-root calibration for groups-within-groups profile.
+            //
+            // Profile: 3 groups, 4 services, 0 junctions, 3 edges, no titles, and no explicit
+            // group-edge modifiers. Two deterministic direction variants are observed in the upstream
+            // corpus (BT+LR+LR and BT+RL+RL).
+            if groups_len == 3 && service_count == 4 && junction_count == 0 && edges_len == 3 {
+                let mut pair_bt = 0usize;
+                let mut pair_lr = 0usize;
+                let mut pair_rl = 0usize;
+                let mut has_titles = false;
+                let mut has_group_edge_mod = false;
 
-            for service in model.services() {
-                if service
-                    .icon
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('B', 'T') => pair_bt += 1,
+                        ('L', 'R') => pair_lr += 1,
+                        ('R', 'L') => pair_rl += 1,
+                        _ => {}
+                    }
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+                    if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
+                        has_group_edge_mod = true;
+                    }
+                }
+
+                if !has_titles && !has_group_edge_mod && pair_bt == 1 {
+                    if pair_lr == 2 && pair_rl == 0 {
+                        // cypress_groups_within_groups_normalized profile
+                        vb_min_x += 1.09778948853284;
+                        vb_min_y -= 34.3607238000646;
+                        vb_w = (vb_w - 2.1956094946438).max(1.0);
+                        vb_h += 69.7214781177074;
+                    } else if pair_rl == 2 && pair_lr == 0 {
+                        // docs_groups_within_groups profile
+                        vb_min_x += 1.09670321662182;
+                        vb_min_y -= 34.3628706183085;
+                        vb_w = (vb_w - 2.19343695082171).max(1.0);
+                        vb_h += 69.7257717541951;
+                    }
+                }
+            }
+
+            // Mermaid@11.12.2 parity-root calibration for the complex-junction+groups profile.
+            //
+            // Profile: 2 groups, 5 services, 2 junctions, 6 untitled edges, with exactly one
+            // group-edge-modified link (`lhsGroup=true`, `rhsGroup=true`) and direction multiset
+            // `RL x2`, `BT x2`, `TB x2`.
+            if groups_len == 2 && service_count == 5 && junction_count == 2 && edges_len == 6 {
+                let mut pair_rl = 0usize;
+                let mut pair_bt = 0usize;
+                let mut pair_tb = 0usize;
+                let mut has_titles = false;
+                let mut group_edge_both = 0usize;
+                let mut group_edge_other = 0usize;
+
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('R', 'L') => pair_rl += 1,
+                        ('B', 'T') => pair_bt += 1,
+                        ('T', 'B') => pair_tb += 1,
+                        _ => {}
+                    }
+
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+
+                    match (edge.lhs_group == Some(true), edge.rhs_group == Some(true)) {
+                        (true, true) => group_edge_both += 1,
+                        (false, false) => {}
+                        _ => group_edge_other += 1,
+                    }
+                }
+
+                if pair_rl == 2
+                    && pair_bt == 2
+                    && pair_tb == 2
+                    && !has_titles
+                    && group_edge_both == 1
+                    && group_edge_other == 0
                 {
-                    icon_services += 1;
+                    vb_min_x -= 17.19370418983;
+                    vb_min_y += 1.24415190474906;
+                    vb_w += 34.3874083796601;
+                    vb_h = (vb_h - 1.48827329192).max(1.0);
                 }
-                if service
-                    .icon_text
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
+            }
+
+            // Mermaid@11.12.2 parity-root calibration for the reasonable-height profile.
+            //
+            // Profile: 2 groups, 10 services, 7 junctions, 16 untitled edges, no group-edge modifiers,
+            // direction multiset `RL x9` and `BT x7`, and into-pattern variants observed upstream:
+            // - no into-markers
+            // - one rhs-into marker (`lhs_into=0`, `rhs_into=1`)
+            if groups_len == 2 && service_count == 10 && junction_count == 7 && edges_len == 16 {
+                let mut pair_rl = 0usize;
+                let mut pair_bt = 0usize;
+                let mut has_titles = false;
+                let mut has_group_edge_mod = false;
+                let mut lhs_into_count = 0usize;
+                let mut rhs_into_count = 0usize;
+
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('R', 'L') => pair_rl += 1,
+                        ('B', 'T') => pair_bt += 1,
+                        _ => {}
+                    }
+
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+
+                    if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
+                        has_group_edge_mod = true;
+                    }
+
+                    if edge.lhs_into == Some(true) {
+                        lhs_into_count += 1;
+                    }
+                    if edge.rhs_into == Some(true) {
+                        rhs_into_count += 1;
+                    }
+                }
+
+                if pair_rl == 9
+                    && pair_bt == 7
+                    && !has_titles
+                    && !has_group_edge_mod
+                    && lhs_into_count == 0
+                    && rhs_into_count <= 1
                 {
-                    icon_text_services += 1;
+                    vb_min_x -= 52.4609153349811;
+                    vb_min_y -= 3.1536165397477;
+                    vb_w += 33.8014723678211;
+                    vb_h += 7.3072330794954;
                 }
-                if service
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
+            }
+
+            // Mermaid@11.12.2 parity-root calibration for the docs edge-arrows profile.
+            //
+            // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
+            // direction set `RL + BT + LR`, and into-pattern mix
+            // (`lhs_only=1`, `rhs_only=1`, `both=1`).
+            if groups_len == 0 && service_count == 4 && junction_count == 0 && edges_len == 3 {
+                let mut pair_rl = 0usize;
+                let mut pair_bt = 0usize;
+                let mut pair_lr = 0usize;
+                let mut has_titles = false;
+                let mut has_group_edge_mod = false;
+                let mut into_lhs_only = 0usize;
+                let mut into_rhs_only = 0usize;
+                let mut into_both = 0usize;
+
+                for edge in model.edges() {
+                    match (edge.lhs_dir, edge.rhs_dir) {
+                        ('R', 'L') => pair_rl += 1,
+                        ('B', 'T') => pair_bt += 1,
+                        ('L', 'R') => pair_lr += 1,
+                        _ => {}
+                    }
+
+                    if edge
+                        .title
+                        .map(str::trim)
+                        .is_some_and(|t: &str| !t.is_empty())
+                    {
+                        has_titles = true;
+                    }
+
+                    if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
+                        has_group_edge_mod = true;
+                    }
+
+                    let lhs_into = edge.lhs_into == Some(true);
+                    let rhs_into = edge.rhs_into == Some(true);
+                    match (lhs_into, rhs_into) {
+                        (true, true) => into_both += 1,
+                        (true, false) => into_lhs_only += 1,
+                        (false, true) => into_rhs_only += 1,
+                        (false, false) => {}
+                    }
+                }
+
+                if !has_titles
+                    && !has_group_edge_mod
+                    && pair_rl == 1
+                    && pair_bt == 1
+                    && pair_lr == 1
+                    && into_lhs_only == 1
+                    && into_rhs_only == 1
+                    && into_both == 1
                 {
-                    titled_services += 1;
+                    vb_min_x += 20.7361192920573;
+                    vb_min_y += 29.7431373380129;
+                    vb_w += 0.0277614158854;
+                    vb_h += 6.2012405827633;
                 }
-            }
-
-            if icon_services == 1 && icon_text_services == 1 && titled_services == 2 {
-                vb_min_x += 12.6943903747896;
-                vb_min_y += 23.3017603300687;
-                vb_w = (vb_w - 0.244234240790206).max(1.0);
-                vb_h += 0.583994598651714;
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for split-directioning profile.
-        //
-        // Profile: no groups/junctions, 5 services, 4 edges, pair-set {LB, LR, LT, TB}, no
-        // titles/arrows.
-        if groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 4 {
-            let mut pair_lb = 0usize;
-            let mut pair_lr = 0usize;
-            let mut pair_lt = 0usize;
-            let mut pair_tb = 0usize;
-            let mut has_titles = false;
-            let mut has_arrows = false;
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('L', 'B') => pair_lb += 1,
-                    ('L', 'R') => pair_lr += 1,
-                    ('L', 'T') => pair_lt += 1,
-                    ('T', 'B') => pair_tb += 1,
-                    _ => {}
-                }
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-                if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
-                    has_arrows = true;
-                }
-            }
-
-            if pair_lb == 1
-                && pair_lr == 1
-                && pair_lt == 1
-                && pair_tb == 1
-                && !has_titles
-                && !has_arrows
-            {
-                vb_min_x += 21.6262664010664;
-                vb_min_y += 28.342638280958;
-                vb_w = (vb_w - 0.252532802132805).max(1.0);
-                vb_h += 9.002223438084;
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for docs group-edges mini profile.
-        //
-        // Profile: 2 top-level groups, 2 services, 0 junctions, 1 edge with BT direction and both
-        // group-boundary modifiers (`lhsGroup` + `rhsGroup`), no edge title.
-        if groups_len == 2 && service_count == 2 && junction_count == 0 && edges_len == 1 {
-            if let Some(edge) = model.edges().next() {
-                let titled = edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty());
-                if edge.lhs_dir == 'B'
-                    && edge.rhs_dir == 'T'
-                    && edge.lhs_group == Some(true)
-                    && edge.rhs_group == Some(true)
-                    && !titled
-                {
-                    vb_min_y += 1.89439392089844;
-                    vb_h = (vb_h - 2.788818359375).max(1.0);
-                }
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for groups-within-groups profile.
-        //
-        // Profile: 3 groups, 4 services, 0 junctions, 3 edges, no titles, and no explicit
-        // group-edge modifiers. Two deterministic direction variants are observed in the upstream
-        // corpus (BT+LR+LR and BT+RL+RL).
-        if groups_len == 3 && service_count == 4 && junction_count == 0 && edges_len == 3 {
-            let mut pair_bt = 0usize;
-            let mut pair_lr = 0usize;
-            let mut pair_rl = 0usize;
-            let mut has_titles = false;
-            let mut has_group_edge_mod = false;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('B', 'T') => pair_bt += 1,
-                    ('L', 'R') => pair_lr += 1,
-                    ('R', 'L') => pair_rl += 1,
-                    _ => {}
-                }
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-                    has_group_edge_mod = true;
-                }
-            }
-
-            if !has_titles && !has_group_edge_mod && pair_bt == 1 {
-                if pair_lr == 2 && pair_rl == 0 {
-                    // cypress_groups_within_groups_normalized profile
-                    vb_min_x += 1.09778948853284;
-                    vb_min_y -= 34.3607238000646;
-                    vb_w = (vb_w - 2.1956094946438).max(1.0);
-                    vb_h += 69.7214781177074;
-                } else if pair_rl == 2 && pair_lr == 0 {
-                    // docs_groups_within_groups profile
-                    vb_min_x += 1.09670321662182;
-                    vb_min_y -= 34.3628706183085;
-                    vb_w = (vb_w - 2.19343695082171).max(1.0);
-                    vb_h += 69.7257717541951;
-                }
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the cypress groups profile.
-        //
-        // Profile: 1 group, 5 services, 0 junctions, 4 untitled non-group edges, with
-        // service membership split `in_group=4` and `root=1`, edge direction set `LR + TB + TB + TB`,
-        // and no explicit into-markers.
-        if groups_len == 1 && service_count == 5 && junction_count == 0 && edges_len == 4 {
-            let mut services_in_group = 0usize;
-            let mut services_root = 0usize;
-            for svc in model.services() {
-                if svc
-                    .in_group
-                    .map(str::trim)
-                    .is_some_and(|g: &str| !g.is_empty())
-                {
-                    services_in_group += 1;
-                } else {
-                    services_root += 1;
-                }
-            }
-
-            let mut pair_lr = 0usize;
-            let mut pair_tb = 0usize;
-            let mut has_titles = false;
-            let mut has_group_edge_mod = false;
-            let mut has_into_marker = false;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('L', 'R') => pair_lr += 1,
-                    ('T', 'B') => pair_tb += 1,
-                    _ => {}
-                }
-
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-
-                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-                    has_group_edge_mod = true;
-                }
-
-                if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
-                    has_into_marker = true;
-                }
-            }
-
-            if services_in_group == 4
-                && services_root == 1
-                && pair_lr == 1
-                && pair_tb == 3
-                && !has_titles
-                && !has_group_edge_mod
-                && !has_into_marker
-            {
-                vb_min_x -= 0.0441862621490827;
-                vb_min_y -= 56.6406085301922;
-                vb_w += 0.0884030418762904;
-                vb_h += 75.7812475779625;
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the group-edges-bidirectional profile.
-        //
-        // Profile: 5 groups, 5 services, 0 junctions, 4 untitled edges with group-edge modifiers
-        // enabled on both ends (`lhsGroup/rhsGroup`), direction set `RL + LR + BT + TB`, and
-        // no regular (non-group) edges. This profile appears in both cypress normalized and demo
-        // bidirectional fixtures.
-        if groups_len == 5 && service_count == 5 && junction_count == 0 && edges_len == 4 {
-            let mut pair_rl = 0usize;
-            let mut pair_lr = 0usize;
-            let mut pair_bt = 0usize;
-            let mut pair_tb = 0usize;
-            let mut has_titles = false;
-            let mut has_non_group_edge = false;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('R', 'L') => pair_rl += 1,
-                    ('L', 'R') => pair_lr += 1,
-                    ('B', 'T') => pair_bt += 1,
-                    ('T', 'B') => pair_tb += 1,
-                    _ => {}
-                }
-
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-
-                if edge.lhs_group != Some(true) || edge.rhs_group != Some(true) {
-                    has_non_group_edge = true;
-                }
-            }
-
-            if pair_rl == 1
-                && pair_lr == 1
-                && pair_bt == 1
-                && pair_tb == 1
-                && !has_titles
-                && !has_non_group_edge
-            {
-                vb_min_x -= 33.1684881991723;
-                vb_min_y += 6.11238087688014;
-                vb_w += 66.3369750976563;
-                vb_h = (vb_h - 9.56435291326807).max(1.0);
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the complex-junction+groups profile.
-        //
-        // Profile: 2 groups, 5 services, 2 junctions, 6 untitled edges, with exactly one
-        // group-edge-modified link (`lhsGroup=true`, `rhsGroup=true`) and direction multiset
-        // `RL x2`, `BT x2`, `TB x2`.
-        if groups_len == 2 && service_count == 5 && junction_count == 2 && edges_len == 6 {
-            let mut pair_rl = 0usize;
-            let mut pair_bt = 0usize;
-            let mut pair_tb = 0usize;
-            let mut has_titles = false;
-            let mut group_edge_both = 0usize;
-            let mut group_edge_other = 0usize;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('R', 'L') => pair_rl += 1,
-                    ('B', 'T') => pair_bt += 1,
-                    ('T', 'B') => pair_tb += 1,
-                    _ => {}
-                }
-
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-
-                match (edge.lhs_group == Some(true), edge.rhs_group == Some(true)) {
-                    (true, true) => group_edge_both += 1,
-                    (false, false) => {}
-                    _ => group_edge_other += 1,
-                }
-            }
-
-            if pair_rl == 2
-                && pair_bt == 2
-                && pair_tb == 2
-                && !has_titles
-                && group_edge_both == 1
-                && group_edge_other == 0
-            {
-                vb_min_x -= 17.19370418983;
-                vb_min_y += 1.24415190474906;
-                vb_w += 34.3874083796601;
-                vb_h = (vb_h - 1.48827329192).max(1.0);
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the reasonable-height profile.
-        //
-        // Profile: 2 groups, 10 services, 7 junctions, 16 untitled edges, no group-edge modifiers,
-        // direction multiset `RL x9` and `BT x7`, and into-pattern variants observed upstream:
-        // - no into-markers
-        // - one rhs-into marker (`lhs_into=0`, `rhs_into=1`)
-        if groups_len == 2 && service_count == 10 && junction_count == 7 && edges_len == 16 {
-            let mut pair_rl = 0usize;
-            let mut pair_bt = 0usize;
-            let mut has_titles = false;
-            let mut has_group_edge_mod = false;
-            let mut lhs_into_count = 0usize;
-            let mut rhs_into_count = 0usize;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('R', 'L') => pair_rl += 1,
-                    ('B', 'T') => pair_bt += 1,
-                    _ => {}
-                }
-
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-
-                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-                    has_group_edge_mod = true;
-                }
-
-                if edge.lhs_into == Some(true) {
-                    lhs_into_count += 1;
-                }
-                if edge.rhs_into == Some(true) {
-                    rhs_into_count += 1;
-                }
-            }
-
-            if pair_rl == 9
-                && pair_bt == 7
-                && !has_titles
-                && !has_group_edge_mod
-                && lhs_into_count == 0
-                && rhs_into_count <= 1
-            {
-                vb_min_x -= 52.4609153349811;
-                vb_min_y -= 3.1536165397477;
-                vb_w += 33.8014723678211;
-                vb_h += 7.3072330794954;
-            }
-        }
-
-        // Mermaid@11.12.2 parity-root calibration for the docs edge-arrows profile.
-        //
-        // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
-        // direction set `RL + BT + LR`, and into-pattern mix
-        // (`lhs_only=1`, `rhs_only=1`, `both=1`).
-        if groups_len == 0 && service_count == 4 && junction_count == 0 && edges_len == 3 {
-            let mut pair_rl = 0usize;
-            let mut pair_bt = 0usize;
-            let mut pair_lr = 0usize;
-            let mut has_titles = false;
-            let mut has_group_edge_mod = false;
-            let mut into_lhs_only = 0usize;
-            let mut into_rhs_only = 0usize;
-            let mut into_both = 0usize;
-
-            for edge in model.edges() {
-                match (edge.lhs_dir, edge.rhs_dir) {
-                    ('R', 'L') => pair_rl += 1,
-                    ('B', 'T') => pair_bt += 1,
-                    ('L', 'R') => pair_lr += 1,
-                    _ => {}
-                }
-
-                if edge
-                    .title
-                    .map(str::trim)
-                    .is_some_and(|t: &str| !t.is_empty())
-                {
-                    has_titles = true;
-                }
-
-                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-                    has_group_edge_mod = true;
-                }
-
-                let lhs_into = edge.lhs_into == Some(true);
-                let rhs_into = edge.rhs_into == Some(true);
-                match (lhs_into, rhs_into) {
-                    (true, true) => into_both += 1,
-                    (true, false) => into_lhs_only += 1,
-                    (false, true) => into_rhs_only += 1,
-                    (false, false) => {}
-                }
-            }
-
-            if !has_titles
-                && !has_group_edge_mod
-                && pair_rl == 1
-                && pair_bt == 1
-                && pair_lr == 1
-                && into_lhs_only == 1
-                && into_rhs_only == 1
-                && into_both == 1
-            {
-                vb_min_x += 20.7361192920573;
-                vb_min_y += 29.7431373380129;
-                vb_w += 0.0277614158854;
-                vb_h += 6.2012405827633;
             }
         }
 
@@ -2817,15 +2847,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         );
 
         let mut max_w_attr = use_max_width.then(|| fmt_string(vb_w));
-
-        if let Some((up_viewbox, up_max_width_px)) =
-            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
-        {
-            view_box_attr = up_viewbox.to_string();
-            if use_max_width {
-                max_w_attr = Some(up_max_width_px.to_string());
-            }
-        }
 
         out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
         if let Some(max_w_attr) = max_w_attr {

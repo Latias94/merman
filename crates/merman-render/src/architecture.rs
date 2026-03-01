@@ -60,6 +60,8 @@ struct ArchitectureEdgeModel {
 #[derive(Debug, Clone, Deserialize)]
 struct ArchitectureGroupModel {
     id: String,
+    #[serde(default)]
+    title: Option<String>,
     #[serde(default, rename = "in")]
     in_group: Option<String>,
 }
@@ -94,6 +96,7 @@ struct ArchitectureNodeView<'a> {
 #[derive(Debug, Clone, Copy)]
 struct ArchitectureGroupView<'a> {
     id: &'a str,
+    title: Option<&'a str>,
     in_group: Option<&'a str>,
 }
 
@@ -140,6 +143,7 @@ impl<'a> ArchitectureModelView<'a> {
             .iter()
             .map(|g| ArchitectureGroupView {
                 id: g.id.as_str(),
+                title: g.title.as_deref(),
                 in_group: g.in_group.as_deref(),
             })
             .collect();
@@ -192,6 +196,7 @@ impl<'a> ArchitectureModelView<'a> {
             .iter()
             .map(|g| ArchitectureGroupView {
                 id: g.id.as_str(),
+                title: g.title.as_deref(),
                 in_group: g.in_group.as_deref(),
             })
             .collect();
@@ -263,7 +268,7 @@ pub fn layout_architecture_diagram_typed(
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,
-    _text_measurer: &dyn TextMeasurer,
+    text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
     let timing_enabled = std::env::var("MERMAN_ARCHITECTURE_LAYOUT_TIMING")
@@ -291,6 +296,272 @@ fn layout_architecture_diagram_model(
     let padding_px = padding_px.max(0.0);
     let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let font_size_px = font_size_px.max(1.0);
+
+    #[derive(Debug, Clone, Copy)]
+    struct BBox {
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    }
+
+    impl BBox {
+        fn from_rect(x: f64, y: f64, w: f64, h: f64) -> Self {
+            Self {
+                min_x: x,
+                min_y: y,
+                max_x: x + w,
+                max_y: y + h,
+            }
+        }
+
+        fn union(self, other: Self) -> Self {
+            Self {
+                min_x: self.min_x.min(other.min_x),
+                min_y: self.min_y.min(other.min_y),
+                max_x: self.max_x.max(other.max_x),
+                max_y: self.max_y.max(other.max_y),
+            }
+        }
+
+        fn inflate(self, pad: f64) -> Self {
+            Self {
+                min_x: self.min_x - pad,
+                min_y: self.min_y - pad,
+                max_x: self.max_x + pad,
+                max_y: self.max_y + pad,
+            }
+        }
+
+        fn center(self) -> (f64, f64) {
+            (
+                (self.min_x + self.max_x) / 2.0,
+                (self.min_y + self.max_y) / 2.0,
+            )
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct LabelExtras {
+        left: f64,
+        right: f64,
+        bottom: f64,
+    }
+
+    fn measure_service_label_extras(
+        title: &str,
+        max_width_px: f64,
+        measurer: &dyn crate::text::TextMeasurer,
+        style: &crate::text::TextStyle,
+        icon_size: f64,
+        font_size_px: f64,
+    ) -> Option<LabelExtras> {
+        let title = title.trim();
+        if title.is_empty() {
+            return None;
+        }
+
+        let mut max_left = 0.0f64;
+        let mut max_right = 0.0f64;
+        let mut line_count = 0usize;
+
+        for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(title) {
+            let tokens = crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
+            let mut curr = String::new();
+            for tok in tokens {
+                if curr.is_empty() {
+                    curr.push_str(&tok);
+                    continue;
+                }
+
+                let old_len = curr.len();
+                curr.push_str(&tok);
+                let w = measurer.measure(curr.trim_end(), style).width;
+                if w <= max_width_px {
+                    continue;
+                }
+
+                curr.truncate(old_len);
+                let line = curr.trim();
+                if !line.is_empty() {
+                    // Cytoscape `eles.boundingBox()` includes label bounds by default, and its
+                    // label boxes include ASCII overhang (canvas text outline extents can be
+                    // slightly asymmetric around the anchor). Use the overhang-aware probe so
+                    // `aux.relocateComponent` parity stays stable for short labels (e.g. `G1`).
+                    let (l, r) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style);
+                    max_left = max_left.max(l);
+                    max_right = max_right.max(r);
+                    line_count += 1;
+                }
+
+                curr.clear();
+                curr.push_str(&tok);
+            }
+
+            let line = curr.trim();
+            if !line.is_empty() {
+                let (l, r) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style);
+                max_left = max_left.max(l);
+                max_right = max_right.max(r);
+                line_count += 1;
+            }
+        }
+
+        if line_count == 0 {
+            return None;
+        }
+
+        let bbox_h = (line_count as f64) * font_size_px * 1.1875;
+        let half_icon = icon_size / 2.0;
+        Some(LabelExtras {
+            left: (half_icon - max_left).min(0.0),
+            right: (max_right - half_icon).max(0.0),
+            bottom: (bbox_h - 1.0).max(0.0),
+        })
+    }
+
+    // Approximate Cytoscape `eles.boundingBox()` in the pre-layout state where nodes are not
+    // explicitly positioned (default `{x: 0, y: 0}` in Cytoscape). The returned center is used
+    // as our initial coordinate frame so FCoSE's relocation step matches upstream outputs.
+    let initial_center: (f64, f64) = {
+        let text_style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: font_size_px,
+            font_weight: None,
+        };
+
+        let mut node_type: FxHashMap<&str, ArchitectureNodeType> = FxHashMap::default();
+        node_type.reserve(model.nodes.len().saturating_mul(2));
+        let mut node_title: FxHashMap<&str, &str> = FxHashMap::default();
+        node_title.reserve(model.nodes.len().saturating_mul(2));
+        let mut node_group: FxHashMap<&str, &str> = FxHashMap::default();
+        node_group.reserve(model.nodes.len().saturating_mul(2));
+        for n in &model.nodes {
+            node_type.insert(n.id, n.node_type);
+            if let Some(t) = n.title {
+                node_title.insert(n.id, t);
+            }
+            if let Some(g) = n.in_group {
+                node_group.insert(n.id, g);
+            }
+        }
+
+        let mut group_parent: FxHashMap<&str, &str> = FxHashMap::default();
+        group_parent.reserve(model.groups.len().saturating_mul(2));
+        let mut group_title: FxHashMap<&str, &str> = FxHashMap::default();
+        group_title.reserve(model.groups.len().saturating_mul(2));
+        for g in &model.groups {
+            if let Some(p) = g.in_group {
+                group_parent.insert(g.id, p);
+            }
+            if let Some(t) = g.title {
+                group_title.insert(g.id, t);
+            }
+        }
+
+        // Leaf bboxes at Cytoscape default node center (0,0), expressed in our top-left space.
+        let node_x = -half_icon;
+        let node_y = -half_icon;
+        let mut node_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
+        node_bbox.reserve(model.nodes.len().saturating_mul(2));
+        for n in &model.nodes {
+            // Cytoscape `eles.boundingBox()` (used by FCoSE for relocation) does not include
+            // node labels by default (`includeLabels: false`). Mermaid Architecture also sets
+            // `nodeDimensionsIncludeLabels: false`, so service titles do not affect layout
+            // bounds. Keep the pre-layout center based on icon rectangles only.
+            let bb = BBox::from_rect(node_x, node_y, icon_size, icon_size);
+            node_bbox.insert(n.id, bb);
+        }
+
+        // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.
+        //
+        // Notably, we do *not* accumulate padding across nested compounds here. This matches the
+        // observed behavior of Mermaid/Cytoscape `eles.boundingBox()` in the pre-layout state for
+        // deep group chains, where intermediate compounds do not expand the relocation center as
+        // if their padding stacked recursively.
+        let mut group_to_leaves: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+        group_to_leaves.reserve(model.groups.len().saturating_mul(2));
+        for g in &model.groups {
+            group_to_leaves.entry(g.id).or_default();
+        }
+        for n in &model.nodes {
+            let mut cur = n.in_group;
+            while let Some(gid) = cur {
+                group_to_leaves.entry(gid).or_default().push(n.id);
+                cur = group_parent.get(gid).copied();
+            }
+        }
+
+        let mut group_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
+        group_bbox.reserve(model.groups.len().saturating_mul(2));
+        let base_pad = (icon_size / 2.0) + 2.5;
+        for g in &model.groups {
+            let Some(members) = group_to_leaves.get(g.id) else {
+                continue;
+            };
+            let mut bb: Option<BBox> = None;
+            for &nid in members {
+                if let Some(nbb) = node_bbox.get(nid).copied() {
+                    bb = Some(bb.map(|b| b.union(nbb)).unwrap_or(nbb));
+                }
+            }
+            if let Some(bb) = bb {
+                let mut bb = bb.inflate(base_pad);
+
+                // Cytoscape `eles.boundingBox()` includes labels by default, and Mermaid sets
+                // `compound-sizing-wrt-labels: include` for architecture. In practice this
+                // extends compound bounds downward by roughly one line of text height for groups
+                // with titles, affecting the "original center" used by `aux.relocateComponent`.
+                if let Some(title) = group_title.get(g.id).copied().map(str::trim) {
+                    if !title.is_empty() {
+                        let line_count =
+                            crate::text::DeterministicTextMeasurer::normalized_text_lines(title)
+                                .len()
+                                .max(1) as f64;
+                        let bbox_h = line_count * font_size_px * 1.1875;
+                        bb.max_y += bbox_h;
+                    }
+                }
+
+                group_bbox.insert(g.id, bb);
+            }
+        }
+
+        let mut overall: Option<BBox> = None;
+        // Prefer top-level groups if any exist; otherwise fall back to leaf nodes.
+        let mut any_group = false;
+        for g in &model.groups {
+            if g.in_group.is_none() {
+                if let Some(bb) = group_bbox.get(g.id).copied() {
+                    overall = Some(overall.map(|b| b.union(bb)).unwrap_or(bb));
+                    any_group = true;
+                }
+            }
+        }
+        if !any_group {
+            for bb in node_bbox.values().copied() {
+                overall = Some(overall.map(|b| b.union(bb)).unwrap_or(bb));
+            }
+        }
+
+        overall.map(|b| b.center()).unwrap_or((0.0, 0.0))
+    };
+    if std::env::var("MERMAN_ARCH_DEBUG_INIT_CENTER")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        eprintln!(
+            "[arch-init-center] icon_size={:.3} padding={:.3} font_size={:.3} center=({:.6},{:.6}) groups={} nodes={}",
+            icon_size,
+            padding_px,
+            font_size_px,
+            initial_center.0,
+            initial_center.1,
+            model.groups.len(),
+            model.nodes.len(),
+        );
+    }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Dir {
@@ -477,70 +748,6 @@ fn layout_architecture_diagram_model(
     }
 
     let positions_start = timing_enabled.then(std::time::Instant::now);
-
-    // Grid step heuristic: close to Mermaid@11.12.2 outputs for default config.
-    let grid_step = (icon_size + 3.0 * padding_px).max(icon_size);
-    let component_gap = (grid_step / 2.0).max(1.0);
-
-    // Convert grid coords to pixel coords, lay out disconnected components left-to-right.
-    let mut pos_px: std::collections::HashMap<&str, (f64, f64)> =
-        std::collections::HashMap::with_capacity(model.nodes.len().saturating_mul(2));
-    let mut offset_x = 0.0f64;
-    for spatial in &components {
-        // Compute component bbox in pixel space before offset.
-        let mut min_x = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-
-        for (id, (gx, gy)) in spatial.iter() {
-            let x = (*gx as f64) * grid_step;
-            let y = -(*gy as f64) * grid_step;
-            min_x = min_x.min(x);
-            max_x = max_x.max(x + icon_size);
-            pos_px.insert(*id, (x, y));
-        }
-
-        // Apply component offset.
-        let dx = offset_x - min_x;
-        for id in spatial.keys() {
-            let id = *id;
-            let (x, y) = pos_px.get(id).copied().unwrap_or((0.0, 0.0));
-            pos_px.insert(id, (x + dx, y));
-        }
-
-        offset_x += (max_x - min_x) + component_gap;
-    }
-
-    // Global centering heuristic:
-    // - X: center the node centers around `half_icon` (matches Mermaid's group/icon shifts).
-    // - Y: if groups exist, bias down by ~1 line to leave room for group headers.
-    let mut min_cx = f64::INFINITY;
-    let mut max_cx = f64::NEG_INFINITY;
-    let mut min_cy = f64::INFINITY;
-    let mut max_cy = f64::NEG_INFINITY;
-    for (x, y) in pos_px.values() {
-        let cx = x + half_icon;
-        let cy = y + half_icon;
-        min_cx = min_cx.min(cx);
-        max_cx = max_cx.max(cx);
-        min_cy = min_cy.min(cy);
-        max_cy = max_cy.max(cy);
-    }
-    let center_cx = if min_cx.is_finite() && max_cx.is_finite() {
-        (min_cx + max_cx) / 2.0
-    } else {
-        half_icon
-    };
-    let center_cy = if min_cy.is_finite() && max_cy.is_finite() {
-        (min_cy + max_cy) / 2.0
-    } else {
-        half_icon
-    };
-
-    let has_group_header = !model.groups.is_empty();
-    let target_cx = half_icon;
-    let target_cy = half_icon + if has_group_header { font_size_px } else { 0.0 };
-    let shift_x = target_cx - center_cx;
-    let shift_y = target_cy - center_cy;
     if let Some(s) = positions_start {
         timings.positions_and_centering = s.elapsed();
     }
@@ -557,11 +764,13 @@ fn layout_architecture_diagram_model(
             }
         }
 
-        let (x, y) = pos_px.get(n.id).copied().unwrap_or((0.0, 0.0));
         nodes.push(LayoutNode {
             id: n.id.to_string(),
-            x: x + shift_x,
-            y: y + shift_y,
+            // Cytoscape node positions are centers, but our SVG model uses top-left anchored
+            // `<g transform="translate(x,y)">` for the 80x80 icon box. Convert the pre-layout
+            // `eles.boundingBox()` center into our top-left space.
+            x: initial_center.0 - half_icon,
+            y: initial_center.1 - half_icon,
             width: icon_size,
             height: icon_size,
             is_cluster: false,
@@ -667,211 +876,215 @@ fn layout_architecture_diagram_model(
         // AlignmentConstraint.
         let mut horizontal_all: Vec<Vec<String>> = Vec::new();
         let mut vertical_all: Vec<Vec<String>> = Vec::new();
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        enum GroupAlignment {
+            Horizontal,
+            Vertical,
+            Bend,
+        }
 
-        let mut shared_group: Option<&str> = None;
-        let mut all_nodes_share_same_group = true;
-        for n in &model.nodes {
-            let g = node_group.get(n.id).and_then(|v| *v);
-            match (shared_group, g) {
-                (None, None) => {}
-                (None, Some(x)) => shared_group = Some(x),
-                (Some(x), Some(y)) if x == y => {}
-                _ => {
-                    all_nodes_share_same_group = false;
-                    break;
-                }
+        fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
+            let (Some(a), Some(b)) = (a.and_then(Dir::from_char), b.and_then(Dir::from_char))
+            else {
+                return GroupAlignment::Bend;
+            };
+            if a.is_x() != b.is_x() {
+                GroupAlignment::Bend
+            } else if a.is_x() {
+                GroupAlignment::Horizontal
+            } else {
+                GroupAlignment::Vertical
             }
         }
 
-        if all_nodes_share_same_group {
-            for spatial_map in spatial_maps {
-                let mut horizontal_alignments: std::collections::BTreeMap<i32, Vec<String>> =
-                    std::collections::BTreeMap::new();
-                let mut vertical_alignments: std::collections::BTreeMap<i32, Vec<String>> =
-                    std::collections::BTreeMap::new();
-
-                for (id, (x, y)) in spatial_map {
-                    horizontal_alignments
-                        .entry(*y)
-                        .or_default()
-                        .push((*id).to_string());
-                    vertical_alignments
-                        .entry(*x)
-                        .or_default()
-                        .push((*id).to_string());
-                }
-
-                for v in horizontal_alignments.values() {
-                    if v.len() > 1 {
-                        horizontal_all.push(v.clone());
-                    }
-                }
-                for v in vertical_alignments.values() {
-                    if v.len() > 1 {
-                        vertical_all.push(v.clone());
-                    }
-                }
+        // Track how groups connect (used when flattening alignment arrays across groups).
+        let mut group_alignments: std::collections::BTreeMap<
+            String,
+            std::collections::BTreeMap<String, GroupAlignment>,
+        > = std::collections::BTreeMap::new();
+        for e in &model.edges {
+            let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
+                continue;
+            };
+            let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
+                continue;
+            };
+            if lhs_group == rhs_group {
+                continue;
             }
-        } else {
-            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-            enum GroupAlignment {
-                Horizontal,
-                Vertical,
-                Bend,
+            let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
+            if alignment == GroupAlignment::Bend {
+                continue;
             }
+            group_alignments
+                .entry(lhs_group.to_string())
+                .or_default()
+                .insert(rhs_group.to_string(), alignment);
+            group_alignments
+                .entry(rhs_group.to_string())
+                .or_default()
+                .insert(lhs_group.to_string(), alignment);
+        }
 
-            fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
-                let (Some(a), Some(b)) = (a.and_then(Dir::from_char), b.and_then(Dir::from_char))
-                else {
-                    return GroupAlignment::Bend;
-                };
-                if a.is_x() != b.is_x() {
-                    GroupAlignment::Bend
-                } else if a.is_x() {
-                    GroupAlignment::Horizontal
-                } else {
-                    GroupAlignment::Vertical
-                }
-            }
-
-            // Track how groups connect (used when flattening alignment arrays across groups).
-            let mut group_alignments: std::collections::BTreeMap<
+        fn flatten_alignments(
+            alignment_obj: &IndexMap<i32, IndexMap<String, Vec<String>>>,
+            alignment_dir: GroupAlignment,
+            group_alignments: &std::collections::BTreeMap<
                 String,
                 std::collections::BTreeMap<String, GroupAlignment>,
-            > = std::collections::BTreeMap::new();
-            for e in &model.edges {
-                let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
-                    continue;
-                };
-                let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
-                    continue;
-                };
-                if lhs_group == rhs_group {
-                    continue;
+            >,
+        ) -> Vec<Vec<String>> {
+            // Mirror Mermaid's `flattenAlignments(...)` + `Object.values(...)` ordering.
+            //
+            // Mermaid uses plain JS objects keyed by row/col number. Enumeration order puts
+            // non-negative integer keys first (ascending), then other string keys (insertion
+            // order). We reproduce that here to keep the first element of each alignment group
+            // stable, since `cose-base` uses it to seed dummy-node positions.
+            fn js_object_dir_order(obj: &IndexMap<i32, IndexMap<String, Vec<String>>>) -> Vec<i32> {
+                let mut non_neg: Vec<i32> = Vec::new();
+                let mut other: Vec<i32> = Vec::new();
+                for &k in obj.keys() {
+                    if k >= 0 {
+                        non_neg.push(k);
+                    } else {
+                        other.push(k);
+                    }
                 }
-                let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
-                if alignment == GroupAlignment::Bend {
-                    continue;
-                }
-                group_alignments
-                    .entry(lhs_group.to_string())
-                    .or_default()
-                    .insert(rhs_group.to_string(), alignment);
-                group_alignments
-                    .entry(rhs_group.to_string())
-                    .or_default()
-                    .insert(lhs_group.to_string(), alignment);
+                non_neg.sort_unstable();
+                non_neg.extend(other);
+                non_neg
             }
 
-            fn flatten_alignments(
-                alignment_obj: &std::collections::BTreeMap<
-                    i32,
-                    std::collections::BTreeMap<String, Vec<String>>,
-                >,
-                alignment_dir: GroupAlignment,
-                group_alignments: &std::collections::BTreeMap<
-                    String,
-                    std::collections::BTreeMap<String, GroupAlignment>,
-                >,
-            ) -> std::collections::BTreeMap<String, Vec<String>> {
-                let mut prev: std::collections::BTreeMap<String, Vec<String>> =
-                    std::collections::BTreeMap::new();
-                for (dir, alignments) in alignment_obj {
-                    let mut cnt = 0usize;
-                    let mut arr: Vec<(String, Vec<String>)> = alignments
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    if arr.len() == 1 {
-                        prev.insert(dir.to_string(), arr.pop().unwrap().1);
-                        continue;
-                    }
-                    for i in 0..arr.len().saturating_sub(1) {
-                        for j in (i + 1)..arr.len() {
-                            let (a_group_id, a_node_ids) = &arr[i];
-                            let (b_group_id, b_node_ids) = &arr[j];
-                            let alignment = group_alignments
-                                .get(a_group_id)
-                                .and_then(|m| m.get(b_group_id))
-                                .copied();
+            fn is_js_array_index_key(k: &str) -> Option<u32> {
+                if k.is_empty() {
+                    return None;
+                }
+                if k.as_bytes().iter().all(|b| b.is_ascii_digit()) {
+                    return k.parse::<u32>().ok();
+                }
+                None
+            }
 
-                            if alignment == Some(alignment_dir)
-                                || a_group_id == "default"
-                                || b_group_id == "default"
-                            {
-                                prev.entry(dir.to_string())
-                                    .or_default()
-                                    .extend(a_node_ids.iter().cloned());
-                                prev.entry(dir.to_string())
-                                    .or_default()
-                                    .extend(b_node_ids.iter().cloned());
-                            } else {
-                                let key_a = format!("{dir}-{cnt}");
-                                cnt += 1;
-                                prev.insert(key_a, a_node_ids.clone());
-                                let key_b = format!("{dir}-{cnt}");
-                                cnt += 1;
-                                prev.insert(key_b, b_node_ids.clone());
-                            }
+            let mut prev: IndexMap<String, Vec<String>> = IndexMap::new();
+
+            for dir in js_object_dir_order(alignment_obj) {
+                let Some(alignments) = alignment_obj.get(&dir) else {
+                    continue;
+                };
+                let mut cnt = 0usize;
+                let mut arr: Vec<(String, Vec<String>)> = alignments
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                if arr.len() == 1 {
+                    prev.insert(dir.to_string(), arr.pop().unwrap().1);
+                    continue;
+                }
+                for i in 0..arr.len().saturating_sub(1) {
+                    for j in (i + 1)..arr.len() {
+                        let (a_group_id, a_node_ids) = &arr[i];
+                        let (b_group_id, b_node_ids) = &arr[j];
+                        let alignment = group_alignments
+                            .get(a_group_id)
+                            .and_then(|m| m.get(b_group_id))
+                            .copied();
+
+                        if alignment == Some(alignment_dir)
+                            || a_group_id == "default"
+                            || b_group_id == "default"
+                        {
+                            prev.entry(dir.to_string())
+                                .or_default()
+                                .extend(a_node_ids.iter().cloned());
+                            prev.entry(dir.to_string())
+                                .or_default()
+                                .extend(b_node_ids.iter().cloned());
+                        } else {
+                            let key_a = format!("{dir}-{cnt}");
+                            cnt += 1;
+                            prev.insert(key_a, a_node_ids.clone());
+                            let key_b = format!("{dir}-{cnt}");
+                            cnt += 1;
+                            prev.insert(key_b, b_node_ids.clone());
                         }
                     }
                 }
-                prev
             }
 
-            for spatial_map in spatial_maps {
-                let mut horizontal_alignments: std::collections::BTreeMap<
-                    i32,
-                    std::collections::BTreeMap<String, Vec<String>>,
-                > = std::collections::BTreeMap::new();
-                let mut vertical_alignments: std::collections::BTreeMap<
-                    i32,
-                    std::collections::BTreeMap<String, Vec<String>>,
-                > = std::collections::BTreeMap::new();
-
-                for (id, (x, y)) in spatial_map {
-                    let id = *id;
-                    let node_group = node_group
-                        .get(id)
-                        .and_then(|v| *v)
-                        .unwrap_or("default")
-                        .to_string();
-
-                    horizontal_alignments
-                        .entry(*y)
-                        .or_default()
-                        .entry(node_group.clone())
-                        .or_default()
-                        .push(id.to_string());
-
-                    vertical_alignments
-                        .entry(*x)
-                        .or_default()
-                        .entry(node_group)
-                        .or_default()
-                        .push(id.to_string());
+            // `Object.values(prev)` ordering.
+            let mut numeric_keys: Vec<(u32, String)> = Vec::new();
+            let mut other_keys: Vec<String> = Vec::new();
+            for k in prev.keys() {
+                if let Some(ix) = is_js_array_index_key(k.as_str()) {
+                    numeric_keys.push((ix, k.clone()));
+                } else {
+                    other_keys.push(k.clone());
                 }
+            }
+            numeric_keys.sort_by_key(|(ix, _)| *ix);
 
-                let horiz_map = flatten_alignments(
-                    &horizontal_alignments,
-                    GroupAlignment::Horizontal,
-                    &group_alignments,
-                );
-                let vert_map = flatten_alignments(
-                    &vertical_alignments,
-                    GroupAlignment::Vertical,
-                    &group_alignments,
-                );
-
-                for v in horiz_map.values() {
-                    if v.len() > 1 {
-                        horizontal_all.push(v.clone());
-                    }
+            let mut out: Vec<Vec<String>> = Vec::new();
+            for (_, k) in numeric_keys {
+                if let Some(v) = prev.get(&k) {
+                    out.push(v.clone());
                 }
-                for v in vert_map.values() {
-                    if v.len() > 1 {
-                        vertical_all.push(v.clone());
-                    }
+            }
+            for k in other_keys {
+                if let Some(v) = prev.get(&k) {
+                    out.push(v.clone());
+                }
+            }
+            out
+        }
+
+        for spatial_map in spatial_maps {
+            let mut horizontal_alignments: IndexMap<i32, IndexMap<String, Vec<String>>> =
+                IndexMap::new();
+            let mut vertical_alignments: IndexMap<i32, IndexMap<String, Vec<String>>> =
+                IndexMap::new();
+
+            for (id, (x, y)) in spatial_map {
+                let id = *id;
+                let node_group = node_group
+                    .get(id)
+                    .and_then(|v| *v)
+                    .unwrap_or("default")
+                    .to_string();
+
+                horizontal_alignments
+                    .entry(*y)
+                    .or_insert_with(IndexMap::new)
+                    .entry(node_group.clone())
+                    .or_insert_with(Vec::new)
+                    .push(id.to_string());
+
+                vertical_alignments
+                    .entry(*x)
+                    .or_insert_with(IndexMap::new)
+                    .entry(node_group)
+                    .or_insert_with(Vec::new)
+                    .push(id.to_string());
+            }
+
+            let horiz_map = flatten_alignments(
+                &horizontal_alignments,
+                GroupAlignment::Horizontal,
+                &group_alignments,
+            );
+            let vert_map = flatten_alignments(
+                &vertical_alignments,
+                GroupAlignment::Vertical,
+                &group_alignments,
+            );
+
+            for v in &horiz_map {
+                if v.len() > 1 {
+                    horizontal_all.push(v.clone());
+                }
+            }
+            for v in &vert_map {
+                if v.len() > 1 {
+                    vertical_all.push(v.clone());
                 }
             }
         }
@@ -956,141 +1169,33 @@ fn layout_architecture_diagram_model(
         }
 
         // Run `manatee` layout refinement.
-        // Ports of layout-base/CoSE constants used by Cytoscape FCoSE.
-        const SIMPLE_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.SIMPLE_NODE_SIZE`
-        const NESTING_FACTOR: f64 = 0.1; // cytoscape-fcose default `nestingFactor`
+        //
+        // Mermaid Architecture uses Cytoscape FCoSE with `idealEdgeLength` and `edgeElasticity`
+        // callbacks that depend *only* on whether the connected nodes share the same parent
+        // compound (group). Avoid adding layout-base "smart" adjustments here: upstream Mermaid
+        // does not apply them, and doing so causes `parity-root` viewport drift in group-heavy
+        // fixtures.
 
-        let has_inter_parent_edge = model.edges.iter().any(|e| {
-            let lhs_g = node_group.get(e.lhs_id).and_then(|v| *v);
-            let rhs_g = node_group.get(e.rhs_id).and_then(|v| *v);
-            lhs_g != rhs_g
-        });
-
-        let mut node_chain: std::collections::BTreeMap<&str, Vec<&str>> =
-            std::collections::BTreeMap::new();
-        let mut group_estimated_size: std::collections::BTreeMap<&str, f64> =
-            std::collections::BTreeMap::new();
-
-        if has_inter_parent_edge {
-            let mut group_parent_map: std::collections::BTreeMap<&str, &str> =
-                std::collections::BTreeMap::new();
-            for g in &model.groups {
-                if let Some(parent) = g.in_group {
-                    group_parent_map.insert(g.id, parent);
-                }
-            }
-
-            fn group_chain<'a>(
-                mut g: &'a str,
-                group_parent_map: &std::collections::BTreeMap<&'a str, &'a str>,
-            ) -> Vec<&'a str> {
-                let mut out: Vec<&'a str> = Vec::new();
-                out.push(g);
-                while let Some(p) = group_parent_map.get(g).copied() {
-                    g = p;
-                    out.push(g);
-                }
-                out.reverse();
-                out
-            }
-
-            for n in &model.nodes {
-                let chain = node_group
-                    .get(n.id)
-                    .copied()
-                    .flatten()
-                    .map(|g| group_chain(g, &group_parent_map))
-                    .unwrap_or_default();
-                node_chain.insert(n.id, chain);
-            }
-
-            #[derive(Debug, Clone, Copy)]
-            enum Child<'a> {
-                Node(#[allow(dead_code)] &'a str),
-                Group(&'a str),
-            }
-
-            let mut group_children: std::collections::BTreeMap<&str, Vec<Child<'_>>> =
-                std::collections::BTreeMap::new();
-            for g in &model.groups {
-                group_children.entry(g.id).or_default();
-            }
-            for g in &model.groups {
-                if let Some(parent) = g.in_group {
-                    group_children
-                        .entry(parent)
-                        .or_default()
-                        .push(Child::Group(g.id));
-                }
-            }
-            for n in &model.nodes {
-                if let Some(parent) = node_group.get(n.id).copied().flatten() {
-                    group_children
-                        .entry(parent)
-                        .or_default()
-                        .push(Child::Node(n.id));
-                }
-            }
-
-            fn estimated_size_of_group<'a>(
-                g: &'a str,
-                icon_size: f64,
-                group_children: &std::collections::BTreeMap<&'a str, Vec<Child<'a>>>,
-                memo: &mut std::collections::BTreeMap<&'a str, f64>,
-            ) -> f64 {
-                if let Some(v) = memo.get(g).copied() {
-                    return v;
-                }
-                let children = group_children.get(g).map(|v| v.as_slice()).unwrap_or(&[]);
-                if children.is_empty() {
-                    // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
-                    memo.insert(g, SIMPLE_NODE_SIZE);
-                    return SIMPLE_NODE_SIZE;
-                }
-
-                let mut sum = 0.0f64;
-                let mut cnt = 0.0f64;
-                for c in children {
-                    let s = match c {
-                        Child::Node(_) => icon_size,
-                        Child::Group(id) => {
-                            estimated_size_of_group(id, icon_size, group_children, memo)
-                        }
-                    };
-                    sum += s;
-                    cnt += 1.0;
-                }
-                let out = if cnt > 0.0 {
-                    sum / cnt.sqrt()
-                } else {
-                    SIMPLE_NODE_SIZE
-                };
-                memo.insert(g, out);
-                out
-            }
-
-            for g in &model.groups {
-                let _ = estimated_size_of_group(
-                    g.id,
-                    icon_size,
-                    &group_children,
-                    &mut group_estimated_size,
-                );
-            }
-        }
-
-        let mut edge_seen: FxHashSet<(&str, &str)> = FxHashSet::default();
         let mut edges: Vec<manatee::Edge> = Vec::new();
         let mut default_edge_length_sum = 0.0f64;
         let mut default_edge_length_cnt = 0.0f64;
 
+        // Cytoscape FCoSE de-duplicates multiple edges between the same two nodes when building
+        // its internal layout graph:
+        //
+        // `sourceNode.getEdgesBetween(targetNode).length == 0`
+        //
+        // This means bidirectional/multi edges still render in the final SVG, but only the first
+        // edge between each undirected node pair contributes forces to the layout.
+        //
+        // Without this, our spring forces can cancel in small symmetric graphs, which makes the
+        // final spacing (and thus the root `viewBox/max-width`) diverge from Mermaid baselines.
+        let mut seen_undirected_layout_edges: FxHashSet<(String, String)> = FxHashSet::default();
+
         for e in &model.edges {
-            let (u, v) = if e.lhs_id <= e.rhs_id {
-                (e.lhs_id, e.rhs_id)
-            } else {
-                (e.rhs_id, e.lhs_id)
-            };
-            if !edge_seen.insert((u, v)) {
+            let (a, b) = (e.lhs_id, e.rhs_id);
+            let (k1, k2) = if a <= b { (a, b) } else { (b, a) };
+            if !seen_undirected_layout_edges.insert((k1.to_string(), k2.to_string())) {
                 continue;
             }
 
@@ -1106,64 +1211,7 @@ fn layout_architecture_diagram_model(
             default_edge_length_sum += base_ideal_length;
             default_edge_length_cnt += 1.0;
 
-            // Mimic layout-base `FDLayout.calcIdealEdgeLengths()` adjustments for inter-graph edges:
-            //
-            // - smart ideal edge length: add estimated sizes of the LCA-level endpoints
-            // - nesting factor: scale with inclusion tree depth delta
-            let ideal_length = if same_parent {
-                base_ideal_length
-            } else {
-                let chain_a = node_chain
-                    .get(e.lhs_id)
-                    .map(|v| v.as_slice())
-                    .unwrap_or(&[]);
-                let chain_b = node_chain
-                    .get(e.rhs_id)
-                    .map(|v| v.as_slice())
-                    .unwrap_or(&[]);
-
-                let common_len = chain_a
-                    .iter()
-                    .zip(chain_b.iter())
-                    .take_while(|(a, b)| a == b)
-                    .count();
-
-                // `edge.getSourceInLca()` / `edge.getTargetInLca()` equivalents.
-                let source_in_lca = if chain_a.len() == common_len {
-                    e.lhs_id
-                } else {
-                    chain_a[common_len]
-                };
-                let target_in_lca = if chain_b.len() == common_len {
-                    e.rhs_id
-                } else {
-                    chain_b[common_len]
-                };
-
-                let est = |id: &str| -> f64 {
-                    if group_estimated_size.contains_key(id) {
-                        group_estimated_size
-                            .get(id)
-                            .copied()
-                            .unwrap_or(SIMPLE_NODE_SIZE)
-                    } else {
-                        // Leaf nodes are uniform `icon_size x icon_size` for Architecture.
-                        icon_size
-                    }
-                };
-
-                let size_a = est(source_in_lca);
-                let size_b = est(target_in_lca);
-                let smart_add = size_a + size_b - (2.0 * SIMPLE_NODE_SIZE);
-
-                let node_depth_a = chain_a.len() + 1; // root graph nodes start at depth=1
-                let node_depth_b = chain_b.len() + 1;
-                let lca_depth = if common_len == 0 { 1 } else { common_len };
-                let depth_delta = (node_depth_a + node_depth_b).saturating_sub(2 * lca_depth);
-                let nesting_add = base_ideal_length * NESTING_FACTOR * (depth_delta as f64);
-
-                base_ideal_length + smart_add + nesting_add
-            };
+            let ideal_length = base_ideal_length;
 
             let elasticity = if same_parent { 0.45 } else { 0.001 };
 
@@ -1208,8 +1256,17 @@ fn layout_architecture_diagram_model(
                         .map(|g| g.to_string()),
                     width: n.width,
                     height: n.height,
-                    x: n.x + n.width / 2.0,
-                    y: n.y + n.height / 2.0,
+                    // Mermaid Architecture uses Cytoscape manual edge endpoints like `0 50%`,
+                    // which are interpreted relative to the node's `position()` (see Cytoscape
+                    // `manualEndptToPx`). Upstream Mermaid stores positions in a top-left
+                    // anchored frame so endpoints land on the icon border (e.g. `L` == left-mid).
+                    //
+                    // FCoSE itself treats node positions as centers. To match upstream behavior
+                    // (and its baselined `viewBox/max-width`), we keep Cytoscape-like *center*
+                    // positions in the layout pipeline, but later render nodes with a top-left
+                    // anchored SVG group at that same `(x, y)` (as Mermaid does).
+                    x: n.x + (icon_size / 2.0),
+                    y: n.y + (icon_size / 2.0),
                 })
                 .collect(),
             edges,
@@ -1223,6 +1280,8 @@ fn layout_architecture_diagram_model(
                 .collect(),
         };
 
+        let compound_padding_px = padding_px;
+
         let opts = manatee::FcoseOptions {
             alignment_constraint: Some(manatee::AlignmentConstraint {
                 horizontal: horizontal_all,
@@ -1230,13 +1289,40 @@ fn layout_architecture_diagram_model(
             }),
             relative_placement_constraint: relative,
             default_edge_length: Some(default_edge_length),
-            compound_padding: Some(padding_px),
+            compound_padding: Some(compound_padding_px),
+            relocate_center: None,
+            // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
+            // which advances the seeded RNG stream and can change final positions.
+            rerun: true,
             // Mermaid@11.12.2 Architecture layout uses Cytoscape FCoSE with a spectral
             // initialization that depends on `Math.random()`. Our upstream SVG baselines are
             // generated with a deterministic RNG seed (see ADR-0055), so we must use the same
             // seed here to match those baselines.
             random_seed: 1,
         };
+
+        if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")
+            .ok()
+            .as_deref()
+            == Some("1")
+        {
+            eprintln!(
+                "[arch-fcose] nodes={} edges={} compounds={} default_edge_length={:.6} compound_padding={:.6}",
+                graph.nodes.len(),
+                graph.edges.len(),
+                graph.compounds.len(),
+                default_edge_length,
+                compound_padding_px,
+            );
+            if let Some(a) = &opts.alignment_constraint {
+                eprintln!("[arch-fcose] alignment.horizontal={:?}", a.horizontal);
+                eprintln!("[arch-fcose] alignment.vertical={:?}", a.vertical);
+            }
+            eprintln!(
+                "[arch-fcose] relative_placement_constraint={:?}",
+                opts.relative_placement_constraint
+            );
+        }
 
         if let Some(s) = manatee_prepare_start {
             timings.manatee_prepare = s.elapsed();
@@ -1254,8 +1340,8 @@ fn layout_architecture_diagram_model(
 
         for n in &mut nodes {
             if let Some(p) = result.positions.get(n.id.as_str()) {
-                n.x = p.x - n.width / 2.0;
-                n.y = p.y - n.height / 2.0;
+                n.x = p.x - (icon_size / 2.0);
+                n.y = p.y - (icon_size / 2.0);
             }
         }
 

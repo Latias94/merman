@@ -13,6 +13,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Architecture: refresh compound bounds after FCoSE spring iterations before applying `relocateComponent`-style centering
+  (fixes `parity-root` root `max-width` drift in deep compound/group fixtures).
 - Flowchart: align icon node shape rendering with upstream Mermaid (`icon` vs `iconSquare`) to avoid NaN path data and
   restore SVG DOM parity for AWS icon fixtures.
 - Flowchart: improved `iconSquare` RoughJS path parity (rounded-rect path structure) for upstream icon shape fixtures.

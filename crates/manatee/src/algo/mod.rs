@@ -19,6 +19,12 @@ pub struct CoseBilkentOptions {
 #[derive(Debug, Clone, Default)]
 pub struct FcoseOptions {
     pub random_seed: u64,
+    /// Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` inside `layoutstop`),
+    /// which advances the seeded `Math.random()` stream and can change the final coordinates.
+    ///
+    /// When enabled, the Rust port mimics that behavior by performing two consecutive runs while
+    /// keeping the RNG stream continuous between runs.
+    pub rerun: bool,
     /// Override for layout-base/CoSE `DEFAULT_EDGE_LENGTH` (used for repulsion/grid range, overlap
     /// separation buffer, and convergence thresholds).
     ///
@@ -31,6 +37,14 @@ pub struct FcoseOptions {
     pub relative_placement_constraint: Vec<RelativePlacementConstraint>,
     /// Optional padding applied around compound (group) bounds when computing compound repulsion.
     pub compound_padding: Option<f64>,
+    /// Optional override for the "original component center" used by `aux.relocateComponent(...)`.
+    ///
+    /// In upstream Cytoscape FCoSE, `originalCenter` comes from `eles.boundingBox()` before the
+    /// layout runs, and the final layout is translated so the component's bounding box center
+    /// matches that pre-layout center.
+    ///
+    /// When set, the Rust port uses this value instead of the layout-base bounds center.
+    pub relocate_center: Option<(f64, f64)>,
 }
 
 #[derive(Debug, Clone, Default)]
