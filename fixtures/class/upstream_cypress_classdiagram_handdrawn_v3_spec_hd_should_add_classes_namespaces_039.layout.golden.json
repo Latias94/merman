@@ -5,41 +5,41 @@
       "nodes": [
         {
           "id": "C1",
-          "x": 58.78,
+          "x": 59.383,
           "y": 79.5,
-          "width": 42.56,
+          "width": 43.766,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 176.34,
+          "x": 178.148,
           "y": 79.5,
-          "width": 42.56,
+          "width": 43.766,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C3",
-          "x": 306.4,
+          "x": 309.414,
           "y": 79.5,
-          "width": 42.56,
+          "width": 43.766,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C4",
-          "x": 398.96,
+          "x": 403.18,
           "y": 79.5,
-          "width": 42.56,
+          "width": 43.766,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Namespace1",
-          "x": 117.56,
+          "x": 118.766,
           "y": 79.5,
-          "width": 235.12,
+          "width": 237.531,
           "height": 159.0,
           "is_cluster": true
         }
@@ -53,15 +53,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.06,
+              "x": 81.266,
               "y": 79.5
             },
             {
-              "x": 117.56,
+              "x": 118.766,
               "y": 79.5
             },
             {
-              "x": 155.06,
+              "x": 156.266,
               "y": 79.5
             }
           ],
@@ -78,15 +78,15 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 117.56,
+          "x": 118.766,
           "y": 79.5,
-          "width": 235.12,
+          "width": 237.531,
           "height": 159.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Namespace1",
           "title_label": {
-            "x": 117.56,
+            "x": 118.766,
             "y": 12.0,
             "width": 79.2,
             "height": 24.0
@@ -101,7 +101,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 420.24,
+        "max_x": 425.063,
         "max_y": 159.0
       }
     }

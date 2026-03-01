@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "Animal",
-          "x": 34.4,
+          "x": 35.5,
           "y": 42.0,
-          "width": 68.8,
+          "width": 71.0,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Mineral",
-          "x": 153.84,
+          "x": 157.383,
           "y": 42.0,
-          "width": 70.08,
+          "width": 72.766,
           "height": 84.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 188.88,
+        "max_x": 193.766,
         "max_y": 84.0
       }
     }

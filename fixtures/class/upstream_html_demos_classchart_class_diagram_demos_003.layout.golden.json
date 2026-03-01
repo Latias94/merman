@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "Class01",
-          "x": 116.68,
+          "x": 118.785,
           "y": 96.0,
-          "width": 233.36,
+          "width": 237.57,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "Class10",
-          "x": 336.08,
+          "x": 344.499,
           "y": 96.0,
-          "width": 105.44,
+          "width": 113.859,
           "height": 168.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 388.8,
+        "max_x": 401.429,
         "max_y": 192.0
       }
     }

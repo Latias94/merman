@@ -6,7 +6,7 @@
         {
           "id": "db",
           "x": 0.0,
-          "y": 16.0,
+          "y": 0.0,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
@@ -15,9 +15,9 @@
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": 16.0,
+        "min_y": 0.0,
         "max_x": 80.0,
-        "max_y": 96.0
+        "max_y": 80.0
       }
     }
   }

@@ -5,81 +5,81 @@
       "nodes": [
         {
           "id": "A1",
-          "x": 58.78,
+          "x": 59.617,
           "y": 79.5,
-          "width": 42.56,
+          "width": 44.234,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "A2",
-          "x": 58.78,
+          "x": 59.617,
           "y": 213.5,
-          "width": 42.56,
+          "width": 44.234,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "B1a",
-          "x": 229.78,
+          "x": 232.375,
           "y": 79.5,
-          "width": 49.44,
+          "width": 51.016,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "B1b",
-          "x": 229.78,
+          "x": 232.375,
           "y": 213.5,
-          "width": 49.44,
+          "width": 51.281,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Root.A",
-          "x": 58.78,
+          "x": 59.617,
           "y": 146.5,
-          "width": 117.56,
+          "width": 119.234,
           "height": 293.0,
           "is_cluster": true
         },
         {
           "id": "Root.A.A1",
-          "x": 387.68,
+          "x": 393.086,
           "y": 146.5,
-          "width": 91.36,
+          "width": 95.141,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Root.A.A2",
-          "x": 558.96,
+          "x": 569.391,
           "y": 146.5,
-          "width": 91.36,
+          "width": 95.141,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Root.B.B1",
-          "x": 229.78,
+          "x": 232.375,
           "y": 146.5,
-          "width": 124.44,
+          "width": 126.281,
           "height": 293.0,
           "is_cluster": true
         },
         {
           "id": "Root.B.B1.B1a",
-          "x": 387.68,
+          "x": 393.086,
           "y": 409.0,
-          "width": 121.28,
+          "width": 126.172,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Root.B.B1.B1b",
-          "x": 558.96,
+          "x": 569.391,
           "y": 409.0,
-          "width": 121.28,
+          "width": 126.438,
           "height": 84.0,
           "is_cluster": false
         }
@@ -93,20 +93,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 387.68,
+              "x": 393.086,
               "y": 188.5
             },
             {
-              "x": 387.68,
+              "x": 393.086,
               "y": 330.0
             },
             {
-              "x": 387.68,
+              "x": 393.086,
               "y": 367.0
             }
           ],
           "label": {
-            "x": 387.68,
+            "x": 393.086,
             "y": 330.0,
             "width": 34.4,
             "height": 24.0
@@ -127,20 +127,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 558.96,
+              "x": 569.391,
               "y": 188.5
             },
             {
-              "x": 558.96,
+              "x": 569.391,
               "y": 330.0
             },
             {
-              "x": 558.96,
+              "x": 569.391,
               "y": 367.0
             }
           ],
           "label": {
-            "x": 558.96,
+            "x": 569.391,
             "y": 330.0,
             "width": 34.4,
             "height": 24.0
@@ -157,15 +157,15 @@
       "clusters": [
         {
           "id": "Root.A",
-          "x": 58.78,
+          "x": 59.617,
           "y": 146.5,
-          "width": 117.56,
+          "width": 119.234,
           "height": 293.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Root.A",
           "title_label": {
-            "x": 58.78,
+            "x": 59.617,
             "y": 12.0,
             "width": 44.32,
             "height": 24.0
@@ -178,15 +178,15 @@
         },
         {
           "id": "Root.B.B1",
-          "x": 229.78,
+          "x": 232.375,
           "y": 146.5,
-          "width": 124.44,
+          "width": 126.281,
           "height": 293.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Root.B.B1",
           "title_label": {
-            "x": 229.78,
+            "x": 232.375,
             "y": 12.0,
             "width": 67.36,
             "height": 24.0
@@ -201,7 +201,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 619.6,
+        "max_x": 632.609,
         "max_y": 451.0
       }
     }

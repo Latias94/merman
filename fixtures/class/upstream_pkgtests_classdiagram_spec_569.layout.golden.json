@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "EmptyClass",
-          "x": 51.68,
+          "x": 53.289,
           "y": 42.0,
-          "width": 103.36,
+          "width": 106.578,
           "height": 84.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 103.36,
+        "max_x": 106.578,
         "max_y": 84.0
       }
     }

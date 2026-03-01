@@ -5,33 +5,33 @@
       "nodes": [
         {
           "id": "A::B",
-          "x": 87.98,
+          "x": 89.883,
           "y": 79.5,
-          "width": 175.96,
+          "width": 179.766,
           "height": 159.0,
           "is_cluster": true
         },
         {
           "id": "IPC::Sender",
-          "x": 87.98,
+          "x": 89.883,
           "y": 79.5,
-          "width": 100.96,
+          "width": 104.766,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "__proto__",
-          "x": 265.72,
+          "x": 259.945,
           "y": 79.5,
-          "width": 79.52,
+          "width": 60.359,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "constructor",
-          "x": 405.32,
+          "x": 392.234,
           "y": 79.5,
-          "width": 99.68,
+          "width": 104.219,
           "height": 84.0,
           "is_cluster": false
         }
@@ -40,15 +40,15 @@
       "clusters": [
         {
           "id": "A::B",
-          "x": 87.98,
+          "x": 89.883,
           "y": 79.5,
-          "width": 175.96,
+          "width": 179.766,
           "height": 159.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "A::B",
           "title_label": {
-            "x": 87.98,
+            "x": 89.883,
             "y": 12.0,
             "width": 28.16,
             "height": 24.0
@@ -63,7 +63,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 455.16,
+        "max_x": 444.344,
         "max_y": 159.0
       }
     }

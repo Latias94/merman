@@ -5,33 +5,33 @@
       "nodes": [
         {
           "id": "Bar",
-          "x": 303.08,
+          "x": 304.618,
           "y": 311.0,
-          "width": 47.36,
+          "width": 48.563,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Foo",
-          "x": 98.94,
+          "x": 99.409,
           "y": 109.5,
-          "width": 122.88,
+          "width": 123.817,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Outer",
-          "x": 98.94,
+          "x": 99.409,
           "y": 109.5,
-          "width": 197.88,
+          "width": 198.817,
           "height": 219.0,
           "is_cluster": true
         },
         {
           "id": "Outer.Foo",
-          "x": 98.94,
+          "x": 99.409,
           "y": 311.0,
-          "width": 88.96,
+          "width": 93.094,
           "height": 84.0,
           "is_cluster": false
         }
@@ -45,20 +45,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 143.42,
+              "x": 145.955,
               "y": 311.0
             },
             {
-              "x": 238.64,
+              "x": 239.577,
               "y": 311.0
             },
             {
-              "x": 279.4,
+              "x": 280.337,
               "y": 311.0
             }
           ],
           "label": {
-            "x": 238.64,
+            "x": 239.577,
             "y": 311.0,
             "width": 31.52,
             "height": 24.0
@@ -75,15 +75,15 @@
       "clusters": [
         {
           "id": "Outer",
-          "x": 98.94,
+          "x": 99.409,
           "y": 109.5,
-          "width": 197.88,
+          "width": 198.817,
           "height": 219.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Outer",
           "title_label": {
-            "x": 98.94,
+            "x": 99.409,
             "y": 12.0,
             "width": 37.12,
             "height": 24.0
@@ -98,7 +98,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 326.76,
+        "max_x": 328.9,
         "max_y": 353.0
       }
     }
