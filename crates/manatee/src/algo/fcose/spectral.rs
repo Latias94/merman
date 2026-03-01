@@ -66,6 +66,10 @@ pub(super) fn apply_spectral_start_positions(
 
     // Greedy sampling (Mermaid default): pick a random first sample, then repeatedly pick the node
     // that maximizes the minimum distance to the already-sampled set.
+    //
+    // Note: any "seed offset" to match upstream Mermaid baseline RNG consumption should be
+    // applied *outside* spectral, at the layout invocation level, so reruns (`layout.run()` twice)
+    // do not double-advance the RNG stream.
     let mut sample = rng.next_usize(node_size);
     min_dist.fill(INFINITY_HOPS);
     for (col, slot) in samples.iter_mut().enumerate().take(sample_size) {
@@ -105,6 +109,14 @@ pub(super) fn apply_spectral_start_positions(
         Some(v) => v,
         None => return false,
     };
+    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        eprintln!("[manatee-fcose-spectral-dump] x_coords={x_coords:?}");
+        eprintln!("[manatee-fcose-spectral-dump] y_coords={y_coords:?}");
+    }
 
     for i in 0..n_real {
         let x = x_coords[i];
@@ -135,6 +147,23 @@ pub(super) fn apply_spectral_start_positions(
             "[manatee-fcose-spectral] n_real={} transformed_n={} sample_size={} x=[{:.3},{:.3}] y=[{:.3},{:.3}]",
             n_real, node_size, sample_size, min_x, max_x, min_y, max_y
         );
+    }
+
+    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        eprintln!("[manatee-fcose-spectral-dump] node_size={node_size} sample_size={sample_size}");
+        eprintln!("[manatee-fcose-spectral-dump] samples={samples:?}");
+        eprintln!("[manatee-fcose-spectral-dump] phi:");
+        for row in &phi {
+            eprintln!("[manatee-fcose-spectral-dump]   {:?}", row);
+        }
+        eprintln!("[manatee-fcose-spectral-dump] inv:");
+        for row in &inv {
+            eprintln!("[manatee-fcose-spectral-dump]   {:?}", row);
+        }
     }
 
     true
@@ -562,10 +591,10 @@ fn bfs_fill_column(
 }
 
 #[derive(Debug, Clone)]
-struct SvdResult {
-    u: Vec<Vec<f64>>,
-    v: Vec<Vec<f64>>,
-    s: Vec<f64>,
+pub(super) struct SvdResult {
+    pub(super) u: Vec<Vec<f64>>,
+    pub(super) v: Vec<Vec<f64>>,
+    pub(super) s: Vec<f64>,
 }
 
 // Port of layout-base `util/SVD.js` (JamaJS-derived) + `spectral.js` regularized inverse.
@@ -632,8 +661,32 @@ fn power_iteration(
         return None;
     }
 
-    let mut y1: Vec<f64> = (0..n).map(|_| rng.next_f64_unit()).collect();
-    let mut y2: Vec<f64> = (0..n).map(|_| rng.next_f64_unit()).collect();
+    // Match upstream `spectral.js` RNG consumption order:
+    //
+    // ```
+    // for(i=0; i<nodeSize; i++){
+    //   Y1[i] = Math.random();
+    //   Y2[i] = Math.random();
+    // }
+    // ```
+    //
+    // Interleaving matters on symmetric graphs: consuming all `Y1` values first and then all
+    // `Y2` values yields a different RNG stream split and can rotate/reflect the spectral basis,
+    // which cascades into different FCoSE results.
+    let mut y1: Vec<f64> = vec![0.0; n];
+    let mut y2: Vec<f64> = vec![0.0; n];
+    for i in 0..n {
+        y1[i] = rng.next_f64_unit();
+        y2[i] = rng.next_f64_unit();
+    }
+    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
+        eprintln!("[manatee-fcose-spectral-dump] y1_init={y1:?}");
+        eprintln!("[manatee-fcose-spectral-dump] y2_init={y2:?}");
+    }
     normalize_in_place(&mut y1);
     normalize_in_place(&mut y2);
 
@@ -809,7 +862,7 @@ fn svd_hypot(a: f64, b: f64) -> f64 {
     }
 }
 
-fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
+pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
     let m = a_in.len();
     if m == 0 {
         return None;

@@ -1,6 +1,6 @@
 use crate::algo::FcoseOptions;
 use crate::error::Result;
-use crate::graph::{Anchor, Graph, LayoutResult, Point};
+use crate::graph::{Anchor, BoundsExtras, Graph, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
 use nalgebra as na;
 use rustc_hash::FxHashMap;
@@ -55,10 +55,20 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     }
 
     let mut rng = XorShift64Star::new(opts.random_seed);
+    // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start; a small
+    // amount of randomness can be consumed before the first spectral sampler draw. Model that as
+    // a single deterministic "seed offset" per layout invocation (not per rerun).
+    let _ = rng.next_f64_unit();
     let run_count = if opts.rerun { 2 } else { 1 };
     let mut spring_stats = SpringStats::default();
 
+    let debug_rng_calls = std::env::var("MANATEE_FCOSE_DEBUG_RNG_CALLS")
+        .ok()
+        .as_deref()
+        == Some("1");
+
     for run_idx in 0..run_count {
+        let rng_calls_before = rng.calls();
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
@@ -83,9 +93,15 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
         //
         // Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` in `layoutstop`), so we
         // repeat this per run while keeping the RNG stream continuous.
+        // Upstream Cytoscape FCoSE keeps the final component aligned to the *pre-layout*
+        // `options.eles.boundingBox()` center (nodes + edges + labels).
+        //
+        // Important: In proof/default quality, `aux.relocateComponent(...)` computes the
+        // "current" bbox from layout-base node rects (`node.getRect()`), which excludes labels
+        // when `nodeDimensionsIncludeLabels: false`.
         let orig_center = opts
             .relocate_center
-            .or_else(|| sim.bounding_box_center())
+            .or_else(|| sim.bounding_box_center_eles(run_idx))
             .unwrap_or((0.0, 0.0));
         let debug_relocate = std::env::var("MANATEE_FCOSE_DEBUG_RELOCATE")
             .ok()
@@ -103,6 +119,15 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
                 None
             },
         );
+        if debug_rng_calls {
+            eprintln!(
+                "[manatee-fcose-rng] run={} calls_before={} calls_after={} (+{})",
+                run_idx,
+                rng_calls_before,
+                rng.calls(),
+                rng.calls().saturating_sub(rng_calls_before)
+            );
+        }
         if let Some(s) = spring_start {
             timings.spring.total = s.elapsed();
         }
@@ -111,7 +136,7 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
         // "current" component bounding box for relocation (`aux.relocateComponent(...)` parity).
         let _ = sim.update_bounds();
 
-        let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
+        let new_center = sim.bounding_box_center_rects().unwrap_or((0.0, 0.0));
         let translate_start = timing_enabled.then(std::time::Instant::now);
         let disable_relocate = std::env::var("MANATEE_FCOSE_DISABLE_RELOCATE")
             .ok()
@@ -190,6 +215,7 @@ struct SimNode {
     is_compound: bool,
     width: f64,
     height: f64,
+    bounds_extras: BoundsExtras,
     // layout-base `LNode.estimatedSize` (stable across updateBounds mutations).
     estimated_size: f64,
     // Top-left anchored rectangle (layout-base `LNode.rect` style).
@@ -246,6 +272,22 @@ impl SimNode {
 
     fn bottom(&self) -> f64 {
         self.top + self.height
+    }
+
+    fn bound_left(&self) -> f64 {
+        self.left - self.bounds_extras.left.max(0.0)
+    }
+
+    fn bound_right(&self) -> f64 {
+        self.right() + self.bounds_extras.right.max(0.0)
+    }
+
+    fn bound_top(&self) -> f64 {
+        self.top - self.bounds_extras.top.max(0.0)
+    }
+
+    fn bound_bottom(&self) -> f64 {
+        self.bottom() + self.bounds_extras.bottom.max(0.0)
     }
 }
 
@@ -326,6 +368,13 @@ fn node_in_lca_idx(
 struct SimEdge {
     a: usize,
     b: usize,
+    // Cache LCA-lifted endpoints for spring forces (layout-base `LEdge.getSourceInLca/getTargetInLca`).
+    //
+    // For inter-graph edges, CoSE applies spring forces between the *immediate children* of the
+    // edge's lowest common ancestor owner graph (often compound nodes), rather than pulling the
+    // original leaf endpoints across compound boundaries.
+    a_in_lca: usize,
+    b_in_lca: usize,
     #[allow(dead_code)]
     a_anchor: Option<Anchor>,
     #[allow(dead_code)]
@@ -333,6 +382,8 @@ struct SimEdge {
     base_ideal_length: f64,
     ideal_length: f64,
     elasticity: f64,
+    label_width: Option<f64>,
+    label_height: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -447,7 +498,7 @@ impl ConstraintRuntime {
 
     fn update_displacements(
         &mut self,
-        nodes: &[SimNode],
+        _nodes: &[SimNode],
         c: &Constraints,
         disps: &mut [(f64, f64)],
         total_iterations: usize,
@@ -802,6 +853,7 @@ impl SimGraph {
                 is_compound: false,
                 width: w,
                 height: h,
+                bounds_extras: n.bounds_extras,
                 estimated_size: 0.0,
                 left: n.x - w / 2.0,
                 top: n.y - h / 2.0,
@@ -840,6 +892,7 @@ impl SimGraph {
                 is_compound: true,
                 width: Self::EMPTY_COMPOUND_NODE_SIZE,
                 height: Self::EMPTY_COMPOUND_NODE_SIZE,
+                bounds_extras: BoundsExtras::default(),
                 estimated_size: Self::EMPTY_COMPOUND_NODE_SIZE,
                 left: 0.0,
                 top: 0.0,
@@ -885,11 +938,15 @@ impl SimGraph {
             edges.push(SimEdge {
                 a,
                 b,
+                a_in_lca: a,
+                b_in_lca: b,
                 a_anchor: e.source_anchor,
                 b_anchor: e.target_anchor,
                 base_ideal_length: ideal.max(1.0),
                 ideal_length: ideal.max(1.0),
                 elasticity,
+                label_width: e.label_width.filter(|v| v.is_finite() && *v > 0.0),
+                label_height: e.label_height.filter(|v| v.is_finite() && *v > 0.0),
             });
         }
 
@@ -1077,7 +1134,7 @@ impl SimGraph {
         }
     }
 
-    fn bounding_box_center(&self) -> Option<(f64, f64)> {
+    fn bounding_box_center_rects(&self) -> Option<(f64, f64)> {
         if self.nodes.is_empty() {
             return None;
         }
@@ -1091,6 +1148,392 @@ impl SimGraph {
             max_x = max_x.max(n.right());
             max_y = max_y.max(n.bottom());
         }
+        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
+            return None;
+        }
+        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
+    }
+
+    fn bounding_box_center_nodes_with_extras(&self) -> Option<(f64, f64)> {
+        if self.nodes.is_empty() {
+            return None;
+        }
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for n in &self.nodes {
+            min_x = min_x.min(n.bound_left());
+            min_y = min_y.min(n.bound_top());
+            max_x = max_x.max(n.bound_right());
+            max_y = max_y.max(n.bound_bottom());
+        }
+        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
+            return None;
+        }
+        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
+    }
+
+    fn bounding_box_center_eles(&self, run_idx: usize) -> Option<(f64, f64)> {
+        if self.nodes.is_empty() {
+            return None;
+        }
+
+        // Cytoscape edge bboxes are inflated by a small padding (see `edge.boundingBox()`).
+        // Mermaid Architecture baselines empirically match ~2.5px here.
+        const EDGE_BBOX_PAD: f64 = 2.5;
+        // Cytoscape compound nodes (with `padding`) end up slightly larger than the naive
+        // "child bbox + padding" model, largely due to renderer bbox padding.
+        // Mermaid Architecture baselines match adding an additional ~1.5px on each side.
+        const COMPOUND_BBOX_EXTRA: f64 = 1.5;
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        // Nodes (incl. labels). Cytoscape `eles.boundingBox()` treats compound nodes as wrappers
+        // around their child graphs, and `compound-sizing-wrt-labels: include` causes descendant
+        // label extents to affect compound bounds.
+        //
+        // Model this by:
+        // - using leaf `bound_*` (includes label extras) as the base primitive
+        // - computing compound bboxes bottom-up from immediate children (so compound padding
+        //   stacks across deep nesting, as observed in Mermaid/Cytoscape)
+        // - inflating each compound by `padding + COMPOUND_BBOX_EXTRA`
+        //
+        // This keeps layout rects (used by the spring embedder) unchanged while making the
+        // relocation origin (`eles.boundingBox()` center) match upstream.
+        #[derive(Debug, Clone, Copy)]
+        struct Bb {
+            x1: f64,
+            y1: f64,
+            x2: f64,
+            y2: f64,
+        }
+
+        impl Bb {
+            fn union(self, other: Bb) -> Bb {
+                Bb {
+                    x1: self.x1.min(other.x1),
+                    y1: self.y1.min(other.y1),
+                    x2: self.x2.max(other.x2),
+                    y2: self.y2.max(other.y2),
+                }
+            }
+
+            fn inflate(self, pad: f64) -> Bb {
+                Bb {
+                    x1: self.x1 - pad,
+                    y1: self.y1 - pad,
+                    x2: self.x2 + pad,
+                    y2: self.y2 + pad,
+                }
+            }
+        }
+
+        fn leaf_bbox(n: &SimNode) -> Bb {
+            let x1 = n.bound_left();
+            let y1 = n.bound_top();
+            let x2 = n.bound_right();
+            let y2 = n.bound_bottom();
+            Bb { x1, y1, x2, y2 }
+        }
+
+        let mut bbs: Vec<Option<Bb>> = vec![None; self.nodes.len()];
+        for (idx, n) in self.nodes.iter().enumerate() {
+            if !n.is_compound {
+                bbs[idx] = Some(leaf_bbox(n));
+            }
+        }
+
+        for &cidx in &self.compounds_deep_first {
+            let Some(n) = self.nodes.get(cidx) else {
+                continue;
+            };
+            if !n.is_compound {
+                continue;
+            }
+            let children = self
+                .children_by_owner
+                .get(cidx)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            if children.is_empty() {
+                // Empty compound: fall back to its rect (no label extras tracked for compounds).
+                bbs[cidx] = Some(Bb {
+                    x1: n.left,
+                    y1: n.top,
+                    x2: n.right(),
+                    y2: n.bottom(),
+                });
+                continue;
+            }
+            let mut bb: Option<Bb> = None;
+            for &ch in children {
+                let ch_bb = bbs.get(ch).and_then(|v| *v).unwrap_or_else(|| {
+                    let Some(cn) = self.nodes.get(ch) else {
+                        return Bb {
+                            x1: 0.0,
+                            y1: 0.0,
+                            x2: 0.0,
+                            y2: 0.0,
+                        };
+                    };
+                    Bb {
+                        x1: cn.left,
+                        y1: cn.top,
+                        x2: cn.right(),
+                        y2: cn.bottom(),
+                    }
+                });
+                bb = Some(bb.map(|b| b.union(ch_bb)).unwrap_or(ch_bb));
+            }
+            let pad = n.padding.max(0.0) + COMPOUND_BBOX_EXTRA;
+            bbs[cidx] = bb.map(|b| b.inflate(pad));
+        }
+
+        let top_level = self
+            .children_by_owner
+            .get(self.root_owner_idx)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        for &idx in top_level {
+            let Some(bb) = bbs.get(idx).and_then(|v| *v).or_else(|| {
+                self.nodes.get(idx).map(|n| Bb {
+                    x1: n.left,
+                    y1: n.top,
+                    x2: n.right(),
+                    y2: n.bottom(),
+                })
+            }) else {
+                continue;
+            };
+            min_x = min_x.min(bb.x1);
+            min_y = min_y.min(bb.y1);
+            max_x = max_x.max(bb.x2);
+            max_y = max_y.max(bb.y2);
+        }
+
+        // Edges: Cytoscape `eles.boundingBox()` includes edge geometry. For Mermaid Architecture,
+        // edge endpoints are manually specified as `{ 0/50%/100% }` offsets (see
+        // `source-endpoint`/`target-endpoint` in Mermaid's Cytoscape stylesheet).
+        //
+        // Cytoscape resolves those endpoints by adding the pixel offset to `node.position()`
+        // (even though `position()` represents the node center for normal geometry). Mermaid then
+        // reuses that same `position()` value as the SVG top-left `translate(x,y)` for the icon.
+        //
+        // In our port we mirror upstream by treating `SimNode.center_{x,y}` as that top-left
+        // anchor, and compute endpoint points as offsets from it (not as shape intersections).
+        fn endpoint(n: &SimNode, anchor: Option<Anchor>) -> (f64, f64) {
+            let ox = n.center_x();
+            let oy = n.center_y();
+            let w = n.width;
+            let h = n.height;
+            match anchor {
+                Some(Anchor::Left) => (ox, oy + (h / 2.0)),
+                Some(Anchor::Right) => (ox + w, oy + (h / 2.0)),
+                Some(Anchor::Top) => (ox + (w / 2.0), oy),
+                Some(Anchor::Bottom) => (ox + (w / 2.0), oy + h),
+                None => (ox + (w / 2.0), oy + (h / 2.0)),
+            }
+        }
+
+        fn polyline_midpoint(points: &[(f64, f64)]) -> Option<(f64, f64)> {
+            if points.len() < 2 {
+                return None;
+            }
+            let mut total = 0.0f64;
+            let mut seg_lens: Vec<f64> = Vec::with_capacity(points.len().saturating_sub(1));
+            for w in points.windows(2) {
+                let dx = w[1].0 - w[0].0;
+                let dy = w[1].1 - w[0].1;
+                let len = (dx * dx + dy * dy).sqrt();
+                seg_lens.push(len);
+                total += len;
+            }
+            if !total.is_finite() || total <= 0.0 {
+                return Some(points[0]);
+            }
+            let target = total / 2.0;
+            let mut acc = 0.0f64;
+            for (i, &len) in seg_lens.iter().enumerate() {
+                if !len.is_finite() || len <= 0.0 {
+                    continue;
+                }
+                if acc + len >= target {
+                    let t = ((target - acc) / len).clamp(0.0, 1.0);
+                    let (x0, y0) = points[i];
+                    let (x1, y1) = points[i + 1];
+                    return Some((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+                }
+                acc += len;
+            }
+            points.last().copied()
+        }
+
+        for e in &self.edges {
+            let Some(a) = self.nodes.get(e.a) else {
+                continue;
+            };
+            let Some(b) = self.nodes.get(e.b) else {
+                continue;
+            };
+            let (sx, sy) = endpoint(a, e.a_anchor);
+            let (tx, ty) = endpoint(b, e.b_anchor);
+
+            let mut path_points: Vec<(f64, f64)> = vec![(sx, sy), (tx, ty)];
+            let mut label_point_override: Option<(f64, f64)> = None;
+
+            fn include_point(
+                min_x: &mut f64,
+                min_y: &mut f64,
+                max_x: &mut f64,
+                max_y: &mut f64,
+                x: f64,
+                y: f64,
+            ) {
+                *min_x = (*min_x).min(x);
+                *min_y = (*min_y).min(y);
+                *max_x = (*max_x).max(x);
+                *max_y = (*max_y).max(y);
+            }
+
+            include_point(
+                &mut min_x,
+                &mut min_y,
+                &mut max_x,
+                &mut max_y,
+                sx - EDGE_BBOX_PAD,
+                sy - EDGE_BBOX_PAD,
+            );
+            include_point(
+                &mut min_x,
+                &mut min_y,
+                &mut max_x,
+                &mut max_y,
+                sx + EDGE_BBOX_PAD,
+                sy + EDGE_BBOX_PAD,
+            );
+            include_point(
+                &mut min_x,
+                &mut min_y,
+                &mut max_x,
+                &mut max_y,
+                tx - EDGE_BBOX_PAD,
+                ty - EDGE_BBOX_PAD,
+            );
+            include_point(
+                &mut min_x,
+                &mut min_y,
+                &mut max_x,
+                &mut max_y,
+                tx + EDGE_BBOX_PAD,
+                ty + EDGE_BBOX_PAD,
+            );
+
+            // Mermaid styles diagonal (XY) edges as Cytoscape `curve-style: segments` with
+            // `segment-weights: 0` and `segment-distances: 0.5px` in the pre-layout state. This
+            // creates a subtle asymmetric bbox (e.g. ±0.353553... for 45deg edges).
+            if run_idx == 0 && sx != tx && sy != ty {
+                const SEG_DIST: f64 = 0.5;
+                let dx = tx - sx;
+                let dy = ty - sy;
+                let len = (dx * dx + dy * dy).sqrt();
+                if len.is_finite() && len > 0.0 {
+                    // Left-hand perpendicular, normalized.
+                    let off_x = (-dy / len) * SEG_DIST;
+                    let off_y = (dx / len) * SEG_DIST;
+                    // `segment-weights: 0` => base point at source endpoint.
+                    let px = sx + off_x;
+                    let py = sy + off_y;
+                    path_points.insert(1, (px, py));
+                    // Cytoscape's pre-layout `segments` curve places the edge label near the
+                    // segment control point. Using that point for bbox purposes matches the
+                    // upstream `edge.boundingBox()` extents for diagonal Architecture edges.
+                    label_point_override = Some((px, py));
+                    include_point(
+                        &mut min_x,
+                        &mut min_y,
+                        &mut max_x,
+                        &mut max_y,
+                        px - EDGE_BBOX_PAD,
+                        py - EDGE_BBOX_PAD,
+                    );
+                    include_point(
+                        &mut min_x,
+                        &mut min_y,
+                        &mut max_x,
+                        &mut max_y,
+                        px + EDGE_BBOX_PAD,
+                        py + EDGE_BBOX_PAD,
+                    );
+                }
+            }
+
+            // After the first run, Mermaid updates segment weights/distances so diagonal edges
+            // become orthogonal with a single bend at either `(sx, ty)` or `(tx, sy)` depending on
+            // the source direction.
+            if run_idx > 0 && sx != tx && sy != ty {
+                let (bx, by) = match e.a_anchor {
+                    Some(Anchor::Top) | Some(Anchor::Bottom) => (sx, ty),
+                    _ => (tx, sy),
+                };
+                path_points.insert(1, (bx, by));
+                // After Mermaid updates segment weights/distances, the SVG renderer treats this
+                // bend point as the "midpoint" of the orthogonal polyline. Cytoscape's edge label
+                // placement for the same style is closest to this bend as well, so use it for the
+                // bbox approximation.
+                label_point_override = Some((bx, by));
+                include_point(
+                    &mut min_x,
+                    &mut min_y,
+                    &mut max_x,
+                    &mut max_y,
+                    bx - EDGE_BBOX_PAD,
+                    by - EDGE_BBOX_PAD,
+                );
+                include_point(
+                    &mut min_x,
+                    &mut min_y,
+                    &mut max_x,
+                    &mut max_y,
+                    bx + EDGE_BBOX_PAD,
+                    by + EDGE_BBOX_PAD,
+                );
+            }
+
+            // Edge labels: Cytoscape includes label geometry inside `edge.boundingBox()`, and
+            // `eles.boundingBox()` unions it into the overall component bbox.
+            if let (Some(lw), Some(lh)) = (e.label_width, e.label_height) {
+                let lw = lw.max(0.0);
+                let lh = lh.max(0.0);
+                if lw.is_finite() && lw > 0.0 && lh.is_finite() && lh > 0.0 {
+                    let mp = label_point_override.or_else(|| polyline_midpoint(&path_points));
+                    if let Some((mx, my)) = mp {
+                        let hw = lw / 2.0;
+                        let hh = lh / 2.0;
+                        include_point(
+                            &mut min_x,
+                            &mut min_y,
+                            &mut max_x,
+                            &mut max_y,
+                            mx - hw - EDGE_BBOX_PAD,
+                            my - hh - EDGE_BBOX_PAD,
+                        );
+                        include_point(
+                            &mut min_x,
+                            &mut min_y,
+                            &mut max_x,
+                            &mut max_y,
+                            mx + hw + EDGE_BBOX_PAD,
+                            my + hh + EDGE_BBOX_PAD,
+                        );
+                    }
+                }
+            }
+        }
+
         if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
             return None;
         }
@@ -1287,18 +1730,27 @@ impl SimGraph {
             .ok()
             .as_deref()
             == Some("1");
+        let debug_positions_all = std::env::var("MANATEE_FCOSE_DEBUG_POSITIONS_ALL")
+            .ok()
+            .as_deref()
+            == Some("1");
         let leaf_count = self.leaf_count;
         let dump_positions = |tag: &str, nodes: &[SimNode]| {
             if !debug_positions {
                 return;
             }
-            // Limit output to leaf nodes; compounds can be inferred via `update_bounds`.
-            let n = leaf_count.min(nodes.len());
+            // Default to leaf nodes for readability; optionally include compounds.
+            let n = if debug_positions_all {
+                nodes.len()
+            } else {
+                leaf_count.min(nodes.len())
+            };
             eprintln!("[manatee-fcose-pos] {tag} leaf_count={n}");
             for i in 0..n {
                 eprintln!(
-                    "[manatee-fcose-pos] {tag} id={} center=({:.6},{:.6}) left_top=({:.6},{:.6}) size=({:.3},{:.3}) owner={}",
+                    "[manatee-fcose-pos] {tag} id={} compound={} center=({:.6},{:.6}) left_top=({:.6},{:.6}) size=({:.3},{:.3}) owner={}",
                     nodes[i].id,
+                    nodes[i].is_compound,
                     nodes[i].center_x(),
                     nodes[i].center_y(),
                     nodes[i].left,
@@ -1392,10 +1844,12 @@ impl SimGraph {
             &self.compound_ids_in_order,
             rng,
         );
-        dump_positions("spectral", &self.nodes);
+        dump_positions("spectral_raw", &self.nodes);
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), spectral_start) {
             t.spectral = s.elapsed();
         }
+
+        dump_positions("spectral", &self.nodes);
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
         let debug_forces = std::env::var("MANATEE_FCOSE_DEBUG_FORCES").ok().as_deref() == Some("1");
@@ -1535,6 +1989,10 @@ impl SimGraph {
 
             // Spring forces (per-edge ideal lengths).
             for e in &self.edges {
+                // layout-base spring forces act between the edge's actual endpoints
+                // (`edge.getSource()/getTarget()`), even for inter-graph edges. LCA-lifted
+                // endpoints are used for *ideal edge length* adjustments, not for force
+                // application.
                 let (a, b) = (e.a, e.b);
                 if a == b {
                     continue;
@@ -1935,7 +2393,7 @@ impl SimGraph {
             let mut visited: Vec<bool> = vec![false; self.nodes.len()];
             let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
 
-            let mut push_with_children =
+            let push_with_children =
                 |start: usize,
                  visited: &mut [bool],
                  queue: &mut std::collections::VecDeque<usize>| {
@@ -2027,21 +2485,24 @@ impl SimGraph {
         let root_owner_idx = self.root_owner_idx;
 
         for e in &mut self.edges {
+            // Cache LCA-lifted endpoints for spring forces.
+            let lca_owner = lca_owner_idx(nodes, root_owner_idx, e.a, e.b);
+            let src_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.a, lca_owner);
+            let tgt_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.b, lca_owner);
+            e.a_in_lca = src_in_lca;
+            e.b_in_lca = tgt_in_lca;
+
             if nodes[e.a].owner_idx == nodes[e.b].owner_idx {
                 continue;
             }
 
             let original = e.base_ideal_length.max(1.0);
 
-            let lca_owner = lca_owner_idx(nodes, root_owner_idx, e.a, e.b);
             let lca_depth = if lca_owner == root_owner_idx {
                 1usize
             } else {
                 inclusion_depth.get(lca_owner).copied().unwrap_or(1).max(1)
             };
-
-            let src_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.a, lca_owner);
-            let tgt_in_lca = node_in_lca_idx(nodes, root_owner_idx, e.b, lca_owner);
 
             // layout-base `DEFAULT_USE_SMART_IDEAL_EDGE_LENGTH_CALCULATION = true`.
             let size_src = nodes
@@ -2455,15 +2916,25 @@ fn procrustes_transform_from_pairs(
     // Mirror layout-base `ConstraintHandler`:
     //
     // - `tempMatrix = A'B` where A is target, B is source (mean-centered)
-    // - `SVD(tempMatrix) = U S V'`
+    // - `SVD(tempMatrix) = U S V'` (JamaJS-derived routine in layout-base)
     // - `transformationMatrix = V U'`
     //
-    // Use nalgebra SVD for this 2x2 case; this keeps the code closer to the upstream definition
-    // than the previous closed-form branch selection and avoids subtle transpose/sign mistakes.
-    let svd = na::linalg::SVD::new(m, true, true);
-    let u = svd.u?;
-    let v_t = svd.v_t?;
-    Some(v_t.transpose() * u.transpose())
+    // Use the same JamaJS-derived SVD port we already depend on for spectral layout, to avoid
+    // subtle numeric drift that can break parity on symmetric constraint sets.
+    let m_in = vec![vec![m[(0, 0)], m[(0, 1)]], vec![m[(1, 0)], m[(1, 1)]]];
+    let svd = spectral::svd_jama(&m_in)?;
+    if svd.u.len() < 2 || svd.v.len() < 2 {
+        return None;
+    }
+    let u = &svd.u;
+    let v = &svd.v;
+
+    // T = V * U^T
+    let t00 = v[0][0] * u[0][0] + v[0][1] * u[0][1];
+    let t01 = v[0][0] * u[1][0] + v[0][1] * u[1][1];
+    let t10 = v[1][0] * u[0][0] + v[1][1] * u[0][1];
+    let t11 = v[1][0] * u[1][0] + v[1][1] * u[1][1];
+    Some(na::Matrix2::new(t00, t01, t10, t11))
 }
 
 fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
@@ -3215,11 +3686,15 @@ fn apply_constraints_to_displacements(
 #[derive(Debug, Clone)]
 struct XorShift64Star {
     state: u64,
+    calls: u64,
 }
 
 impl XorShift64Star {
     fn new(seed: u64) -> Self {
-        Self { state: seed.max(1) }
+        Self {
+            state: seed.max(1),
+            calls: 0,
+        }
     }
 
     #[allow(dead_code)]
@@ -3230,6 +3705,7 @@ impl XorShift64Star {
     }
 
     fn next_u64(&mut self) -> u64 {
+        self.calls = self.calls.wrapping_add(1);
         let mut x = self.state;
         x ^= x >> 12;
         x ^= x << 25;
@@ -3251,6 +3727,10 @@ impl XorShift64Star {
         (u as f64) / ((1u64 << 53) as f64)
     }
 
+    fn calls(&self) -> u64 {
+        self.calls
+    }
+
     fn next_usize(&mut self, upper: usize) -> usize {
         if upper <= 1 {
             return 0;
@@ -3270,7 +3750,11 @@ impl XorShift64Star {
 
 #[cfg(test)]
 mod tests {
-    use super::{RepulsionGrid, SimNode, XorShift64Star};
+    use super::{
+        BoundsExtras, Constraints, RelConstraint, RepulsionGrid, SimNode, XorShift64Star,
+        apply_reflection_for_relative_placement, procrustes_transform_for_alignments,
+    };
+    use nalgebra as na;
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
@@ -3280,6 +3764,7 @@ mod tests {
             is_compound: false,
             width: w,
             height: h,
+            bounds_extras: BoundsExtras::default(),
             estimated_size: (w + h) / 2.0,
             left,
             top,
@@ -3343,7 +3828,27 @@ mod tests {
             node_at(20.0, 0.0, 10.0, 10.0),
             node_at(200.0, 0.0, 10.0, 10.0),
         ];
-        let grid = RepulsionGrid::build(&nodes, repulsion_range).expect("grid");
+        let mut left = f64::INFINITY;
+        let mut top = f64::INFINITY;
+        let mut right = f64::NEG_INFINITY;
+        let mut bottom = f64::NEG_INFINITY;
+        for n in &nodes {
+            left = left.min(n.left);
+            top = top.min(n.top);
+            right = right.max(n.left + n.width);
+            bottom = bottom.max(n.top + n.height);
+        }
+        let node_order = [0usize, 1, 2];
+        let grid = RepulsionGrid::build(
+            left,
+            top,
+            right,
+            bottom,
+            &mut nodes,
+            repulsion_range,
+            &node_order,
+        )
+        .expect("grid");
 
         let mut processed = vec![false; nodes.len()];
         grid.refresh_node_surrounding(0, &mut nodes, &processed, repulsion_range);
@@ -3400,6 +3905,139 @@ mod tests {
         assert!((ay - -123.093_844_020_246_31).abs() < eps, "ay: got {ay}");
         assert!((bx - 512.630_977).abs() < eps, "bx: got {bx}");
         assert!((by - -709.530_370_979_753_7).abs() < eps, "by: got {by}");
+    }
+
+    #[test]
+    fn constraint_procrustes_transform_matches_upstream_fixture_025_checkpoint() {
+        // Ground truth extracted via `tools/debug/arch_probe_fcose_vs_upstream_025.js`:
+        //
+        // - `draft.debug.recomputed`: raw spectral coordinates (pre-relocation)
+        //
+        // Upstream `ConstraintHandler` applies a Procrustes + reflection transform directly to the
+        // raw coordinates; component relocation (`aux.relocateComponent(componentCenter, ...)`) is
+        // performed later by cytoscape-fcose and shows up in `draft.pos` / `fromSpectral.*`.
+        //
+        // This test intentionally isolates the transform-only step on `draft.debug.recomputed`.
+        //
+        // This test guards against subtle transpose/sign mistakes in our Procrustes port.
+        let ids = ["a", "b", "c", "d", "e", "f"];
+        let draft = [
+            (-69.77618192016361, 79.87553327881355),
+            (34.28258770643722, 100.36650015929253),
+            (104.06591551872783, 20.494458759991097),
+            (69.78035458033064, -79.87753496744543),
+            (-34.28895079233283, -100.37063982916823),
+            (-104.06372509299923, -20.48831740148356),
+        ];
+        let expected = [
+            (-63.516289670902054, 84.938197098671),
+            (41.796999300167016, 97.47687430142939),
+            (105.32067914788601, 12.54161697884377),
+            (63.52029847371475, -84.94050953250945),
+            (-41.80365806342419, -97.48051938039694),
+            (-105.31802918744155, -12.535659466037792),
+        ];
+
+        let mut nodes: Vec<SimNode> = Vec::new();
+        for (i, (x, y)) in draft.iter().copied().enumerate() {
+            nodes.push(SimNode {
+                id: ids[i].to_string(),
+                parent: None,
+                owner_idx: i,
+                is_compound: false,
+                width: 80.0,
+                height: 80.0,
+                bounds_extras: BoundsExtras::default(),
+                estimated_size: 80.0,
+                left: x - 40.0,
+                top: y - 40.0,
+                spring_fx: 0.0,
+                spring_fy: 0.0,
+                repulsion_fx: 0.0,
+                repulsion_fy: 0.0,
+                gravitation_fx: 0.0,
+                gravitation_fy: 0.0,
+                no_of_children: 1.0,
+                padding: 0.0,
+                surrounding: Vec::new(),
+                grid_start_x: 0,
+                grid_finish_x: 0,
+                grid_start_y: 0,
+                grid_finish_y: 0,
+            });
+        }
+
+        let c = Constraints {
+            align_horizontal: vec![vec![0, 5], vec![2, 3]],
+            align_vertical: vec![vec![1, 2], vec![3, 4]],
+            relative: vec![
+                RelConstraint {
+                    left: Some(0),
+                    right: Some(5),
+                    top: None,
+                    bottom: None,
+                    gap: 120.0,
+                },
+                RelConstraint {
+                    left: Some(4),
+                    right: Some(1),
+                    top: None,
+                    bottom: None,
+                    gap: 120.0,
+                },
+                RelConstraint {
+                    left: None,
+                    right: None,
+                    top: Some(1),
+                    bottom: Some(2),
+                    gap: 120.0,
+                },
+                RelConstraint {
+                    left: None,
+                    right: None,
+                    top: Some(4),
+                    bottom: Some(3),
+                    gap: 120.0,
+                },
+                RelConstraint {
+                    left: Some(3),
+                    right: Some(2),
+                    top: None,
+                    bottom: None,
+                    gap: 120.0,
+                },
+            ],
+        };
+
+        let mut x: Vec<f64> = nodes.iter().map(|n| n.center_x()).collect();
+        let mut y: Vec<f64> = nodes.iter().map(|n| n.center_y()).collect();
+
+        let t = procrustes_transform_for_alignments(&x, &y, &c).expect("transform");
+        let tt = t.transpose();
+        for i in 0..x.len() {
+            let v = na::Vector2::new(x[i], y[i]);
+            let r = tt * v;
+            x[i] = r.x;
+            y[i] = r.y;
+        }
+        apply_reflection_for_relative_placement(&mut x, &mut y, &c.relative);
+
+        for i in 0..ids.len() {
+            let (ex, ey) = expected[i];
+            let dx = (x[i] - ex).abs();
+            let dy = (y[i] - ey).abs();
+            assert!(
+                dx < 1e-9 && dy < 1e-9,
+                "mismatch for {}: got=({:.12},{:.12}) expected=({:.12},{:.12}) d=({:.3e},{:.3e})",
+                ids[i],
+                x[i],
+                y[i],
+                ex,
+                ey,
+                dx,
+                dy
+            );
+        }
     }
 }
 

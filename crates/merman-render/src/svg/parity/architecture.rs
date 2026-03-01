@@ -1381,17 +1381,19 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             // Cytoscape compound sizing uses the Architecture `fontSize` and does not apply the
             // same `createText(...)` wrapping behavior. For group rectangles (`node.boundingBox()`),
             // treat service labels as single-line canvas text anchored at the icon center.
-            let (mut bbox_left_compound, mut bbox_right_compound) = {
+            let (bbox_left_compound, bbox_right_compound) = {
                 let s = title;
-                let (l, r) = text_measurer
-                    .measure_svg_text_bbox_x_with_ascii_overhang(s, &compound_text_style);
-                (l, r)
+                // Cytoscape node labels use canvas text metrics. Our deterministic table is
+                // SVG-oriented and underestimates widths slightly for the default font stack.
+                //
+                // Approximate Cytoscape `boundingBox()` label extents by applying a small scale
+                // factor and mirroring the observed 0.5px lattice in Chromium.
+                const CY_CANVAS_LABEL_W_SCALE: f64 = 1.055;
+                let m = text_measurer.measure(s, &compound_text_style);
+                let mut half = (m.width.max(0.0) * CY_CANVAS_LABEL_W_SCALE) / 2.0;
+                half = (half * 2.0).round() / 2.0;
+                (half, half)
             };
-            // Cytoscape `boundingBox()` expands label bounds by a small margin-of-error padding.
-            // In practice this is ~2px on each side (see Cytoscape `updateBoundsFromLabel`).
-            let cytoscape_label_margin_px = 2.0;
-            bbox_left_compound += cytoscape_label_margin_px;
-            bbox_right_compound += cytoscape_label_margin_px;
             let label_extra_bottom_compound = arch_font_size_px
                 * (CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM
                     + 0.0 * CREATE_TEXT_BBOX_LINE_DY_EM);

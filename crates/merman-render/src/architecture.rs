@@ -55,6 +55,8 @@ struct ArchitectureEdgeModel {
     lhs_group: Option<bool>,
     #[serde(default, rename = "rhsGroup")]
     rhs_group: Option<bool>,
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -110,6 +112,7 @@ struct ArchitectureEdgeView<'a> {
     rhs_into: Option<bool>,
     lhs_group: Option<bool>,
     rhs_group: Option<bool>,
+    title: Option<&'a str>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +163,7 @@ impl<'a> ArchitectureModelView<'a> {
                 rhs_into: e.rhs_into,
                 lhs_group: e.lhs_group,
                 rhs_group: e.rhs_group,
+                title: e.title.as_deref(),
             })
             .collect();
 
@@ -213,6 +217,7 @@ impl<'a> ArchitectureModelView<'a> {
                 rhs_into: e.rhs_into,
                 lhs_group: e.lhs_group,
                 rhs_group: e.rhs_group,
+                title: e.title.as_deref(),
             })
             .collect();
 
@@ -341,89 +346,75 @@ fn layout_architecture_diagram_model(
         }
     }
 
-    #[derive(Debug, Clone, Copy)]
-    struct LabelExtras {
-        left: f64,
-        right: f64,
-        bottom: f64,
-    }
-
-    fn measure_service_label_extras(
-        title: &str,
-        max_width_px: f64,
+    fn measure_cytoscape_node_bbox_extras(
+        title: Option<&str>,
         measurer: &dyn crate::text::TextMeasurer,
         style: &crate::text::TextStyle,
         icon_size: f64,
         font_size_px: f64,
-    ) -> Option<LabelExtras> {
-        let title = title.trim();
-        if title.is_empty() {
-            return None;
-        }
-
-        let mut max_left = 0.0f64;
-        let mut max_right = 0.0f64;
-        let mut line_count = 0usize;
-
-        for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(title) {
-            let tokens = crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
-            let mut curr = String::new();
-            for tok in tokens {
-                if curr.is_empty() {
-                    curr.push_str(&tok);
-                    continue;
-                }
-
-                let old_len = curr.len();
-                curr.push_str(&tok);
-                let w = measurer.measure(curr.trim_end(), style).width;
-                if w <= max_width_px {
-                    continue;
-                }
-
-                curr.truncate(old_len);
-                let line = curr.trim();
-                if !line.is_empty() {
-                    // Cytoscape `eles.boundingBox()` includes label bounds by default, and its
-                    // label boxes include ASCII overhang (canvas text outline extents can be
-                    // slightly asymmetric around the anchor). Use the overhang-aware probe so
-                    // `aux.relocateComponent` parity stays stable for short labels (e.g. `G1`).
-                    let (l, r) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style);
-                    max_left = max_left.max(l);
-                    max_right = max_right.max(r);
-                    line_count += 1;
-                }
-
-                curr.clear();
-                curr.push_str(&tok);
-            }
-
-            let line = curr.trim();
-            if !line.is_empty() {
-                let (l, r) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style);
-                max_left = max_left.max(l);
-                max_right = max_right.max(r);
-                line_count += 1;
-            }
-        }
-
-        if line_count == 0 {
-            return None;
-        }
-
-        let bbox_h = (line_count as f64) * font_size_px * 1.1875;
+    ) -> manatee::BoundsExtras {
+        // Cytoscape `node.boundingBox()` includes a small stroke/padding even when labels are
+        // short enough to fit within the node rect.
+        //
+        // Derived from Chromium/Cytoscape measurements for Mermaid Architecture:
+        // - icon 80x80 at (0,0) => bbox extends to ~±41px horizontally and ~[-41, 41] vertically
+        // - a single-line label adds ~`fontSize + 1` px below the icon, plus the same 1px border
+        let border = 1.0;
         let half_icon = icon_size / 2.0;
-        Some(LabelExtras {
-            left: (half_icon - max_left).min(0.0),
-            right: (max_right - half_icon).max(0.0),
-            bottom: (bbox_h - 1.0).max(0.0),
-        })
+
+        let mut half_w = half_icon + border;
+        let mut bottom = border;
+
+        if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
+            // Cytoscape node labels are canvas text and (by default) do not apply SVG-style
+            // word-wrapping. Model them as a single line for relocation-center parity.
+            let m = measurer.measure(title, style);
+            // Cytoscape measures labels via canvas metrics; our deterministic metrics table is
+            // SVG-oriented and slightly underestimates widths for the default font stack.
+            // Calibrate with a small scale factor to match Chromium `node.boundingBox()` values
+            // for Architecture fixtures (notably long service titles like "API Gateway").
+            // Calibrated against Chromium/Cytoscape `boundingBox()` for Architecture labels.
+            // In practice, Cytoscape canvas metrics run slightly wider than our SVG-oriented
+            // deterministic table, but a small scale factor keeps relocation centers stable
+            // without requiring a browser.
+            const LABEL_W_SCALE: f64 = 1.055;
+            let label_half = (m.width.max(0.0) * LABEL_W_SCALE) / 2.0;
+            half_w = half_w.max(label_half + border);
+            // Cytoscape bounding boxes land on 0.5px increments in Chromium; mirror that so
+            // relocation centers match upstream baselines more closely.
+            half_w = (half_w * 2.0).round() / 2.0;
+            bottom = border + (font_size_px + 1.0).max(0.0);
+
+            if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
+                eprintln!(
+                    "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
+                    title,
+                    m.width,
+                    label_half,
+                    half_w,
+                    (half_w - half_icon).max(0.0),
+                    bottom,
+                );
+            }
+        }
+
+        let extra_lr = (half_w - half_icon).max(0.0);
+        manatee::BoundsExtras {
+            left: extra_lr,
+            right: extra_lr,
+            top: border,
+            bottom,
+        }
     }
 
     // Approximate Cytoscape `eles.boundingBox()` in the pre-layout state where nodes are not
     // explicitly positioned (default `{x: 0, y: 0}` in Cytoscape). The returned center is used
     // as our initial coordinate frame so FCoSE's relocation step matches upstream outputs.
-    let initial_center: (f64, f64) = {
+    //
+    // Additionally, capture per-node extra bounds (service label extents). These are later fed
+    // into the FCoSE port so compound bounds can include labels (`compound-sizing-wrt-labels:
+    // include` parity).
+    let (initial_center, node_bounds_extras): ((f64, f64), FxHashMap<&str, manatee::BoundsExtras>) = {
         let text_style = crate::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: font_size_px,
@@ -464,13 +455,28 @@ fn layout_architecture_diagram_model(
         let node_y = -half_icon;
         let mut node_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
         node_bbox.reserve(model.nodes.len().saturating_mul(2));
+        let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
+        node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
         for n in &model.nodes {
-            // Cytoscape `eles.boundingBox()` (used by FCoSE for relocation) does not include
-            // node labels by default (`includeLabels: false`). Mermaid Architecture also sets
-            // `nodeDimensionsIncludeLabels: false`, so service titles do not affect layout
-            // bounds. Keep the pre-layout center based on icon rectangles only.
-            let bb = BBox::from_rect(node_x, node_y, icon_size, icon_size);
+            // Cytoscape `eles.boundingBox()` (used by FCoSE for relocation) includes label bounds
+            // by default, even when FCoSE is configured with `nodeDimensionsIncludeLabels: false`.
+            // This affects the "original center" used by `aux.relocateComponent(...)` and is
+            // observable as a stable vertical offset (e.g. ~8.5px for single-line service titles).
+            let mut bb = BBox::from_rect(node_x, node_y, icon_size, icon_size);
+            let title = node_title.get(n.id).copied();
+            let bounds_extras = measure_cytoscape_node_bbox_extras(
+                title,
+                text_measurer,
+                &text_style,
+                icon_size,
+                font_size_px,
+            );
+            bb.min_x -= bounds_extras.left;
+            bb.max_x += bounds_extras.right;
+            bb.min_y -= bounds_extras.top;
+            bb.max_y += bounds_extras.bottom;
             node_bbox.insert(n.id, bb);
+            node_bounds_extras.insert(n.id, bounds_extras);
         }
 
         // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.
@@ -508,20 +514,8 @@ fn layout_architecture_diagram_model(
             if let Some(bb) = bb {
                 let mut bb = bb.inflate(base_pad);
 
-                // Cytoscape `eles.boundingBox()` includes labels by default, and Mermaid sets
-                // `compound-sizing-wrt-labels: include` for architecture. In practice this
-                // extends compound bounds downward by roughly one line of text height for groups
-                // with titles, affecting the "original center" used by `aux.relocateComponent`.
-                if let Some(title) = group_title.get(g.id).copied().map(str::trim) {
-                    if !title.is_empty() {
-                        let line_count =
-                            crate::text::DeterministicTextMeasurer::normalized_text_lines(title)
-                                .len()
-                                .max(1) as f64;
-                        let bbox_h = line_count * font_size_px * 1.1875;
-                        bb.max_y += bbox_h;
-                    }
-                }
+                // Group titles are rendered inside the compound bounds in Mermaid/Cytoscape and
+                // do not affect the pre-layout `eles.boundingBox()` center used for relocation.
 
                 group_bbox.insert(g.id, bb);
             }
@@ -544,7 +538,16 @@ fn layout_architecture_diagram_model(
             }
         }
 
-        overall.map(|b| b.center()).unwrap_or((0.0, 0.0))
+        // `cose-base` operates in a top-left rect coordinate frame internally (see `rect.x/y`),
+        // and Cytoscape FCoSE ends up transferring those coordinates back onto nodes as their
+        // `position()` values. Mermaid's Architecture renderer then uses those `position()` values
+        // directly as the SVG `<g transform="translate(x,y)">` origin (top-left of the 80x80 icon).
+        //
+        // Our `BBox` math above is expressed in a "center at (0,0)" frame (leaf rects start at
+        // `(-halfIcon,-halfIcon)`). Shift by `halfIcon` so the returned center matches the
+        // effective top-left-origin coordinate frame used by upstream outputs.
+        let (cx, cy) = overall.map(|b| b.center()).unwrap_or((0.0, 0.0));
+        ((cx + half_icon, cy + half_icon), node_bounds_extras)
     };
     if std::env::var("MERMAN_ARCH_DEBUG_INIT_CENTER")
         .ok()
@@ -766,11 +769,11 @@ fn layout_architecture_diagram_model(
 
         nodes.push(LayoutNode {
             id: n.id.to_string(),
-            // Cytoscape node positions are centers, but our SVG model uses top-left anchored
-            // `<g transform="translate(x,y)">` for the 80x80 icon box. Convert the pre-layout
-            // `eles.boundingBox()` center into our top-left space.
-            x: initial_center.0 - half_icon,
-            y: initial_center.1 - half_icon,
+            // Cytoscape nodes default to `{ x: 0, y: 0 }` centers before the first layout run.
+            // Our SVG model uses a top-left anchored `<g transform="translate(x,y)">` for the
+            // 80x80 icon box, so convert `(0,0)` center into top-left.
+            x: 0.0,
+            y: 0.0,
             width: icon_size,
             height: icon_size,
             is_cluster: false,
@@ -1179,6 +1182,11 @@ fn layout_architecture_diagram_model(
         let mut edges: Vec<manatee::Edge> = Vec::new();
         let mut default_edge_length_sum = 0.0f64;
         let mut default_edge_length_cnt = 0.0f64;
+        let edge_text_style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: font_size_px,
+            font_weight: None,
+        };
 
         // Cytoscape FCoSE de-duplicates multiple edges between the same two nodes when building
         // its internal layout graph:
@@ -1227,10 +1235,25 @@ fn layout_architecture_diagram_model(
                 Dir::T => manatee::Anchor::Top,
                 Dir::B => manatee::Anchor::Bottom,
             });
+
+            let (label_width, label_height) =
+                match e.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                    Some(label) => {
+                        let m = text_measurer.measure(label, &edge_text_style);
+                        let w = m.width.max(0.0);
+                        // Cytoscape edge label bounding boxes are slightly taller than the measured
+                        // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
+                        let h = (m.height + 1.0).max(0.0);
+                        (Some(w), Some(h))
+                    }
+                    None => (None, None),
+                };
             edges.push(manatee::Edge {
                 id: format!("edge-{}", edges.len()),
                 source: e.lhs_id.to_string(),
                 target: e.rhs_id.to_string(),
+                label_width,
+                label_height,
                 source_anchor,
                 target_anchor,
                 ideal_length,
@@ -1256,17 +1279,19 @@ fn layout_architecture_diagram_model(
                         .map(|g| g.to_string()),
                     width: n.width,
                     height: n.height,
-                    // Mermaid Architecture uses Cytoscape manual edge endpoints like `0 50%`,
-                    // which are interpreted relative to the node's `position()` (see Cytoscape
-                    // `manualEndptToPx`). Upstream Mermaid stores positions in a top-left
-                    // anchored frame so endpoints land on the icon border (e.g. `L` == left-mid).
+                    // Mermaid Architecture feeds Cytoscape node `position()` values directly
+                    // into the SVG `translate(x,y)` for the 80x80 icon box (i.e. it treats the
+                    // Cytoscape "center" as a top-left anchor). This creates a consistent
+                    // coordinate convention across nodes/edges/viewBox in upstream baselines.
                     //
-                    // FCoSE itself treats node positions as centers. To match upstream behavior
-                    // (and its baselined `viewBox/max-width`), we keep Cytoscape-like *center*
-                    // positions in the layout pipeline, but later render nodes with a top-left
-                    // anchored SVG group at that same `(x, y)` (as Mermaid does).
-                    x: n.x + (icon_size / 2.0),
-                    y: n.y + (icon_size / 2.0),
+                    // Mirror that here by passing through our top-left anchored `{x,y}` without
+                    // converting to geometric centers.
+                    x: n.x,
+                    y: n.y,
+                    bounds_extras: node_bounds_extras
+                        .get(n.id.as_str())
+                        .copied()
+                        .unwrap_or_default(),
                 })
                 .collect(),
             edges,
@@ -1280,6 +1305,8 @@ fn layout_architecture_diagram_model(
                 .collect(),
         };
 
+        // Mermaid Architecture styles group nodes with `padding: ${db.getConfigField('padding')}px`
+        // before running FCoSE, and CoSE uses that per-compound padding when updating bounds.
         let compound_padding_px = padding_px;
 
         let opts = manatee::FcoseOptions {
@@ -1340,8 +1367,8 @@ fn layout_architecture_diagram_model(
 
         for n in &mut nodes {
             if let Some(p) = result.positions.get(n.id.as_str()) {
-                n.x = p.x - (icon_size / 2.0);
-                n.y = p.y - (icon_size / 2.0);
+                n.x = p.x;
+                n.y = p.y;
             }
         }
 

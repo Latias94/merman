@@ -65,6 +65,20 @@ pub struct Node {
     /// Optional initial position (center), mirroring Cytoscape's `position` field.
     pub x: f64,
     pub y: f64,
+    /// Optional extra bounds (e.g. label extents) included in `eles.boundingBox()`-style
+    /// computations (relocation centering, compound sizing wrt labels).
+    ///
+    /// These extras expand the node's rect bounds without changing its layout size (`width`,
+    /// `height`). Values are expected to be non-negative.
+    pub bounds_extras: BoundsExtras,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BoundsExtras {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +92,14 @@ pub struct Edge {
     pub id: String,
     pub source: String,
     pub target: String,
+    /// Optional edge label dimensions (CSS px) used when approximating Cytoscape
+    /// `edge.boundingBox()` / `eles.boundingBox()` during relocation centering.
+    ///
+    /// Mermaid Architecture uses Cytoscape edge labels for layout-time bounding boxes, even
+    /// though the final SVG is rendered separately. Storing the measured label size here keeps
+    /// the layout crate renderer-agnostic while still enabling parity-level centering.
+    pub label_width: Option<f64>,
+    pub label_height: Option<f64>,
     /// Optional endpoint anchors used by layout algorithms that model port-like attachments.
     ///
     /// Mermaid Architecture uses Cytoscape edge endpoints (e.g. `0 50%`, `100% 50%`) to force
