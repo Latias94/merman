@@ -1,401 +1,4 @@
 use super::*;
-use rustc_hash::{FxHashMap, FxHashSet};
-
-mod css;
-mod debug_svg;
-mod edge;
-mod edge_bbox;
-mod edge_geom;
-mod hierarchy;
-mod label;
-mod render;
-mod style;
-mod types;
-mod util;
-
-pub(super) use css::*;
-use edge::*;
-use edge_geom::flowchart_compute_edge_path_geom;
-use hierarchy::*;
-pub(super) use label::*;
-pub(in crate::svg::parity) use render::node::roughjs::roughjs_paths_for_svg_path;
-pub(super) use style::*;
-
-pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
-use render::{render_flowchart_edge_path, render_flowchart_node, render_flowchart_root};
-use types::*;
-use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
-
-// Flowchart SVG renderer implementation (split from parity.rs).
-
-// In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
-// `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
-#[inline]
-fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
-    escape_attr_display(text)
-}
-
-pub(super) fn render_flowchart_v2_debug_svg(
-    layout: &FlowchartV2Layout,
-    options: &SvgRenderOptions,
-) -> String {
-    debug_svg::render_flowchart_v2_debug_svg(layout, options)
-}
-
-pub(super) fn flowchart_edge_path_d_for_bbox(
-    layout_edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,
-    translate_x: f64,
-    translate_y: f64,
-    default_edge_interpolate: &str,
-    edge_html_labels: bool,
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<(String, super::path_bounds::SvgPathBounds)> {
-    edge_bbox::flowchart_edge_path_d_for_bbox(
-        layout_edges_by_id,
-        layout_clusters_by_id,
-        translate_x,
-        translate_y,
-        default_edge_interpolate,
-        edge_html_labels,
-        edge,
-    )
-}
-
-// Entry points (split from parity.rs).
-
-fn flowchart_compute_edge_path_geom_impl(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-    origin_x: f64,
-    origin_y: f64,
-    abs_top_transform: f64,
-    scratch: &mut FlowchartEdgeDataPointsScratch,
-    trace_enabled: bool,
-    viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
-) -> Option<FlowchartEdgePathGeom> {
-    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return None;
-    };
-    if le.points.len() < 2 {
-        return None;
-    }
-
-    scratch.local_points.clear();
-    scratch.local_points.reserve(le.points.len());
-    for p in &le.points {
-        scratch.local_points.push(crate::model::LayoutPoint {
-            x: p.x + ctx.tx - origin_x,
-            y: p.y + ctx.ty - origin_y,
-        });
-    }
-    let local_points = scratch.local_points.as_slice();
-
-    use edge_geom::{
-        TraceEndpointIntersection, boundary_for_cluster, boundary_for_node,
-        curve_path_d_and_bounds, cut_path_at_intersect_into, dedup_consecutive_points_into,
-        force_intersect_for_layout_shape, intersect_for_layout_shape,
-        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
-        maybe_collapse_straight_except_one_endpoint, maybe_fix_corners,
-        maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
-        maybe_override_degenerate_subgraph_edge_path_d, maybe_pad_cyclic_special_basis_route,
-        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
-        maybe_truncate_data_point, normalize_cyclic_special_data_points,
-        write_flowchart_edge_trace,
-    };
-
-    let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
-    let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
-    maybe_normalize_selfedge_loop_points(base_points);
-
-    scratch.tmp_points_b.clear();
-    scratch.tmp_points_b.extend_from_slice(base_points);
-    let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
-
-    if base_points.len() >= 3 {
-        let tail_shape = ctx
-            .nodes_by_id
-            .get(edge.from.as_str())
-            .and_then(|n| n.layout_shape.as_deref());
-        let head_shape = ctx
-            .nodes_by_id
-            .get(edge.to.as_str())
-            .and_then(|n| n.layout_shape.as_deref());
-        if let (Some(tail), Some(head)) = (
-            boundary_for_node(
-                ctx,
-                edge.from.as_str(),
-                origin_x,
-                origin_y,
-                is_cyclic_special,
-            ),
-            boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y, is_cyclic_special),
-        ) {
-            let interior = &base_points[1..base_points.len() - 1];
-            if !interior.is_empty() {
-                let mut start = base_points[0].clone();
-                let mut end = base_points[base_points.len() - 1].clone();
-
-                let eps = 1e-4;
-                let start_is_center =
-                    (start.x - tail.x).abs() < eps && (start.y - tail.y).abs() < eps;
-                let end_is_center = (end.x - head.x).abs() < eps && (end.y - head.y).abs() < eps;
-
-                if start_is_center || force_intersect_for_layout_shape(tail_shape) {
-                    start = intersect_for_layout_shape(
-                        ctx,
-                        edge.from.as_str(),
-                        &tail,
-                        tail_shape,
-                        &interior[0],
-                    );
-                    if is_rounded_intersect_shift_shape(tail_shape) {
-                        start.x += 0.5;
-                        start.y += 0.5;
-                    }
-                }
-
-                if end_is_center || force_intersect_for_layout_shape(head_shape) {
-                    end = intersect_for_layout_shape(
-                        ctx,
-                        edge.to.as_str(),
-                        &head,
-                        head_shape,
-                        &interior[interior.len() - 1],
-                    );
-                    if is_rounded_intersect_shift_shape(head_shape) {
-                        end.x += 0.5;
-                        end.y += 0.5;
-                    }
-                }
-
-                points_after_intersect.clear();
-                points_after_intersect.reserve(interior.len() + 2);
-                points_after_intersect.push(start);
-                points_after_intersect.extend(interior.iter().cloned());
-                points_after_intersect.push(end);
-            }
-        }
-    }
-
-    scratch.tmp_points_c.clear();
-    if let Some(tc) = le.to_cluster.as_deref() {
-        if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
-        } else {
-            scratch
-                .tmp_points_c
-                .extend_from_slice(points_after_intersect);
-        }
-    } else {
-        scratch
-            .tmp_points_c
-            .extend_from_slice(points_after_intersect);
-    }
-    if let Some(fc) = le.from_cluster.as_deref() {
-        if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-            scratch.tmp_points_rev.clear();
-            scratch
-                .tmp_points_rev
-                .extend_from_slice(&scratch.tmp_points_c);
-            scratch.tmp_points_rev.reverse();
-
-            cut_path_at_intersect_into(
-                &scratch.tmp_points_rev,
-                &boundary,
-                &mut scratch.tmp_points_c,
-            );
-            scratch.tmp_points_c.reverse();
-        }
-    }
-    let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
-
-    // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
-    // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
-    let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
-    let points_for_data_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
-
-    let mut trace_points_before_norm: Option<Vec<crate::model::LayoutPoint>> = None;
-    let mut trace_points_after_norm: Option<Vec<crate::model::LayoutPoint>> = None;
-    let mut trace_endpoint: Option<TraceEndpointIntersection> = None;
-    if trace_enabled {
-        trace_points_before_norm = Some(points_for_data_points.clone());
-    }
-
-    if is_cyclic_special {
-        normalize_cyclic_special_data_points(
-            ctx,
-            edge,
-            origin_x,
-            origin_y,
-            points_for_data_points,
-            &mut trace_endpoint,
-        );
-        if trace_enabled {
-            trace_points_after_norm = Some(points_for_data_points.clone());
-        }
-    }
-    for p in points_for_data_points.iter_mut() {
-        // Keep truncation scoped to y-coordinates: the observed upstream fixed-point artifacts
-        // are for vertical intersections, while x-coordinates can legitimately land on thirds for
-        // some polygon shapes (and truncating those breaks strict parity).
-        p.x = maybe_snap_data_point_to_f32(p.x);
-        p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
-    }
-
-    let interpolate = edge
-        .interpolate
-        .as_deref()
-        .unwrap_or(ctx.default_edge_interpolate.as_str());
-    let is_basis = !matches!(
-        interpolate,
-        "linear"
-            | "natural"
-            | "step"
-            | "stepAfter"
-            | "stepBefore"
-            | "cardinal"
-            | "monotoneX"
-            | "monotoneY"
-    );
-
-    let label_text = edge.label.as_deref().unwrap_or_default();
-    let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
-    let has_label_text = !label_text_plain.trim().is_empty();
-    let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
-
-    // Mermaid (Dagre + D3 `curveBasis`) can produce a polyline that is effectively straight except
-    // for one clipped endpoint. When our route retains many points on the straight run, the SVG
-    // `d` command sequence diverges (extra `C` segments). Collapse the "straight except one
-    // endpoint" case, but preserve fully-collinear polylines (some Mermaid fixtures intentionally
-    // retain those points).
-    if is_basis
-        && !has_label_text
-        && !is_cyclic_special
-        && edge.length <= 1
-        && points_for_render.len() > 4
-    {
-        maybe_collapse_straight_except_one_endpoint(points_for_render);
-    }
-
-    if is_basis && is_cluster_edge {
-        maybe_remove_redundant_cluster_run_point(points_for_render);
-    }
-
-    if is_basis
-        && is_cyclic_special
-        && edge.id.contains("-cyclic-special-mid")
-        && points_for_render.len() > 3
-    {
-        let a = points_for_render[0].clone();
-        let mid = points_for_render[points_for_render.len() / 2].clone();
-        let b = points_for_render[points_for_render.len() - 1].clone();
-        points_for_render.clear();
-        points_for_render.extend([a, mid, b]);
-    }
-    if points_for_render.len() == 1 {
-        // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
-        points_for_render.clear();
-        points_for_render.extend(scratch.local_points.iter().cloned());
-    }
-
-    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
-    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
-    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
-    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
-    // after normalization (but keep cluster-adjacent edges as-is: Mermaid uses straight segments
-    // there).
-    if is_basis
-        && points_for_render.len() == 2
-        && interpolate != "linear"
-        && (!is_cluster_edge || is_cyclic_special)
-    {
-        maybe_insert_midpoint_for_basis(
-            points_for_render,
-            interpolate,
-            is_cluster_edge,
-            is_cyclic_special,
-        );
-    }
-
-    // Mermaid's cyclic self-loop helper edges (`*-cyclic-special-{1,2}`) sometimes use longer
-    // routed point lists. When our layout collapses these helper edges to a short polyline, D3's
-    // `basis` interpolation produces fewer cubic segments than Mermaid (`C` command count
-    // mismatch in SVG `d`).
-    //
-    // Mermaid's behavior differs depending on whether the base node is a cluster and on the
-    // cluster's effective direction. Recreate the command sequence by padding the polyline to at
-    // least 5 points (so `curveBasis` emits 4 `C` segments) only for the variants that Mermaid
-    // expands.
-    if is_basis && is_cyclic_special {
-        maybe_pad_cyclic_special_basis_route(ctx, edge, points_for_render);
-    }
-
-    let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
-        .iter()
-        .filter(|p| !p.y.is_nan())
-        .cloned()
-        .collect();
-
-    // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
-    // round orthogonal corners before feeding into D3's line generator.
-    maybe_fix_corners(&mut line_data);
-
-    // Mermaid shortens edge paths so markers don't render on top of the line (see
-    // `packages/mermaid/src/utils/lineWithOffset.ts`).
-
-    let line_data = line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());
-
-    let (mut d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
-        &line_data,
-        interpolate,
-        origin_x,
-        abs_top_transform,
-        viewbox_current_bounds,
-    );
-    if let Some(override_d) =
-        maybe_override_degenerate_subgraph_edge_path_d(ctx, edge, &points_for_data_points)
-    {
-        d = override_d;
-    }
-
-    if trace_enabled {
-        write_flowchart_edge_trace(
-            ctx,
-            edge,
-            le,
-            origin_x,
-            origin_y,
-            base_points,
-            points_after_intersect_for_trace.as_deref(),
-            points_for_render,
-            trace_points_before_norm.as_deref(),
-            trace_points_after_norm.as_deref(),
-            points_for_data_points,
-            trace_endpoint,
-        );
-    }
-
-    scratch.json.clear();
-    json_stringify_points_into(
-        &mut scratch.json,
-        points_for_data_points.as_slice(),
-        &mut scratch.ryu,
-    );
-    let mut data_points_b64 =
-        String::with_capacity(base64::encoded_len(scratch.json.len(), true).unwrap_or_default());
-    base64::engine::general_purpose::STANDARD
-        .encode_string(scratch.json.as_bytes(), &mut data_points_b64);
-
-    Some(FlowchartEdgePathGeom {
-        d,
-        pb,
-        data_points_b64,
-        bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
-    })
-}
 
 pub(super) fn render_flowchart_v2_svg(
     layout: &FlowchartV2Layout,
@@ -413,8 +16,8 @@ pub(super) fn render_flowchart_v2_svg(
 fn section<'a>(
     enabled: bool,
     dst: &'a mut std::time::Duration,
-) -> Option<super::timing::TimingGuard<'a>> {
-    enabled.then(|| super::timing::TimingGuard::new(dst))
+) -> Option<super::super::timing::TimingGuard<'a>> {
+    enabled.then(|| super::super::timing::TimingGuard::new(dst))
 }
 
 pub(super) fn render_flowchart_v2_svg_model(
@@ -444,8 +47,8 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let timing_enabled = super::timing::render_timing_enabled();
-    let mut timings = super::timing::RenderTimings::default();
+    let timing_enabled = super::super::timing::render_timing_enabled();
+    let mut timings = super::super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
 
     render_flowchart_v2_svg_with_config_inner(
@@ -469,8 +72,8 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let timing_enabled = super::timing::render_timing_enabled();
-    let mut timings = super::timing::RenderTimings::default();
+    let timing_enabled = super::super::timing::render_timing_enabled();
+    let mut timings = super::super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
 
     let model: crate::flowchart::FlowchartV2Model = {
@@ -499,7 +102,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
     timing_enabled: bool,
-    timings: &mut super::timing::RenderTimings,
+    timings: &mut super::super::timing::RenderTimings,
     total_start: std::time::Instant,
 ) -> Result<String> {
     let effective_config_value = effective_config.as_value();
@@ -1375,10 +978,12 @@ fn render_flowchart_v2_svg_with_config_inner(
         .filter(|s| !s.trim().is_empty());
     let aria_labelledby_raw = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby_raw = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let aria_labelledby_attr = aria_labelledby_raw.as_deref().map(super::util::escape_attr);
+    let aria_labelledby_attr = aria_labelledby_raw
+        .as_deref()
+        .map(super::super::util::escape_attr);
     let aria_describedby_attr = aria_describedby_raw
         .as_deref()
-        .map(super::util::escape_attr);
+        .map(super::super::util::escape_attr);
 
     if use_max_width {
         let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
@@ -1422,14 +1027,14 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     if let (Some(id), Some(title)) = (aria_labelledby_raw.as_deref(), acc_title) {
         out.push_str(r#"<title id=""#);
-        super::util::escape_attr_into(&mut out, id);
+        super::super::util::escape_attr_into(&mut out, id);
         out.push_str(r#"">"#);
         escape_xml_into(&mut out, title);
         out.push_str("</title>");
     }
     if let (Some(id), Some(descr)) = (aria_describedby_raw.as_deref(), acc_descr) {
         out.push_str(r#"<desc id=""#);
-        super::util::escape_attr_into(&mut out, id);
+        super::super::util::escape_attr_into(&mut out, id);
         out.push_str(r#"">"#);
         escape_xml_into(&mut out, descr);
         out.push_str("</desc>");

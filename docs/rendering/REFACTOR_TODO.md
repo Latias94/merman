@@ -36,7 +36,9 @@ Related docs:
 
 ### P1: Diagram module structure
 
-- [ ] Split `flowchart.rs` into submodules by concern:
+- [x] Move flowchart renderer into a directory module and extract SVG emission into
+      `svg/parity/flowchart/svg_emit.rs`.
+- [ ] Split flowchart further into submodules by concern:
       - `layout_to_svg/*` (nodes/edges/clusters)
       - `root/*` (viewport + acc metadata)
       - `defs/*` (markers + filters)
