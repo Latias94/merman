@@ -927,29 +927,37 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 
     let mut view_box_attr = format!("{} {} {} {}", fmt(vx), fmt(vy), fmt(vw), fmt(vh));
     let mut max_w_attr = fmt_max_width_px(vw);
-    if let Some((up_viewbox, up_max_width_px)) =
-        crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override(
-            diagram_id,
-        )
-    {
-        view_box_attr = up_viewbox.to_string();
-        max_w_attr = up_max_width_px.to_string();
-    }
+    let mut w_attr = fmt_string(vw);
+    let mut h_attr = fmt_string(vh);
+    apply_root_viewport_override(
+        diagram_id,
+        &mut view_box_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override,
+    );
 
     drop(_g_viewbox);
 
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let mut out = String::new();
-    let _ = write!(
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="mindmapDiagram" style="max-width: {mw}px; background-color: white;" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="mindmap">"#,
-        id = diagram_id_esc,
-        mw = max_w_attr,
-        vx = view_box_attr.split_whitespace().next().unwrap_or("0"),
-        vy = view_box_attr.split_whitespace().nth(1).unwrap_or("0"),
-        vw = view_box_attr.split_whitespace().nth(2).unwrap_or("100"),
-        vh = view_box_attr.split_whitespace().nth(3).unwrap_or("100"),
+        diagram_id,
+        Some("mindmapDiagram"),
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        Some(view_box_attr.as_str()),
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+        &[],
+        "mindmap",
+        None,
+        None,
+        false,
     );
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
