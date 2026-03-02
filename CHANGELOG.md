@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [0.3.0] - 2026-03-02
+
 ### Added
 
 - Promoted additional in-scope deferred fixtures into the committed corpus (state parser specs, flowchart icon specs,
@@ -37,6 +41,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   to a coarser lattice (0.25px).
 - `xtask gen-upstream-svgs` / `compare-state-svgs`: allow generating/validating upstream baselines for renderable state
   parser fixtures while skipping the known upstream-crashing `upstream_state_parser_spec` fixture.
+- Architecture: improved compound/nesting layout alignment by extending the FCoSE port with a compound graph model and
+  closer-to-upstream bounds/centroid propagation behavior.
+- Architecture: improved edge parsing/modeling compatibility (including `lhsInto`/`rhsInto` metadata when present).
+- Architecture: removed fixture-id keyed label wrapping/formatting special-cases by tightening `createText(...)`-like
+  SVG label wrapping and matching Mermaid CLI attribute newline serialization (`&#10;`).
+- `xtask` SVG DOM compares: stabilized anonymous edge wrapper ordering for Architecture and reduced non-actionable text
+  diffs caused by line wrapping sensitivity.
+- README: fixed the Stress gallery Architecture fixture reference and refreshed the Architecture showcase render.
 
 ### Not Released / WIP
 
@@ -55,19 +67,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   implementation” work off reproducible reports).
 - `xtask audit-gaps`: optionally probe upstream renderability for parser-only fixtures via Mermaid CLI (flags:
   `--check-upstream-render`, `--upstream-timeout-secs`).
-
-## [0.3.0] - 2026-02-27
-
-### Fixed
-
-- Architecture: improved compound/nesting layout alignment by extending the FCoSE port with a compound graph model and
-  closer-to-upstream bounds/centroid propagation behavior.
-- Architecture: improved edge parsing/modeling compatibility (including `lhsInto`/`rhsInto` metadata when present).
-- Architecture: removed fixture-id keyed label wrapping/formatting special-cases by tightening `createText(...)`-like
-  SVG label wrapping and matching Mermaid CLI attribute newline serialization (`&#10;`).
-- `xtask` SVG DOM compares: stabilized anonymous edge wrapper ordering for Architecture and reduced non-actionable text
-  diffs caused by line wrapping sensitivity.
-- README: fixed the Stress gallery Architecture fixture reference and refreshed the Architecture showcase render.
 
 ## [0.2.0] - 2026-02-26
 
