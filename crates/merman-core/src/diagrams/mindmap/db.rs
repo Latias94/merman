@@ -253,17 +253,6 @@ impl MindmapDb {
             }
             let css_classes = css.join(" ");
 
-            // Mermaid mindmapRenderer overrides per-shape padding before rendering:
-            // - rounded: padding=15 (also sets radius/taper=15, stroke=none)
-            //
-            // We bake the effective padding into the render model so layout + SVG parity match
-            // upstream fixtures.
-            let padding = if node.ty == NODE_TYPE_ROUNDED_RECT {
-                15_i64
-            } else {
-                node.padding
-            };
-
             let mut map = Map::new();
             map.insert("id".to_string(), json!(node.id.to_string()));
             map.insert("domId".to_string(), json!(format!("node_{}", node.id)));
@@ -275,7 +264,9 @@ impl MindmapDb {
             map.insert("shape".to_string(), json!(shape_from_type(node.ty)));
             map.insert("width".to_string(), json!(node.width));
             map.insert("height".to_string(), json!(node.height.unwrap_or(0)));
-            map.insert("padding".to_string(), json!(padding));
+            // Keep the DB padding in the semantic model (matches Mermaid mindmapDb.getData()).
+            // Shape-specific padding overrides happen at render time (see `to_layout_nodes_for_render`).
+            map.insert("padding".to_string(), json!(node.padding));
             map.insert("cssClasses".to_string(), json!(css_classes));
             map.insert("cssStyles".to_string(), Value::Array(Vec::new()));
             map.insert("look".to_string(), json!("default"));

@@ -8,41 +8,6 @@ pub(super) fn title_kind_str(kind: &TitleKind) -> &'static str {
     }
 }
 
-pub(super) fn unescape_flowchart_string(s: &str) -> String {
-    // Mermaid's flowchart string labels behave like a lightweight escape layer:
-    // - `\\` => `\`
-    // - `\"` => `"`
-    // - `\'` => `'`
-    // - `\n`, `\r`, `\t` => newline/carriage return/tab
-    //
-    // Keep unknown escapes as-is (preserve the backslash) to avoid surprising data loss.
-    let mut out = String::with_capacity(s.len());
-    let mut it = s.chars().peekable();
-    while let Some(ch) = it.next() {
-        if ch != '\\' {
-            out.push(ch);
-            continue;
-        }
-        let Some(next) = it.next() else {
-            out.push('\\');
-            break;
-        };
-        match next {
-            '\\' => out.push('\\'),
-            '"' => out.push('"'),
-            '\'' => out.push('\''),
-            'n' => out.push('\n'),
-            'r' => out.push('\r'),
-            't' => out.push('\t'),
-            other => {
-                out.push('\\');
-                out.push(other);
-            }
-        }
-    }
-    out
-}
-
 pub(super) fn unquote(s: &str) -> String {
     let bytes = s.as_bytes();
     if bytes.len() >= 2 && bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"' {
@@ -59,7 +24,10 @@ pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
     let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
         || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
     let unquoted = if quoted {
-        unescape_flowchart_string(&unquote(trimmed))
+        // Mermaid flowchart quoted labels are treated as raw text with surrounding quotes stripped.
+        // Do not interpret backslash escapes here: fixtures rely on sequences like `\\n`, `\\t`,
+        // `\\nabla`, and Windows paths (e.g. `C:\\Temp\\...`) being preserved verbatim.
+        unquote(trimmed)
     } else {
         trimmed.to_string()
     };
@@ -84,26 +52,20 @@ pub(super) fn strip_wrapping_backticks(s: &str) -> (String, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_label_text, unescape_flowchart_string};
+    use super::parse_label_text;
     use crate::diagrams::flowchart::TitleKind;
 
     #[test]
-    fn unescape_flowchart_string_unescapes_common_sequences() {
-        assert_eq!(
-            unescape_flowchart_string(r#"C:\\Temp\\merman\\out.svg"#),
-            r#"C:\Temp\merman\out.svg"#
-        );
-        assert_eq!(unescape_flowchart_string(r#"\"hi\""#), r#""hi""#);
-        assert_eq!(unescape_flowchart_string(r#"\'hi\'"#), r#"'hi'"#);
-        assert_eq!(unescape_flowchart_string(r#"\n"#), "\n");
-        assert_eq!(unescape_flowchart_string(r#"\t"#), "\t");
-        assert_eq!(unescape_flowchart_string("Model – label"), "Model – label");
+    fn parse_label_text_keeps_backslashes_in_string_labels() {
+        let (text, kind) = parse_label_text(r#""Path: C:\\Temp\\merman\\out.svg (Windows-style)""#);
+        assert_eq!(kind, TitleKind::String);
+        assert_eq!(text, r#"Path: C:\\Temp\\merman\\out.svg (Windows-style)"#);
     }
 
     #[test]
-    fn parse_label_text_unescapes_string_labels() {
-        let (text, kind) = parse_label_text(r#""Path: C:\\Temp\\merman\\out.svg (Windows-style)""#);
+    fn parse_label_text_does_not_treat_tex_commands_as_escapes() {
+        let (text, kind) = parse_label_text(r#""$$\nabla\therefore\alpha$$""#);
         assert_eq!(kind, TitleKind::String);
-        assert_eq!(text, r#"Path: C:\Temp\merman\out.svg (Windows-style)"#);
+        assert_eq!(text, r#"$$\nabla\therefore\alpha$$"#);
     }
 }

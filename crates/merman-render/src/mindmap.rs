@@ -160,7 +160,15 @@ fn mindmap_node_dimensions_px(
         style,
         max_node_width_px,
     );
-    let padding = node.padding.max(0.0);
+    // Mermaid mindmap applies some shape-specific padding overrides during rendering (after
+    // `mindmapDb.getData()`), notably for rounded nodes.
+    //
+    // Our semantic snapshots keep the DB padding (e.g. doubled padding for `(text)`), but layout
+    // should follow the render-time effective padding so layout golden snapshots remain stable.
+    let padding = match node.shape.as_str() {
+        "rounded" => 15.0,
+        _ => node.padding.max(0.0),
+    };
     let half_padding = padding / 2.0;
 
     // Align with Mermaid shape sizing rules for mindmap nodes (via `labelHelper(...)` + shape
