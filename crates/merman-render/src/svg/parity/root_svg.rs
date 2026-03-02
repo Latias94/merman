@@ -10,6 +10,11 @@ pub(super) enum SvgRootStyleViewBoxOrder {
     ViewBoxThenStyle,
 }
 
+pub(super) enum SvgRootFixedHeightPlacement {
+    BeforeXmlns,
+    AfterXmlns,
+}
+
 pub(super) fn push_svg_root_open_ex(
     out: &mut String,
     diagram_id: &str,
@@ -25,8 +30,45 @@ pub(super) fn push_svg_root_open_ex(
     aria_describedby: Option<&str>,
     trailing_newline: bool,
 ) {
+    push_svg_root_open_ex2(
+        out,
+        diagram_id,
+        class,
+        width,
+        height_attr,
+        style_attr,
+        viewbox_attr,
+        style_viewbox_order,
+        extra_attrs,
+        aria_roledescription,
+        aria_labelledby,
+        aria_describedby,
+        &[],
+        SvgRootFixedHeightPlacement::BeforeXmlns,
+        trailing_newline,
+    );
+}
+
+pub(super) fn push_svg_root_open_ex2(
+    out: &mut String,
+    diagram_id: &str,
+    class: Option<&str>,
+    width: SvgRootWidth<'_>,
+    height_attr: Option<&str>,
+    style_attr: Option<&str>,
+    viewbox_attr: Option<&str>,
+    style_viewbox_order: SvgRootStyleViewBoxOrder,
+    extra_attrs: &[(&str, &str)],
+    aria_roledescription: &str,
+    aria_labelledby: Option<&str>,
+    aria_describedby: Option<&str>,
+    tail_attrs: &[(&str, &str)],
+    fixed_height_placement: SvgRootFixedHeightPlacement,
+    trailing_newline: bool,
+) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
-    // id, width/height, xmlns, class?, style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, >\n?
+    // id, width/height (with configurable fixed-height placement), xmlns, class?,
+    // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
     out.push_str(r#"<svg id=""#);
     escape_xml_into(out, diagram_id);
     match width {
@@ -38,11 +80,25 @@ pub(super) fn push_svg_root_open_ex(
         SvgRootWidth::Fixed(w) => {
             out.push_str(r#"" width=""#);
             out.push_str(w);
-            out.push_str(r#"" height=""#);
-            out.push_str(height_attr.unwrap_or("0"));
-            out.push_str(
-                r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-            );
+            out.push('"');
+            match fixed_height_placement {
+                SvgRootFixedHeightPlacement::BeforeXmlns => {
+                    out.push_str(r#" height=""#);
+                    out.push_str(height_attr.unwrap_or("0"));
+                    out.push('"');
+                    out.push_str(
+                        r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
+                    );
+                }
+                SvgRootFixedHeightPlacement::AfterXmlns => {
+                    out.push_str(
+                        r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
+                    );
+                    out.push_str(r#" height=""#);
+                    out.push_str(height_attr.unwrap_or("0"));
+                    out.push('"');
+                }
+            }
         }
     }
 
@@ -99,6 +155,15 @@ pub(super) fn push_svg_root_open_ex(
         out.push_str(v);
         out.push('"');
     }
+
+    for (k, v) in tail_attrs {
+        out.push(' ');
+        out.push_str(k);
+        out.push_str(r#"=""#);
+        out.push_str(v);
+        out.push('"');
+    }
+
     out.push('>');
     if trailing_newline {
         out.push('\n');
