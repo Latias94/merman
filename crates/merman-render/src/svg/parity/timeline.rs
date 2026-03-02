@@ -295,6 +295,7 @@ pub(super) fn render_timeline_diagram_svg(
         None,
         Some(style_attr.as_str()),
         &viewbox_attr,
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         "timeline",
         None,

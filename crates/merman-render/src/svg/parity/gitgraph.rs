@@ -157,6 +157,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         None,
         Some(style_attr.as_str()),
         VIEWBOX_PLACEHOLDER,
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         "gitGraph",
         aria_labelledby.as_deref(),

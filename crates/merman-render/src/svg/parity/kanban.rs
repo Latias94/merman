@@ -60,6 +60,7 @@ pub(super) fn render_kanban_diagram_svg(
         None,
         Some(style_attr.as_str()),
         &viewbox_attr,
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         "kanban",
         None,

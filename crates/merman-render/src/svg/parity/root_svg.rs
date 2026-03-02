@@ -5,6 +5,11 @@ pub(super) enum SvgRootWidth<'a> {
     Fixed(&'a str),
 }
 
+pub(super) enum SvgRootStyleViewBoxOrder {
+    StyleThenViewBox,
+    ViewBoxThenStyle,
+}
+
 pub(super) fn push_svg_root_open_ex(
     out: &mut String,
     diagram_id: &str,
@@ -13,6 +18,7 @@ pub(super) fn push_svg_root_open_ex(
     height_attr: Option<&str>,
     style_attr: Option<&str>,
     viewbox_attr: &str,
+    style_viewbox_order: SvgRootStyleViewBoxOrder,
     extra_attrs: &[(&str, &str)],
     aria_roledescription: &str,
     aria_labelledby: Option<&str>,
@@ -20,7 +26,7 @@ pub(super) fn push_svg_root_open_ex(
     trailing_newline: bool,
 ) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
-    // id, width/height, xmlns, class?, style?, viewBox, extra-attrs..., role, aria-roledescription, aria-*, >\n?
+    // id, width/height, xmlns, class?, style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, >\n?
     out.push_str(r#"<svg id=""#);
     escape_xml_into(out, diagram_id);
     match width {
@@ -45,15 +51,28 @@ pub(super) fn push_svg_root_open_ex(
         out.push_str(class);
         out.push('"');
     }
-    if let Some(style_attr) = style_attr {
-        out.push_str(r#" style=""#);
-        out.push_str(style_attr);
-        out.push('"');
+    match style_viewbox_order {
+        SvgRootStyleViewBoxOrder::StyleThenViewBox => {
+            if let Some(style_attr) = style_attr {
+                out.push_str(r#" style=""#);
+                out.push_str(style_attr);
+                out.push('"');
+            }
+            out.push_str(r#" viewBox=""#);
+            out.push_str(viewbox_attr);
+            out.push('"');
+        }
+        SvgRootStyleViewBoxOrder::ViewBoxThenStyle => {
+            out.push_str(r#" viewBox=""#);
+            out.push_str(viewbox_attr);
+            out.push('"');
+            if let Some(style_attr) = style_attr {
+                out.push_str(r#" style=""#);
+                out.push_str(style_attr);
+                out.push('"');
+            }
+        }
     }
-
-    out.push_str(r#" viewBox=""#);
-    out.push_str(viewbox_attr);
-    out.push('"');
 
     for (k, v) in extra_attrs {
         out.push(' ');
@@ -102,6 +121,7 @@ pub(super) fn push_svg_root_open(
         height_attr,
         Some(style_attr),
         viewbox_attr,
+        SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         aria_roledescription,
         aria_labelledby,

@@ -547,6 +547,7 @@ pub(super) fn render_block_diagram_svg(
         None,
         Some(style_attr.as_str()),
         &viewbox_attr,
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         "block",
         None,
