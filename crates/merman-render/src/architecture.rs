@@ -16,6 +16,14 @@ fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     cur.as_f64().or_else(|| cur.as_i64().map(|v| v as f64))
 }
 
+fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct ArchitectureNodeModel {
     id: String,
@@ -1182,8 +1190,12 @@ fn layout_architecture_diagram_model(
         let mut edges: Vec<manatee::Edge> = Vec::new();
         let mut default_edge_length_sum = 0.0f64;
         let mut default_edge_length_cnt = 0.0f64;
+        let font_family = config_string(effective_config, &["fontFamily"])
+            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+            .map(|s| s.trim().trim_end_matches(';').trim().to_string());
         let edge_text_style = crate::text::TextStyle {
-            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_family: font_family
+                .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
             font_size: font_size_px,
             font_weight: None,
         };

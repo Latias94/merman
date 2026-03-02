@@ -1186,7 +1186,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let diagram_id_esc = escape_xml(diagram_id);
-    let css = super::css::architecture_css(diagram_id);
+    let css = super::css::architecture_css_with_config(diagram_id, effective_config);
 
     let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size_px = icon_size_px.max(1.0);
