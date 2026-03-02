@@ -227,21 +227,14 @@ fn render_sequence_diagram_svg_inner(
     }
 
     let mut out = String::new();
-    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
-        (Some(_), Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (Some(_), None) => format!(
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, None) => String::new(),
-    };
+    let aria_labelledby_attr = model
+        .acc_title
+        .as_deref()
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby_attr = model
+        .acc_descr
+        .as_deref()
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
     let mut max_w_attr = fmt_string(vb_w);
     let mut viewbox_attr = format!(
         "{} {} {} {}",
@@ -259,13 +252,21 @@ fn render_sequence_diagram_svg_inner(
         max_w_attr = max_w.to_string();
     }
 
-    let _ = write!(
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sequence"{aria}>"#,
-        diagram_id_esc = diagram_id_esc,
-        max_w = max_w_attr,
-        viewbox = viewbox_attr,
-        aria = aria
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        Some(viewbox_attr.as_str()),
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+        &[],
+        "sequence",
+        aria_labelledby_attr.as_deref(),
+        aria_describedby_attr.as_deref(),
+        false,
     );
 
     if let Some(title) = model.acc_title.as_deref() {

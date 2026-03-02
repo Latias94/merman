@@ -32,6 +32,7 @@ Related docs:
 - [x] Extend the shared writer to support root attribute placement quirks beyond `viewBox`/`style`
       ordering (e.g. `style` after aria, fixed-size `height` placement) and adopt it in diagrams that
       depend on that ordering.
+- [x] Migrate the remaining Stage B root `<svg>` emitters (`sequence`, `state`) to the shared writer.
 
 ### P1: Diagram module structure
 

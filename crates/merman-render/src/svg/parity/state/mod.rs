@@ -429,28 +429,29 @@ pub(super) fn render_state_diagram_v2_svg_model(
             + layout.edges.len().saturating_mul(384)
             + layout.clusters.len().saturating_mul(256);
         let mut out = String::with_capacity(estimated_svg_bytes);
-        let _ = write!(
+        let diagram_id_esc = escape_xml_display(diagram_id);
+        let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+        let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open_ex4(
             &mut out,
-            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="stateDiagram""#,
-            escape_xml_display(diagram_id),
-            max_w_attr,
-            view_box_attr
+            diagram_id,
+            Some("statediagram"),
+            root_svg::SvgRootWidth::Percent100,
+            None,
+            Some(style_attr.as_str()),
+            Some(view_box_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            "stateDiagram",
+            aria_labelledby_attr.as_deref(),
+            aria_describedby_attr.as_deref(),
+            &[],
+            &[],
+            root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
+            false,
+            root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
         );
-        if has_acc_title {
-            let _ = write!(
-                &mut out,
-                r#" aria-labelledby="chart-title-{}""#,
-                escape_xml_display(diagram_id)
-            );
-        }
-        if has_acc_descr {
-            let _ = write!(
-                &mut out,
-                r#" aria-describedby="chart-desc-{}""#,
-                escape_xml_display(diagram_id)
-            );
-        }
-        out.push('>');
 
         if has_acc_title {
             let _ = write!(
@@ -542,28 +543,29 @@ pub(super) fn render_state_diagram_v2_svg_model(
         + layout.edges.len().saturating_mul(384)
         + layout.clusters.len().saturating_mul(256);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let _ = write!(
+    let diagram_id_esc = escape_xml_display(diagram_id);
+    let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
+    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
+    root_svg::push_svg_root_open_ex4(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="stateDiagram""#,
-        escape_xml_display(diagram_id),
-        MAX_WIDTH_PLACEHOLDER,
-        VIEWBOX_PLACEHOLDER
+        diagram_id,
+        Some("statediagram"),
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        Some(VIEWBOX_PLACEHOLDER),
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+        &[],
+        "stateDiagram",
+        aria_labelledby_attr.as_deref(),
+        aria_describedby_attr.as_deref(),
+        &[],
+        &[],
+        root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
+        false,
+        root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
     );
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="chart-title-{}""#,
-            escape_xml_display(diagram_id)
-        );
-    }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{}""#,
-            escape_xml_display(diagram_id)
-        );
-    }
-    out.push('>');
 
     if has_acc_title {
         let _ = write!(
