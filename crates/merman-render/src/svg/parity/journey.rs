@@ -303,21 +303,14 @@ pub(super) fn render_journey_diagram_svg(
     }
 
     let mut out = String::new();
-    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
-        (Some(_), Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (Some(_), None) => format!(
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, None) => String::new(),
-    };
+    let aria_labelledby = model
+        .acc_title
+        .as_deref()
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = model
+        .acc_descr
+        .as_deref()
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
 
     let mut max_w_attr = fmt(layout.width).to_string();
     let mut viewbox_attr = format!(
@@ -327,34 +320,48 @@ pub(super) fn render_journey_diagram_svg(
         fmt(vb_w),
         fmt(vb_h)
     );
+    let mut w_attr = fmt(vb_w).to_string();
+    let mut h_attr = fmt(vb_h).to_string();
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override,
+    );
+
     let mut svg_h_attr = fmt(if vb_min_y < 0.0 {
         vb_h - vb_min_y
     } else {
         vb_h
-    });
-    if let Some((viewbox, max_w)) =
-        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-
-        let parts: Vec<&str> = viewbox.split_whitespace().collect();
-        if parts.len() == 4 {
-            if let (Ok(min_y), Ok(h)) = (parts[1].parse::<f64>(), parts[3].parse::<f64>()) {
-                svg_h_attr = fmt(if min_y < 0.0 { h - min_y } else { h });
-            }
+    })
+    .to_string();
+    let parts: Vec<&str> = viewbox_attr.split_whitespace().collect();
+    if parts.len() == 4 {
+        if let (Ok(min_y), Ok(h)) = (parts[1].parse::<f64>(), parts[3].parse::<f64>()) {
+            svg_h_attr = fmt(if min_y < 0.0 { h - min_y } else { h }).to_string();
         }
     }
-    let _ = write!(
+
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    let extra_attrs: [(&str, &str); 2] = [
+        ("preserveAspectRatio", "xMinYMin meet"),
+        ("height", svg_h_attr.as_str()),
+    ];
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" preserveAspectRatio="xMinYMin meet" height="{svg_h}" role="graphics-document document" aria-roledescription="journey"{aria}>"#,
-        diagram_id_esc = diagram_id_esc,
-        max_w = max_w_attr,
-        viewbox = viewbox_attr,
-        svg_h = svg_h_attr,
-        aria = aria,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        &viewbox_attr,
+        &extra_attrs,
+        "journey",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
     );
 
     if let Some(title) = model.acc_title.as_deref() {
