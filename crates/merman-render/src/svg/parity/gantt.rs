@@ -193,21 +193,28 @@ pub(super) fn render_gantt_diagram_svg(
         .filter(|s| !s.trim().is_empty());
 
     let mut out = String::new();
-    let _ = write!(
+    let aria_labelledby = acc_title
+        .as_ref()
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = acc_descr
+        .as_ref()
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let viewbox_attr = format!("0 0 {} {}", fmt(w_attr), fmt(h_attr));
+    let style_attr = format!("max-width: {}px; background-color: white;", fmt(w_attr));
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {w} {h}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="gantt"{aria_describedby}{aria_labelledby}>"#,
-        diagram_id_esc = diagram_id_esc,
-        w = fmt(w_attr),
-        h = fmt(h_attr),
-        max_w = fmt(w_attr),
-        aria_describedby = acc_descr
-            .as_ref()
-            .map(|_| format!(r#" aria-describedby="chart-desc-{diagram_id_esc}""#))
-            .unwrap_or_default(),
-        aria_labelledby = acc_title
-            .as_ref()
-            .map(|_| format!(r#" aria-labelledby="chart-title-{diagram_id_esc}""#))
-            .unwrap_or_default(),
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        viewbox_attr.as_str(),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &[],
+        "gantt",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
     );
 
     if let Some(title) = acc_title {
