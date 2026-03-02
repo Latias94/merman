@@ -6,6 +6,16 @@ This document describes a “fearless refactoring” plan for the Stage B SVG pa
 
 The key principle: **refactor without changing behavior**, backed by strong release gates.
 
+## Status (as of 2026-03-02)
+
+- A shared root viewport override helper exists (`apply_root_viewport_override`).
+- A shared root `<svg>` open-tag writer exists (`push_svg_root_open` / `push_svg_root_open_ex`),
+  including support for:
+  - additional root attributes (e.g. `preserveAspectRatio`, `height`)
+  - `viewBox`/`style` ordering quirks (to keep strict XML diffs stable)
+- Diagrams already migrated to the shared root writer: `er`, `requirement`, `journey`, `timeline`,
+  `kanban`, `gitgraph`, `gantt`, `packet`, `pie`, `xychart`, `block`, `error`.
+
 ## Goals
 
 - Reduce duplication in root `<svg>` emission (viewport + accessibility + style).
@@ -116,4 +126,3 @@ Every commit should keep gates green. For focused validation, use:
 - `cargo run --release -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 before running the full `compare-all-svgs` gates.
-

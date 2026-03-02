@@ -59,6 +59,11 @@ Exit criteria:
 - All Stage B diagrams use the shared root writer.
 - No fixture-id keyed behavior is introduced.
 
+Status (rolling):
+
+- Root writer adopted in: `er`, `requirement`, `journey`, `timeline`, `kanban`, `gitgraph`, `gantt`,
+  `packet`, `pie`, `xychart`, `block`, `error`.
+
 ### R3: Diagram render modules normalized
 
 Deliverables:
@@ -80,4 +85,3 @@ Deliverables:
 Exit criteria:
 
 - Updating overrides is “one command” and can be done without manual copy/paste.
-

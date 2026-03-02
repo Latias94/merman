@@ -21,12 +21,16 @@ Related docs:
 
 ### P0: Reduce duplication with zero behavior change
 
-- [ ] Introduce a shared root `<svg>` writer (open tag + aria/title/desc + style wrapper) and adopt
-      it in a single low-risk diagram (ER) first.
-- [ ] Centralize root viewport override application (parse viewBox → w/h + style max-width) into a
+- [x] Introduce a shared root `<svg>` writer (open tag) and adopt it in a single low-risk diagram
+      (ER) first, then expand adoption diagram-by-diagram.
+- [x] Centralize root viewport override application (parse viewBox → w/h + style max-width) into a
       helper and use it across diagrams.
+- [x] Support root attribute ordering quirks (e.g. `viewBox` before `style`) in the shared writer
+      so strict XML diffs can remain stable while refactoring.
 - [ ] Consolidate common SVG escaping + number formatting usage so diagram renderers don’t reach for
       ad-hoc `format!` / `write!` patterns.
+- [ ] Extend the shared writer to support root `class` placement quirks (e.g. `treemap` places
+      `class` after `style`) and adopt it in diagrams that depend on that ordering.
 
 ### P1: Diagram module structure
 
@@ -57,4 +61,3 @@ Related docs:
       - diff report (if any)
 - [ ] Add a tiny helper that prints “root viewport deltas” (viewBox/max-width) for a single fixture
       without generating full reports.
-
