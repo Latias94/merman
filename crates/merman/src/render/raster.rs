@@ -229,8 +229,14 @@ fn svg_to_pixmap(svg: &str, scale: f32, background: Option<&str>) -> Result<tiny
         }
     };
 
-    let width_px = (geo.width * scale).ceil().max(1.0) as u32;
-    let height_px = (geo.height * scale).ceil().max(1.0) as u32;
+    // Make scaling more intuitive/stable: at scale=1 we already round up to whole pixels, so for
+    // scale>1 prefer scaling the *rounded* base size. This avoids surprising off-by-one shrinkage
+    // when the viewBox/bounds are fractional (e.g. 342.36 * 2 = 684.72 → ceil = 685, while
+    // ceil(342.36) * 2 = 686).
+    let base_width_px = geo.width.ceil().max(1.0);
+    let base_height_px = geo.height.ceil().max(1.0);
+    let width_px = (base_width_px * scale).ceil().max(1.0) as u32;
+    let height_px = (base_height_px * scale).ceil().max(1.0) as u32;
 
     let mut pixmap = tiny_skia::Pixmap::new(width_px, height_px).ok_or(RasterError::PixmapAlloc)?;
 
