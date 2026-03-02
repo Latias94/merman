@@ -82,14 +82,26 @@ pub(super) fn render_xychart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let mut out = String::new();
-    let _ = write!(
+    let w_attr = fmt(layout.width.max(1.0)).to_string();
+    let h_attr = fmt(layout.height.max(1.0)).to_string();
+    let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
+    let style_attr = format!("max-width: {w_attr}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {w} {h}" style="max-width: {w}px; background-color: white;" role="graphics-document document" aria-roledescription="xychart">"#,
-        w = fmt(layout.width.max(1.0)),
-        h = fmt(layout.height.max(1.0)),
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        viewbox_attr.as_str(),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &[],
+        "xychart",
+        None,
+        None,
+        false,
     );
 
     let css = xychart_css(diagram_id);
