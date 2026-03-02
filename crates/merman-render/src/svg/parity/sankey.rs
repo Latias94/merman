@@ -55,7 +55,6 @@ pub(super) fn render_sankey_diagram_svg(
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     const LABEL_FONT_SIZE_PX: f64 = 14.0;
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
@@ -94,40 +93,53 @@ pub(super) fn render_sankey_diagram_svg(
 
     let mut max_w_attr = fmt_string(vb_w);
     let mut viewbox_attr = format!("{} {} {} {}", fmt(min_x), fmt(min_y), fmt(vb_w), fmt(vb_h));
-    if let Some((viewbox, max_w)) =
-        crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
+    let mut w_attr = fmt_string(vb_w);
+    let mut h_attr = fmt_string(vb_h);
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override,
+    );
 
     let mut out = String::new();
     if use_max_width {
-        let _ = write!(
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open_ex(
             &mut out,
-            r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey">"#,
-            id = diagram_id_esc,
-            w = max_w_attr,
-            viewbox = viewbox_attr,
+            diagram_id,
+            None,
+            root_svg::SvgRootWidth::Percent100,
+            None,
+            Some(style_attr.as_str()),
+            Some(viewbox_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            "sankey",
+            None,
+            None,
+            false,
         );
     } else {
-        let mut w_attr = max_w_attr.clone();
-        let mut h_attr = fmt_string(vb_h);
-        let parts: Vec<&str> = viewbox_attr.split_whitespace().collect();
-        if parts.len() == 4 {
-            w_attr = parts[2].to_string();
-            h_attr = parts[3].to_string();
-        }
-
-        let _ = write!(
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open_ex2(
             &mut out,
-            r#"<svg id="{id}" width="{w}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" height="{h}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey" style="background-color: white;">"#,
-            id = diagram_id_esc,
-            w = w_attr,
-            h = h_attr,
-            viewbox = viewbox_attr,
+            diagram_id,
+            None,
+            root_svg::SvgRootWidth::Fixed(&w_attr),
+            Some(&h_attr),
+            None,
+            Some(viewbox_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            &[],
+            "sankey",
+            None,
+            None,
+            &tail_attrs,
+            root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+            false,
         );
     }
     let _ = write!(&mut out, "<style>{}</style>", sankey_css(diagram_id));
