@@ -186,7 +186,6 @@ pub(super) fn render_timeline_diagram_svg(
     let _ = (semantic, effective_config);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -275,22 +274,32 @@ pub(super) fn render_timeline_diagram_svg(
         fmt(vb_w),
         fmt(vb_h)
     );
-    if let Some((viewbox, max_w)) =
-        crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
+    let mut w_attr = fmt(vb_w).to_string();
+    let mut h_attr = fmt(vb_h).to_string();
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override,
+    );
 
     let mut out = String::new();
-    let _ = write!(
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="timeline">"#,
-        diagram_id_esc = diagram_id_esc,
-        max_w = max_w_attr,
-        viewbox = viewbox_attr,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        &viewbox_attr,
+        &[],
+        "timeline",
+        None,
+        None,
+        false,
     );
     let css = timeline_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
