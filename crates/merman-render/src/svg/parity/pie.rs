@@ -1,4 +1,4 @@
-use super::{PieDiagramLayout, Result, SvgRenderOptions};
+use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
 use std::fmt::Write as _;
 
 fn pie_legend_rect_style(fill: &str) -> String {
@@ -42,22 +42,6 @@ pub(super) fn render_pie_diagram_svg(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
-        (Some(_), Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (Some(_), None) => format!(
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, None) => String::new(),
-    };
-
     const NO_MAX_WIDTH_SENTINEL: &str = "__NO_MAX_WIDTH__";
 
     let mut max_w_attr = super::fmt_max_width_px(vb_w);
@@ -68,12 +52,16 @@ pub(super) fn render_pie_diagram_svg(
         super::fmt(vb_w),
         super::fmt(vb_h)
     );
-    if let Some((viewbox, max_w)) =
-        crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override(diagram_id)
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
+    let mut w_attr = super::fmt(vb_w).to_string();
+    let mut h_attr = super::fmt(vb_h).to_string();
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
+    );
 
     let style_attr = if max_w_attr == NO_MAX_WIDTH_SENTINEL {
         "background-color: white;".to_string()
@@ -82,13 +70,28 @@ pub(super) fn render_pie_diagram_svg(
     };
 
     let mut out = String::new();
-    let _ = write!(
+    let aria_labelledby = model
+        .acc_title
+        .as_deref()
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = model
+        .acc_descr
+        .as_deref()
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{viewbox}" style="{style}" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
-        diagram_id_esc = diagram_id_esc,
-        viewbox = viewbox_attr,
-        style = style_attr,
-        aria = aria
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        viewbox_attr.as_str(),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &[],
+        "pie",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
     );
 
     if let Some(t) = model.acc_title.as_deref() {
