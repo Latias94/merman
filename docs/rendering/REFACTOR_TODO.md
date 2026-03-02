@@ -41,7 +41,7 @@ Related docs:
       - `root/*` (viewport + acc metadata)
       - `defs/*` (markers + filters)
       - `css/*`
-- [ ] Split the class renderer into submodules (in progress: moved to `svg/parity/class/*`, extracted `debug_svg`, `defs`, `label`, `rough`).
+- [ ] Split the class renderer into submodules (in progress: moved to `svg/parity/class/*`, extracted `debug_svg`, `defs`, `label`, `rough`, `render`).
 - [ ] Create a consistent naming convention for “Stage B” parity render entry points across diagrams.
 
 ### P2: Overrides and tooling ergonomics
