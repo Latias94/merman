@@ -20,7 +20,6 @@ pub(super) fn render_kanban_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -42,20 +41,30 @@ pub(super) fn render_kanban_diagram_svg(
         fmt(vb_w),
         fmt(vb_h)
     );
-    if let Some((viewbox, max_w)) =
-        crate::generated::kanban_root_overrides_11_12_2::lookup_kanban_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
-    let _ = write!(
+    let mut w_attr = fmt(vb_w).to_string();
+    let mut h_attr = fmt(vb_h).to_string();
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::kanban_root_overrides_11_12_2::lookup_kanban_root_viewport_override,
+    );
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="kanban">"#,
-        diagram_id_esc = diagram_id_esc,
-        max_w = max_w_attr,
-        viewbox = viewbox_attr,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        &viewbox_attr,
+        &[],
+        "kanban",
+        None,
+        None,
+        false,
     );
 
     let css = kanban_css(diagram_id, effective_config);
