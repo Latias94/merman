@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) enum SvgRootWidth<'a> {
+    None,
     Percent100,
     Fixed(&'a str),
 }
@@ -74,6 +75,9 @@ pub(super) fn push_svg_root_open_ex2(
     out.push_str(r#"<svg id=""#);
     escape_xml_into(out, diagram_id);
     match width {
+        SvgRootWidth::None => {
+            out.push_str(r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#);
+        }
         SvgRootWidth::Percent100 => {
             out.push_str(
                 r#"" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,

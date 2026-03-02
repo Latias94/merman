@@ -1233,12 +1233,18 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         font_weight: None,
     };
 
-    let mut aria_attrs = String::new();
+    let aria_labelledby = model
+        .acc_title()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = model
+        .acc_descr()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
     let mut a11y_nodes = String::new();
     if let Some(t) = model.acc_title().map(str::trim).filter(|t| !t.is_empty()) {
-        aria_attrs.push_str(r#" aria-labelledby="chart-title-"#);
-        let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
-        aria_attrs.push('"');
         let _ = write!(
             &mut a11y_nodes,
             r#"<title id="chart-title-{}">{}</title>"#,
@@ -1247,9 +1253,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         );
     }
     if let Some(d) = model.acc_descr().map(str::trim).filter(|t| !t.is_empty()) {
-        aria_attrs.push_str(r#" aria-describedby="chart-desc-"#);
-        let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
-        aria_attrs.push('"');
         let _ = write!(
             &mut a11y_nodes,
             r#"<desc id="chart-desc-{}">{}</desc>"#,
@@ -1914,40 +1917,70 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let vb_h = icon_size_px.max(1.0);
         // Mermaid Architecture sets `max-width` directly from the computed `viewBox` width.
         let max_width_style = fmt(vb_w);
-        let _ = write!(
-            &mut out,
-            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style>{css}</style><g/><g class="architecture-edges">"#,
-            id = diagram_id_esc,
-            w_attr = if use_max_width { r#"width="100%""# } else { "" },
-            style = if use_max_width {
-                format!("max-width: {max_width_style}px; background-color: white;")
-            } else {
-                "background-color: white;".to_string()
-            },
-            vx = fmt(vb_min_x),
-            vy = fmt(vb_min_y),
-            vw = fmt(vb_w),
-            vh = fmt(vb_h),
-            aria = aria_attrs,
-            a11y = a11y_nodes,
-            css = css.as_str(),
+        let style_attr = if use_max_width {
+            format!("max-width: {max_width_style}px; background-color: white;")
+        } else {
+            "background-color: white;".to_string()
+        };
+        let viewbox_attr = format!(
+            "{} {} {} {}",
+            fmt(vb_min_x),
+            fmt(vb_min_y),
+            fmt(vb_w),
+            fmt(vb_h)
         );
+        let width = if use_max_width {
+            root_svg::SvgRootWidth::Percent100
+        } else {
+            root_svg::SvgRootWidth::None
+        };
+        root_svg::push_svg_root_open_ex(
+            &mut out,
+            diagram_id,
+            None,
+            width,
+            None,
+            Some(style_attr.as_str()),
+            Some(viewbox_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            "architecture",
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
+            false,
+        );
+        out.push_str(a11y_nodes.as_str());
+        let _ = write!(&mut out, "<style>{}</style>", css.as_str());
+        out.push_str("<g/><g class=\"architecture-edges\">");
     } else {
-        let _ = write!(
+        let style_attr = if use_max_width {
+            format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;")
+        } else {
+            "background-color: white;".to_string()
+        };
+        let width = if use_max_width {
+            root_svg::SvgRootWidth::Percent100
+        } else {
+            root_svg::SvgRootWidth::None
+        };
+        root_svg::push_svg_root_open_ex(
             &mut out,
-            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style>{css}</style><g/><g class="architecture-edges">"#,
-            id = diagram_id_esc,
-            w_attr = if use_max_width { r#"width="100%""# } else { "" },
-            style = if use_max_width {
-                format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;")
-            } else {
-                "background-color: white;".to_string()
-            },
-            viewbox = VIEWBOX_PLACEHOLDER,
-            aria = aria_attrs,
-            a11y = a11y_nodes,
-            css = css.as_str(),
+            diagram_id,
+            None,
+            width,
+            None,
+            Some(style_attr.as_str()),
+            Some(VIEWBOX_PLACEHOLDER),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            "architecture",
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
+            false,
         );
+        out.push_str(a11y_nodes.as_str());
+        let _ = write!(&mut out, "<style>{}</style>", css.as_str());
+        out.push_str("<g/><g class=\"architecture-edges\">");
     }
 
     // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
@@ -2848,18 +2881,20 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             fmt(vb_h)
         );
 
-        let mut max_w_attr = use_max_width.then(|| fmt_string(vb_w));
-
-        if let Some((viewbox, max_w)) = crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
-        {
-            view_box_attr = viewbox.to_string();
-            if use_max_width {
-                max_w_attr = Some(max_w.to_string());
-            }
-        }
+        let mut max_w_attr = fmt_string(vb_w);
+        let mut w_attr = fmt_string(vb_w);
+        let mut h_attr = fmt_string(vb_h);
+        apply_root_viewport_override(
+            diagram_id,
+            &mut view_box_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override,
+        );
 
         out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
-        if let Some(max_w_attr) = max_w_attr {
+        if use_max_width {
             out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
         }
     }
