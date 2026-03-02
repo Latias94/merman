@@ -502,7 +502,6 @@ pub(super) fn render_block_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -528,19 +527,31 @@ pub(super) fn render_block_diagram_svg(
         fmt(vb_h.max(1.0))
     );
     let mut max_w_style = fmt_max_width_px(vb_w.max(1.0));
-    if let Some((viewbox, max_w)) =
-        crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_style = max_w.to_string();
-    }
-    let _ = write!(
+    let mut w_attr = fmt(vb_w.max(1.0)).to_string();
+    let mut h_attr = fmt(vb_h.max(1.0)).to_string();
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_style,
+        crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override,
+    );
+
+    let style_attr = format!("max-width: {max_w_style}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="block">"#,
-        max_w = max_w_style,
-        viewbox = viewbox_attr,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        &viewbox_attr,
+        &[],
+        "block",
+        None,
+        None,
+        false,
     );
     out.push_str(r#"<style></style><g/>"#);
 
