@@ -63,7 +63,7 @@ Status (rolling):
 
 - Root writer adopted in: `er`, `requirement`, `journey`, `timeline`, `kanban`, `gitgraph`, `gantt`,
   `packet`, `pie`, `xychart`, `block`, `error`, `treemap`, `info`, `quadrantchart`, `sankey`, `radar`, `c4`, `mindmap`,
-  `architecture`.
+  `architecture`, `flowchart`.
 
 ### R3: Diagram render modules normalized
 
