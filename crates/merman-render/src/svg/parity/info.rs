@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 pub(super) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
     _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -15,7 +15,7 @@ pub(super) fn render_info_diagram_svg(
         &mut out,
         r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 400px; background-color: white;" role="graphics-document document" aria-roledescription="info">"#,
     );
-    let css = super::info_css(diagram_id);
+    let css = super::info_css_with_config(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     let _ = write!(

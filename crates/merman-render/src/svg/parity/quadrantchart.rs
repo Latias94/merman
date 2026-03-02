@@ -64,7 +64,11 @@ pub(super) fn render_quadrantchart_diagram_svg(
         );
     }
 
-    let _ = write!(&mut out, r#"<style>{}</style>"#, info_css(diagram_id));
+    let _ = write!(
+        &mut out,
+        r#"<style>{}</style>"#,
+        info_css_with_config(diagram_id, effective_config)
+    );
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);

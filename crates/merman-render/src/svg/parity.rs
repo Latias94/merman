@@ -46,7 +46,8 @@ mod util;
 mod xychart;
 use crate::math::MathRenderer;
 use css::{
-    er_css, gantt_css, info_css, pie_css, requirement_css, sankey_css, treemap_css, xychart_css,
+    er_css, gantt_css, info_css_parts_with_config, info_css_with_config, pie_css, requirement_css,
+    sankey_css, treemap_css, xychart_css,
 };
 pub use fallback::foreign_object_label_fallback_svg_text;
 use path_bounds::svg_path_bounds_from_d;

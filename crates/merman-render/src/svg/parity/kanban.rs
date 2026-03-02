@@ -1,13 +1,15 @@
 use super::*;
 
-fn kanban_css(diagram_id: &str) -> String {
+fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let mut out = info_css(diagram_id);
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .edge{{stroke-width:3;}}#{} .edge{{fill:none;}}#{} .cluster-label,#{} .label{{color:#333;fill:#333;}}"#,
-        id, id, id, id
+        r#"#{} .edge{{stroke-width:3;}}#{} .edge{{fill:none;}}#{} .cluster-label,#{} .label{{color:{};fill:{};}}"#,
+        id, id, id, id, parts.text_color, parts.text_color
     );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -56,7 +58,7 @@ pub(super) fn render_kanban_diagram_svg(
         viewbox = viewbox_attr,
     );
 
-    let css = kanban_css(diagram_id);
+    let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.

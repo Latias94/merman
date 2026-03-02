@@ -44,6 +44,103 @@ pub(super) fn info_css(diagram_id: &str) -> String {
     out
 }
 
+pub(super) struct InfoCssParts {
+    pub(super) css_prefix: String,
+    pub(super) root_rule: String,
+    pub(super) font_family: String,
+    pub(super) font_size: f64,
+    pub(super) text_color: String,
+    pub(super) line_color: String,
+}
+
+pub(super) fn info_css_parts_with_config(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> InfoCssParts {
+    let id = escape_xml(diagram_id);
+
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
+    let font_family = normalize_css_font_family(font_family.as_str());
+    let font_family = if font_family.is_empty() {
+        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
+    } else {
+        font_family
+    };
+    let font_size = config_f64(effective_config, &["fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
+
+    let text_color = theme_color(effective_config, "textColor", "#333");
+    let line_color = theme_color(effective_config, "lineColor", "#333333");
+    let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
+    let error_text = theme_color(effective_config, "errorTextColor", "#552222");
+
+    // Keep `:root` last (matches upstream Mermaid SVG baselines).
+    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family);
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        id,
+        font_family,
+        fmt(font_size),
+        text_color
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
+        id, error_bkg, id, error_text, error_text
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
+        id, line_color, line_color, id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        id,
+        font_family,
+        fmt(font_size),
+        id
+    );
+
+    InfoCssParts {
+        css_prefix: out,
+        root_rule,
+        font_family,
+        font_size,
+        text_color,
+        line_color,
+    }
+}
+
+pub(super) fn info_css_with_config(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> String {
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    out.push_str(&parts.root_rule);
+    out
+}
+
 pub(super) fn architecture_css(diagram_id: &str) -> String {
     // Mermaid@11.12.2: architecture uses the shared base stylesheet plus a few
     // diagram-specific class rules (and keeps `:root` last).

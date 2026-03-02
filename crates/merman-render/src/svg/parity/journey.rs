@@ -7,33 +7,30 @@ fn fmt_task_face_y(v: Option<f64>) -> String {
         .unwrap_or_else(|| "NaN".to_string())
 }
 
-fn journey_css(diagram_id: &str) -> String {
+fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-
-    // Keep `:root` last (matches upstream Mermaid journey SVG baselines).
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-    let mut out = info_css(diagram_id);
-    if let Some(prefix) = out.strip_suffix(&root_rule) {
-        out = prefix.to_string();
-    }
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let font = parts.font_family;
+    let text_color = parts.text_color;
+    let line_color = parts.line_color;
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
     let _ = write!(
         &mut out,
-        r#"#{} .label{{font-family:{};color:#333;}}"#,
-        id, font
+        r#"#{} .label{{font-family:{};color:{};}}"#,
+        id, font, text_color
     );
     let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, id);
-    let _ = write!(&mut out, r#"#{} line{{stroke:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} line{{stroke:{};}}"#, id, line_color);
     let _ = write!(
         &mut out,
-        r#"#{} .legend{{fill:#333;font-family:{};}}"#,
-        id, font
+        r#"#{} .legend{{fill:{};font-family:{};}}"#,
+        id, text_color, font
     );
-    let _ = write!(&mut out, r#"#{} .label text{{fill:#333;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .label{{color:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .label text{{fill:{};}}"#, id, text_color);
+    let _ = write!(&mut out, r#"#{} .label{{color:{};}}"#, id, text_color);
     let _ = write!(&mut out, r#"#{} .face{{fill:#FFF8DC;stroke:#999;}}"#, id);
     let _ = write!(
         &mut out,
@@ -42,16 +39,20 @@ fn journey_css(diagram_id: &str) -> String {
     );
     let _ = write!(&mut out, r#"#{} .node .label{{text-align:center;}}"#, id);
     let _ = write!(&mut out, r#"#{} .node.clickable{{cursor:pointer;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .arrowheadPath{{fill:#333333;}}"#, id);
     let _ = write!(
         &mut out,
-        r#"#{} .edgePath .path{{stroke:#333333;stroke-width:1.5px;}}"#,
-        id
+        r#"#{} .arrowheadPath{{fill:{};}}"#,
+        id, line_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .flowchart-link{{stroke:#333333;fill:none;}}"#,
-        id
+        r#"#{} .edgePath .path{{stroke:{};stroke-width:1.5px;}}"#,
+        id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+        id, line_color
     );
     let _ = write!(
         &mut out,
@@ -59,7 +60,7 @@ fn journey_css(diagram_id: &str) -> String {
         id
     );
     let _ = write!(&mut out, r#"#{} .edgeLabel rect{{opacity:0.5;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .cluster text{{fill:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .cluster text{{fill:{};}}"#, id, text_color);
     let _ = write!(
         &mut out,
         r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}}"#,
@@ -116,7 +117,7 @@ fn journey_css(diagram_id: &str) -> String {
         id
     );
 
-    out.push_str(&root_rule);
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -373,7 +374,7 @@ pub(super) fn render_journey_diagram_svg(
         );
     }
 
-    let css = journey_css(diagram_id);
+    let css = journey_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(

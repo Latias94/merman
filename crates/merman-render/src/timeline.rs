@@ -66,6 +66,35 @@ fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
+fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
+fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
+    let font_family = cfg_string(effective_config, &["fontFamily"])
+        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
+        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        .filter(|s| !s.is_empty());
+    let font_size = effective_config
+        .get("fontSize")
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.as_u64().map(|n| n as f64))
+        })
+        .unwrap_or(16.0)
+        .max(1.0);
+    TextStyle {
+        font_family,
+        font_size,
+        font_weight: None,
+    }
+}
+
 fn section_index(full_section: i64) -> i64 {
     (full_section % MAX_SECTIONS) - 1
 }
@@ -184,18 +213,13 @@ fn text_bbox_height(lines: &[String], font_size: f64) -> f64 {
 fn virtual_node_height(
     text: &str,
     content_width: f64,
-    font_size: f64,
+    style: &TextStyle,
     padding: f64,
     measurer: &dyn TextMeasurer,
 ) -> (f64, Vec<String>) {
-    let style = TextStyle {
-        font_family: None,
-        font_size,
-        font_weight: None,
-    };
-    let lines = wrap_lines(text, content_width.max(1.0), &style, measurer);
-    let bbox_h = text_bbox_height(&lines, font_size);
-    let h = bbox_h + font_size.max(1.0) * 1.1 * 0.5 + padding;
+    let lines = wrap_lines(text, content_width.max(1.0), style, measurer);
+    let bbox_h = text_bbox_height(&lines, style.font_size);
+    let h = bbox_h + style.font_size.max(1.0) * 1.1 * 0.5 + padding;
     (h, lines)
 }
 
@@ -207,11 +231,11 @@ fn compute_node(
     y: f64,
     content_width: f64,
     max_height: f64,
-    font_size: f64,
+    style: &TextStyle,
     measurer: &dyn TextMeasurer,
 ) -> TimelineNodeLayout {
     let (h0, label_lines) =
-        virtual_node_height(label, content_width, font_size, NODE_PADDING, measurer);
+        virtual_node_height(label, content_width, style, NODE_PADDING, measurer);
     let height = h0.max(max_height).max(1.0);
     let width = (content_width + NODE_PADDING * 2.0).max(1.0);
     TimelineNodeLayout {
@@ -266,15 +290,9 @@ fn expand_bounds_for_node_text(
     max_x: &mut f64,
     _max_y: &mut f64,
     nodes: &[TimelineNodeLayout],
-    font_size: f64,
+    style: &TextStyle,
     measurer: &dyn TextMeasurer,
 ) {
-    let style = TextStyle {
-        font_family: None,
-        font_size,
-        font_weight: None,
-    };
-
     for n in nodes {
         if n.kind == "title-bounds" {
             continue;
@@ -307,11 +325,8 @@ pub fn layout_timeline_diagram(
         model.diagram_type.as_str(),
     );
 
-    let font_size = effective_config
-        .get("fontSize")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(16.0)
-        .max(1.0);
+    let text_style = timeline_text_style(effective_config);
+    let font_size = text_style.font_size;
 
     let left_margin = cfg_f64(effective_config, &["timeline", "leftMargin"])
         .unwrap_or(150.0)
@@ -331,7 +346,7 @@ pub fn layout_timeline_diagram(
         let (h, _lines) = virtual_node_height(
             section,
             task_content_width,
-            font_size,
+            &text_style,
             NODE_PADDING,
             measurer,
         );
@@ -344,7 +359,7 @@ pub fn layout_timeline_diagram(
         let (h, _lines) = virtual_node_height(
             &task.task,
             task_content_width,
-            font_size,
+            &text_style,
             NODE_PADDING,
             measurer,
         );
@@ -353,7 +368,7 @@ pub fn layout_timeline_diagram(
         let mut task_event_len: f64 = 0.0;
         for ev in &task.events {
             let (eh, _lines) =
-                virtual_node_height(ev, task_content_width, font_size, NODE_PADDING, measurer);
+                virtual_node_height(ev, task_content_width, &text_style, NODE_PADDING, measurer);
             task_event_len += eh;
         }
         if !task.events.is_empty() {
@@ -395,7 +410,7 @@ pub fn layout_timeline_diagram(
                 section_y,
                 content_width,
                 max_section_height,
-                font_size,
+                &text_style,
                 measurer,
             );
             all_nodes_pre_title.push(section_node.clone());
@@ -414,7 +429,7 @@ pub fn layout_timeline_diagram(
                     task_y,
                     task_content_width,
                     max_task_height,
-                    font_size,
+                    &text_style,
                     measurer,
                 );
                 all_nodes_pre_title.push(task_node.clone());
@@ -439,7 +454,7 @@ pub fn layout_timeline_diagram(
                         event_y,
                         task_content_width,
                         50.0,
-                        font_size,
+                        &text_style,
                         measurer,
                     );
                     event_y += event_node.height + EVENT_GAP_Y;
@@ -477,7 +492,7 @@ pub fn layout_timeline_diagram(
                 master_y,
                 task_content_width,
                 max_task_height,
-                font_size,
+                &text_style,
                 measurer,
             );
             all_nodes_pre_title.push(task_node.clone());
@@ -502,7 +517,7 @@ pub fn layout_timeline_diagram(
                     event_y,
                     task_content_width,
                     50.0,
-                    font_size,
+                    &text_style,
                     measurer,
                 );
                 event_y += event_node.height + EVENT_GAP_Y;
@@ -532,7 +547,7 @@ pub fn layout_timeline_diagram(
         &mut pre_max_x,
         &mut pre_max_y,
         &all_nodes_pre_title,
-        font_size,
+        &text_style,
         measurer,
     );
     let pre_title_box_width = (pre_max_x - pre_min_x).max(1.0);
@@ -569,7 +584,7 @@ pub fn layout_timeline_diagram(
         // resolves to ~31px in upstream fixtures.
         let title_font_size = font_size * 1.9375;
         let title_style = TextStyle {
-            font_family: None,
+            font_family: text_style.font_family.clone(),
             font_size: title_font_size,
             font_weight: Some("bold".to_string()),
         };
@@ -597,7 +612,7 @@ pub fn layout_timeline_diagram(
         &mut full_max_x,
         &mut full_max_y,
         &all_nodes_full,
-        font_size,
+        &text_style,
         measurer,
     );
 

@@ -2,18 +2,13 @@ use super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
-fn mindmap_css(diagram_id: &str) -> String {
+fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-
-    let mut out = info_css(diagram_id);
-    if let Some(prefix) = out.strip_suffix(&root_rule) {
-        out = prefix.to_string();
-    }
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
 
@@ -110,7 +105,7 @@ fn mindmap_css(diagram_id: &str) -> String {
         id
     );
 
-    out.push_str(&root_rule);
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -828,7 +823,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         vw = view_box_attr.split_whitespace().nth(2).unwrap_or("100"),
         vh = view_box_attr.split_whitespace().nth(3).unwrap_or("100"),
     );
-    let css = mindmap_css(diagram_id);
+    let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g>");
 

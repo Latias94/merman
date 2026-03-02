@@ -1,20 +1,22 @@
 use super::*;
 
-fn gitgraph_css(diagram_id: &str) -> String {
+fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let mut out = info_css(diagram_id);
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:1;stroke:#333333;stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}"#,
-        id, id, id, id
+        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}"#,
+        id, parts.line_color, id, id, id
     );
+    out.push_str(&parts.root_rule);
     out
 }
 
 pub(super) fn render_gitgraph_diagram_svg(
     layout: &crate::model::GitGraphDiagramLayout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
@@ -31,11 +33,17 @@ pub(super) fn render_gitgraph_diagram_svg(
         measurer: &dyn TextMeasurer,
         text: &str,
         style: &crate::text::TextStyle,
+        apply_corrections: bool,
     ) -> f64 {
         let base = measurer
             .measure_svg_simple_text_bbox_width_px(text, style)
             .max(0.0);
-        (base + gitgraph_simple_text_bbox_width_correction_px(text)).max(0.0)
+        let extra = if apply_corrections {
+            gitgraph_simple_text_bbox_width_correction_px(text)
+        } else {
+            0.0
+        };
+        (base + extra).max(0.0)
     }
 
     fn gitgraph_simple_text_bbox_width_correction_px(text: &str) -> f64 {
@@ -178,7 +186,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         );
     }
 
-    let css = gitgraph_css(diagram_id);
+    let css = gitgraph_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
 
     out.push_str(r#"<g/>"#);
@@ -449,8 +457,15 @@ pub(super) fn render_gitgraph_diagram_svg(
     }
     out.push_str("</g>");
 
+    let commit_font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
+    let apply_bbox_corrections = normalize_css_font_family(&commit_font_family)
+        == r#""trebuchet ms",verdana,arial,sans-serif"#;
     let commit_label_style = crate::text::TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_family: Some(commit_font_family),
         font_size: 10.0,
         font_weight: None,
     };
@@ -461,7 +476,12 @@ pub(super) fn render_gitgraph_diagram_svg(
             && c.commit_type != 4
             && layout.show_commit_label;
         if show {
-            let bbox_w = gitgraph_simple_text_bbox_width_px(measurer, &c.id, &commit_label_style);
+            let bbox_w = gitgraph_simple_text_bbox_width_px(
+                measurer,
+                &c.id,
+                &commit_label_style,
+                apply_bbox_corrections,
+            );
             let bbox_h = measurer
                 .measure_svg_simple_text_bbox_height_px(&c.id, &commit_label_style)
                 .max(0.0);
@@ -548,8 +568,12 @@ pub(super) fn render_gitgraph_diagram_svg(
             }
             let mut elems: Vec<TagGeom> = Vec::new();
             for tag_value in &tag_values {
-                let bbox_w =
-                    gitgraph_simple_text_bbox_width_px(measurer, tag_value, &commit_label_style);
+                let bbox_w = gitgraph_simple_text_bbox_width_px(
+                    measurer,
+                    tag_value,
+                    &commit_label_style,
+                    apply_bbox_corrections,
+                );
                 let bbox_h = measurer
                     .measure_svg_simple_text_bbox_height_px(tag_value, &commit_label_style)
                     .max(0.0);

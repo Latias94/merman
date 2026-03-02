@@ -45,6 +45,37 @@ fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     cur.as_f64()
 }
 
+fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
+fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
+    cfg.get("fontSize")
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.as_u64().map(|n| n as f64))
+        })
+        .unwrap_or(16.0)
+        .max(1.0)
+}
+
+fn kanban_text_style(effective_config: &serde_json::Value) -> TextStyle {
+    let font_family = cfg_string(effective_config, &["fontFamily"])
+        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    let font_size = cfg_font_size(effective_config);
+    TextStyle {
+        font_family,
+        font_size,
+        font_weight: None,
+    }
+}
+
 pub fn layout_kanban_diagram(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
@@ -67,8 +98,15 @@ pub fn layout_kanban_diagram(
     let padding = SECTION_PADDING;
     let section_rect_y = -(section_width * 3.0) / 2.0;
 
-    let legend_style = TextStyle::default();
-    let mut max_label_height = SECTION_LABEL_HEIGHT_BASELINE;
+    let legend_style = kanban_text_style(effective_config);
+    let font_scale = legend_style.font_size / 16.0;
+    let section_label_height_baseline = SECTION_LABEL_HEIGHT_BASELINE * font_scale;
+    let section_label_fo_height = SECTION_LABEL_FO_HEIGHT * font_scale;
+    let item_one_row_height = ITEM_ONE_ROW_HEIGHT * font_scale;
+    let item_two_row_height = ITEM_TWO_ROW_HEIGHT * font_scale;
+    let item_label_line_height = ITEM_LABEL_LINE_HEIGHT * font_scale;
+
+    let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::new();
     let mut items: Vec<KanbanItemLayout> = Vec::new();
 
@@ -79,7 +117,7 @@ pub fn layout_kanban_diagram(
         let center_y = 0.0;
 
         let label_metrics = measurer.measure(&section.label, &legend_style);
-        max_label_height = max_label_height.max(label_metrics.height.max(SECTION_LABEL_FO_HEIGHT));
+        max_label_height = max_label_height.max(label_metrics.height.max(section_label_fo_height));
 
         sections.push(KanbanSectionLayout {
             id: section.id.clone(),
@@ -113,7 +151,7 @@ pub fn layout_kanban_diagram(
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
             // that behavior so item heights match the upstream bbox-based layout.
-            let item_label_style = TextStyle::default();
+            let item_label_style = legend_style.clone();
             let raw_title_metrics =
                 measurer.measure_wrapped(&item.label, &item_label_style, None, WrapMode::HtmlLike);
             let title_metrics = if inner_max_w > 0.0 && raw_title_metrics.width > inner_max_w {
@@ -129,11 +167,11 @@ pub fn layout_kanban_diagram(
 
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
             let base_height = if has_details_row {
-                ITEM_TWO_ROW_HEIGHT
+                item_two_row_height
             } else {
-                ITEM_ONE_ROW_HEIGHT
+                item_one_row_height
             };
-            let extra_title_height = (title_metrics.height - ITEM_LABEL_LINE_HEIGHT).max(0.0);
+            let extra_title_height = (title_metrics.height - item_label_line_height).max(0.0);
             let height = base_height + extra_title_height;
 
             let center_x = section.center_x;
@@ -158,7 +196,9 @@ pub fn layout_kanban_diagram(
             y = center_y + height / 2.0 + padding / 2.0;
         }
 
-        let height = (y - top + 3.0 * padding).max(50.0) + (max_label_height - 25.0);
+        let min_section_height = 50.0 * font_scale;
+        let height = (y - top + 3.0 * padding).max(min_section_height)
+            + (max_label_height - section_label_height_baseline);
         section.rect_height = height.max(1.0);
     }
 

@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn render_error_diagram_svg(
     layout: &ErrorDiagramLayout,
     _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -19,7 +19,7 @@ pub(super) fn render_error_diagram_svg(
         vbh = fmt(layout.viewbox_height),
         max_w = fmt(layout.max_width_px),
     );
-    let css = info_css(diagram_id);
+    let css = info_css_with_config(diagram_id, effective_config);
     let _ = write!(
         &mut out,
         r#"<style xmlns="http://www.w3.org/1999/xhtml">{}</style>"#,

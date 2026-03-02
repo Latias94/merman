@@ -65,6 +65,65 @@ fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
+fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
+fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
+    cfg.get("fontSize")
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_i64().map(|n| n as f64))
+                .or_else(|| v.as_u64().map(|n| n as f64))
+        })
+        .unwrap_or(16.0)
+        .max(1.0)
+}
+
+fn normalize_css_font_family(font_family: &str) -> String {
+    let s = font_family.trim().trim_end_matches(';').trim();
+    if s.is_empty() {
+        return String::new();
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+
+    for ch in s.chars() {
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                cur.push(ch);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                cur.push(ch);
+            }
+            ',' if !in_single && !in_double => {
+                let p = cur.trim();
+                if !p.is_empty() {
+                    parts.push(p.to_string());
+                }
+                cur.clear();
+            }
+            _ => cur.push(ch),
+        }
+    }
+
+    let p = cur.trim();
+    if !p.is_empty() {
+        parts.push(p.to_string());
+    }
+
+    parts.join(",")
+}
+
 fn commit_symbol_type(commit: &GitGraphCommit) -> i64 {
     commit.custom_type.unwrap_or(commit.commit_type)
 }
@@ -578,10 +637,20 @@ pub fn layout_gitgraph_diagram(
         cfg_bool(effective_config, &["gitGraph", "parallelCommits"]).unwrap_or(false);
 
     // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
-    // `drawText(...)` nodes inherit Mermaid's default font stack.
+    // `drawText(...)` nodes inherit Mermaid's global font config.
+    let font_family = cfg_string(effective_config, &["fontFamily"])
+        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
+        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
+    let font_size = cfg_font_size(effective_config);
+    let apply_bbox_corrections = normalize_css_font_family(&font_family)
+        == r#""trebuchet ms",verdana,arial,sans-serif"#
+        && (font_size - 16.0).abs() <= 1e-9;
+
     let label_style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
+        font_family: Some(font_family),
+        font_size,
         font_weight: None,
     };
 
@@ -620,6 +689,7 @@ pub fn layout_gitgraph_diagram(
         measurer: &dyn TextMeasurer,
         text: &str,
         style: &TextStyle,
+        apply_corrections: bool,
     ) -> f64 {
         // Keep a stable baseline on Mermaid's typical 1/64px lattice, then apply tiny fixture-
         // derived corrections to hit upstream `getBBox()` values for known edge-case labels.
@@ -628,7 +698,12 @@ pub fn layout_gitgraph_diagram(
                 .measure_svg_simple_text_bbox_width_px(text, style)
                 .max(0.0),
         );
-        (base + gitgraph_branch_label_bbox_width_correction_px(text)).max(0.0)
+        let extra = if apply_corrections {
+            gitgraph_branch_label_bbox_width_correction_px(text)
+        } else {
+            0.0
+        };
+        (base + extra).max(0.0)
     }
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
@@ -638,7 +713,12 @@ pub fn layout_gitgraph_diagram(
     for (i, b) in model.branches.iter().enumerate() {
         // Upstream gitGraph uses `drawText(...).getBBox().width` for branch label widths.
         let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = gitgraph_branch_label_bbox_width_px(measurer, &b.name, &label_style);
+        let bbox_w = gitgraph_branch_label_bbox_width_px(
+            measurer,
+            &b.name,
+            &label_style,
+            apply_bbox_corrections,
+        );
         branch_pos.insert(b.name.clone(), pos);
         branch_index.insert(b.name.clone(), i);
 

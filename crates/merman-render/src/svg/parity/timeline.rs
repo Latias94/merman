@@ -2,7 +2,6 @@ use super::*;
 
 fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
 
     fn default_c_scale(i: usize) -> &'static str {
         match i {
@@ -93,11 +92,9 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
     }
 
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-    let mut out = info_css(diagram_id);
-    if let Some(prefix) = out.strip_suffix(&root_rule) {
-        out = prefix.to_string();
-    }
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let root_rule = parts.root_rule;
+    let mut out = parts.css_prefix;
 
     let label_text_color = theme_color(effective_config, "labelTextColor", "black");
     let label_text_is_calculated = label_text_color.trim() == "calculated";
