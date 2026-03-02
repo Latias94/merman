@@ -269,33 +269,32 @@ pub(super) fn render_radar_diagram_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
+    let w_attr = fmt_string(layout.svg_width);
+    let h_attr = fmt_string(layout.svg_height);
+    let viewbox_attr = format!("0 0 {} {}", fmt(layout.svg_width), fmt(layout.svg_height));
+
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+
+    let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
     let mut out = String::new();
-    let _ = write!(
+    root_svg::push_svg_root_open_ex2(
         &mut out,
-        r#"<svg id="{id}" width="{w}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {vbw} {vbh}" height="{h}" role="graphics-document document" aria-roledescription="radar""#,
-        id = diagram_id_esc,
-        w = fmt(layout.svg_width),
-        h = fmt(layout.svg_height),
-        vbw = fmt(layout.svg_width),
-        vbh = fmt(layout.svg_height),
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Fixed(&w_attr),
+        Some(&h_attr),
+        None,
+        Some(viewbox_attr.as_str()),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &[],
+        "radar",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        &tail_attrs,
+        root_svg::SvgRootFixedHeightPlacement::AfterViewBox,
+        false,
     );
-
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        );
-    }
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        );
-    }
-
-    out.push_str(r#" style="background-color: white;">"#);
 
     if has_acc_title {
         let _ = write!(
