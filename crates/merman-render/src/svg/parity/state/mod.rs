@@ -7,7 +7,7 @@ mod context;
 mod emitted_bounds;
 mod links;
 mod rough_cache;
-mod roughjs;
+pub(in crate::svg::parity) mod roughjs;
 mod style;
 mod viewport;
 
@@ -1555,6 +1555,17 @@ fn render_state_edge_label(
     origin_x: f64,
     origin_y: f64,
 ) {
+    fn edge_label_div_style(label_w: f64) -> &'static str {
+        // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
+        // `<div>` container to wrapping mode when the label reaches the max width.
+        const MW: f64 = 200.0;
+        if label_w >= MW - 1e-3 {
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"
+        } else {
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"
+        }
+    }
+
     fn mermaid_round_number(num: f64, precision: i32) -> f64 {
         let factor = 10_f64.powi(precision);
         (num * factor).round() / factor
@@ -1657,7 +1668,7 @@ fn render_state_edge_label(
                     let h = lbl.height.max(0.0);
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                         fmt_display(cx),
                         fmt_display(cy),
                         escape_xml_display(&idm),
@@ -1665,6 +1676,7 @@ fn render_state_edge_label(
                         fmt_display(-h / 2.0),
                         fmt_display(w),
                         fmt_display(h),
+                        edge_label_div_style(w),
                         state_edge_label_html(label_text)
                     );
                 }
@@ -1774,7 +1786,7 @@ fn render_state_edge_label(
 
     let _ = write!(
         out,
-        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
         fmt_display(cx),
         fmt_display(cy),
         escape_xml_display(&edge.id),
@@ -1782,6 +1794,7 @@ fn render_state_edge_label(
         fmt_display(-h / 2.0),
         fmt_display(w),
         fmt_display(h),
+        edge_label_div_style(w),
         state_edge_label_html(label_text)
     );
 }

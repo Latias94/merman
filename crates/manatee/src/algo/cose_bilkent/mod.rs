@@ -69,12 +69,16 @@ pub fn layout_indexed(
     }
 
     let spring_start = timing_enabled.then(std::time::Instant::now);
-    sim.run_spring_embedder(timing_enabled);
+    if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
+        sim.run_spring_embedder(timing_enabled);
+    }
     if let Some(s) = spring_start {
         timings.spring = s.elapsed();
     }
     let transform_start = timing_enabled.then(std::time::Instant::now);
-    sim.transform_to_origin();
+    if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
+        sim.transform_to_origin();
+    }
     if let Some(s) = transform_start {
         timings.transform = s.elapsed();
     }
@@ -154,12 +158,16 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
     let spring_start = timing_enabled.then(std::time::Instant::now);
-    sim.run_spring_embedder(timing_enabled);
+    if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
+        sim.run_spring_embedder(timing_enabled);
+    }
     if let Some(s) = spring_start {
         timings.spring = s.elapsed();
     }
     let transform_start = timing_enabled.then(std::time::Instant::now);
-    sim.transform_to_origin();
+    if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
+        sim.transform_to_origin();
+    }
     if let Some(s) = transform_start {
         timings.transform = s.elapsed();
     }
@@ -212,6 +220,8 @@ struct SimNode {
     top: f64,
     // Incident edge indices in insertion order, matching `LNode.edges` order.
     edges: Vec<usize>,
+    // Cached repulsion candidates for the FR-grid variant (`FDLayoutNode.surrounding`).
+    surrounding: Vec<usize>,
     active: bool,
 
     // FR-grid indices (computed by `update_grid`), used by tree growth heuristics.
@@ -384,7 +394,6 @@ struct SimGraph {
     grid: SimGrid,
     repulsion_seen: Vec<u32>,
     repulsion_seen_gen: u32,
-    repulsion_candidates: Vec<usize>,
 }
 
 impl SimGraph {
@@ -404,12 +413,25 @@ impl SimGraph {
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
     const MIN_REPULSION_DIST: f64 = Self::DEFAULT_EDGE_LENGTH / 10.0;
+    const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
 
     // cytoscape-cose-bilkent default options (Mermaid uses these in `cose-bilkent/cytoscape-setup.ts`).
     const DEFAULT_SPRING_STRENGTH: f64 = 0.45; // edgeElasticity
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0; // nodeRepulsion
     const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // gravity
     const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // gravityRange
+
+    #[inline]
+    fn imath_sign(value: f64) -> f64 {
+        // Port of `layout-base` `IMath.sign`: returns 0 for 0.
+        if value > 0.0 {
+            1.0
+        } else if value < 0.0 {
+            -1.0
+        } else {
+            0.0
+        }
+    }
 
     fn from_indexed(nodes_in: &[IndexedNode], edges_in: &[IndexedEdge]) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(nodes_in.len());
@@ -427,6 +449,7 @@ impl SimGraph {
                 left: n.x - hw,
                 top: n.y - hh,
                 edges: Vec::new(),
+                surrounding: Vec::new(),
                 active: true,
                 start_x: 0,
                 finish_x: 0,
@@ -469,7 +492,6 @@ impl SimGraph {
             grid: SimGrid::default(),
             repulsion_seen: vec![0u32; nodes_in.len()],
             repulsion_seen_gen: 1,
-            repulsion_candidates: Vec::new(),
         }
     }
 
@@ -489,6 +511,7 @@ impl SimGraph {
                 left: n.x - hw,
                 top: n.y - hh,
                 edges: Vec::new(),
+                surrounding: Vec::new(),
                 active: true,
                 start_x: 0,
                 finish_x: 0,
@@ -536,7 +559,6 @@ impl SimGraph {
             grid: SimGrid::default(),
             repulsion_seen: vec![0u32; graph.nodes.len()],
             repulsion_seen_gen: 1,
-            repulsion_candidates: Vec::new(),
         }
     }
 
@@ -699,26 +721,48 @@ impl SimGraph {
             return;
         }
 
-        let mut left = f64::INFINITY;
-        let mut top = f64::INFINITY;
-        let mut right = f64::NEG_INFINITY;
-        let mut bottom = f64::NEG_INFINITY;
+        let mut min_left = f64::INFINITY;
+        let mut min_top = f64::INFINITY;
+        let mut max_right = f64::NEG_INFINITY;
+        let mut max_bottom = f64::NEG_INFINITY;
         for n in &self.nodes {
             if !n.active {
                 continue;
             }
-            left = left.min(n.left);
-            top = top.min(n.top);
-            right = right.max(n.right());
-            bottom = bottom.max(n.bottom());
+            min_left = min_left.min(n.left);
+            min_top = min_top.min(n.top);
+            max_right = max_right.max(n.right());
+            max_bottom = max_bottom.max(n.bottom());
         }
-        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
+        if !(min_left.is_finite()
+            && min_top.is_finite()
+            && max_right.is_finite()
+            && max_bottom.is_finite())
+        {
             return;
         }
 
-        let size_x = ((right - left) / repulsion_range).ceil().max(1.0) as usize;
-        let size_y = ((bottom - top) / repulsion_range).ceil().max(1.0) as usize;
-        self.grid.reset(size_x, size_y, left, top, repulsion_range);
+        // Match `layout-base` grid semantics:
+        // - grid extents are based on the root graph bounds, which include `DEFAULT_GRAPH_MARGIN`
+        //   (see `LGraph.updateBounds()` and `FDLayout.updateGrid()`).
+        let left_with_margin = min_left - Self::DEFAULT_GRAPH_MARGIN;
+        let top_with_margin = min_top - Self::DEFAULT_GRAPH_MARGIN;
+        let right_with_margin = max_right + Self::DEFAULT_GRAPH_MARGIN;
+        let bottom_with_margin = max_bottom + Self::DEFAULT_GRAPH_MARGIN;
+
+        let size_x = ((right_with_margin - left_with_margin) / repulsion_range)
+            .ceil()
+            .max(1.0) as usize;
+        let size_y = ((bottom_with_margin - top_with_margin) / repulsion_range)
+            .ceil()
+            .max(1.0) as usize;
+        self.grid.reset(
+            size_x,
+            size_y,
+            left_with_margin,
+            top_with_margin,
+            repulsion_range,
+        );
 
         let clamp_x = |v: i32| v.clamp(0, (size_x as i32) - 1);
         let clamp_y = |v: i32| v.clamp(0, (size_y as i32) - 1);
@@ -727,10 +771,12 @@ impl SimGraph {
             if !n.active {
                 continue;
             }
-            let start_x = ((n.left - left) / repulsion_range).floor() as i32;
-            let finish_x = ((n.right() - left) / repulsion_range).floor() as i32;
-            let start_y = ((n.top - top) / repulsion_range).floor() as i32;
-            let finish_y = ((n.bottom() - top) / repulsion_range).floor() as i32;
+            // `FDLayout.addNodeToGrid(v, left, top)` where `(left,top)` are root graph bounds
+            // (already including `DEFAULT_GRAPH_MARGIN`).
+            let start_x = ((n.left - left_with_margin) / repulsion_range).floor() as i32;
+            let finish_x = ((n.right() - left_with_margin) / repulsion_range).floor() as i32;
+            let start_y = ((n.top - top_with_margin) / repulsion_range).floor() as i32;
+            let finish_y = ((n.bottom() - top_with_margin) / repulsion_range).floor() as i32;
 
             n.start_x = clamp_x(start_x);
             n.finish_x = clamp_x(finish_x);
@@ -944,13 +990,8 @@ impl SimGraph {
         let mut list: Vec<usize> = nodes.to_vec();
         let mut removed: Vec<bool> = vec![false; self.nodes.len()];
         let mut remaining_degrees: Vec<usize> = vec![0; self.nodes.len()];
-        let mut found_center = false;
+        let mut found_center = list.len() == 1 || list.len() == 2;
         let mut center_node = list[0];
-
-        if list.len() == 1 || list.len() == 2 {
-            found_center = true;
-            center_node = list[0];
-        }
 
         for &node in &list {
             let degree = self.active_degree(node);
@@ -968,19 +1009,19 @@ impl SimGraph {
         }
 
         while !found_center {
-            temp_list.clear();
-
-            // The upstream implementation mutates `list` while iterating over it. Replicate that.
+            // Upstream bug-for-bug parity:
+            // `Layout.findCenterOfTree()` creates `tempList2 = [...tempList]` but then iterates
+            // over `list` (not `tempList2`) while removing from `list` in-place:
             //
-            // The specific `remove(i); i += 1` pattern removes the elements at even indices of the
-            // original list and leaves the odd-indexed elements behind. Doing this via repeated
-            // `Vec::remove` is O(n^2). Replicate the same effect in O(n).
-            let mut next_list: Vec<usize> = Vec::with_capacity(list.len() / 2);
-            for (idx, &node) in list.iter().enumerate() {
-                if idx % 2 == 1 {
-                    next_list.push(node);
-                    continue;
-                }
+            //   for (i=0; i<list.length; i++) { node=list[i]; list.splice(indexOf(node), 1); ... }
+            //
+            // This has the side-effect of skipping every other element. We replicate the exact
+            // "remove then i++" semantics by using a `while` loop and `Vec::remove(i)`.
+            temp_list.clear();
+            let mut i = 0usize;
+            while i < list.len() {
+                let node = list[i];
+                list.remove(i);
 
                 self.for_each_active_neighbor(node, |neighbour| {
                     if removed[neighbour] {
@@ -993,8 +1034,9 @@ impl SimGraph {
                     }
                     remaining_degrees[neighbour] = new_degree;
                 });
+
+                i += 1;
             }
-            list = next_list;
 
             for &v in &temp_list {
                 removed[v] = true;
@@ -1150,12 +1192,31 @@ impl SimGraph {
             current_x = (point.0 + Self::DEFAULT_COMPONENT_SEPERATION).floor();
         }
 
-        // Match upstream `positionNodesRadially` final world-centering pass (layout-base).
-        // This can affect floating-point drift and convergence in the subsequent spring embedder.
-        let dx = Self::WORLD_CENTER_X - point.0 / 2.0;
-        let dy = Self::WORLD_CENTER_Y - point.1 / 2.0;
-        for n in &mut self.nodes {
-            n.move_by(dx, dy);
+        // Match upstream `positionNodesRadially` final world-centering pass:
+        // `this.transform(new PointD(WORLD_CENTER_X - point.x/2, WORLD_CENTER_Y - point.y/2))`
+        // (layout-base). This is *not* equivalent to adding `(WORLD_CENTER - point/2)` directly:
+        // `Layout.transform(...)` also subtracts the current root graph left/top (with margins),
+        // and those exact floating-point cancellations affect downstream `===` checks.
+        let world_org_x = Self::WORLD_CENTER_X - point.0 / 2.0;
+        let world_org_y = Self::WORLD_CENTER_Y - point.1 / 2.0;
+
+        let mut min_left = f64::INFINITY;
+        let mut min_top = f64::INFINITY;
+        for n in &self.nodes {
+            if !n.active {
+                continue;
+            }
+            min_left = min_left.min(n.left);
+            min_top = min_top.min(n.top);
+        }
+        if min_left.is_finite() && min_top.is_finite() {
+            let device_org_x = min_left - Self::DEFAULT_GRAPH_MARGIN;
+            let device_org_y = min_top - Self::DEFAULT_GRAPH_MARGIN;
+            let dx = world_org_x - device_org_x;
+            let dy = world_org_y - device_org_y;
+            for n in &mut self.nodes {
+                n.move_by(dx, dy);
+            }
         }
     }
 
@@ -1208,16 +1269,6 @@ impl SimGraph {
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
         let gravity_range_factor = Self::DEFAULT_GRAVITY_RANGE_FACTOR;
         let repulsion_range = 2.0 * ideal_edge_length;
-        // For small connected graphs with no pruned nodes (common for mindmap trees), the initial
-        // FR-grid build is unused: repulsion runs in the O(n^2) path and tree growth is disabled.
-        // Skip it to avoid a fixed-cost hit in the spring embedder.
-        if !(self.nodes.len() < 64 && self.pruned_nodes_all.is_empty()) {
-            let update_grid_start = timing_enabled.then(std::time::Instant::now);
-            self.update_grid(repulsion_range);
-            if let Some(s) = update_grid_start {
-                timings.update_grid += s.elapsed();
-            }
-        }
 
         let active_n = self.nodes.iter().filter(|n| n.active).count().max(1) as f64;
         let displacement_threshold_per_node = (3.0 * Self::DEFAULT_EDGE_LENGTH) / 100.0;
@@ -1242,6 +1293,7 @@ impl SimGraph {
         let mut is_growth_finished = false;
         let mut grow_tree_iterations = 0usize;
         let mut after_growth_iterations = 0usize;
+        let mut processed_repulsion: Vec<bool> = vec![false; self.nodes.len()];
 
         loop {
             total_iterations += 1;
@@ -1363,10 +1415,10 @@ impl SimGraph {
                 // Mirror `LEdge.updateLength(...)` from `layout-base`: very small components are
                 // snapped to their sign (or 0 if the component is 0).
                 if lx.abs() < 1.0 {
-                    lx = lx.signum();
+                    lx = Self::imath_sign(lx);
                 }
                 if ly.abs() < 1.0 {
-                    ly = ly.signum();
+                    ly = Self::imath_sign(ly);
                 }
 
                 let len = (lx * lx + ly * ly).sqrt();
@@ -1386,189 +1438,101 @@ impl SimGraph {
                 timings.spring_forces += s.elapsed();
             }
 
-            // Repulsion forces.
+            // Repulsion forces (FR-grid variant).
             //
-            // Keep the effective cutoff identical to the previous O(n^2) implementation:
-            // compute repulsion only when two nodes are within `repulsionRange` along both axes.
-            //
-            // For tiny graphs, the simple O(n^2) loop is faster than maintaining a grid + sorting
-            // candidates. For larger graphs, preselect candidates via the FR grid while
-            // preserving deterministic pair order (ascending `j`) so results stay stable.
+            // Mirrors `FDLayout.calcRepulsionForces` + `calculateRepulsionForceOfANode`:
+            // - rebuild the grid every `GRID_CALCULATION_CHECK_PERIOD` iterations (when allowed)
+            // - cache `node.surrounding` between grid rebuilds
+            // - candidate filtering uses *border distances* against `repulsionRange`
             let repulsion_start = timing_enabled.then(std::time::Instant::now);
-            let use_grid_repulsion = self.nodes.len() >= 64;
+            let grid_update_allowed = !is_tree_growing && !is_growth_finished;
+            let force_to_node_surrounding_update = (grow_tree_iterations % 10 == 1
+                && is_tree_growing)
+                || (after_growth_iterations % 10 == 1 && is_growth_finished);
 
-            if use_grid_repulsion {
+            if total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1 && grid_update_allowed {
                 let update_grid_start = timing_enabled.then(std::time::Instant::now);
                 self.update_grid(repulsion_range);
                 if let Some(s) = update_grid_start {
                     timings.update_grid += s.elapsed();
                 }
+            }
 
+            processed_repulsion.fill(false);
+            let rebuild_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1
+                && grid_update_allowed)
+                || force_to_node_surrounding_update;
+
+            if !self.grid.is_empty() {
                 let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
                 let size_y_i32 = self.grid.size_y().min(i32::MAX as usize) as i32;
 
-                for i in 0..self.nodes.len() {
-                    if !self.nodes[i].active || self.grid.is_empty() {
+                for a in 0..self.nodes.len() {
+                    if !self.nodes[a].active {
                         continue;
                     }
 
-                    self.repulsion_seen_gen = self.repulsion_seen_gen.wrapping_add(1);
-                    if self.repulsion_seen_gen == 0 {
-                        self.repulsion_seen.fill(0);
-                        self.repulsion_seen_gen = 1;
-                    }
-                    let seen_gen = self.repulsion_seen_gen;
+                    if rebuild_surrounding {
+                        self.nodes[a].surrounding.clear();
 
-                    self.repulsion_candidates.clear();
-
-                    let ni = &self.nodes[i];
-                    let gx0 = (ni.start_x - 1).max(0) as usize;
-                    let gy0 = (ni.start_y - 1).max(0) as usize;
-                    let gx1 = (ni.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
-                    let gy1 = (ni.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
-
-                    for gx in gx0..=gx1 {
-                        for gy in gy0..=gy1 {
-                            for &j in self.grid.cell(gx, gy) {
-                                if j <= i {
-                                    continue;
-                                }
-                                if !self.nodes[j].active {
-                                    continue;
-                                }
-                                if self.repulsion_seen[j] == seen_gen {
-                                    continue;
-                                }
-                                self.repulsion_seen[j] = seen_gen;
-                                self.repulsion_candidates.push(j);
-                            }
+                        self.repulsion_seen_gen = self.repulsion_seen_gen.wrapping_add(1);
+                        if self.repulsion_seen_gen == 0 {
+                            self.repulsion_seen.fill(0);
+                            self.repulsion_seen_gen = 1;
                         }
-                    }
+                        let seen_gen = self.repulsion_seen_gen;
 
-                    self.repulsion_candidates.sort_unstable();
+                        let ni = &self.nodes[a];
+                        let gx0 = (ni.start_x - 1).max(0) as usize;
+                        let gy0 = (ni.start_y - 1).max(0) as usize;
+                        let gx1 = (ni.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
+                        let gy1 = (ni.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
 
-                    for &j in &self.repulsion_candidates {
-                        if timing_enabled {
-                            timings.repulsion_pairs_considered += 1;
-                        }
-
-                        let a = &self.nodes[i];
-                        let b = &self.nodes[j];
-                        let dist_x =
-                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-                        let dist_y =
-                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
-                        if dist_x > repulsion_range || dist_y > repulsion_range {
-                            continue;
-                        }
-                        if timing_enabled {
-                            timings.repulsion_pairs_in_range += 1;
-                        }
-
-                        let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
-                        let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
-                        ni.repulsion_fx += rfx;
-                        ni.repulsion_fy += rfy;
-                        nj.repulsion_fx -= rfx;
-                        nj.repulsion_fy -= rfy;
-                    }
-                }
-            } else {
-                for i in 0..self.nodes.len() {
-                    let a_node = &self.nodes[i];
-                    if !a_node.active {
-                        continue;
-                    }
-                    let a_hw = a_node.half_width;
-                    let a_hh = a_node.half_height;
-                    let a_cx = a_node.left + a_hw;
-                    let a_cy = a_node.top + a_hh;
-                    for j in (i + 1)..self.nodes.len() {
-                        let b_node = &self.nodes[j];
-                        if !b_node.active {
-                            continue;
-                        }
-                        if timing_enabled {
-                            timings.repulsion_pairs_considered += 1;
-                        }
-
-                        let b_hw = b_node.half_width;
-                        let b_hh = b_node.half_height;
-                        let b_cx = b_node.left + b_hw;
-                        let b_cy = b_node.top + b_hh;
-
-                        let dx_centers = b_cx - a_cx;
-                        let dy_centers = b_cy - a_cy;
-                        let abs_dx_centers = dx_centers.abs();
-                        let abs_dy_centers = dy_centers.abs();
-                        let dist_x = abs_dx_centers - (a_hw + b_hw);
-                        let dist_y = abs_dy_centers - (a_hh + b_hh);
-                        if dist_x > repulsion_range || dist_y > repulsion_range {
-                            continue;
-                        }
-                        if timing_enabled {
-                            timings.repulsion_pairs_in_range += 1;
-                        }
-
-                        // `rects_intersect` expressed in center + half-size space. This matches
-                        // the strict inequalities in the original AABB overlap check.
-                        let overlaps = dist_x < 0.0 && dist_y < 0.0;
-                        let (rfx, rfy) = if overlaps {
-                            // Overlaps are rare in typical Mermaid inputs; reuse the canonical
-                            // implementation to preserve behavior in this edge case.
-                            self.calc_repulsion_force(i, j, repulsion_constant)
-                        } else {
-                            let dx = dx_centers;
-                            let dy = dy_centers;
-                            if dx == 0.0 && dy == 0.0 {
-                                (0.0, 0.0)
-                            } else {
-                                #[inline]
-                                fn clip_scale(abs_dx: f64, abs_dy: f64, hw: f64, hh: f64) -> f64 {
-                                    if hw == 0.0 || hh == 0.0 {
-                                        return 0.0;
+                        for gx in gx0..=gx1 {
+                            for gy in gy0..=gy1 {
+                                for &b in self.grid.cell(gx, gy) {
+                                    // `processedNodeSet` semantics: compute each pair once.
+                                    if processed_repulsion[b] {
+                                        continue;
                                     }
-                                    let denom = (abs_dx / hw).max(abs_dy / hh);
-                                    if denom == 0.0 { 0.0 } else { 1.0 / denom }
-                                }
+                                    if b == a || !self.nodes[b].active {
+                                        continue;
+                                    }
+                                    // `surrounding.has(nodeB)` semantics: preserve first-hit insertion order.
+                                    if self.repulsion_seen[b] == seen_gen {
+                                        continue;
+                                    }
 
-                                // `clip_from_center(cx,cy,dx,dy,hw,hh)` but specialized:
-                                // - reuses `abs(dx)` / `abs(dy)` across both nodes
-                                // - avoids tuple construction
-                                let ta = clip_scale(abs_dx_centers, abs_dy_centers, a_hw, a_hh);
-                                let tb = clip_scale(abs_dx_centers, abs_dy_centers, b_hw, b_hh);
-                                let ax = a_cx + dx * ta;
-                                let ay = a_cy + dy * ta;
-                                let bx = b_cx - dx * tb;
-                                let by = b_cy - dy * tb;
-                                let mut ddx = bx - ax;
-                                let mut ddy = by - ay;
-
-                                if ddx.abs() < Self::MIN_REPULSION_DIST {
-                                    ddx = ddx.signum() * Self::MIN_REPULSION_DIST;
-                                }
-                                if ddy.abs() < Self::MIN_REPULSION_DIST {
-                                    ddy = ddy.signum() * Self::MIN_REPULSION_DIST;
-                                }
-
-                                let dist_sq = ddx * ddx + ddy * ddy;
-                                let dist = dist_sq.sqrt();
-                                if dist_sq == 0.0 || dist == 0.0 {
-                                    (0.0, 0.0)
-                                } else {
-                                    let repulsion_force = repulsion_constant / dist_sq;
-                                    let rfx = repulsion_force * ddx / dist;
-                                    let rfy = repulsion_force * ddy / dist;
-                                    (-rfx, -rfy)
+                                    let na = &self.nodes[a];
+                                    let nb = &self.nodes[b];
+                                    let dist_x = (na.center_x() - nb.center_x()).abs()
+                                        - (na.half_w() + nb.half_w());
+                                    let dist_y = (na.center_y() - nb.center_y()).abs()
+                                        - (na.half_h() + nb.half_h());
+                                    if dist_x <= repulsion_range && dist_y <= repulsion_range {
+                                        self.repulsion_seen[b] = seen_gen;
+                                        self.nodes[a].surrounding.push(b);
+                                    }
                                 }
                             }
-                        };
-                        let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
-                        ni.repulsion_fx += rfx;
-                        ni.repulsion_fy += rfy;
-                        nj.repulsion_fx -= rfx;
-                        nj.repulsion_fy -= rfy;
+                        }
                     }
+
+                    let surrounding = self.nodes[a].surrounding.clone();
+                    for b in surrounding {
+                        if timing_enabled {
+                            timings.repulsion_pairs_considered += 1;
+                            timings.repulsion_pairs_in_range += 1;
+                        }
+                        let (rfx, rfy) = self.calc_repulsion_force(a, b, repulsion_constant);
+                        let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
+                        na.repulsion_fx += rfx;
+                        na.repulsion_fy += rfy;
+                        nb.repulsion_fx -= rfx;
+                        nb.repulsion_fy -= rfy;
+                    }
+
+                    processed_repulsion[a] = true;
                 }
             }
 
@@ -1615,10 +1579,10 @@ impl SimGraph {
                 let mut mdy = dy;
                 let max_d = cooling_factor * Self::MAX_NODE_DISPLACEMENT;
                 if mdx.abs() > max_d {
-                    mdx = max_d * mdx.signum();
+                    mdx = max_d * Self::imath_sign(mdx);
                 }
                 if mdy.abs() > max_d {
-                    mdy = max_d * mdy.signum();
+                    mdy = max_d * Self::imath_sign(mdy);
                 }
 
                 n.move_by(mdx, mdy);
@@ -1658,6 +1622,177 @@ impl SimGraph {
         }
     }
 
+    #[cfg(test)]
+    fn run_single_spring_tick_flat_graph(&mut self) {
+        if self.nodes.is_empty() {
+            return;
+        }
+
+        fn nodes2_mut(nodes: &mut [SimNode], a: usize, b: usize) -> (&mut SimNode, &mut SimNode) {
+            debug_assert!(a != b);
+            if a < b {
+                let (left, right) = nodes.split_at_mut(b);
+                (&mut left[a], &mut right[0])
+            } else {
+                let (left, right) = nodes.split_at_mut(a);
+                (&mut right[0], &mut left[b])
+            }
+        }
+
+        let ideal_edge_length = Self::DEFAULT_EDGE_LENGTH.max(10.0);
+        let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
+        let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
+        let repulsion_range = 2.0 * ideal_edge_length;
+
+        // Tick #1 in upstream always triggers a grid rebuild (`totalIterations % 10 == 1`).
+        self.update_grid(repulsion_range);
+
+        // Spring forces.
+        let mut spring_debug: Vec<(usize, usize, f64, f64, f64, f64)> = Vec::new(); // (a,b,lx,ly,len,sfy)
+        for e in &self.edges {
+            if !e.active {
+                continue;
+            }
+            let (a, b) = (e.a, e.b);
+            if !(self.nodes[a].active && self.nodes[b].active) {
+                continue;
+            }
+            let (target_x, target_y, source_x, source_y, overlapped) =
+                rect_intersection_points(&self.nodes[b], &self.nodes[a]);
+            if overlapped {
+                continue;
+            }
+            let mut lx = target_x - source_x;
+            let mut ly = target_y - source_y;
+            if lx.abs() < 1.0 {
+                lx = Self::imath_sign(lx);
+            }
+            if ly.abs() < 1.0 {
+                ly = Self::imath_sign(ly);
+            }
+            let len = (lx * lx + ly * ly).sqrt();
+            if len == 0.0 {
+                continue;
+            }
+            let spring_force = spring_constant * (len - ideal_edge_length);
+            let sfx = spring_force * (lx / len);
+            let sfy = spring_force * (ly / len);
+            spring_debug.push((a, b, lx, ly, len, sfy));
+            let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
+            na.spring_fx += sfx;
+            na.spring_fy += sfy;
+            nb.spring_fx -= sfx;
+            nb.spring_fy -= sfy;
+        }
+
+        // Repulsion forces (FR-grid, tick #1: rebuild surrounding).
+        let mut processed_repulsion: Vec<bool> = vec![false; self.nodes.len()];
+        processed_repulsion.fill(false);
+        if !self.grid.is_empty() {
+            let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
+            let size_y_i32 = self.grid.size_y().min(i32::MAX as usize) as i32;
+
+            for a in 0..self.nodes.len() {
+                if !self.nodes[a].active {
+                    continue;
+                }
+
+                self.nodes[a].surrounding.clear();
+
+                self.repulsion_seen_gen = self.repulsion_seen_gen.wrapping_add(1);
+                if self.repulsion_seen_gen == 0 {
+                    self.repulsion_seen.fill(0);
+                    self.repulsion_seen_gen = 1;
+                }
+                let seen_gen = self.repulsion_seen_gen;
+
+                let ni = &self.nodes[a];
+                let gx0 = (ni.start_x - 1).max(0) as usize;
+                let gy0 = (ni.start_y - 1).max(0) as usize;
+                let gx1 = (ni.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
+                let gy1 = (ni.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
+
+                for gx in gx0..=gx1 {
+                    for gy in gy0..=gy1 {
+                        for &b in self.grid.cell(gx, gy) {
+                            if processed_repulsion[b] {
+                                continue;
+                            }
+                            if b == a || !self.nodes[b].active {
+                                continue;
+                            }
+                            if self.repulsion_seen[b] == seen_gen {
+                                continue;
+                            }
+
+                            let na = &self.nodes[a];
+                            let nb = &self.nodes[b];
+                            let dist_x =
+                                (na.center_x() - nb.center_x()).abs() - (na.half_w() + nb.half_w());
+                            let dist_y =
+                                (na.center_y() - nb.center_y()).abs() - (na.half_h() + nb.half_h());
+                            if dist_x <= repulsion_range && dist_y <= repulsion_range {
+                                self.repulsion_seen[b] = seen_gen;
+                                self.nodes[a].surrounding.push(b);
+                            }
+                        }
+                    }
+                }
+
+                let surrounding = self.nodes[a].surrounding.clone();
+                for b in surrounding {
+                    let (rfx, rfy) = self.calc_repulsion_force(a, b, repulsion_constant);
+                    let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
+                    na.repulsion_fx += rfx;
+                    na.repulsion_fy += rfy;
+                    nb.repulsion_fx -= rfx;
+                    nb.repulsion_fy -= rfy;
+                }
+
+                processed_repulsion[a] = true;
+            }
+        }
+
+        // For horizontal arrangements, y-forces should remain exactly zero.
+        for (i, n) in self.nodes.iter().enumerate() {
+            if !(n.spring_fy == 0.0 && n.repulsion_fy == 0.0 && n.gravitation_fy == 0.0) {
+                panic!(
+                    "unexpected y force before move: node[{i}] spring_fy={} repulsion_fy={} gravitation_fy={} spring_debug={:?}",
+                    n.spring_fy, n.repulsion_fy, n.gravitation_fy, spring_debug
+                );
+            }
+        }
+
+        // Move nodes (coolingFactor=1.0 on tick #1 for small, non-incremental graphs).
+        let cooling_factor = 1.0;
+        for n in &mut self.nodes {
+            if !n.active {
+                continue;
+            }
+            let dx = cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx);
+            let dy = cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy);
+
+            let mut mdx = dx;
+            let mut mdy = dy;
+            let max_d = cooling_factor * Self::MAX_NODE_DISPLACEMENT;
+            if mdx.abs() > max_d {
+                mdx = max_d * Self::imath_sign(mdx);
+            }
+            if mdy.abs() > max_d {
+                mdy = max_d * Self::imath_sign(mdy);
+            }
+
+            n.move_by(mdx, mdy);
+
+            n.spring_fx = 0.0;
+            n.spring_fy = 0.0;
+            n.repulsion_fx = 0.0;
+            n.repulsion_fy = 0.0;
+            n.gravitation_fx = 0.0;
+            n.gravitation_fy = 0.0;
+        }
+    }
+
     fn calc_repulsion_force(&self, a: usize, b: usize, repulsion_constant: f64) -> (f64, f64) {
         let na = &self.nodes[a];
         let nb = &self.nodes[b];
@@ -1676,10 +1811,10 @@ impl SimGraph {
             let mut dy = by - ay;
 
             if dx.abs() < Self::MIN_REPULSION_DIST {
-                dx = dx.signum() * Self::MIN_REPULSION_DIST;
+                dx = Self::imath_sign(dx) * Self::MIN_REPULSION_DIST;
             }
             if dy.abs() < Self::MIN_REPULSION_DIST {
-                dy = dy.signum() * Self::MIN_REPULSION_DIST;
+                dy = Self::imath_sign(dy) * Self::MIN_REPULSION_DIST;
             }
 
             let dist_sq = dx * dx + dy * dy;
@@ -1827,7 +1962,21 @@ impl SimGraph {
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
-    a.left < b.right() && a.right() > b.left && a.top < b.bottom() && a.bottom() > b.top
+    // Match `layout-base` `RectangleD.intersects` semantics:
+    // - touching borders counts as intersection (uses `<`, not `<=`, in early-exit checks)
+    if a.right() < b.left {
+        return false;
+    }
+    if a.bottom() < b.top {
+        return false;
+    }
+    if b.right() < a.left {
+        return false;
+    }
+    if b.bottom() < a.top {
+        return false;
+    }
+    true
 }
 
 /// Port of `layout-base` `IGeometry.getIntersection2(rectA, rectB, result)`.
@@ -1844,60 +1993,372 @@ fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bo
         return (p1x, p1y, p2x, p2y, true);
     }
 
-    let dx = p2x - p1x;
-    let dy = p2y - p1y;
-    if dx == 0.0 && dy == 0.0 {
-        return (p1x, p1y, p2x, p2y, false);
+    // NOTE: This intentionally mirrors the upstream `IGeometry.getIntersection2` implementation
+    // from `layout-base` (including its branching structure) rather than a mathematically
+    // equivalent closed-form intersection. Downstream convergence is sensitive to these
+    // conditionals due to floating-point comparisons.
+
+    // rectA corners
+    let top_left_ax = a.left;
+    let top_left_ay = a.top;
+    let top_right_ax = a.right();
+    let bottom_left_ax = a.left;
+    let bottom_left_ay = a.bottom();
+    let bottom_right_ax = a.right();
+    let half_width_a = a.width / 2.0;
+    let half_height_a = a.height / 2.0;
+
+    // rectB corners
+    let top_left_bx = b.left;
+    let top_left_by = b.top;
+    let top_right_bx = b.right();
+    let bottom_left_bx = b.left;
+    let bottom_left_by = b.bottom();
+    let bottom_right_bx = b.right();
+    let half_width_b = b.width / 2.0;
+    let half_height_b = b.height / 2.0;
+
+    // Line is vertical.
+    if p1x == p2x {
+        if p1y > p2y {
+            return (p1x, top_left_ay, p2x, bottom_left_by, false);
+        } else if p1y < p2y {
+            return (p1x, bottom_left_ay, p2x, top_left_by, false);
+        } else {
+            return (p1x, p1y, p2x, p2y, false);
+        }
+    }
+
+    // Line is horizontal.
+    if p1y == p2y {
+        if p1x > p2x {
+            return (top_left_ax, p1y, top_right_bx, p2y, false);
+        } else if p1x < p2x {
+            return (top_right_ax, p1y, top_left_bx, p2y, false);
+        } else {
+            return (p1x, p1y, p2x, p2y, false);
+        }
     }
 
     #[inline]
-    fn clip_from_center(cx: f64, cy: f64, dx: f64, dy: f64, hw: f64, hh: f64) -> (f64, f64) {
-        if hw == 0.0 || hh == 0.0 {
-            return (cx, cy);
+    fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
+        if slope > slope_prime {
+            line
+        } else {
+            1 + (line % 4)
         }
-        let denom = (dx.abs() / hw).max(dy.abs() / hh);
-        if denom == 0.0 {
-            return (cx, cy);
-        }
-        let t = 1.0 / denom;
-        (cx + dx * t, cy + dy * t)
     }
 
-    let (ax, ay) = clip_from_center(p1x, p1y, dx, dy, a.width / 2.0, a.height / 2.0);
-    let (bx, by) = clip_from_center(p2x, p2y, -dx, -dy, b.width / 2.0, b.height / 2.0);
+    let slope_a = a.height / a.width;
+    let slope_b = b.height / b.width;
+    let slope_prime = (p2y - p1y) / (p2x - p1x);
+
+    let mut ax = 0.0;
+    let mut ay = 0.0;
+    let mut bx = 0.0;
+    let mut by = 0.0;
+    let mut clip_a_found = false;
+    let mut clip_b_found = false;
+
+    // Determine whether clipping point is the corner of rectA.
+    if -slope_a == slope_prime {
+        if p1x > p2x {
+            ax = bottom_left_ax;
+            ay = bottom_left_ay;
+            clip_a_found = true;
+        } else {
+            ax = top_right_ax;
+            ay = top_left_ay;
+            clip_a_found = true;
+        }
+    } else if slope_a == slope_prime {
+        if p1x > p2x {
+            ax = top_left_ax;
+            ay = top_left_ay;
+            clip_a_found = true;
+        } else {
+            ax = bottom_right_ax;
+            ay = bottom_left_ay;
+            clip_a_found = true;
+        }
+    }
+
+    // Determine whether clipping point is the corner of rectB.
+    if -slope_b == slope_prime {
+        if p2x > p1x {
+            bx = bottom_left_bx;
+            by = bottom_left_by;
+            clip_b_found = true;
+        } else {
+            bx = top_right_bx;
+            by = top_left_by;
+            clip_b_found = true;
+        }
+    } else if slope_b == slope_prime {
+        if p2x > p1x {
+            bx = top_left_bx;
+            by = top_left_by;
+            clip_b_found = true;
+        } else {
+            bx = bottom_right_bx;
+            by = bottom_left_by;
+            clip_b_found = true;
+        }
+    }
+
+    if clip_a_found && clip_b_found {
+        return (ax, ay, bx, by, false);
+    }
+
+    let (card_a, card_b) = if p1x > p2x {
+        if p1y > p2y {
+            (
+                get_cardinal_direction(slope_a, slope_prime, 4),
+                get_cardinal_direction(slope_b, slope_prime, 2),
+            )
+        } else {
+            (
+                get_cardinal_direction(-slope_a, slope_prime, 3),
+                get_cardinal_direction(-slope_b, slope_prime, 1),
+            )
+        }
+    } else if p1y > p2y {
+        (
+            get_cardinal_direction(-slope_a, slope_prime, 1),
+            get_cardinal_direction(-slope_b, slope_prime, 3),
+        )
+    } else {
+        (
+            get_cardinal_direction(slope_a, slope_prime, 2),
+            get_cardinal_direction(slope_b, slope_prime, 4),
+        )
+    };
+
+    if !clip_a_found {
+        match card_a {
+            1 => {
+                ay = top_left_ay;
+                ax = p1x + (-half_height_a) / slope_prime;
+            }
+            2 => {
+                ax = bottom_right_ax;
+                ay = p1y + half_width_a * slope_prime;
+            }
+            3 => {
+                ay = bottom_left_ay;
+                ax = p1x + half_height_a / slope_prime;
+            }
+            _ => {
+                ax = bottom_left_ax;
+                ay = p1y + (-half_width_a) * slope_prime;
+            }
+        }
+    }
+
+    if !clip_b_found {
+        match card_b {
+            1 => {
+                by = top_left_by;
+                bx = p2x + (-half_height_b) / slope_prime;
+            }
+            2 => {
+                bx = bottom_right_bx;
+                by = p2y + half_width_b * slope_prime;
+            }
+            3 => {
+                by = bottom_left_by;
+                bx = p2x + half_height_b / slope_prime;
+            }
+            _ => {
+                bx = bottom_left_bx;
+                by = p2y + (-half_width_b) * slope_prime;
+            }
+        }
+    }
+
     (ax, ay, bx, by, false)
 }
 
 #[inline]
 fn rect_intersection_points_no_overlap_check(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
     // Fast path for callers that already know `rects_intersect(a, b) == false`.
-    // This matches the `rect_intersection_points` non-overlap branch.
     let p1x = a.center_x();
     let p1y = a.center_y();
     let p2x = b.center_x();
     let p2y = b.center_y();
 
-    let dx = p2x - p1x;
-    let dy = p2y - p1y;
-    if dx == 0.0 && dy == 0.0 {
-        return (p1x, p1y, p2x, p2y);
+    // rectA corners
+    let top_left_ax = a.left;
+    let top_left_ay = a.top;
+    let top_right_ax = a.right();
+    let bottom_left_ax = a.left;
+    let bottom_left_ay = a.bottom();
+    let bottom_right_ax = a.right();
+    let half_width_a = a.width / 2.0;
+    let half_height_a = a.height / 2.0;
+
+    // rectB corners
+    let top_left_bx = b.left;
+    let top_left_by = b.top;
+    let top_right_bx = b.right();
+    let bottom_left_bx = b.left;
+    let bottom_left_by = b.bottom();
+    let bottom_right_bx = b.right();
+    let half_width_b = b.width / 2.0;
+    let half_height_b = b.height / 2.0;
+
+    if p1x == p2x {
+        if p1y > p2y {
+            return (p1x, top_left_ay, p2x, bottom_left_by);
+        } else if p1y < p2y {
+            return (p1x, bottom_left_ay, p2x, top_left_by);
+        } else {
+            return (p1x, p1y, p2x, p2y);
+        }
+    }
+
+    if p1y == p2y {
+        if p1x > p2x {
+            return (top_left_ax, p1y, top_right_bx, p2y);
+        } else if p1x < p2x {
+            return (top_right_ax, p1y, top_left_bx, p2y);
+        } else {
+            return (p1x, p1y, p2x, p2y);
+        }
     }
 
     #[inline]
-    fn clip_from_center(cx: f64, cy: f64, dx: f64, dy: f64, hw: f64, hh: f64) -> (f64, f64) {
-        if hw == 0.0 || hh == 0.0 {
-            return (cx, cy);
+    fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
+        if slope > slope_prime {
+            line
+        } else {
+            1 + (line % 4)
         }
-        let denom = (dx.abs() / hw).max(dy.abs() / hh);
-        if denom == 0.0 {
-            return (cx, cy);
-        }
-        let t = 1.0 / denom;
-        (cx + dx * t, cy + dy * t)
     }
 
-    let (ax, ay) = clip_from_center(p1x, p1y, dx, dy, a.width / 2.0, a.height / 2.0);
-    let (bx, by) = clip_from_center(p2x, p2y, -dx, -dy, b.width / 2.0, b.height / 2.0);
+    let slope_a = a.height / a.width;
+    let slope_b = b.height / b.width;
+    let slope_prime = (p2y - p1y) / (p2x - p1x);
+
+    let mut ax = 0.0;
+    let mut ay = 0.0;
+    let mut bx = 0.0;
+    let mut by = 0.0;
+    let mut clip_a_found = false;
+    let mut clip_b_found = false;
+
+    if -slope_a == slope_prime {
+        if p1x > p2x {
+            ax = bottom_left_ax;
+            ay = bottom_left_ay;
+            clip_a_found = true;
+        } else {
+            ax = top_right_ax;
+            ay = top_left_ay;
+            clip_a_found = true;
+        }
+    } else if slope_a == slope_prime {
+        if p1x > p2x {
+            ax = top_left_ax;
+            ay = top_left_ay;
+            clip_a_found = true;
+        } else {
+            ax = bottom_right_ax;
+            ay = bottom_left_ay;
+            clip_a_found = true;
+        }
+    }
+
+    if -slope_b == slope_prime {
+        if p2x > p1x {
+            bx = bottom_left_bx;
+            by = bottom_left_by;
+            clip_b_found = true;
+        } else {
+            bx = top_right_bx;
+            by = top_left_by;
+            clip_b_found = true;
+        }
+    } else if slope_b == slope_prime {
+        if p2x > p1x {
+            bx = top_left_bx;
+            by = top_left_by;
+            clip_b_found = true;
+        } else {
+            bx = bottom_right_bx;
+            by = bottom_left_by;
+            clip_b_found = true;
+        }
+    }
+
+    if !(clip_a_found && clip_b_found) {
+        let (card_a, card_b) = if p1x > p2x {
+            if p1y > p2y {
+                (
+                    get_cardinal_direction(slope_a, slope_prime, 4),
+                    get_cardinal_direction(slope_b, slope_prime, 2),
+                )
+            } else {
+                (
+                    get_cardinal_direction(-slope_a, slope_prime, 3),
+                    get_cardinal_direction(-slope_b, slope_prime, 1),
+                )
+            }
+        } else if p1y > p2y {
+            (
+                get_cardinal_direction(-slope_a, slope_prime, 1),
+                get_cardinal_direction(-slope_b, slope_prime, 3),
+            )
+        } else {
+            (
+                get_cardinal_direction(slope_a, slope_prime, 2),
+                get_cardinal_direction(slope_b, slope_prime, 4),
+            )
+        };
+
+        if !clip_a_found {
+            match card_a {
+                1 => {
+                    ay = top_left_ay;
+                    ax = p1x + (-half_height_a) / slope_prime;
+                }
+                2 => {
+                    ax = bottom_right_ax;
+                    ay = p1y + half_width_a * slope_prime;
+                }
+                3 => {
+                    ay = bottom_left_ay;
+                    ax = p1x + half_height_a / slope_prime;
+                }
+                _ => {
+                    ax = bottom_left_ax;
+                    ay = p1y + (-half_width_a) * slope_prime;
+                }
+            }
+        }
+
+        if !clip_b_found {
+            match card_b {
+                1 => {
+                    by = top_left_by;
+                    bx = p2x + (-half_height_b) / slope_prime;
+                }
+                2 => {
+                    bx = bottom_right_bx;
+                    by = p2y + half_width_b * slope_prime;
+                }
+                3 => {
+                    by = bottom_left_by;
+                    bx = p2x + half_height_b / slope_prime;
+                }
+                _ => {
+                    bx = bottom_left_bx;
+                    by = p2y + (-half_width_b) * slope_prime;
+                }
+            }
+        }
+    }
+
     (ax, ay, bx, by)
 }
 
@@ -1942,4 +2403,183 @@ fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (i32, i3
     let dir_x = if a.center_x() < b.center_x() { -1 } else { 1 };
     let dir_y = if a.center_y() < b.center_y() { -1 } else { 1 };
     (dir_x, dir_y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IndexedEdge, IndexedNode, SimGraph, layout_indexed};
+
+    fn assert_close(a: f64, b: f64) {
+        let eps = 1e-3;
+        assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
+    }
+
+    #[test]
+    fn basic_three_node_tree_matches_upstream_positions() {
+        // Oracle: cytoscape-cose-bilkent@4.1.0 + cytoscape@3.33.1 (Mermaid 11.12.3),
+        // with the same node dimensions.
+        //
+        // This corresponds to `fixtures/upstream-svgs/mindmap/basic.svg`.
+        let nodes = vec![
+            IndexedNode {
+                width: 69.734375,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.40625,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.921875,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+        ];
+        let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
+
+        let out = layout_indexed(&nodes, &edges, &Default::default()).expect("layout");
+
+        assert_eq!(out.len(), 3);
+        assert_close(out[0].x, 152.283539);
+        assert_close(out[0].y, 32.0);
+        assert_close(out[1].x, 264.848328);
+        assert_close(out[1].y, 32.0);
+        assert_close(out[2].x, 39.460938);
+        assert_close(out[2].y, 32.0);
+    }
+
+    #[test]
+    fn basic_three_node_tree_radial_init_has_equal_y() {
+        let nodes = vec![
+            IndexedNode {
+                width: 69.734375,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.40625,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.921875,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+        ];
+        let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
+
+        let mut sim = SimGraph::from_indexed(&nodes, &edges);
+        let forest = sim.get_flat_forest();
+        assert_eq!(forest.len(), 1);
+        sim.position_nodes_radially(&forest);
+
+        let y0 = sim.nodes[0].center_y();
+        for (i, n) in sim.nodes.iter().enumerate() {
+            assert!(
+                n.center_y() == y0,
+                "radial init center_y mismatch: node[{i}] y={} vs y0={}",
+                n.center_y(),
+                y0
+            );
+        }
+    }
+
+    #[test]
+    fn basic_three_node_tree_tick1_keeps_equal_y() {
+        let nodes = vec![
+            IndexedNode {
+                width: 69.734375,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.40625,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+            IndexedNode {
+                width: 48.921875,
+                height: 34.0,
+                x: 0.0,
+                y: 0.0,
+            },
+        ];
+        let edges = vec![IndexedEdge { a: 0, b: 1 }, IndexedEdge { a: 0, b: 2 }];
+
+        let mut sim = SimGraph::from_indexed(&nodes, &edges);
+        assert_eq!(sim.edges.len(), 2);
+        assert_eq!(sim.edges[0].a, 0);
+        assert_eq!(sim.edges[0].b, 1);
+        assert_eq!(sim.edges[1].a, 0);
+        assert_eq!(sim.edges[1].b, 2);
+        let forest = sim.get_flat_forest();
+        sim.position_nodes_radially(&forest);
+
+        let y0 = sim.nodes[0].center_y();
+        for n in &sim.nodes {
+            assert_eq!(n.center_y(), y0);
+        }
+        // Mirror the spring embedder's tick#1 grid rebuild (should not affect geometry).
+        sim.update_grid(2.0 * super::SimGraph::DEFAULT_EDGE_LENGTH);
+        // Sanity: for a horizontal arrangement, clipping points should preserve equal y.
+        {
+            let (t1x, t1y, s1x, s1y, ov1) =
+                super::rect_intersection_points(&sim.nodes[1], &sim.nodes[0]);
+            assert!(!ov1);
+            assert_eq!(
+                t1y, s1y,
+                "edge(0->1) clip y differs: t=({t1x},{t1y}) s=({s1x},{s1y})"
+            );
+            let (t2x, t2y, s2x, s2y, ov2) =
+                super::rect_intersection_points(&sim.nodes[2], &sim.nodes[0]);
+            assert!(!ov2);
+            assert_eq!(
+                t2y, s2y,
+                "edge(0->2) clip y differs: t=({t2x},{t2y}) s=({s2x},{s2y})"
+            );
+        }
+        sim.run_single_spring_tick_flat_graph();
+
+        for (i, n) in sim.nodes.iter().enumerate() {
+            assert!(
+                n.center_y() == y0,
+                "tick1 center_y mismatch: node[{i}] y={} vs y0={}",
+                n.center_y(),
+                y0
+            );
+        }
+    }
+
+    #[test]
+    fn find_center_of_tree_matches_layout_base_buggy_semantics() {
+        // Star-shaped tree: node 0 connected to all others.
+        // With the upstream `findCenterOfTree()` bug (removing from `list` while iterating over it),
+        // the result depends on insertion order and ends up not being the actual tree center.
+        let n = 21usize;
+        let nodes: Vec<IndexedNode> = (0..n)
+            .map(|_| IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 0.0,
+                y: 0.0,
+            })
+            .collect();
+        let edges: Vec<IndexedEdge> = (1..n).map(|i| IndexedEdge { a: 0, b: i }).collect();
+
+        let sim = SimGraph::from_indexed(&nodes, &edges);
+        let list: Vec<usize> = (0..n).collect();
+
+        assert_eq!(sim.find_center_of_tree(&list), 7);
+    }
 }

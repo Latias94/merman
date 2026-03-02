@@ -184,7 +184,7 @@ pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
     mermaid_create_path_from_points(&points)
 }
 
-pub(super) fn roughjs_paths_for_svg_path(
+pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
     stroke: &str,

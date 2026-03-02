@@ -18,6 +18,7 @@ use edge::*;
 use edge_geom::flowchart_compute_edge_path_geom;
 use hierarchy::*;
 pub(super) use label::*;
+pub(in crate::svg::parity) use render::node::roughjs::roughjs_paths_for_svg_path;
 pub(super) use style::*;
 
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};

@@ -253,6 +253,17 @@ impl MindmapDb {
             }
             let css_classes = css.join(" ");
 
+            // Mermaid mindmapRenderer overrides per-shape padding before rendering:
+            // - rounded: padding=15 (also sets radius/taper=15, stroke=none)
+            //
+            // We bake the effective padding into the render model so layout + SVG parity match
+            // upstream fixtures.
+            let padding = if node.ty == NODE_TYPE_ROUNDED_RECT {
+                15_i64
+            } else {
+                node.padding
+            };
+
             let mut map = Map::new();
             map.insert("id".to_string(), json!(node.id.to_string()));
             map.insert("domId".to_string(), json!(format!("node_{}", node.id)));
@@ -264,7 +275,7 @@ impl MindmapDb {
             map.insert("shape".to_string(), json!(shape_from_type(node.ty)));
             map.insert("width".to_string(), json!(node.width));
             map.insert("height".to_string(), json!(node.height.unwrap_or(0)));
-            map.insert("padding".to_string(), json!(node.padding));
+            map.insert("padding".to_string(), json!(padding));
             map.insert("cssClasses".to_string(), json!(css_classes));
             map.insert("cssStyles".to_string(), Value::Array(Vec::new()));
             map.insert("look".to_string(), json!("default"));
@@ -332,6 +343,12 @@ impl MindmapDb {
             }
             let css_classes = css.join(" ");
 
+            let padding = if node.ty == NODE_TYPE_ROUNDED_RECT {
+                15_f64
+            } else {
+                node.padding as f64
+            };
+
             out.push(MindmapDiagramRenderNode {
                 id: node.id.to_string(),
                 dom_id: format!("node_{}", node.id),
@@ -345,7 +362,7 @@ impl MindmapDb {
                 shape: shape_from_type(node.ty).to_string(),
                 width: node.width as f64,
                 height: node.height.unwrap_or(0) as f64,
-                padding: node.padding as f64,
+                padding,
                 css_classes,
                 css_styles: Vec::new(),
                 look: "default".to_string(),

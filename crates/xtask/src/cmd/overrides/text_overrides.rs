@@ -576,18 +576,72 @@ pub(crate) fn gen_mindmap_text_overrides(args: Vec<String>) -> Result<(), XtaskE
                 continue;
             }
 
-            // Text is nested under `<p>` in mindmap SVGs.
-            let text = fo
-                .descendants()
-                .find(|n| n.is_element() && n.tag_name().name() == "p")
-                .and_then(|p| p.text())
-                .map(collapse_ws)
-                .unwrap_or_default();
-            if text.is_empty() {
-                continue;
+            fn collect_p_lines(p: roxmltree::Node<'_, '_>) -> Vec<String> {
+                let mut lines: Vec<String> = vec![String::new()];
+
+                fn push_text(lines: &mut Vec<String>, s: &str) {
+                    if lines.is_empty() {
+                        lines.push(String::new());
+                    }
+                    lines.last_mut().unwrap().push_str(s);
+                }
+
+                fn walk(n: roxmltree::Node<'_, '_>, lines: &mut Vec<String>) {
+                    if n.is_text() {
+                        if let Some(t) = n.text() {
+                            push_text(lines, t);
+                        }
+                        return;
+                    }
+                    if !n.is_element() {
+                        return;
+                    }
+                    if n.tag_name().name() == "br" {
+                        lines.push(String::new());
+                        return;
+                    }
+                    for c in n.children() {
+                        walk(c, lines);
+                    }
+                }
+
+                for c in p.children() {
+                    walk(c, &mut lines);
+                }
+
+                // Normalize whitespace per line and trim trailing empties.
+                let mut out = lines
+                    .into_iter()
+                    .map(|s| collapse_ws(&s))
+                    .collect::<Vec<_>>();
+                while out.len() > 1 && out.last().is_some_and(|s| s.is_empty()) {
+                    out.pop();
+                }
+                out
             }
 
-            entries.entry((fs_key, text)).or_insert(width_px);
+            // Text is nested under `<p>` in mindmap SVGs.
+            for p in fo
+                .descendants()
+                .filter(|n| n.is_element() && n.tag_name().name() == "p")
+            {
+                // Keep the original "collapsed paragraph text" behavior (captures the common case
+                // with no `<br>` tags).
+                if let Some(text) = p.text().map(collapse_ws).filter(|t| !t.is_empty()) {
+                    entries.entry((fs_key, text)).or_insert(width_px);
+                }
+
+                // Also record per-line overrides for `<br>`-split paragraphs. Upstream mindmap node
+                // labels are measured via DOM and the resulting `foreignObject width="..."`
+                // corresponds to the widest line. Storing that width for each line is safe for our
+                // `max(line_width)` aggregation and improves parity for `<br>` fixtures.
+                for line in collect_p_lines(p) {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    entries.entry((fs_key, line)).or_insert(width_px);
+                }
+            }
         }
     }
 

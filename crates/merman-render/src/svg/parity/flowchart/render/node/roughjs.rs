@@ -31,7 +31,7 @@ fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
     ))
 }
 
-pub(super) fn roughjs_paths_for_svg_path(
+pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
     stroke: &str,
@@ -151,7 +151,7 @@ pub(super) fn roughjs_paths_for_svg_path(
     ))
 }
 
-pub(super) fn roughjs_paths_for_svg_path_single_set(
+pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     svg_path_data: &str,
     fill: &str,
     stroke: &str,
@@ -247,7 +247,7 @@ pub(super) fn roughjs_paths_for_svg_path_single_set(
     ))
 }
 
-pub(super) fn roughjs_stroke_path_for_svg_path(
+pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
     svg_path_data: &str,
     stroke: &str,
     stroke_width: f32,
@@ -303,7 +303,7 @@ pub(super) fn roughjs_stroke_path_for_svg_path(
     Some(ops_to_svg_path_d(&opset))
 }
 
-pub(super) fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
+pub(in crate::svg::parity) fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
     // Port of Mermaid `stateEnd.ts`/`stateStart.ts` which use RoughJS even for classic look
     // (roughness=0). Use RoughJS `opsToPath(...)` formatting (no `fmt(...)` quantization).
     let mut opts = roughr::core::OptionsBuilder::default()
@@ -336,7 +336,7 @@ pub(super) fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> 
     Some(out.trim_end().to_string())
 }
 
-pub(super) fn roughjs_paths_for_rect(
+pub(in crate::svg::parity) fn roughjs_paths_for_rect(
     x: f64,
     y: f64,
     w: f64,
@@ -400,7 +400,7 @@ pub(super) fn roughjs_paths_for_rect(
     Some((ops_to_d(&fill_opset), ops_to_d(&stroke_opset)))
 }
 
-pub(super) fn roughjs_paths_for_polygon(
+pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     points: &[(f64, f64)],
     fill: &str,
     stroke: &str,

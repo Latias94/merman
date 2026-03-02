@@ -2,6 +2,115 @@ use super::*;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
+use crate::svg::parity::roughjs46::roughjs46_solid_fill_paths_for_closed_polyline_path;
+
+fn arc_points(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    rx: f64,
+    ry: f64,
+    clockwise: bool,
+) -> Vec<(f64, f64)> {
+    // Port of Mermaid `@11.12.2` `generateArcPoints(...)` in
+    // `packages/mermaid/src/rendering-util/rendering-elements/shapes/roundedRect.ts`.
+    let num_points: usize = 20;
+
+    let mid_x = (x1 + x2) / 2.0;
+    let mid_y = (y1 + y2) / 2.0;
+    let angle = (y2 - y1).atan2(x2 - x1);
+
+    let dx = (x2 - x1) / 2.0;
+    let dy = (y2 - y1) / 2.0;
+    let transformed_x = dx / rx;
+    let transformed_y = dy / ry;
+    let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
+    if distance > 1.0 {
+        return vec![(x1, y1), (x2, y2)];
+    }
+
+    let scaled_center_distance = (1.0 - distance * distance).sqrt();
+    let sign = if clockwise { -1.0 } else { 1.0 };
+    let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
+    let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
+
+    let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+    let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+    let mut angle_range = end_angle - start_angle;
+    if clockwise && angle_range < 0.0 {
+        angle_range += 2.0 * std::f64::consts::PI;
+    }
+    if !clockwise && angle_range > 0.0 {
+        angle_range -= 2.0 * std::f64::consts::PI;
+    }
+
+    let mut points: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+    for i in 0..num_points {
+        let t = i as f64 / (num_points - 1) as f64;
+        let a = start_angle + t * angle_range;
+        let x = center_x + rx * a.cos();
+        let y = center_y + ry * a.sin();
+        points.push((x, y));
+    }
+    points
+}
+
+fn rounded_rect_points(w: f64, h: f64) -> Vec<(f64, f64)> {
+    // Mermaid mindmapRenderer overrides rounded nodes with `radius=15` and `taper=15` before
+    // rendering (`diagrams/mindmap/mindmapRenderer.ts`).
+    let radius = 15.0;
+    let taper = 15.0;
+
+    let mut pts: Vec<(f64, f64)> = Vec::new();
+    pts.push((-w / 2.0 + taper, -h / 2.0));
+    pts.push((w / 2.0 - taper, -h / 2.0));
+    pts.extend(arc_points(
+        w / 2.0 - taper,
+        -h / 2.0,
+        w / 2.0,
+        -h / 2.0 + taper,
+        radius,
+        radius,
+        true,
+    ));
+    pts.push((w / 2.0, -h / 2.0 + taper));
+    pts.push((w / 2.0, h / 2.0 - taper));
+    pts.extend(arc_points(
+        w / 2.0,
+        h / 2.0 - taper,
+        w / 2.0 - taper,
+        h / 2.0,
+        radius,
+        radius,
+        true,
+    ));
+    pts.push((w / 2.0 - taper, h / 2.0));
+    pts.push((-w / 2.0 + taper, h / 2.0));
+    pts.extend(arc_points(
+        -w / 2.0 + taper,
+        h / 2.0,
+        -w / 2.0,
+        h / 2.0 - taper,
+        radius,
+        radius,
+        true,
+    ));
+    pts.push((-w / 2.0, h / 2.0 - taper));
+    pts.push((-w / 2.0, -h / 2.0 + taper));
+    pts.extend(arc_points(
+        -w / 2.0,
+        -h / 2.0 + taper,
+        -w / 2.0 + taper,
+        -h / 2.0,
+        radius,
+        radius,
+        true,
+    ));
+    pts
+}
+
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
@@ -163,6 +272,22 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         y: f64,
     }
 
+    let hand_drawn_seed = config
+        .as_value()
+        .get("handDrawnSeed")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    let max_node_width_px: f64 = config
+        .as_value()
+        .get("mindmap")
+        .and_then(|v| v.get("maxNodeWidth"))
+        .and_then(|v| {
+            v.as_f64()
+                .or_else(|| v.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
+        })
+        .unwrap_or(200.0);
+
     fn mk_label(
         out: &mut String,
         text: &str,
@@ -268,7 +393,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             200.0
         };
 
-        let wrap_container = (width - max_node_width_px).abs() <= 1e-3;
+        // Mermaid flips the `<div>` to a fixed-width wrapping container when the measured label
+        // reaches/exceeds the configured max width (default 200px), even if the emitted
+        // `<foreignObject width="...">` reflects the overflow width.
+        let wrap_container = width >= max_node_width_px - 1e-3;
         out.push_str(r#"<g class="label" style="" transform="translate("#);
         fmt_into(out, tx);
         out.push_str(", ");
@@ -847,17 +975,30 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             _ => (0.0, 0.0, 0.0, 0.0),
         };
 
-        // Mermaid mindmap edges use `curveBasis` and offset endpoints from node centers.
-        let dx = if tx >= sx { 15.0 } else { -15.0 };
-        let start_x = sx + dx;
-        let end_x = tx - dx;
+        // Mermaid mindmap edges use `curveBasis` and offset endpoints from node centers
+        // along the direction of the edge.
+        let (vx, vy) = (tx - sx, ty - sy);
+        let v_len = (vx * vx + vy * vy).sqrt();
+        let (ux, uy) = if v_len == 0.0 {
+            (0.0, 0.0)
+        } else {
+            (vx / v_len, vy / v_len)
+        };
+        let endpoint_offset = 15.0;
+        let start_x = sx + endpoint_offset * ux;
+        let start_y = sy + endpoint_offset * uy;
+        let end_x = tx - endpoint_offset * ux;
+        let end_y = ty - endpoint_offset * uy;
         let mid_x = (start_x + end_x) / 2.0;
-        let mid_y = (sy + ty) / 2.0;
+        let mid_y = (start_y + end_y) / 2.0;
 
         let points = [
-            Pt { x: start_x, y: sy },
+            Pt {
+                x: start_x,
+                y: start_y,
+            },
             Pt { x: mid_x, y: mid_y },
-            Pt { x: end_x, y: ty },
+            Pt { x: end_x, y: end_y },
         ];
         let points_for_data_points = points
             .iter()
@@ -895,10 +1036,19 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="nodes">"#);
     for n in &model.nodes {
-        let (x, y, w, h) = node_by_id
+        let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
-            .map(|ln| (ln.x, ln.y, ln.width, ln.height))
-            .unwrap_or((0.0, 0.0, 80.0, 44.0));
+            .map(|ln| {
+                (
+                    ln.x,
+                    ln.y,
+                    ln.width,
+                    ln.height,
+                    ln.label_width,
+                    ln.label_height,
+                )
+            })
+            .unwrap_or((0.0, 0.0, 80.0, 44.0, None, None));
         let padding = n.padding.max(0.0);
         let half_padding = padding / 2.0;
         let class = format!("node {}", n.css_classes.trim());
@@ -961,18 +1111,21 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
             "rect" => {
-                let bbox_w = (w - 4.0 * padding).max(1.0);
-                let bbox_h = (h - 2.0 * padding).max(1.0);
+                // `rect` mindmap nodes use: w = bbox_w + 2*padding, h = bbox_h + padding.
+                let bbox_w = (w - 2.0 * padding).max(1.0);
+                let bbox_h = (h - padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic label-container" style="" x="{x}" y="-22" width="{w}" height="44"/>"#,
+                    r#"<rect class="basic label-container" style="" x="{x}" y="{y}" width="{w}" height="{h}"/>"#,
                     x = fmt(-(w / 2.0)),
+                    y = fmt(-(h / 2.0)),
                     w = fmt(w.max(1.0)),
+                    h = fmt(h.max(1.0)),
                 );
                 mk_label(
                     &mut out,
@@ -983,18 +1136,30 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
             "rounded" => {
+                let w = w.max(1.0);
+                let h = h.max(1.0);
+                let pts = rounded_rect_points(w, h);
+                let (fill_d, _stroke_d) = roughjs46_solid_fill_paths_for_closed_polyline_path(
+                    &pts,
+                    hand_drawn_seed,
+                    false,
+                );
+
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
-                out.push_str(
-                    r##"<path d="M0 0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                let _ = write!(
+                    &mut out,
+                    r##"<path d="{d}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                    d = escape_attr(&fill_d),
                 );
                 out.push_str("</g>");
-                let bbox_w = (w - 2.0 * padding).max(1.0);
-                let bbox_h = (h - 2.0 * padding).max(1.0);
+
+                let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * padding).max(1.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * padding).max(1.0));
                 mk_label(
                     &mut out,
                     &n.label,
@@ -1004,7 +1169,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
@@ -1015,8 +1180,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     r#"<circle class="basic label-container" style="" r="{r}" cx="0" cy="0"/>"#,
                     r = fmt(r),
                 );
-                let bbox_w = (w - 2.0 * padding).max(1.0);
-                let bbox_h = (h - 2.0 * padding).max(1.0);
+                // Mermaid sizes the circle diameter using `bbox.width`, but label placement still
+                // uses the true label bbox height (not a square).
+                let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * padding).max(1.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * padding).max(1.0));
                 mk_label(
                     &mut out,
                     &n.label,
@@ -1026,16 +1193,50 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
             "cloud" => {
-                out.push_str(
-                    r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
+                let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * half_padding).max(1.0));
+                let w = w.max(1.0);
+                let h = h.max(1.0);
+
+                let r1 = 0.15 * w;
+                let r2 = 0.25 * w;
+                let r3 = 0.35 * w;
+                let r4 = 0.2 * w;
+
+                let cloud_path = format!(
+                    "M0 0 a{r1},{r1} 0 0,1 {w25},{wn10} a{r3},{r3} 1 0,1 {w40},{wn10} a{r2},{r2} 1 0,1 {w35},{w20} a{r1},{r1} 1 0,1 {w15},{h35} a{r4},{r4} 1 0,1 {wn15},{h65} a{r2},{r1} 1 0,1 {wn25},{w15} a{r3},{r3} 1 0,1 {wn50},0 a{r1},{r1} 1 0,1 {wn25},{wn15} a{r1},{r1} 1 0,1 {wn10},{hn35} a{r4},{r4} 1 0,1 {w10},{hn65} H0 V0 Z",
+                    r1 = fmt_path(r1),
+                    r2 = fmt_path(r2),
+                    r3 = fmt_path(r3),
+                    r4 = fmt_path(r4),
+                    w25 = fmt_path(w * 0.25),
+                    w40 = fmt_path(w * 0.4),
+                    w35 = fmt_path(w * 0.35),
+                    w20 = fmt_path(w * 0.2),
+                    w15 = fmt_path(w * 0.15),
+                    w10 = fmt_path(w * 0.1),
+                    wn10 = fmt_path(-w * 0.1),
+                    wn15 = fmt_path(-w * 0.15),
+                    wn25 = fmt_path(-w * 0.25),
+                    wn50 = fmt_path(-w * 0.5),
+                    h35 = fmt_path(h * 0.35),
+                    h65 = fmt_path(h * 0.65),
+                    hn35 = fmt_path(-h * 0.35),
+                    hn65 = fmt_path(-h * 0.65),
                 );
-                let bbox_w = (w - 2.0 * half_padding).max(1.0);
-                let bbox_h = (h - 2.0 * half_padding).max(1.0);
+
+                let _ = write!(
+                    &mut out,
+                    r#"<path class="basic label-container" style="" d="{d}" transform="translate({tx}, {ty})"/>"#,
+                    d = escape_attr(&cloud_path),
+                    tx = fmt(-(w / 2.0)),
+                    ty = fmt(-(h / 2.0)),
+                );
                 mk_label(
                     &mut out,
                     &n.label,
@@ -1045,38 +1246,98 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
             "hexagon" => {
+                let w = w.max(1.0);
+                let h = h.max(1.0);
+
+                let half_width = w / 2.0;
+                let half_height = h / 2.0;
+                let fixed_length = half_height / 2.0;
+                let deduced_width = half_width - fixed_length;
+                let pts: [(f64, f64); 8] = [
+                    (-deduced_width, -half_height),
+                    (0.0, -half_height),
+                    (deduced_width, -half_height),
+                    (half_width, 0.0),
+                    (deduced_width, half_height),
+                    (0.0, half_height),
+                    (-deduced_width, half_height),
+                    (-half_width, 0.0),
+                ];
+                let (fill_d, stroke_d) = roughjs46_solid_fill_paths_for_closed_polyline_path(
+                    &pts,
+                    hand_drawn_seed,
+                    true,
+                );
+
                 out.push_str(r#"<g class="basic label-container">"#);
-                out.push_str(
-                    r##"<path d="M0 0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                let _ = write!(
+                    &mut out,
+                    r##"<path d="{d}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                    d = escape_attr(&fill_d),
                 );
-                out.push_str(
-                    r##"<path d="M0 0" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
-                );
+                if let Some(stroke_d) = stroke_d {
+                    let _ = write!(
+                        &mut out,
+                        r##"<path d="{d}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                        d = escape_attr(&stroke_d),
+                    );
+                }
                 out.push_str("</g>");
                 mk_label(
                     &mut out,
                     &n.label,
                     &n.label_type,
                     n.icon.is_some(),
-                    w.max(1.0),
-                    h.max(1.0),
-                    -w / 2.0,
-                    -h / 2.0,
-                    n.width,
+                    label_w.unwrap_or_else(|| w.max(1.0)),
+                    label_h.unwrap_or_else(|| h.max(1.0)),
+                    -label_w.unwrap_or_else(|| w.max(1.0)) / 2.0,
+                    -label_h.unwrap_or_else(|| h.max(1.0)) / 2.0,
+                    max_node_width_px,
                     &config,
                 );
             }
             "bang" => {
-                out.push_str(
-                    r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
+                let bbox_w = label_w.unwrap_or_else(|| (w - 10.0 * half_padding).max(1.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - 8.0 * half_padding).max(1.0));
+
+                let w_base = bbox_w + 10.0 * half_padding;
+                let h_base = bbox_h + 8.0 * half_padding;
+                let effective_w = w.max(1.0);
+                let effective_h = h.max(1.0);
+                let r = 0.15 * w_base;
+
+                let bang_path = format!(
+                    "M0 0 a{r},{r} 1 0,0 {w25},{hn10} a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},{h10} a{r},{r} 1 0,0 {w15},{h33} a{r08},{r08} 1 0,0 0,{h34} a{r},{r} 1 0,0 {wn15},{h33} a{r},{r} 1 0,0 {wn25},{h15} a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},{hn15} a{r},{r} 1 0,0 {wn10},{hn33} a{r08},{r08} 1 0,0 0,{hn34} a{r},{r} 1 0,0 {w10},{hn33} H0 V0 Z",
+                    r = fmt_path(r),
+                    r08 = fmt_path(r * 0.8),
+                    w25 = fmt_path(effective_w * 0.25),
+                    w15 = fmt_path(effective_w * 0.15),
+                    w10 = fmt_path(effective_w * 0.1),
+                    wn10 = fmt_path(-effective_w * 0.1),
+                    wn15 = fmt_path(-effective_w * 0.15),
+                    wn25 = fmt_path(-effective_w * 0.25),
+                    h10 = fmt_path(effective_h * 0.1),
+                    hn10 = fmt_path(-effective_h * 0.1),
+                    h15 = fmt_path(effective_h * 0.15),
+                    hn15 = fmt_path(-effective_h * 0.15),
+                    h33 = fmt_path(effective_h * 0.33),
+                    hn33 = fmt_path(-effective_h * 0.33),
+                    h34 = fmt_path(effective_h * 0.34),
+                    hn34 = fmt_path(-effective_h * 0.34),
                 );
-                let bbox_w = (w - 10.0 * half_padding).max(1.0);
-                let bbox_h = (h - 8.0 * half_padding).max(1.0);
+
+                let _ = write!(
+                    &mut out,
+                    r#"<path class="basic label-container" style="" d="{d}" transform="translate({tx}, {ty})"/>"#,
+                    d = escape_attr(&bang_path),
+                    tx = fmt(-(effective_w / 2.0)),
+                    ty = fmt(-(effective_h / 2.0)),
+                );
                 mk_label(
                     &mut out,
                     &n.label,
@@ -1086,16 +1347,18 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }
             _ => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic label-container" style="" x="{x}" y="-22" width="{w}" height="44"/>"#,
+                    r#"<rect class="basic label-container" style="" x="{x}" y="{y}" width="{w}" height="{h}"/>"#,
                     x = fmt(-(w / 2.0)),
+                    y = fmt(-(h / 2.0)),
                     w = fmt(w.max(1.0)),
+                    h = fmt(h.max(1.0)),
                 );
                 mk_label(
                     &mut out,
@@ -1106,7 +1369,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     h.max(1.0),
                     -w / 2.0,
                     -h / 2.0,
-                    n.width,
+                    max_node_width_px,
                     &config,
                 );
             }

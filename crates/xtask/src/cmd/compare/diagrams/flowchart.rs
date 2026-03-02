@@ -258,9 +258,15 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             }
         };
 
-        if parsed.meta.diagram_type == "flowchart-elk" {
+        let flowchart_layout_elk = parsed.meta.effective_config.get_str("layout") == Some("elk")
+            || parsed
+                .meta
+                .effective_config
+                .get_str("flowchart.defaultRenderer")
+                == Some("elk");
+        if parsed.meta.diagram_type == "flowchart-elk" || flowchart_layout_elk {
             skipped.push(format!(
-                "skipped {stem}: layout not implemented for diagram type `flowchart-elk`"
+                "skipped {stem}: layout not implemented for ELK (`flowchart-elk` / config layout=elk)"
             ));
             continue;
         }

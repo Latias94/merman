@@ -152,7 +152,7 @@ fn mindmap_node_dimensions_px(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
-) -> (f64, f64) {
+) -> (f64, f64, f64, f64) {
     let (bbox_w, bbox_h) = mindmap_label_bbox_px(
         &node.label,
         &node.label_type,
@@ -165,7 +165,7 @@ fn mindmap_node_dimensions_px(
 
     // Align with Mermaid shape sizing rules for mindmap nodes (via `labelHelper(...)` + shape
     // handlers in `rendering-elements/shapes/*`).
-    match node.shape.as_str() {
+    let (w, h) = match node.shape.as_str() {
         // `defaultMindmapNode.ts`: w = bbox.width + 8 * halfPadding; h = bbox.height + 2 * halfPadding
         "" | "defaultMindmapNode" => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
         // Mindmap node shapes use the standard `labelHelper(...)` label bbox, but mindmap DB
@@ -173,9 +173,9 @@ fn mindmap_node_dimensions_px(
         //
         // Upstream Mermaid@11.12.2 mindmap SVG baselines show:
         // - rect (`[text]`): w = bbox.width + 2*padding, h = bbox.height + padding
-        // - rounded (`(text)`): w = bbox.width + 1.5*padding, h = bbox.height + 1.5*padding
+        // - rounded (`(text)`): w = bbox.width + 2*padding, h = bbox.height + 2*padding
         "rect" => (bbox_w + 2.0 * padding, bbox_h + padding),
-        "rounded" => (bbox_w + 1.5 * padding, bbox_h + 1.5 * padding),
+        "rounded" => (bbox_w + 2.0 * padding, bbox_h + 2.0 * padding),
         // `mindmapCircle.ts` -> `circle.ts`: radius = bbox.width/2 + padding (mindmap passes full padding)
         "mindmapCircle" => {
             let d = bbox_w + 2.0 * padding;
@@ -183,9 +183,17 @@ fn mindmap_node_dimensions_px(
         }
         // `cloud.ts`: w = bbox.width + 2*halfPadding; h = bbox.height + 2*halfPadding
         "cloud" => (bbox_w + 2.0 * half_padding, bbox_h + 2.0 * half_padding),
-        // `bang.ts`: effectiveWidth = bbox.width + 10*halfPadding (min bbox+20 is always smaller here)
-        //           effectiveHeight = bbox.height + 8*halfPadding (min bbox+20 is always smaller here)
-        "bang" => (bbox_w + 10.0 * half_padding, bbox_h + 8.0 * half_padding),
+        // `bang.ts`:
+        // - w = bbox.width + 10*halfPadding; h = bbox.height + 8*halfPadding
+        // - minWidth = bbox.width + 20; minHeight = bbox.height + 20
+        // - effectiveWidth/Height = max(w/h, minWidth/Height)
+        "bang" => {
+            let w = bbox_w + 10.0 * half_padding;
+            let h = bbox_h + 8.0 * half_padding;
+            let min_w = bbox_w + 20.0;
+            let min_h = bbox_h + 20.0;
+            (w.max(min_w), h.max(min_h))
+        }
         // `hexagon.ts`: h = bbox.height + padding; w = bbox.width + 2.5*padding; then expands by +w/6
         // due to `halfWidth = w/2 + m` where `m = (w/2)/6`.
         "hexagon" => {
@@ -194,7 +202,9 @@ fn mindmap_node_dimensions_px(
             (w * (7.0 / 6.0), h)
         }
         _ => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
-    }
+    };
+
+    (w, h, bbox_w, bbox_h)
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -291,7 +301,7 @@ fn layout_mindmap_diagram_model(
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
     for (_id_num, n) in nodes_sorted {
-        let (width, height) =
+        let (width, height, label_width, label_height) =
             mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
 
         nodes.push(LayoutNode {
@@ -303,8 +313,8 @@ fn layout_mindmap_diagram_model(
             width: width.max(1.0),
             height: height.max(1.0),
             is_cluster: false,
-            label_width: None,
-            label_height: None,
+            label_width: Some(label_width.max(0.0)),
+            label_height: Some(label_height.max(0.0)),
         });
     }
     if let Some(s) = measure_nodes_start {
@@ -378,11 +388,8 @@ fn layout_mindmap_diagram_model(
     // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before
     // the 10px viewport padding is applied (viewBox starts at 5,5).
     //
-    // When we do NOT use the manatee COSE port, keep a compatibility translation so parity-root
-    // viewport comparisons remain stable.
-    if !use_manatee_layout {
-        shift_nodes_to_positive_bounds(&mut nodes, 15.0);
-    }
+    // Do this regardless of layout backend so parity-root viewport comparisons remain stable.
+    shift_nodes_to_positive_bounds(&mut nodes, 15.0);
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
     let mut edges: Vec<LayoutEdge> = Vec::new();

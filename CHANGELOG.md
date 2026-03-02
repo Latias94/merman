@@ -15,6 +15,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Architecture: refresh compound bounds after FCoSE spring iterations before applying `relocateComponent`-style centering
   (fixes `parity-root` root `max-width` drift in deep compound/group fixtures).
+- Flowchart: unescape quoted string labels (e.g. Windows paths like `C:\\Temp\\...`) and preserve Unicode punctuation in
+  label text.
+- `xtask compare-flowchart-svgs`: skip ELK flowchart fixtures requested via `layout: elk` / `flowchart.defaultRenderer=elk`
+  (prevents layout failures while ELK parity is deferred).
 - Flowchart: align icon node shape rendering with upstream Mermaid (`icon` vs `iconSquare`) to avoid NaN path data and
   restore SVG DOM parity for AWS icon fixtures.
 - Flowchart: improved `iconSquare` RoughJS path parity (rounded-rect path structure) for upstream icon shape fixtures.

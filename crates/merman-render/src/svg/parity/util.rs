@@ -199,14 +199,19 @@ pub(super) fn fmt_path(v: f64) -> String {
 
 pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
-    // D3 uses `Math.round(x * 1000) / 1000` (ties half-up, including for negatives).
+    // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
+    // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
     if !v.is_finite() || v.abs() < 0.0005 {
         out.push_str("0");
         return;
     }
 
     let scaled = v * 1000.0;
-    let k = (scaled + 0.5).floor() as i64;
+    let k = if scaled < 0.0 {
+        (scaled - 0.5).ceil() as i64
+    } else {
+        (scaled + 0.5).floor() as i64
+    };
     if k == 0 {
         out.push_str("0");
         return;
@@ -590,7 +595,7 @@ mod tests {
         assert_eq!(fmt_path_into_string(-0.0004), "0");
         assert_eq!(fmt_path_into_string(1.23456), "1.235");
         assert_eq!(fmt_path_into_string(1.0), "1");
-        assert_eq!(fmt_path_into_string(-1.2345), "-1.234");
+        assert_eq!(fmt_path_into_string(-1.2345), "-1.235");
     }
 
     #[test]

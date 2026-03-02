@@ -3,7 +3,7 @@
 mod cluster;
 mod edge_label;
 mod edge_path;
-mod node;
+pub(in crate::svg::parity) mod node;
 mod root;
 
 pub(in crate::svg::parity) use cluster::render_flowchart_cluster;

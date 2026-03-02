@@ -413,9 +413,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
             let w = lbl.width.max(0.0);
             let h = lbl.height.max(0.0);
-            let wrapped_style = if (w - ctx.wrapping_width).abs() < 0.01
-                && h > ctx.text_style.font_size * 1.5 + 0.1
-            {
+            let wrapped_style = if w >= ctx.wrapping_width - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(ctx.wrapping_width)
@@ -480,9 +478,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let w = metrics.width.max(1.0);
             let h = metrics.height.max(1.0);
-            let wrapped_style = if (w - ctx.wrapping_width).abs() < 0.01
-                && h > ctx.text_style.font_size * 1.5 + 0.1
-            {
+            let wrapped_style = if w >= ctx.wrapping_width - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(ctx.wrapping_width)

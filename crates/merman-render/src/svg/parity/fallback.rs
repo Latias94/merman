@@ -10,6 +10,12 @@ struct Translate {
     y: f64,
 }
 
+#[derive(Clone, Debug, Default)]
+struct GFrame {
+    translate: Translate,
+    class_tokens: Vec<String>,
+}
+
 fn parse_attr_str<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
     let needle = format!(r#"{key}=""#);
     let i = tag.find(&needle)?;
@@ -61,11 +67,11 @@ fn parse_translate(transform: &str) -> Translate {
     }
 }
 
-fn sum_translate(stack: &[Translate]) -> Translate {
+fn sum_translate(stack: &[GFrame]) -> Translate {
     let mut acc = Translate::default();
     for t in stack {
-        acc.x += t.x;
-        acc.y += t.y;
+        acc.x += t.translate.x;
+        acc.y += t.translate.y;
     }
     acc
 }
@@ -140,6 +146,28 @@ fn extract_css_background_color_for_class(svg: &str, class_name: &str) -> Option
     None
 }
 
+fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String> {
+    // Mermaid parity SVGs inline styles in a `<style>` element and typically emit rules like:
+    //   #<id> .section-root text{fill:#ffffff;}
+    // This is a cheap non-validating parser that looks for the pattern and extracts the value.
+    let needle = format!(".{class_name} text{{fill:");
+    let mut search = 0usize;
+    while let Some(rel) = svg[search..].find(&needle) {
+        let i = search + rel + needle.len();
+        let after = &svg[i..];
+        let end = after
+            .find(';')
+            .or_else(|| after.find('}'))
+            .unwrap_or(after.len());
+        let value = after[..end].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+        search = i + end;
+    }
+    None
+}
+
 fn extract_inline_html_color(html: &str) -> Option<String> {
     // Look for `style="...color: <value> ..."` inside the foreignObject HTML fragment.
     let lower = html.to_ascii_lowercase();
@@ -164,6 +192,25 @@ fn extract_inline_html_color(html: &str) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
+fn parse_class_tokens(tag: &str) -> Vec<String> {
+    let Some(s) = parse_attr_str(tag, "class") else {
+        return Vec::new();
+    };
+    s.split_whitespace().map(|t| t.to_string()).collect()
+}
+
+fn extract_svg_text_fill_from_ancestors(svg: &str, g_stack: &[GFrame]) -> Option<String> {
+    // Prefer the closest ancestor's classes (more specific) by scanning frames from inner -> outer.
+    for frame in g_stack.iter().rev() {
+        for token in frame.class_tokens.iter().rev() {
+            if let Some(fill) = extract_css_text_fill_for_class(svg, token) {
+                return Some(fill);
+            }
+        }
+    }
+    None
+}
+
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
 ///
@@ -181,7 +228,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     let close_tag = "</foreignObject>";
     let mut out = String::with_capacity(svg.len() + 2048);
     let mut overlays = String::new();
-    let mut g_translate_stack: Vec<Translate> = Vec::new();
+    let mut g_stack: Vec<GFrame> = Vec::new();
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
     let label_bkg = extract_css_background_color_for_class(svg, "labelBkg")
         .unwrap_or_else(|| label_bkg_default);
@@ -207,9 +254,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
         }
 
         if tag.starts_with("</g") {
-            if !g_translate_stack.is_empty() {
-                g_translate_stack.pop();
-            }
+            let _ = g_stack.pop();
             out.push_str(tag);
             i = gt;
             continue;
@@ -219,8 +264,12 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
             let t = parse_attr_str(tag, "transform")
                 .map(parse_translate)
                 .unwrap_or_default();
+            let class_tokens = parse_class_tokens(tag);
             if !is_self_closing(tag) {
-                g_translate_stack.push(t);
+                g_stack.push(GFrame {
+                    translate: t,
+                    class_tokens,
+                });
             }
             out.push_str(tag);
             i = gt;
@@ -246,7 +295,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
             if width > 0.0 && height > 0.0 {
                 let x = parse_attr_f64(tag, "x").unwrap_or(0.0);
                 let y = parse_attr_f64(tag, "y").unwrap_or(0.0);
-                let base = sum_translate(&g_translate_stack);
+                let base = sum_translate(&g_stack);
 
                 let abs_x = base.x + x;
                 let abs_y = base.y + y;
@@ -273,8 +322,9 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                     let line_height = font_size * 1.5;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
-                    let fill =
-                        extract_inline_html_color(inner).unwrap_or_else(|| "#333".to_string());
+                    let fill = extract_inline_html_color(inner)
+                        .or_else(|| extract_svg_text_fill_from_ancestors(svg, &g_stack))
+                        .unwrap_or_else(|| "#333".to_string());
                     // Avoid quoting font families inside an XML attribute that is already quoted.
                     // Rasterizers can be strict about unescaped quotes in `style="..."`.
                     let font_family = "trebuchet ms,verdana,arial,sans-serif";

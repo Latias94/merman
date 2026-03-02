@@ -154,7 +154,7 @@ fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, Titl
     let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
         || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
     let unquoted = if quoted {
-        unquote(trimmed)
+        super::text::unescape_flowchart_string(&unquote(trimmed))
     } else {
         trimmed.to_string()
     };

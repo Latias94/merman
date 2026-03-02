@@ -87,10 +87,19 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
     let span_style_attr = OptionalStyleXmlAttr(label_style);
+    let div_style = if label_w >= ctx.wrapping_width - 1e-3 {
+        format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+            mw = fmt_display(ctx.wrapping_width)
+        )
+    } else {
+        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"
+            .to_string()
+    };
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
         escape_xml_display(&class_attr),
         escape_xml_display(&cluster.id),
         escape_xml_display(rect_style),
@@ -102,6 +111,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         fmt_display(label_top),
         fmt_display(label_w),
         fmt_display(label_h),
+        escape_xml_display(&div_style),
         span_style_attr,
         title_html
     );

@@ -35,6 +35,7 @@ mod pie;
 mod quadrantchart;
 mod radar;
 mod requirement;
+mod roughjs46;
 mod sankey;
 mod sequence;
 mod state;

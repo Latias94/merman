@@ -5,7 +5,7 @@ use super::super::*;
 mod geom;
 mod helpers;
 mod label;
-mod roughjs;
+pub(in crate::svg::parity) mod roughjs;
 mod shapes;
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
