@@ -1,0 +1,19 @@
+---
+config:
+  architecture:
+    fontSize: 18
+  fontFamily: courier
+  themeVariables:
+    textColor: "#112233"
+    lineColor: "#445566"
+    primaryBorderColor: "#778899"
+---
+architecture-beta
+  %% Authored stress fixture (Mermaid@11.12.3)
+  %% Focus: font/theme config plumbing for text measurement + CSS styling.
+
+  service api(server)[API]
+  service queue(queue)[Queue]
+
+  api:R -[enqueue]- L:queue
+
