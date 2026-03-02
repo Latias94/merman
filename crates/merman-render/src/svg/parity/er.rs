@@ -551,56 +551,46 @@ pub(super) fn render_er_diagram_svg(
     let mut h_attr = fmt_string(vb_h_attr);
     let mut max_w_style = fmt_max_width_px(vb_w_attr);
     let mut viewbox_attr = format!("0 0 {} {}", w_attr, h_attr);
-    if let Some((viewbox, max_w)) =
-        crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override(diagram_id)
-    {
-        viewbox_attr = viewbox.to_string();
-        let mut it = viewbox.split_whitespace();
-        let _ = it.next(); // min-x
-        let _ = it.next(); // min-y
-        w_attr = it.next().unwrap_or("0").to_string();
-        h_attr = it.next().unwrap_or("0").to_string();
-        max_w_style = max_w.to_string();
-    }
-    if use_max_width {
-        let _ = write!(
-            &mut out,
-            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
-            escape_xml(diagram_id),
-            max_w_style,
-            viewbox_attr,
-            diagram_type
-        );
-    } else {
-        let _ = write!(
-            &mut out,
-            r#"<svg id="{}" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
-            escape_xml(diagram_id),
-            w_attr,
-            h_attr,
-            viewbox_attr,
-            diagram_type
-        );
-    }
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_style,
+        crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override,
+    );
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = model.acc_descr.as_ref().is_some_and(|s| !s.is_empty());
-    if has_acc_title {
-        let _ = write!(
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{}", escape_xml(diagram_id)));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{}", escape_xml(diagram_id)));
+    if use_max_width {
+        root_svg::push_svg_root_open(
             &mut out,
-            r#" aria-labelledby="chart-title-{}""#,
-            escape_xml(diagram_id)
+            diagram_id,
+            "erDiagram",
+            root_svg::SvgRootWidth::Percent100,
+            None,
+            &format!("max-width: {max_w_style}px; background-color: white;"),
+            &viewbox_attr,
+            diagram_type,
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
+        );
+    } else {
+        root_svg::push_svg_root_open(
+            &mut out,
+            diagram_id,
+            "erDiagram",
+            root_svg::SvgRootWidth::Fixed(&w_attr),
+            Some(&h_attr),
+            "background-color: white;",
+            &viewbox_attr,
+            diagram_type,
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
         );
     }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{}""#,
-            escape_xml(diagram_id)
-        );
-    }
-    out.push('>');
-    out.push('\n');
 
     if has_acc_title {
         let _ = write!(

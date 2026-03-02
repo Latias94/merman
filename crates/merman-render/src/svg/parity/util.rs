@@ -308,6 +308,25 @@ pub(super) fn fmt_max_width_px(v: f64) -> String {
     out
 }
 
+pub(super) fn apply_root_viewport_override(
+    diagram_id: &str,
+    viewbox_attr: &mut String,
+    width_attr: &mut String,
+    height_attr: &mut String,
+    max_width_style: &mut String,
+    lookup: fn(&str) -> Option<(&'static str, &'static str)>,
+) {
+    if let Some((viewbox, max_w)) = lookup(diagram_id) {
+        *viewbox_attr = viewbox.to_string();
+        let mut it = viewbox.split_whitespace();
+        let _ = it.next(); // min-x
+        let _ = it.next(); // min-y
+        *width_attr = it.next().unwrap_or("0").to_string();
+        *height_attr = it.next().unwrap_or("0").to_string();
+        *max_width_style = max_w.to_string();
+    }
+}
+
 pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
     // Mermaid's `max-width: ...px` strings are effectively rendered with ~6 significant digits,
     // trimming trailing zeros (see upstream fixtures: `1184.88`, `432.812`, `85.4375`, `2019.2`).
