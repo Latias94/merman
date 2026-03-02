@@ -20,6 +20,111 @@ fn section<'a>(
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
 }
 
+fn prepare_render_edges_and_extra_nodes<'a>(
+    model: &'a crate::flowchart::FlowchartV2Model,
+) -> (
+    Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>>,
+    Vec<crate::flowchart::FlowNode>,
+) {
+    // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
+    // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
+    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
+    let mut render_edges: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> =
+        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
+    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for e in &model.edges {
+        if e.from != e.to {
+            render_edges.push(std::borrow::Cow::Borrowed(e));
+            continue;
+        }
+
+        let node_id = e.from.clone();
+        let special_id_1 = format!("{node_id}---{node_id}---1");
+        let special_id_2 = format!("{node_id}---{node_id}---2");
+        self_loop_label_node_ids.insert(special_id_1.clone());
+        self_loop_label_node_ids.insert(special_id_2.clone());
+
+        let mut edge1 = e.clone();
+        edge1.id = format!("{node_id}-cyclic-special-1");
+        edge1.from = node_id.clone();
+        edge1.to = special_id_1.clone();
+        edge1.label = None;
+        edge1.label_type = None;
+        edge1.edge_type = Some("arrow_open".to_string());
+
+        let mut edge_mid = e.clone();
+        edge_mid.id = format!("{node_id}-cyclic-special-mid");
+        edge_mid.from = special_id_1.clone();
+        edge_mid.to = special_id_2.clone();
+        edge_mid.edge_type = Some("arrow_open".to_string());
+
+        let mut edge2 = e.clone();
+        edge2.id = format!("{node_id}-cyclic-special-2");
+        edge2.from = special_id_2.clone();
+        edge2.to = node_id.clone();
+        edge2.label = None;
+        edge2.label_type = None;
+
+        render_edges.push(std::borrow::Cow::Owned(edge1));
+        render_edges.push(std::borrow::Cow::Owned(edge_mid));
+        render_edges.push(std::borrow::Cow::Owned(edge2));
+    }
+
+    // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
+    // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
+    // visible side-effect: those edges end up later in `graph.edges()` insertion order, so the
+    // DOM emitted under `.edgePaths` / `.edgeLabels` matches that stable partition.
+    let cluster_ids_with_children: FxHashSet<&str> = model
+        .subgraphs
+        .iter()
+        .filter(|sg| !sg.nodes.is_empty())
+        .map(|sg| sg.id.as_str())
+        .collect();
+    if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
+        let mut normal: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> =
+            Vec::with_capacity(render_edges.len());
+        let mut cluster: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> = Vec::new();
+        for e in render_edges {
+            let edge = e.as_ref();
+            if cluster_ids_with_children.contains(edge.from.as_str())
+                || cluster_ids_with_children.contains(edge.to.as_str())
+            {
+                cluster.push(e);
+            } else {
+                normal.push(e);
+            }
+        }
+        normal.extend(cluster);
+        render_edges = normal;
+    }
+
+    let mut extra_nodes: Vec<crate::flowchart::FlowNode> =
+        Vec::with_capacity(self_loop_label_node_ids.len());
+    for id in &self_loop_label_node_ids {
+        extra_nodes.push(crate::flowchart::FlowNode {
+            id: id.clone(),
+            label: Some(String::new()),
+            label_type: None,
+            layout_shape: None,
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            have_callback: false,
+            link: None,
+            link_target: None,
+        });
+    }
+
+    (render_edges, extra_nodes)
+}
+
 pub(super) fn render_flowchart_v2_svg_model(
     layout: &FlowchartV2Layout,
     model: &crate::flowchart::FlowchartV2Model,
@@ -112,78 +217,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
 
-    // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
-    // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
-    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
-    let mut render_edges: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> =
-        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
-    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-    for e in &model.edges {
-        if e.from != e.to {
-            render_edges.push(std::borrow::Cow::Borrowed(e));
-            continue;
-        }
-
-        let node_id = e.from.clone();
-        let special_id_1 = format!("{node_id}---{node_id}---1");
-        let special_id_2 = format!("{node_id}---{node_id}---2");
-        self_loop_label_node_ids.insert(special_id_1.clone());
-        self_loop_label_node_ids.insert(special_id_2.clone());
-
-        let mut edge1 = e.clone();
-        edge1.id = format!("{node_id}-cyclic-special-1");
-        edge1.from = node_id.clone();
-        edge1.to = special_id_1.clone();
-        edge1.label = None;
-        edge1.label_type = None;
-        edge1.edge_type = Some("arrow_open".to_string());
-
-        let mut edge_mid = e.clone();
-        edge_mid.id = format!("{node_id}-cyclic-special-mid");
-        edge_mid.from = special_id_1.clone();
-        edge_mid.to = special_id_2.clone();
-        edge_mid.edge_type = Some("arrow_open".to_string());
-
-        let mut edge2 = e.clone();
-        edge2.id = format!("{node_id}-cyclic-special-2");
-        edge2.from = special_id_2.clone();
-        edge2.to = node_id.clone();
-        edge2.label = None;
-        edge2.label_type = None;
-
-        render_edges.push(std::borrow::Cow::Owned(edge1));
-        render_edges.push(std::borrow::Cow::Owned(edge_mid));
-        render_edges.push(std::borrow::Cow::Owned(edge2));
-    }
-
-    // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
-    // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
-    // visible side-effect: those edges end up later in `graph.edges()` insertion order, so the
-    // DOM emitted under `.edgePaths` / `.edgeLabels` matches that stable partition.
-    let cluster_ids_with_children: FxHashSet<&str> = model
-        .subgraphs
-        .iter()
-        .filter(|sg| !sg.nodes.is_empty())
-        .map(|sg| sg.id.as_str())
-        .collect();
-    if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
-        let mut normal: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> =
-            Vec::with_capacity(render_edges.len());
-        let mut cluster: Vec<std::borrow::Cow<'_, crate::flowchart::FlowEdge>> = Vec::new();
-        for e in render_edges {
-            let edge = e.as_ref();
-            if cluster_ids_with_children.contains(edge.from.as_str())
-                || cluster_ids_with_children.contains(edge.to.as_str())
-            {
-                cluster.push(e);
-            } else {
-                normal.push(e);
-            }
-        }
-        normal.extend(cluster);
-        render_edges = normal;
-    }
+    let (render_edges, extra_nodes) = prepare_render_edges_and_extra_nodes(model);
 
     let font_family = config_string(effective_config_value, &["fontFamily"])
         .map(|s| normalize_css_font_family(&s))
@@ -240,29 +274,6 @@ fn render_flowchart_v2_svg_with_config_inner(
     };
 
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
-
-    let mut extra_nodes: Vec<crate::flowchart::FlowNode> =
-        Vec::with_capacity(self_loop_label_node_ids.len());
-    for id in &self_loop_label_node_ids {
-        extra_nodes.push(crate::flowchart::FlowNode {
-            id: id.clone(),
-            label: Some(String::new()),
-            label_type: None,
-            layout_shape: None,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            have_callback: false,
-            link: None,
-            link_target: None,
-        });
-    }
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
