@@ -1,4 +1,4 @@
-use super::{InfoDiagramLayout, Result, SvgRenderOptions};
+use super::{InfoDiagramLayout, Result, SvgRenderOptions, root_svg};
 use std::fmt::Write as _;
 
 pub(super) fn render_info_diagram_svg(
@@ -8,12 +8,22 @@ pub(super) fn render_info_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = super::escape_xml(diagram_id);
 
     let mut out = String::new();
-    let _ = write!(
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 400px; background-color: white;" role="graphics-document document" aria-roledescription="info">"#,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some("max-width: 400px; background-color: white;"),
+        None,
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+        &[],
+        "info",
+        None,
+        None,
+        false,
     );
     let css = super::info_css_with_config(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
