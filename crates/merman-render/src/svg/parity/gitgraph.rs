@@ -156,7 +156,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         root_svg::SvgRootWidth::Percent100,
         None,
         Some(style_attr.as_str()),
-        VIEWBOX_PLACEHOLDER,
+        Some(VIEWBOX_PLACEHOLDER),
         root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         "gitGraph",

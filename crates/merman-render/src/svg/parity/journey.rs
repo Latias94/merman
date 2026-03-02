@@ -356,7 +356,7 @@ pub(super) fn render_journey_diagram_svg(
         root_svg::SvgRootWidth::Percent100,
         None,
         Some(style_attr.as_str()),
-        &viewbox_attr,
+        Some(&viewbox_attr),
         root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &extra_attrs,
         "journey",

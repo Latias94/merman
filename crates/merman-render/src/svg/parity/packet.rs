@@ -107,7 +107,7 @@ pub(super) fn render_packet_diagram_svg(
         root_svg::SvgRootWidth::Percent100,
         None,
         Some(style_attr.as_str()),
-        viewbox_attr.as_str(),
+        Some(viewbox_attr.as_str()),
         root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
         &[],
         "packet",

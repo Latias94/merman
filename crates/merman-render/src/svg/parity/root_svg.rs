@@ -17,7 +17,7 @@ pub(super) fn push_svg_root_open_ex(
     width: SvgRootWidth<'_>,
     height_attr: Option<&str>,
     style_attr: Option<&str>,
-    viewbox_attr: &str,
+    viewbox_attr: Option<&str>,
     style_viewbox_order: SvgRootStyleViewBoxOrder,
     extra_attrs: &[(&str, &str)],
     aria_roledescription: &str,
@@ -58,14 +58,18 @@ pub(super) fn push_svg_root_open_ex(
                 out.push_str(style_attr);
                 out.push('"');
             }
-            out.push_str(r#" viewBox=""#);
-            out.push_str(viewbox_attr);
-            out.push('"');
+            if let Some(viewbox_attr) = viewbox_attr {
+                out.push_str(r#" viewBox=""#);
+                out.push_str(viewbox_attr);
+                out.push('"');
+            }
         }
         SvgRootStyleViewBoxOrder::ViewBoxThenStyle => {
-            out.push_str(r#" viewBox=""#);
-            out.push_str(viewbox_attr);
-            out.push('"');
+            if let Some(viewbox_attr) = viewbox_attr {
+                out.push_str(r#" viewBox=""#);
+                out.push_str(viewbox_attr);
+                out.push('"');
+            }
             if let Some(style_attr) = style_attr {
                 out.push_str(r#" style=""#);
                 out.push_str(style_attr);
@@ -120,7 +124,7 @@ pub(super) fn push_svg_root_open(
         width,
         height_attr,
         Some(style_attr),
-        viewbox_attr,
+        Some(viewbox_attr),
         SvgRootStyleViewBoxOrder::StyleThenViewBox,
         &[],
         aria_roledescription,
