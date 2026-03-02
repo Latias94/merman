@@ -62,7 +62,7 @@ Exit criteria:
 Status (rolling):
 
 - Root writer adopted in: `er`, `requirement`, `journey`, `timeline`, `kanban`, `gitgraph`, `gantt`,
-  `packet`, `pie`, `xychart`, `block`, `error`.
+  `packet`, `pie`, `xychart`, `block`, `error`, `treemap`.
 
 ### R3: Diagram render modules normalized
 
