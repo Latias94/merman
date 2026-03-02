@@ -15,7 +15,7 @@ The key principle: **refactor without changing behavior**, backed by strong rele
   - `viewBox`/`style` ordering quirks (to keep strict XML diffs stable)
 - Diagrams already migrated to the shared root writer: `er`, `requirement`, `journey`, `timeline`,
   `kanban`, `gitgraph`, `gantt`, `packet`, `pie`, `xychart`, `block`, `error`, `treemap`, `info`,
-  `quadrantchart`.
+  `quadrantchart`, `sankey`, `radar`.
 
 ## Goals
 

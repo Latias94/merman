@@ -29,9 +29,9 @@ Related docs:
       so strict XML diffs can remain stable while refactoring.
 - [ ] Consolidate common SVG escaping + number formatting usage so diagram renderers don’t reach for
       ad-hoc `format!` / `write!` patterns.
-- [ ] Extend the shared writer to support root attribute placement quirks beyond `viewBox`/`style`
-      ordering (e.g. `quadrantchart` fixed-size variant places `style` after `aria-roledescription`)
-      and adopt it in diagrams that depend on that ordering.
+- [x] Extend the shared writer to support root attribute placement quirks beyond `viewBox`/`style`
+      ordering (e.g. `style` after aria, fixed-size `height` placement) and adopt it in diagrams that
+      depend on that ordering.
 
 ### P1: Diagram module structure
 
