@@ -66,13 +66,13 @@ pub(super) fn push_svg_root_open_ex(
     out.push_str(r#" role="graphics-document document" aria-roledescription=""#);
     out.push_str(aria_roledescription);
     out.push('"');
-    if let Some(v) = aria_labelledby {
-        out.push_str(r#" aria-labelledby=""#);
+    if let Some(v) = aria_describedby {
+        out.push_str(r#" aria-describedby=""#);
         out.push_str(v);
         out.push('"');
     }
-    if let Some(v) = aria_describedby {
-        out.push_str(r#" aria-describedby=""#);
+    if let Some(v) = aria_labelledby {
+        out.push_str(r#" aria-labelledby=""#);
         out.push_str(v);
         out.push('"');
     }

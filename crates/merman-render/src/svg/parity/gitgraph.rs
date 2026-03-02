@@ -119,7 +119,6 @@ pub(super) fn render_gitgraph_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -147,27 +146,23 @@ pub(super) fn render_gitgraph_diagram_svg(
     let aria_desc_id = format!("chart-desc-{diagram_id}");
 
     let mut out = String::new();
-    let _ = write!(
+    let aria_describedby = acc_descr.is_some().then(|| escape_attr(&aria_desc_id));
+    let aria_labelledby = acc_title.is_some().then(|| escape_attr(&aria_title_id));
+    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;" viewBox="{VIEWBOX_PLACEHOLDER}" role="graphics-document document" aria-roledescription="gitGraph""#,
-        diagram_id_esc = diagram_id_esc,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        VIEWBOX_PLACEHOLDER,
+        &[],
+        "gitGraph",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
     );
-
-    if acc_descr.is_some() {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="{}""#,
-            escape_attr(&aria_desc_id)
-        );
-    }
-    if acc_title.is_some() {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="{}""#,
-            escape_attr(&aria_title_id)
-        );
-    }
-    out.push('>');
 
     if let Some(t) = acc_title {
         let _ = write!(
