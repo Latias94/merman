@@ -31,6 +31,13 @@ outputs, `merman-cli` applies a **raster-only SVG preprocessing pass**:
 This makes `tools/preview/export-fixtures-png.ps1` produce readable previews across most diagrams
 without bundling a browser engine.
 
+Note on sizing:
+
+- For raster formats, the output pixel size is derived from the root `viewBox` (when present).
+- We round the base `viewBox` width/height up to whole pixels and then apply `--scale` so
+  integer scaling behaves as expected (e.g. `--scale 2` produces exactly 2× the pixels of
+  `--scale 1` for the same SVG).
+
 ## Library usage
 
 If you want the same PNG/JPG/PDF output without spawning the CLI, enable the `raster` feature on
