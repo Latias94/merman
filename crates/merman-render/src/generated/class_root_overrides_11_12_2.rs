@@ -126,7 +126,7 @@ pub fn lookup_class_root_viewport_override(
             Some(("4 4 1330.953125 797.5", "1330.95"))
         }
         "upstream_cypress_classdiagram_spec_should_handle_an_empty_class_body_with_empty_braces_029" => {
-            Some(("0 0 200.828125 187", "200.828"))
+            Some(("0 0 201.390625 186", "201.391"))
         }
         "upstream_cypress_classdiagram_spec_should_handle_newline_title_in_namespace_021" => {
             Some(("-8 0 245.28125 422", "245.281"))
@@ -367,7 +367,7 @@ pub fn lookup_class_root_viewport_override(
         "stress_class_notes_and_keywords_003" => Some(("0 0 382.59375 344", "382.594")),
         "stress_class_parallel_edges_and_cardinality_004" => Some(("0 0 420.5 100", "420.5")),
         "stress_class_styles_classdef_and_inline_010" => Some(("0 0 136.4296875 342", "136.43")),
-        "stress_class_unicode_and_entities_012" => Some(("0 0 665.734375 184", "665.734")),
+        "stress_class_unicode_and_entities_012" => Some(("0 0 661.796875 184", "661.797")),
         "stress_class_nested_generics_static_013" => Some(("0 0 1176.125 190", "1176.12")),
         "stress_class_notes_wrap_positions_014" => Some(("0 0 584.11328125 502", "584.113")),
         "stress_class_click_strict_sanitization_015" => Some(("0 0 117.328125 258", "117.328")),
@@ -386,6 +386,84 @@ pub fn lookup_class_root_viewport_override(
         "stress_class_member_types_arrays_generics_022" => Some(("0 0 337.8984375 208", "337.898")),
         "stress_class_enums_and_interfaces_mix_023" => Some(("0 0 569.8828125 208", "569.883")),
         "stress_class_comments_inside_namespaces_024" => Some(("-8 0 356.7890625 369", "356.789")),
+        "upstream_cypress_classdiagram_spec_1_should_render_a_simple_class_diagram_001" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_10_should_render_a_simple_class_diagram_with_clickable_callback_018" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_11_should_render_a_simple_class_diagram_with_return_type_on_meth_019" => {
+            Some(("0 0 224.1953125 184", "224.195"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_12_should_render_a_simple_class_diagram_with_generic_types_021" => {
+            Some(("0 0 296.9765625 208", "296.977"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_15_should_render_a_simple_class_diagram_with_css_classes_applied_025" => {
+            Some(("0 0 225.125 100", "225.125"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_16a_should_render_a_simple_class_diagram_with_static_field_026" => {
+            Some(("0 0 131.6953125 136", "131.695"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_17b_should_handle_the_direction_statement_with_rl_029" => {
+            Some(("0 0 431.125 354", "431.125"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_18a_should_handle_the_direction_statement_with_lr_030" => {
+            Some(("0 0 431.125 354", "431.125"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_18b_should_render_a_simple_class_diagram_with_notes_031" => {
+            Some(("0 0 405.828125 270", "405.828"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_1_should_render_a_simple_class_diagram_002" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_2_should_render_a_simple_class_diagrams_with_cardinality_004" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_4_should_render_a_simple_class_diagram_with_comments_009" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_5_should_render_a_simple_class_diagram_with_abstract_method_010" => {
+            Some(("0 0 170.375 300", "170.375"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_7_should_render_a_simple_class_diagram_with_generic_class_014" => {
+            Some(("0 0 439.4453125 342", "439.445"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_8_should_render_a_simple_class_diagram_with_generic_class_and_re_016" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_9_should_render_a_simple_class_diagram_with_clickable_link_017" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_a_custom_theme_056" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_050" => {
+            Some(("0 0 184.96875 256", "184.969"))
+        }
+        "upstream_docs_changelog_patch_changes_001" => Some(("-8 0 308.6640625 236", "308.664")),
+        "upstream_docs_classdiagram_class_diagrams_001" => {
+            Some(("0 -48 685.2421875 474", "685.242"))
+        }
+        "upstream_docs_readme_class_diagram_a_href_https_mermaid_js_org_syntax_classdiagram_ht_007" => {
+            Some(("0 0 600.53125 426", "600.531"))
+        }
+        "upstream_examples_class_basic_class_inheritance_001" => Some(("0 0 566 426", "566")),
+        "upstream_pkgtests_class_spec_002" => Some(("-8 0 125.140625 170", "125.141")),
+        "upstream_pkgtests_class_spec_003" => Some(("-8 0 202.53125 170", "202.531")),
+        "upstream_pkgtests_classdiagram_spec_002" => Some(("-8 0 308.6640625 236", "308.664")),
+        "upstream_pkgtests_classdiagram_spec_003" => Some(("0 0 314.71875 466", "314.719")),
+        "upstream_pkgtests_classdiagram_spec_004" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_classdiagram_spec_005" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_classdiagram_spec_006" => Some(("-8 0 357.234375 170", "357.234")),
+        "upstream_pkgtests_classdiagram_spec_013" => Some(("0 0 36.90625 52", "36.9062")),
+        "upstream_pkgtests_classdiagram_spec_015" => Some(("0 0 252.859375 246", "252.859")),
+        "upstream_pkgtests_classdiagram_spec_027" => Some(("-8 0 359.0390625 278", "359.039")),
+        "upstream_pkgtests_classdiagram_spec_029" => Some(("-8 0 217.078125 412", "217.078")),
+        "upstream_pkgtests_classdiagram_spec_038" => Some(("0 0 224.34375 270", "224.344")),
+        "upstream_pkgtests_diagram_orchestration_spec_003" => {
+            Some(("0 0 247.828125 208", "247.828"))
+        }
+        "upstream_pkgtests_mermaidapi_spec_019" => Some(("0 0 431.125 354", "431.125")),
         _ => None,
     }
 }

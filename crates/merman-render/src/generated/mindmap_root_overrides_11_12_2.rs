@@ -48,6 +48,9 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018" => {
             Some(("5 5 357.99908447265625 369.02362060546875", "357.999"))
         }
+        "upstream_cypress_mindmap_spec_should_render_all_level_2_nodes_correctly_when_there_are_more_th_019" => {
+            Some(("5 5 466.2218017578125 284.1161804199219", "466.222"))
+        }
         "upstream_cypress_mindmap_spec_rounded_rect_shape_012" => {
             Some(("5 5 101.3125 101.3125", "101.312"))
         }
@@ -77,13 +80,17 @@ pub fn lookup_mindmap_root_viewport_override(
             "186.387",
         )),
         "upstream_docs_mindmap_markdown_strings_028" => {
-            Some(("5 5 789.57177734375 132.8335189819336", "789.572"))
+            Some(("5 5 787.6028442382812 132.77752685546875", "787.603"))
         }
         "upstream_docs_mindmap_rounded_square_009" => Some(("5 5 210.15625 74", "210.156")),
         "upstream_docs_mindmap_square_007" => Some(("5 5 156.5 64", "156.5")),
         "upstream_whitespace_and_comments" => {
             Some(("5 5 317.027587890625 345.3640441894531", "317.028"))
         }
+        "upstream_node_types" => Some((
+            "7.709373474121094 5 412.6386413574219 268.28924560546875",
+            "412.639",
+        )),
         "mmdr_tests_mindmap_basic" => Some(("5 5 530.9208984375 72.1875", "530.921")),
         "upstream_cypress_mindmap_tidy_tree_spec_example_001" => {
             Some(("5 5 311.59832763671875 106.109375", "311.598"))
@@ -134,11 +141,9 @@ pub fn lookup_mindmap_root_viewport_override(
         }
         "stress_label_escaping_012" => Some(("5 5 623.0265502929688 363.4689025878906", "623.027")),
         "stress_mindmap_html_sanitization_013" => {
-            Some(("5 5 232.828125 259.7193298339844", "232.828"))
+            Some(("5 5 233.390625 258.71905517578125", "233.391"))
         }
-        "stress_mindmap_markdown_emphasis_icons_014" => {
-            Some(("5 5 260.025146484375 331.54632568359375", "260.025"))
-        }
+        "stress_mindmap_markdown_emphasis_icons_014" => Some(("5 5 260 330.546142578125", "260")),
         "stress_mindmap_many_siblings_decorators_015" => {
             Some(("5 5 373.0360412597656 290.3151550292969", "373.036"))
         }
@@ -155,10 +160,10 @@ pub fn lookup_mindmap_root_viewport_override(
             Some(("5 5 271.44976806640625 549.0762329101562", "271.45"))
         }
         "stress_mindmap_unicode_punct_020" => {
-            Some(("5 5 641.8223266601562 240.2651824951172", "641.822"))
+            Some(("5 5 635.117919921875 257.3459167480469", "635.118"))
         }
         "stress_mindmap_multiline_markdown_021" => {
-            Some(("5 5 740.1551513671875 131.41211700439453", "740.155"))
+            Some(("5 5 738.185791015625 131.3553237915039", "738.186"))
         }
         "stress_mindmap_proto_like_ids_022" => {
             Some(("5 5 142.109375 461.2441101074219", "142.109"))

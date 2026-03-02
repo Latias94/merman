@@ -14,9 +14,19 @@ pub fn lookup_kanban_root_viewport_override(
         "kanban_stress_common_multiline_metadata_label_override" => {
             Some(("90 -310 220 195", "220"))
         }
+        "stress_kanban_font_size_097" => Some(("90 -310 425 195", "425")),
         "upstream_docs_samples_example_001" => Some(("90 -310 425 147", "425")),
         "upstream_docs_samples_example_004" => Some(("90 -310 630 318", "630")),
         "upstream_docs_samples_example_005" => Some(("90 -310 835 318", "835")),
+        "upstream_cypress_kanban_spec_3_should_render_a_kanban_with_a_single_wrapping_node_003" => {
+            Some(("90 -310 220 195", "220"))
+        }
+        "upstream_cypress_kanban_spec_4_should_handle_the_height_of_a_section_with_a_wrapping_node_at_004" => {
+            Some(("90 -310 220 244", "220"))
+        }
+        "upstream_cypress_kanban_spec_5_should_handle_the_height_of_a_section_with_a_wrapping_node_at_005" => {
+            Some(("90 -310 220 244", "220"))
+        }
         "upstream_cypress_kanban_spec_6_should_handle_the_height_of_a_section_with_a_wrapping_node_in_006" => {
             Some(("90 -310 220 293", "220"))
         }

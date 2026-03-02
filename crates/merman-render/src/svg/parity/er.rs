@@ -786,10 +786,12 @@ pub(super) fn render_er_diagram_svg(
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
 
-            let rel_text = rel_idx.map(|(_, r)| r.role_a.as_str()).unwrap_or("").trim();
+            let rel_text_raw = rel_idx.map(|(_, r)| r.role_a.as_str()).unwrap_or("");
+            let rel_text = rel_text_raw.trim();
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships, is_elk_layout);
 
             let has_label_text = !rel_text.is_empty();
+            let has_whitespace_only_label = !rel_text_raw.is_empty() && rel_text.is_empty();
             let (w, h, mut cx, mut cy) = if has_label_text {
                 if let Some(lbl) = &e.label {
                     (
@@ -902,7 +904,15 @@ pub(super) fn render_er_diagram_svg(
                 let edge_html_labels =
                     config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
                 if edge_html_labels {
-                    out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    // Mermaid emits a `translate(undefined,NaN)` transform for relationship labels
+                    // that are whitespace-only (but not for fully empty strings). Preserve that
+                    // oddity for DOM parity in `structure` mode (see upstream Cypress fixture
+                    // `*_blank_or_empty_labels_007`).
+                    if has_whitespace_only_label {
+                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
+                    } else {
+                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    }
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,
@@ -910,7 +920,11 @@ pub(super) fn render_er_diagram_svg(
                     );
                     out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
                 } else {
-                    out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    if has_whitespace_only_label {
+                        out.push_str(r#"<g class="edgeLabel" transform="translate(undefined,NaN)"><g class="label""#);
+                    } else {
+                        out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                    }
                     let _ = write!(
                         &mut out,
                         r#" data-id="{}""#,

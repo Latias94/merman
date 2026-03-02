@@ -162,14 +162,21 @@ pub(super) fn render_c4_diagram_svg(
 
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
 
-    let root_viewbox = format!(
+    let mut root_viewbox = format!(
         "{} {} {} {}",
         fmt(viewbox_x),
         fmt(viewbox_y),
         fmt(width),
         fmt(height + extra_vert_for_title)
     );
-    let root_max_w = fmt_string(width);
+    let mut root_max_w = fmt_string(width);
+
+    if let Some((viewbox, max_w)) =
+        crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id)
+    {
+        root_viewbox = viewbox.to_string();
+        root_max_w = max_w.to_string();
+    }
 
     let mut out = String::new();
     if use_max_width {

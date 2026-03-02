@@ -58,6 +58,8 @@ pub(super) fn render_pie_diagram_svg(
         (None, None) => String::new(),
     };
 
+    const NO_MAX_WIDTH_SENTINEL: &str = "__NO_MAX_WIDTH__";
+
     let mut max_w_attr = super::fmt_max_width_px(vb_w);
     let mut viewbox_attr = format!(
         "{} {} {} {}",
@@ -73,13 +75,19 @@ pub(super) fn render_pie_diagram_svg(
         max_w_attr = max_w.to_string();
     }
 
+    let style_attr = if max_w_attr == NO_MAX_WIDTH_SENTINEL {
+        "background-color: white;".to_string()
+    } else {
+        format!("max-width: {max_w_attr}px; background-color: white;")
+    };
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{viewbox}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{viewbox}" style="{style}" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
         diagram_id_esc = diagram_id_esc,
         viewbox = viewbox_attr,
-        max_w = max_w_attr,
+        style = style_attr,
         aria = aria
     );
 

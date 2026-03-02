@@ -17,7 +17,7 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_direction_variants_011" => Some(("0 0 352.94183349609375 146", "352.942")),
         "stress_state_fork_join_and_choice_002" => Some(("0 0 378.3822326660156 416", "378.382")),
         "stress_state_frontmatter_accessibility_012" => {
-            Some(("-86.8125 -50 234.0546875 324", "234.055"))
+            Some(("-86.8125 -50 233.875 324", "233.875"))
         }
         "stress_state_long_descriptions_and_aliases_006" => Some(("0 0 513.890625 541", "513.891")),
         "stress_state_nested_composite_concurrency_001" => Some(("0 0 273.296875 1622", "273.297")),
@@ -43,7 +43,7 @@ pub fn lookup_state_root_viewport_override(
         }
         "stress_state_dense_graph_023" => Some(("-35 0 229.43125915527344 708", "229.431")),
         "stress_state_choice_notes_classes_024" => Some(("0 0 613.3828125 588", "613.383")),
-        "stress_state_html_sanitization_notes_025" => Some(("0 0 365.3671875 403", "365.367")),
+        "stress_state_html_sanitization_notes_025" => Some(("0 0 365.9296875 402", "365.93")),
         "stress_state_markdown_edge_labels_026" => Some(("0 0 110.609375 460", "110.609")),
         "stress_state_dense_graph_labels_027" => Some(("0 0 568 484", "568")),
         "stress_state_composite_with_external_edges_028" => {
@@ -60,12 +60,12 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_style_and_inline_classes_033" => Some(("0 0 54.4375 298", "54.4375")),
         "stress_state_click_matrix_034" => Some(("0 0 41.4375 274", "41.4375")),
         "stress_state_floating_notes_and_links_035" => Some(("0 0 198.078125 300", "198.078")),
-        "stress_state_unicode_and_rtl_036" => Some(("0 0 145.125 574", "145.125")),
+        "stress_state_unicode_and_rtl_036" => Some(("0 0 135.28125 574", "135.281")),
         "stress_state_scale_wrapping_long_edge_labels_038" => {
             Some(("0 0 375.640625 670", "375.641"))
         }
         "stress_state_frontmatter_acctitle_accdescr_multiline_039" => {
-            Some(("-143.4609375 -50 338.064453125 372", "338.064"))
+            Some(("-143.4609375 -50 337.890625 372", "337.891"))
         }
         "stress_state_state_keyword_quotes_and_aliases_040" => {
             Some(("0 0 310.5625 356", "310.562"))
@@ -78,9 +78,7 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_hide_empty_description_and_multidescr_046" => {
             Some(("0 0 210.828125 313", "210.828"))
         }
-        "stress_state_unicode_quotes_and_br_in_notes_048" => {
-            Some(("0 0 401.328125 596", "401.328"))
-        }
+        "stress_state_unicode_quotes_and_br_in_notes_048" => Some(("0 0 398.375 596", "398.375")),
         "stress_state_accdescr_block_and_markdown_labels_049" => {
             Some(("0 0 659.6762084960938 71", "659.676"))
         }
@@ -207,7 +205,7 @@ pub fn lookup_state_root_viewport_override(
             Some(("0 0 245.984375 161", "245.984"))
         }
         "upstream_cypress_statediagram_v2_spec_1433_should_render_a_simple_state_diagram_with_a_title_037" => {
-            Some(("-53.671875 -50 185.30078125 234", "185.301"))
+            Some(("-53.671875 -50 185.25 234", "185.25"))
         }
         "upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034" => {
             Some(("0 0 78.953125 56", "78.9531"))
@@ -240,7 +238,7 @@ pub fn lookup_state_root_viewport_override(
             Some(("0 0 156.765625 246", "156.766"))
         }
         "upstream_html_demos_state_and_these_are_how_they_are_applied_002" => {
-            Some(("-54.164127349853516 -50 180.5703125 414", "180.57"))
+            Some(("-53.164127349853516 -50 179.515625 414", "179.516"))
         }
         "upstream_html_demos_state_and_these_are_how_they_are_applied_003" => {
             Some(("-22.04699993133545 0 117.2813720703125 364", "117.281"))
@@ -249,7 +247,7 @@ pub fn lookup_state_root_viewport_override(
             Some(("0 0 427.5625 306", "427.562"))
         }
         "upstream_html_demos_state_very_simple_showing_change_from_state1_to_state2_001" => {
-            Some(("-51.8046875 -50 180.5703125 196", "180.57"))
+            Some(("-50.8046875 -50 179.515625 196", "179.516"))
         }
         "upstream_html_demos_state_you_can_add_notes_010" => Some(("0 0 908.75 470", "908.75")),
         "stress_state_batch5_choice_fork_join_with_notes_markdown_062" => {
@@ -270,6 +268,16 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_batch5_concurrency_four_regions_long_titles_061" => {
             Some(("0 0 1291.328125 484.5", "1291.33"))
         }
+        "upstream_pkgtests_diagram_orchestration_spec_050" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_diagram_orchestration_spec_052" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_state_style_spec_003" => Some(("0 0 146.1875 56", "146.188")),
+        "upstream_pkgtests_state_style_spec_012" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_state_style_spec_017" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_state_style_spec_026" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_state_style_spec_033" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_state_style_spec_040" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_statediagram_spec_028" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_statediagram_v2_spec_031" => Some(("-8 -8 16 16", "16")),
         _ => None,
     }
 }

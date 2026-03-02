@@ -54,7 +54,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 534.8125 482", "534.812"))
         }
         "stress_flowchart_svglike_escaped_tags_025" => {
-            Some(("0 -50 1311.5703125 331.6000061035156", "1311.57"))
+            Some(("0 -50 1310.15625 331.6000061035156", "1310.16"))
         }
         "stress_flowchart_click_sanitization_strict_027" => {
             Some(("0 -50 462.203125 120", "462.203"))
@@ -66,7 +66,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 -50 487.671875 283", "487.672"))
         }
         "stress_flowchart_unicode_punct_in_ids_labels_035" => {
-            Some(("0 0 834.921875 70", "834.922"))
+            Some(("0 0 824.703125 70", "824.703"))
         }
         "stress_flowchart_subgraph_title_long_with_punct_038" => {
             Some(("0 0 567.546875 140", "567.547"))
@@ -156,7 +156,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 272.65625 70", "272.656"))
         }
         "upstream_flowchart_v2_stadium_shape_spec" => {
-            Some(("-96.54400634765625 -48 610.109375 606", "610.109"))
+            Some(("-96.54400634765625 -50 610.109375 608", "610.109"))
         }
         "upstream_flowchart_v2_styled_subgraphs_spec" => {
             Some(("-96.59170532226562 -50 477.859375 844", "477.859"))
@@ -192,7 +192,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_syntax_reference_using_dagre_layout_with_classic_look_006" => {
             Some(("0 0 518.203125 174", "518.203"))
         }
-        "upstream_docs_flowchart_unicode_text_005" => Some(("0 0 188.09375 70", "188.094")),
+        "upstream_docs_flowchart_unicode_text_005" => Some(("0 0 187.109375 70", "187.109")),
         "upstream_docs_flowchart_a_node_with_round_edges_013" => {
             Some(("0 0 230.90625 70", "230.906"))
         }
@@ -258,7 +258,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 205.390625 382", "205.391"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
-            Some(("0 0 1806.8125 452", "1806.81"))
+            Some(("0 0 1926.8125 452", "1926.81"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd14_should_render_hexagons_014" => {
             Some(("0 0 417 559", "417"))
@@ -297,7 +297,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 363.921875 430", "363.922"))
         }
         "upstream_cypress_flowchart_v2_spec_with_formatting_in_a_node_054" => {
-            Some(("0 -1 689.78125 290", "689.781"))
+            Some(("0 -1 689.375 290", "689.375"))
         }
         "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_056" => {
             Some(("0 0 363.921875 430", "363.922"))
@@ -350,6 +350,346 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 292.468994140625 425.421875", "292.469"))
         }
         "upstream_singlenode_shapes_spec" => Some(("0 0 1557.2265625 156.3125", "1557.23")),
+        "upstream_cypress_flowchart_handdrawn_spec_fdh49_should_add_edge_animation_049" => {
+            Some(("0 0 309.125 322.390625", "309.125"))
+        }
+        "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 92.046875 70", "92.0469")),
+        "upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005" => {
+            Some(("0 0 104.6875 368", "104.688"))
+        }
+        "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034" => {
+            Some(("0 0 609.140625 80", "609.141"))
+        }
+        "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset36_036" => {
+            Some(("0.010158538818359375 0 515.1181945800781 55", "515.118"))
+        }
+        "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037" => {
+            Some(("0.0284881591796875 0 296.1708984375 76", "296.171"))
+        }
+        "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
+            Some(("0 0 1992.96875 452", "1992.97"))
+        }
+        "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
+            Some(("0 0 304.046875 734", "304.047"))
+        }
+        "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020" => {
+            Some(("0 0 234.015625 300", "234.016"))
+        }
+        "upstream_cypress_flowchart_spec_21_render_cylindrical_shape_021" => {
+            Some(("0 0 856.5 351.7990417480469", "856.5"))
+        }
+        "upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023" => {
+            Some(("0 0 465.625 695.21875", "465.625"))
+        }
+        "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024" => {
+            Some(("0 0 410.828125 38", "410.828"))
+        }
+        "upstream_cypress_flowchart_spec_25_handle_link_click_events_link_anchor_mailto_other_protocol_sc_025" => {
+            Some(("0 0 1525.3125 246", "1525.31"))
+        }
+        "upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027" => {
+            Some(("0 0 376.296875 373.40625", "376.297"))
+        }
+        "upstream_cypress_flowchart_spec_3_should_render_a_simple_flowchart_with_line_breaks_003" => {
+            Some(("0 0 440.03125 737.25", "440.031"))
+        }
+        "upstream_cypress_flowchart_spec_4_should_render_a_simple_flowchart_with_trapezoid_and_inverse_tr_004" => {
+            Some(("0 0 428.03125 722.25", "428.031"))
+        }
+        "upstream_cypress_flowchart_spec_6_should_render_a_flowchart_full_of_circles_006" => {
+            Some(("0 -45 2638.375 645", "2638.38"))
+        }
+        "upstream_cypress_flowchart_spec_7_should_render_a_flowchart_full_of_icons_007" => {
+            Some(("0 0 2241.375 1142", "2241.38"))
+        }
+        "upstream_cypress_flowchart_spec_8_should_render_labels_with_numbers_at_the_start_008" => {
+            Some(("0 0 177.625 140", "177.625"))
+        }
+        "upstream_cypress_flowchart_v2_spec_1433_should_render_a_titled_flowchart_with_titletopmargin_set_to_040" => {
+            Some(("-33.6171875 -35 152.671875 209", "152.672"))
+        }
+        "upstream_cypress_flowchart_v2_spec_3258_should_render_subgraphs_with_main_graph_nodespacing_and_ran_046" => {
+            Some(("-66.3203125 -50 406.09375 196", "406.094"))
+        }
+        "upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042" => {
+            Some(("0 0 671.34375 630", "671.344"))
+        }
+        "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016" => {
+            Some(("0 0 154.921875 364", "154.922"))
+        }
+        "upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062" => {
+            Some(("0 7.5 671.765625 628", "671.766"))
+        }
+        "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_052" => {
+            Some(("0 0 363.921875 430", "363.922"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset2_tb_md_html_false_014" => {
+            Some(("0 0 984.1947631835938 277.67291259765625", "984.195"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_allpairs_067" => Some((
+            "-0.0100250244140625 0 1274.9244384765625 300.7861328125",
+            "1274.92",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_allpairs_019" => Some((
+            "-0.0100250244140625 0 538.3633422851562 609.5861206054688",
+            "538.363",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_classdef_024" => Some((
+            "-0.0100250244140625 0 1225.7947998046875 236.97921752929688",
+            "1225.79",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_label_018" => Some((
+            "-0.0100250244140625 0 1283.437744140625 236.97921752929688",
+            "1283.44",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_longlabel_020" => Some((
+            "-0.0161895751953125 0 1285.3070068359375 308.9664306640625",
+            "1285.31",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_md_html_false_022" => {
+            Some((
+                "-0.0130767822265625 0 1151.5665283203125 267.67291259765625",
+                "1151.57",
+            ))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_md_html_true_021" => {
+            Some((
+                "-0.0131072998046875 0 1285.31005859375 272.97283935546875",
+                "1285.31",
+            ))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_styles_023" => Some((
+            "-0.0100250244140625 0 1225.7947998046875 236.97921752929688",
+            "1225.79",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_allpairs_075" => {
+            Some(("0 0 1360.969970703125 330.8059997558594", "1360.97"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_classdef_080" => Some((
+            "0 -0.002391815185546875 383.140625 651.1424560546875",
+            "383.141",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_label_074" => {
+            Some(("0 -0.0034637451171875 383.140625 706.9091796875", "383.141"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_longlabel_076" => Some((
+            "0 -0.0045318603515625 383.140625 952.8995361328125",
+            "383.141",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_md_html_true_077" => {
+            Some((
+                "0 -0.0045318603515625 383.140625 844.90380859375",
+                "383.141",
+            ))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_lr_styles_079" => Some((
+            "0 -0.002391815185546875 383.140625 651.1424560546875",
+            "383.141",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset4_tb_allpairs_027" => Some((
+            "-0.01001739501953125 -0.0034637451171875 576 706.9091796875",
+            "576",
+        )),
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086" => {
+            Some((
+                "0 -0.009033203125 373.23016357421875 924.65283203125",
+                "373.23",
+            ))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_true_085" => {
+            Some((
+                "0 -0.00905609130859375 396.140625 989.5728149414062",
+                "396.141",
+            ))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_tb_md_html_true_037" => {
+            Some(("0 0 1714.1500244140625 272.97283935546875", "1714.15"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_true_093" => {
+            Some(("0 0 379.890625 274.8000183105469", "379.891"))
+        }
+        "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_tb_md_html_true_045" => {
+            Some((
+                "0.00000762939453125 0 535.1500244140625 224.39999389648438",
+                "535.15",
+            ))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_allpairs_059" => {
+            Some(("2 0 947.4676513671875 257", "947.468"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_classdef_064" => {
+            Some(("0 2 304.88623046875 494", "304.886"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_label_058" => {
+            Some(("0 2 373.890625 524", "373.891"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_longlabel_060" => {
+            Some(("0 2 379.890625 595", "379.891"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_false_062" => {
+            Some(("0 2 351.578125 556.199951171875", "351.578"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_true_061" => {
+            Some(("0 2 379.845947265625 548", "379.846"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_nolabel_057" => {
+            Some(("0 2 198.671875 494", "198.672"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_styles_063" => {
+            Some(("0 2 304.88623046875 494", "304.886"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_allpairs_075" => {
+            Some(("0.000949859619140625 0 1360.0009765625 259.5", "1360"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_label_074" => {
+            Some(("0 0 451.140625 532.5", "451.141"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_longlabel_076" => {
+            Some(("0 0 475.140625 616.5", "475.141"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_md_html_false_078" => {
+            Some(("0 0 445.48126220703125 546.7000122070312", "445.481"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_md_html_true_077" => {
+            Some(("0 0 447.1875 532.5", "447.188"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_allpairs_035" => {
+            Some(("0 0 697 485", "697"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_classdef_040" => {
+            Some(("0 0 993.3525390625 174", "993.353"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_label_034" => {
+            Some(("0 0 1397.5712890625 198", "1397.57"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_longlabel_036" => {
+            Some(("0 0 1493.5712890625 222", "1493.57"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
+            Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_true_037" => {
+            Some(("0 0 1384.0244140625 198", "1384.02"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_nolabel_033" => {
+            Some(("0 0 640.0703125 174", "640.07"))
+        }
+        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_styles_039" => {
+            Some(("0 0 993.3525390625 174", "993.353"))
+        }
+        "upstream_docs_readme_flowchart_a_href_https_mermaid_js_org_syntax_flowchart_html_docs_001" => {
+            Some(("0 0 622.59375 174", "622.594"))
+        }
+        "upstream_docs_readme_zh_cn_a_href_https_mermaid_js_org_syntax_flowchart_html_a_a_href_https_001" => {
+            Some(("0 0 622.59375 174", "622.594"))
+        }
+        "upstream_edges" => Some(("0 0 531.03125 198", "531.031")),
+        "upstream_flow_vertice_chaining_amp_to_single_spec" => {
+            Some(("-53.9921875 -50 312.484375 224", "312.484"))
+        }
+        "upstream_flowchart_v2_arrows_double_dotted_text_spec" => {
+            Some(("-149.5 -50 384.4375 248", "384.438"))
+        }
+        "upstream_flowchart_v2_arrows_double_point_spec" => {
+            Some(("-103.765625 -50 292.96875 224", "292.969"))
+        }
+        "upstream_flowchart_v2_arrows_double_point_text_spec" => {
+            Some(("-143.4921875 -50 372.421875 248", "372.422"))
+        }
+        "upstream_flowchart_v2_arrows_double_thick_spec" => {
+            Some(("-102.9140625 -50 291.265625 224", "291.266"))
+        }
+        "upstream_flowchart_v2_arrows_graph_direction_caret_spec" => {
+            Some(("-127.8046875 -50 341.046875 224", "341.047"))
+        }
+        "upstream_flowchart_v2_arrows_graph_direction_gt_spec" => {
+            Some(("-68.2734375 -50 341.046875 120", "341.047"))
+        }
+        "upstream_flowchart_v2_arrows_graph_direction_lt_spec" => {
+            Some(("-79.4375 -50 363.375 120", "363.375"))
+        }
+        "upstream_flowchart_v2_html_labels_with_images_and_text_spec" => {
+            Some(("0 -50 671.34375 680", "671.344"))
+        }
+        "upstream_flowchart_v2_lines_edge_id_curve_without_overriding_default_spec" => {
+            Some(("-123.890625 -50 452.421875 224", "452.422"))
+        }
+        "upstream_flowchart_v2_lines_linkstyle_multi_numbered_interpolate_spec" => {
+            Some(("-110.6015625 -50 425.84375 224", "425.844"))
+        }
+        "upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_spec" => {
+            Some(("-86.1171875 -50 376.875 224", "376.875"))
+        }
+        "upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_with_style_spec" => {
+            Some(("-128.5 -50 461.640625 224", "461.641"))
+        }
+        "upstream_flowchart_v2_lines_stroke_dotted_spec" => {
+            Some(("-64.5703125 -50 214.578125 224", "214.578"))
+        }
+        "upstream_flowchart_v2_lines_stroke_thick_spec" => {
+            Some(("-57.71875 -50 200.875 224", "200.875"))
+        }
+        "upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec" => {
+            Some(("0 0 361.1875 135", "361.188"))
+        }
+        "upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_main_graph_spec" => {
+            Some(("-66.3203125 -50 406.09375 196", "406.094"))
+        }
+        "upstream_flowchart_v2_subgraph_numeric_id_spec" => {
+            Some(("-96.1875 -50 408.453125 298", "408.453"))
+        }
+        "upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec" => {
+            Some(("0 -50 671.765625 685.5", "671.766"))
+        }
+        "upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec" => {
+            Some(("-33.6171875 -35 152.671875 209", "152.672"))
+        }
+        "upstream_html_demos_flowchart_flowchart_004" => Some(("0 0 417 646", "417")),
+        "upstream_html_demos_flowchart_flowchart_006" => Some(("0 0 405 637.875", "405")),
+        "upstream_html_demos_flowchart_flowchart_008" => Some(("0 -45 2400.640625 645", "2400.64")),
+        "upstream_html_demos_flowchart_flowchart_016" => Some(("0 0 622.921875 70", "622.922")),
+        "upstream_html_demos_flowchart_flowchart_018" => Some(("0 0 417 559", "417")),
+        "upstream_html_demos_flowchart_flowchart_022" => Some(("0 0 953.6875 257", "953.688")),
+        "upstream_html_demos_flowchart_flowchart_024" => Some((
+            "0 0.000003814697265625 769.890625 341.0105285644531",
+            "769.891",
+        )),
+        "upstream_html_demos_flowchart_flowchart_046" => Some(("0 0 417 646", "417")),
+        "upstream_html_demos_flowchart_flowchart_047" => Some(("0 0 405 637.875", "405")),
+        "upstream_html_demos_flowchart_flowchart_048" => Some(("0 -45 2400.640625 645", "2400.64")),
+        "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 622.921875 70", "622.922")),
+        "upstream_html_demos_flowchart_flowchart_053" => Some(("0 0 417 559", "417")),
+        "upstream_html_demos_flowchart_flowchart_055" => Some(("0 0 953.6875 257", "953.688")),
+        "upstream_html_demos_flowchart_flowchart_056" => Some((
+            "0 0.000003814697265625 769.890625 341.0105285644531",
+            "769.891",
+        )),
+        "upstream_html_demos_flowchart_flowchart_063" => {
+            Some(("-98.8515625 -50 406.09375 196", "406.094"))
+        }
+        "upstream_html_demos_flowchart_graph_003" => Some(("0 -50 417 696", "417")),
+        "upstream_html_demos_flowchart_graph_005" => Some(("0 0 405 637.875", "405")),
+        "upstream_html_demos_flowchart_graph_017" => Some(("0 0 417 559", "417")),
+        "upstream_html_demos_flowchart_graph_021" => Some(("0 0 953.6875 257", "953.688")),
+        "upstream_html_demos_flowchart_graph_023" => Some((
+            "0 0.000003814697265625 769.890625 341.0105285644531",
+            "769.891",
+        )),
+        "upstream_pkgtests_accessibility_spec_012" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_diagram_orchestration_spec_014" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_diagram_orchestration_spec_016" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_lines_spec_007" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_singlenode_spec_010" => Some(("0 0 438.859375 70", "438.859")),
+        "upstream_pkgtests_flow_spec_001" => Some(("0 0 622.59375 174", "622.594")),
+        "upstream_pkgtests_flow_spec_002" => Some(("0 0 622.59375 174", "622.594")),
+        "upstream_pkgtests_flow_spec_007" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_style_spec_060" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_style_spec_067" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_style_spec_079" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_flow_style_spec_086" => Some(("-8 -8 16 16", "16")),
+        "upstream_pkgtests_mermaidapi_spec_022" => Some(("0 0 88.015625 186", "88.0156")),
+        "upstream_pkgtests_mermaidapi_spec_023" => Some(("0 0 88.015625 186", "88.0156")),
+        "upstream_pkgtests_mermaidapi_spec_310" => Some(("-8 -8 16 16", "16")),
         _ => None,
     }
 }

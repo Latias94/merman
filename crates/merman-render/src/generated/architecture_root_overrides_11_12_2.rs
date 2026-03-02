@@ -25,6 +25,24 @@ pub fn lookup_architecture_root_viewport_override(
             "-183.60711669921875 -262.5092315673828 447.2142639160156 660.0184936523438",
             "447.2142639160156",
         )),
+        "upstream_architecture_cypress_groups_within_groups_normalized" => Some((
+            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
+            "529.3255615234375",
+        )),
+        "upstream_architecture_docs_groups_within_groups" => Some((
+            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
+            "529.3255615234375",
+        )),
+        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_groups_within_groups_003" => {
+            Some((
+                "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
+                "529.3255615234375",
+            ))
+        }
+        "upstream_html_demos_architecture_groups_within_groups_002" => Some((
+            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
+            "529.3255615234375",
+        )),
         "upstream_architecture_demo_arrow_mesh_bidirectional" => Some((
             "-195.6711883544922 -187.24441528320312 514.3424072265625 538.5298767089844",
             "514.3424072265625",
@@ -34,7 +52,7 @@ pub fn lookup_architecture_root_viewport_override(
             "514.3423767089844",
         )),
         "upstream_architecture_demo_edge_label_long" => Some((
-            "-151.49441528320312 -182.99441528320312 514.3423767089844 538.5298767089844",
+            "-150.99441528320312 -182.99441528320312 514.3423767089844 538.5298767089844",
             "514.3423767089844",
         )),
         "upstream_architecture_demo_edge_label_short" => Some((
@@ -64,13 +82,13 @@ pub fn lookup_architecture_root_viewport_override(
             "445.6865539550781",
         )),
         "upstream_architecture_cypress_fallback_icon" => {
-            Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
         }
         "upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003" => {
-            Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
         }
         "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004" => {
-            Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
         }
         "upstream_cypress_architecture_spec_should_render_a_simple_architecture_diagram_with_titleandaccessi_002" => {
             Some((
@@ -79,20 +97,20 @@ pub fn lookup_architecture_root_viewport_override(
             ))
         }
         "upstream_html_demos_architecture_external_icons_demo_012" => Some((
-            "-174.01507568359375 -165.18142700195312 440.8895568847656 470.55035400390625",
-            "440.8895568847656",
+            "-173.01507568359375 -165.18142700195312 439.6161193847656 470.55035400390625",
+            "439.6161193847656",
         )),
         "stress_architecture_dense_mesh_001" => Some((
             "-271.47344970703125 -277.07244873046875 622.9468994140625 689.1448974609375",
             "622.9468994140625",
         )),
         "stress_architecture_edge_label_corner_cases_012" => Some((
-            "-65.53177452087402 -101.78177261352539 344.8510437011719 367.25103759765625",
+            "-65.28177452087402 -101.78177261352539 344.8510437011719 367.25103759765625",
             "344.8510437011719",
         )),
         "stress_architecture_external_icons_005" => Some((
-            "-402.0445861816406 -166.05992889404297 860.0891723632812 463.1198425292969",
-            "860.0891723632812",
+            "-403.5445861816406 -166.05992889404297 861.0891723632812 463.1198425292969",
+            "861.0891723632812",
         )),
         "stress_architecture_group_boundary_traversal_004" => Some((
             "-291.8540496826172 -257.4413604736328 666.7081298828125 648.3826904296875",
@@ -107,8 +125,8 @@ pub fn lookup_architecture_root_viewport_override(
             "635.0126342773438",
         )),
         "stress_architecture_long_labels_006" => Some((
-            "-263.0143737792969 -165.99396514892578 648.02880859375 462.9879455566406",
-            "648.02880859375",
+            "-263.2643737792969 -165.99396514892578 647.52880859375 462.9879455566406",
+            "647.52880859375",
         )),
         "stress_architecture_mixed_service_forms_009" => Some((
             "-192.79791259765625 -211.39602661132812 556.0958251953125 586.4795532226562",
@@ -119,11 +137,11 @@ pub fn lookup_architecture_root_viewport_override(
             "604.3995361328125",
         )),
         "stress_architecture_nested_groups_002" => Some((
-            "-314.9618835449219 -245.82904052734375 727.9237670898438 622.6580810546875",
-            "727.9237670898438",
+            "-314.4618835449219 -245.82904052734375 728.9237670898438 622.6580810546875",
+            "728.9237670898438",
         )),
         "stress_architecture_ports_and_arrows_007" => Some((
-            "-190.1131134033203 -193.36326599121094 526.2261962890625 550.4140625",
+            "-189.8631134033203 -193.36326599121094 526.2261962890625 550.4140625",
             "526.2261962890625",
         )),
         "stress_architecture_wide_graph_011" => Some((
@@ -151,12 +169,12 @@ pub fn lookup_architecture_root_viewport_override(
             "707.7692260742188",
         )),
         "stress_architecture_long_group_titles_018" => Some((
-            "-182.9628143310547 -165.9628143310547 480.65625 462.9256591796875",
-            "480.65625",
+            "-182.9628143310547 -165.9628143310547 480.140625 462.9256591796875",
+            "480.140625",
         )),
         "stress_architecture_unicode_and_xml_escapes_019" => Some((
-            "-209.9109649658203 -166.29661560058594 469.8219299316406 463.59326171875",
-            "469.8219299316406",
+            "-211.6609649658203 -166.29661560058594 470.3219299316406 463.59326171875",
+            "470.3219299316406",
         )),
         "stress_architecture_bidirectional_boundary_traversal_020" => Some((
             "-202.67481994628906 -154.78721618652344 485.3496398925781 435.7411193847656",
@@ -230,7 +248,7 @@ pub fn lookup_architecture_root_viewport_override(
             "559.3328857421875",
         )),
         "stress_architecture_parallel_labeled_edges_038" => Some((
-            "-187.0833282470703 -160.7195587158203 531.3333129882812 484.4390869140625",
+            "-186.8333282470703 -160.7195587158203 531.3333129882812 484.4390869140625",
             "531.3333129882812",
         )),
         "stress_architecture_group_to_group_labeled_ports_039" => {
@@ -241,7 +259,7 @@ pub fn lookup_architecture_root_viewport_override(
             "711.257080078125",
         )),
         "stress_architecture_html_titles_and_escapes_041" => Some((
-            "-210.9628143310547 -165.9628143310547 479.9256286621094 462.9256591796875",
+            "-209.9628143310547 -165.9628143310547 479.9256286621094 462.9256591796875",
             "479.9256286621094",
         )),
         "stress_architecture_icon_text_and_fallbacks_042" => Some((
@@ -269,7 +287,7 @@ pub fn lookup_architecture_root_viewport_override(
             "611.0048828125",
         )),
         "stress_architecture_long_edge_labels_wrap_048" => Some((
-            "-96.03177261352539 -101.78177261352539 343.06353759765625 367.25103759765625",
+            "-96.28177261352539 -101.78177261352539 343.06353759765625 367.25103759765625",
             "343.06353759765625",
         )),
         "stress_architecture_batch3_port_matrix_and_labels_049" => Some((
@@ -297,8 +315,8 @@ pub fn lookup_architecture_root_viewport_override(
             "429.09375",
         )),
         "stress_architecture_batch3_long_group_titles_wrapping_055" => Some((
-            "-221.59327697753906 -65.5 478.1865539550781 262",
-            "478.1865539550781",
+            "-221.84327697753906 -65.5 477.6865539550781 262",
+            "477.6865539550781",
         )),
         "stress_architecture_batch3_disconnected_components_056" => Some((
             "-323.6618957519531 -225.87416076660156 727.3237915039062 586.748291015625",
@@ -321,7 +339,7 @@ pub fn lookup_architecture_root_viewport_override(
             "731.1314697265625",
         )),
         "stress_architecture_batch4_init_small_icons_061" => Some((
-            "-60.53569793701172 -56.28569793701172 187.85890197753906 191.57139587402344",
+            "-60.28569793701172 -56.28569793701172 187.85890197753906 191.57139587402344",
             "187.85890197753906",
         )),
         "stress_architecture_batch4_init_large_icons_062" => Some((
@@ -329,7 +347,7 @@ pub fn lookup_architecture_root_viewport_override(
             "665.5025024414062",
         )),
         "stress_architecture_batch4_init_fontsize_wrap_063" => Some((
-            "20 -208.9365234375 161.78750610351562 585.560546875",
+            "21 -208.9365234375 161.78750610351562 585.560546875",
             "161.78750610351562",
         )),
         "stress_architecture_batch4_icontext_xml_escapes_064" => Some((
@@ -368,8 +386,8 @@ pub fn lookup_architecture_root_viewport_override(
             "360.9256286621094",
         )),
         "stress_architecture_batch5_dense_group_services_073" => Some((
-            "-195.41329956054688 -166.04556274414062 454.82659912109375 463.09112548828125",
-            "454.82659912109375",
+            "-194.66329956054688 -166.04556274414062 454.32659912109375 463.09112548828125",
+            "454.32659912109375",
         )),
         "stress_architecture_batch5_junction_fanout_grid_074" => Some((
             "-319.9057312011719 -211.35484313964844 762.8114624023438 586.397216796875",
@@ -379,8 +397,8 @@ pub fn lookup_architecture_root_viewport_override(
             Some(("-137 -445.6163635253906 354 1022.232666015625", "354"))
         }
         "stress_architecture_batch5_long_titles_and_punct_076" => Some((
-            "-273.4628143310547 -165.9628143310547 542.9256286621094 462.9256591796875",
-            "542.9256286621094",
+            "-274.9628143310547 -165.9628143310547 543.9256286621094 462.9256591796875",
+            "543.9256286621094",
         )),
         "stress_architecture_batch5_weird_ids_numbers_077" => Some((
             "-226.9765167236328 -212.8216552734375 533.9530029296875 556.643310546875",
@@ -415,12 +433,12 @@ pub fn lookup_architecture_root_viewport_override(
             "424.5020446777344",
         )),
         "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085" => Some((
-            "-158.01492309570312 -65.5 447.6865539550781 262",
+            "-157.51492309570312 -65.5 447.6865539550781 262",
             "447.6865539550781",
         )),
         "stress_architecture_batch6_nested_groups_group_edges_and_ports_086" => Some((
-            "-241.50086975097656 -448.21905517578125 548.001708984375 1027.4381103515625",
-            "548.001708984375",
+            "-241.00086975097656 -448.21905517578125 549.001708984375 1027.4381103515625",
+            "549.001708984375",
         )),
         "stress_architecture_batch6_junctions_multi_split_with_group_edges_087" => Some((
             "-286.5922393798828 -257.49559020996094 653.1844482421875 645.9911499023438",
@@ -447,18 +465,22 @@ pub fn lookup_architecture_root_viewport_override(
             "562.94970703125",
         )),
         "stress_architecture_batch6_init_fontsize_icon_size_wrap_093" => Some((
-            "-135.7482147216797 -160.04725646972656 334.15765380859375 417.0945129394531",
-            "334.15765380859375",
+            "-134.4982147216797 -160.04725646972656 332.65765380859375 417.0945129394531",
+            "332.65765380859375",
         )),
         "stress_architecture_batch6_deep_group_chain_crosslinks_094" => Some((
             "-12254.1611328125 -17308.404296875 24582.322265625 34750.80859375",
             "24582.322265625",
         )),
         "stress_architecture_batch6_long_group_titles_wrapping_extreme_095" => {
-            Some(("-224.34327697753906 -107 533 345", "533"))
+            Some(("-224.34327697753906 -107 532.484375 345", "532.484375"))
         }
         "stress_architecture_batch6_edge_labels_with_xml_like_text_096" => Some((
-            "-104.8432846069336 -22 360.68658447265625 184.1875",
+            "-104.3432846069336 -22 360.68658447265625 184.1875",
+            "360.68658447265625",
+        )),
+        "stress_architecture_font_and_theme_097" => Some((
+            "-119.5932846069336 -20 360.68658447265625 183.609375",
             "360.68658447265625",
         )),
         "upstream_cypress_other_xss_spec_icon_labels_architecture_001" => {

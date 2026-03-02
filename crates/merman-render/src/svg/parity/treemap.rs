@@ -349,6 +349,24 @@ pub(super) fn render_treemap_diagram_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
+    let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
+    let title_shift_y = layout.title_height;
+    let title_bbox = title.map(|t| {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = crate::text::TextStyle {
+            font_family: Some(r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()),
+            font_size: 14.0,
+            font_weight: None,
+        };
+        let w = measurer
+            .measure_svg_simple_text_bbox_width_px(t, &style)
+            .max(0.0);
+        // Mermaid treemap computes root viewBox via `<svg>.getBBox()` in a browser pipeline.
+        // Empirically, treemap title `<text>` nodes land closer to ~`1.3em` bbox height.
+        let h = (style.font_size.max(1.0) * 1.3).max(0.0);
+        (w, h)
+    });
+
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
@@ -387,6 +405,36 @@ pub(super) fn render_treemap_diagram_svg(
         add_rect_bounds(
             &mut min_x, &mut min_y, &mut max_x, &mut max_y, l.x0, l.y0, l.x1, l.y1,
         );
+    }
+
+    // Treemap sections/leaves are rendered under `<g class="treemapContainer" transform="translate(0, title_height)">`.
+    // Include that translation when computing the root viewport. Also include the title text's
+    // bbox (dominant-baseline="middle") so `parity-root` matches the upstream getBBox-derived
+    // viewBox w/h.
+    if title_shift_y > 0.0 && min_y.is_finite() && max_y.is_finite() {
+        min_y += title_shift_y;
+        max_y += title_shift_y;
+    }
+    if let (Some(title), Some(&(w, h))) = (title, title_bbox.as_ref()) {
+        let cx = layout.width / 2.0;
+        let cy = layout.title_height / 2.0;
+        if w > 0.0 && h > 0.0 {
+            add_rect_bounds(
+                &mut min_x,
+                &mut min_y,
+                &mut max_x,
+                &mut max_y,
+                cx - (w / 2.0),
+                cy - (h / 2.0),
+                cx + (w / 2.0),
+                cy + (h / 2.0),
+            );
+        } else if !title.trim().is_empty() {
+            // If measurement is unexpectedly degenerate, still ensure we don't ignore the title
+            // region entirely.
+            min_y = min_y.min(0.0);
+            max_y = max_y.max(layout.title_height);
+        }
     }
 
     let vb_x;

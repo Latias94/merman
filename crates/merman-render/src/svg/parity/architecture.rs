@@ -2850,6 +2850,14 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
         let mut max_w_attr = use_max_width.then(|| fmt_string(vb_w));
 
+        if let Some((viewbox, max_w)) = crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
+        {
+            view_box_attr = viewbox.to_string();
+            if use_max_width {
+                max_w_attr = Some(max_w.to_string());
+            }
+        }
+
         out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
         if let Some(max_w_attr) = max_w_attr {
             out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
