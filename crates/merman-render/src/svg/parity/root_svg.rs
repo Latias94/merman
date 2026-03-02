@@ -14,6 +14,7 @@ pub(super) enum SvgRootStyleViewBoxOrder {
 pub(super) enum SvgRootFixedHeightPlacement {
     BeforeXmlns,
     AfterXmlns,
+    AfterClass,
     AfterViewBox,
 }
 
@@ -68,10 +69,49 @@ pub(super) fn push_svg_root_open_ex2(
     fixed_height_placement: SvgRootFixedHeightPlacement,
     trailing_newline: bool,
 ) {
+    push_svg_root_open_ex3(
+        out,
+        diagram_id,
+        class,
+        width,
+        height_attr,
+        style_attr,
+        viewbox_attr,
+        style_viewbox_order,
+        extra_attrs,
+        aria_roledescription,
+        aria_labelledby,
+        aria_describedby,
+        &[],
+        tail_attrs,
+        fixed_height_placement,
+        trailing_newline,
+    );
+}
+
+pub(super) fn push_svg_root_open_ex3(
+    out: &mut String,
+    diagram_id: &str,
+    class: Option<&str>,
+    width: SvgRootWidth<'_>,
+    height_attr: Option<&str>,
+    style_attr: Option<&str>,
+    viewbox_attr: Option<&str>,
+    style_viewbox_order: SvgRootStyleViewBoxOrder,
+    extra_attrs: &[(&str, &str)],
+    aria_roledescription: &str,
+    aria_labelledby: Option<&str>,
+    aria_describedby: Option<&str>,
+    after_roledescription_attrs: &[(&str, &str)],
+    tail_attrs: &[(&str, &str)],
+    fixed_height_placement: SvgRootFixedHeightPlacement,
+    trailing_newline: bool,
+) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
     // id, width/height (with configurable fixed-height placement), xmlns, class?,
     // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
-    let mut deferred_height: Option<&str> = None;
+    let mut deferred_height_after_viewbox: Option<&str> = None;
+    let mut deferred_height_after_class: Option<&str> = None;
     out.push_str(r#"<svg id=""#);
     escape_xml_into(out, diagram_id);
     match width {
@@ -104,11 +144,17 @@ pub(super) fn push_svg_root_open_ex2(
                     out.push_str(height_attr.unwrap_or("0"));
                     out.push('"');
                 }
+                SvgRootFixedHeightPlacement::AfterClass => {
+                    out.push_str(
+                        r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
+                    );
+                    deferred_height_after_class = Some(height_attr.unwrap_or("0"));
+                }
                 SvgRootFixedHeightPlacement::AfterViewBox => {
                     out.push_str(
                         r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
                     );
-                    deferred_height = Some(height_attr.unwrap_or("0"));
+                    deferred_height_after_viewbox = Some(height_attr.unwrap_or("0"));
                 }
             }
         }
@@ -117,6 +163,11 @@ pub(super) fn push_svg_root_open_ex2(
     if let Some(class) = class {
         out.push_str(r#" class=""#);
         out.push_str(class);
+        out.push('"');
+    }
+    if let Some(h) = deferred_height_after_class.take() {
+        out.push_str(r#" height=""#);
+        out.push_str(h);
         out.push('"');
     }
     match style_viewbox_order {
@@ -130,7 +181,7 @@ pub(super) fn push_svg_root_open_ex2(
                 out.push_str(r#" viewBox=""#);
                 out.push_str(viewbox_attr);
                 out.push('"');
-                if let Some(h) = deferred_height.take() {
+                if let Some(h) = deferred_height_after_viewbox.take() {
                     out.push_str(r#" height=""#);
                     out.push_str(h);
                     out.push('"');
@@ -142,7 +193,7 @@ pub(super) fn push_svg_root_open_ex2(
                 out.push_str(r#" viewBox=""#);
                 out.push_str(viewbox_attr);
                 out.push('"');
-                if let Some(h) = deferred_height.take() {
+                if let Some(h) = deferred_height_after_viewbox.take() {
                     out.push_str(r#" height=""#);
                     out.push_str(h);
                     out.push('"');
@@ -155,7 +206,12 @@ pub(super) fn push_svg_root_open_ex2(
             }
         }
     }
-    if let Some(h) = deferred_height.take() {
+    if let Some(h) = deferred_height_after_viewbox.take() {
+        out.push_str(r#" height=""#);
+        out.push_str(h);
+        out.push('"');
+    }
+    if let Some(h) = deferred_height_after_class.take() {
         out.push_str(r#" height=""#);
         out.push_str(h);
         out.push('"');
@@ -172,6 +228,13 @@ pub(super) fn push_svg_root_open_ex2(
     out.push_str(r#" role="graphics-document document" aria-roledescription=""#);
     out.push_str(aria_roledescription);
     out.push('"');
+    for (k, v) in after_roledescription_attrs {
+        out.push(' ');
+        out.push_str(k);
+        out.push_str(r#"=""#);
+        out.push_str(v);
+        out.push('"');
+    }
     if let Some(v) = aria_describedby {
         out.push_str(r#" aria-describedby=""#);
         out.push_str(v);

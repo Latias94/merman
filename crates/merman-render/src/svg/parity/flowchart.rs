@@ -1344,19 +1344,24 @@ fn render_flowchart_v2_svg_with_config_inner(
     let vb_w = vb_w.max(1.0);
     let vb_h = vb_h.max(1.0);
 
-    let mut viewbox_override: Option<(&str, &str, &str, &str, &str)> = None;
-    if let Some((viewbox, max_w)) =
-        crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override(
-            diagram_id,
-        )
-    {
-        let mut it = viewbox.split_whitespace();
-        let x = it.next().unwrap_or("0");
-        let y = it.next().unwrap_or("0");
-        let w = it.next().unwrap_or("0");
-        let h = it.next().unwrap_or("0");
-        viewbox_override = Some((x, y, w, h, max_w));
-    }
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    let mut max_w_attr = fmt_max_width_px(vb_w);
+    let mut w_attr = fmt_string(vb_w);
+    let mut h_attr = fmt_string(vb_h);
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut w_attr,
+        &mut h_attr,
+        &mut max_w_attr,
+        crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override,
+    );
 
     let acc_title = model
         .acc_title
@@ -1368,109 +1373,61 @@ fn render_flowchart_v2_svg_with_config_inner(
         .as_deref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
+    let aria_labelledby_raw = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby_raw = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
+    let aria_labelledby_attr = aria_labelledby_raw.as_deref().map(super::util::escape_attr);
+    let aria_describedby_attr = aria_describedby_raw
+        .as_deref()
+        .map(super::util::escape_attr);
 
-    out.push_str(r#"<svg id=""#);
-    escape_xml_into(&mut out, diagram_id);
     if use_max_width {
-        out.push_str(
-            r#"" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: "#,
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open_ex(
+            &mut out,
+            diagram_id,
+            Some("flowchart"),
+            root_svg::SvgRootWidth::Percent100,
+            None,
+            Some(style_attr.as_str()),
+            Some(viewbox_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            diagram_type,
+            aria_labelledby_attr.as_deref(),
+            aria_describedby_attr.as_deref(),
+            false,
         );
-        if let Some((_, _, _, _, max_w)) = viewbox_override {
-            out.push_str(max_w);
-        } else {
-            super::util::fmt_max_width_px_into(&mut out, vb_w);
-        }
-        out.push_str(r#"px; background-color: white;" viewBox=""#);
-        if let Some((x, y, w, h, _)) = viewbox_override {
-            out.push_str(x);
-            out.push(' ');
-            out.push_str(y);
-            out.push(' ');
-            out.push_str(w);
-            out.push(' ');
-            out.push_str(h);
-        } else {
-            super::util::fmt_into(&mut out, vb_min_x);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_min_y);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_w);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_h);
-        }
-        out.push_str(r#"" role="graphics-document document" aria-roledescription=""#);
-        out.push_str(diagram_type);
-        out.push('"');
-        if let Some(id) = aria_describedby.as_deref() {
-            out.push_str(r#" aria-describedby=""#);
-            super::util::escape_attr_into(&mut out, id);
-            out.push('"');
-        }
-        if let Some(id) = aria_labelledby.as_deref() {
-            out.push_str(r#" aria-labelledby=""#);
-            super::util::escape_attr_into(&mut out, id);
-            out.push('"');
-        }
-        out.push('>');
     } else {
-        out.push_str(r#"" width=""#);
-        if let Some((_, _, w, _, _)) = viewbox_override {
-            out.push_str(w);
-        } else {
-            super::util::fmt_into(&mut out, vb_w);
-        }
-        out.push_str(
-            r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height=""#,
+        let after_roledescription_attrs: [(&str, &str); 1] =
+            [("style", "background-color: white;")];
+        root_svg::push_svg_root_open_ex3(
+            &mut out,
+            diagram_id,
+            Some("flowchart"),
+            root_svg::SvgRootWidth::Fixed(w_attr.as_str()),
+            Some(h_attr.as_str()),
+            None,
+            Some(viewbox_attr.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            &[],
+            diagram_type,
+            aria_labelledby_attr.as_deref(),
+            aria_describedby_attr.as_deref(),
+            &after_roledescription_attrs,
+            &[],
+            root_svg::SvgRootFixedHeightPlacement::AfterClass,
+            false,
         );
-        if let Some((_, _, _, h, _)) = viewbox_override {
-            out.push_str(h);
-        } else {
-            super::util::fmt_into(&mut out, vb_h);
-        }
-        out.push_str(r#"" viewBox=""#);
-        if let Some((x, y, w, h, _)) = viewbox_override {
-            out.push_str(x);
-            out.push(' ');
-            out.push_str(y);
-            out.push(' ');
-            out.push_str(w);
-            out.push(' ');
-            out.push_str(h);
-        } else {
-            super::util::fmt_into(&mut out, vb_min_x);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_min_y);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_w);
-            out.push(' ');
-            super::util::fmt_into(&mut out, vb_h);
-        }
-        out.push_str(r#"" role="graphics-document document" aria-roledescription=""#);
-        out.push_str(diagram_type);
-        out.push_str(r#"" style="background-color: white;""#);
-        if let Some(id) = aria_describedby.as_deref() {
-            out.push_str(r#" aria-describedby=""#);
-            super::util::escape_attr_into(&mut out, id);
-            out.push('"');
-        }
-        if let Some(id) = aria_labelledby.as_deref() {
-            out.push_str(r#" aria-labelledby=""#);
-            super::util::escape_attr_into(&mut out, id);
-            out.push('"');
-        }
-        out.push('>');
     }
 
-    if let (Some(id), Some(title)) = (aria_labelledby.as_deref(), acc_title) {
+    if let (Some(id), Some(title)) = (aria_labelledby_raw.as_deref(), acc_title) {
         out.push_str(r#"<title id=""#);
         super::util::escape_attr_into(&mut out, id);
         out.push_str(r#"">"#);
         escape_xml_into(&mut out, title);
         out.push_str("</title>");
     }
-    if let (Some(id), Some(descr)) = (aria_describedby.as_deref(), acc_descr) {
+    if let (Some(id), Some(descr)) = (aria_describedby_raw.as_deref(), acc_descr) {
         out.push_str(r#"<desc id=""#);
         super::util::escape_attr_into(&mut out, id);
         out.push_str(r#"">"#);
