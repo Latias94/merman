@@ -83,33 +83,37 @@ pub(super) fn render_packet_diagram_svg(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
-        (Some(_), Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (Some(_), None) => format!(
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, None) => String::new(),
-    };
-
     let mut out = String::new();
-    let _ = write!(
+    let aria_labelledby = model
+        .acc_title
+        .as_deref()
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = model
+        .acc_descr
+        .as_deref()
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    let style_attr = format!("max-width: {}px; background-color: white;", fmt(vb_w));
+    root_svg::push_svg_root_open_ex(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{min_x} {min_y} {w} {h}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="packet"{aria}>"#,
-        diagram_id_esc = diagram_id_esc,
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
-        max_w = fmt(vb_w),
-        aria = aria
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        viewbox_attr.as_str(),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &[],
+        "packet",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
     );
 
     if let Some(t) = model.acc_title.as_deref() {
