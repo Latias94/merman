@@ -1,0 +1,80 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "Todo",
+        "label": "Todo",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      },
+      {
+        "id": "Doing",
+        "label": "Doing",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "Todo",
+        "label": "Todo",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "this is a longer task title that should wrap when the font size is larger",
+        "parentId": "Todo",
+        "label": "this is a longer task title that should wrap when the font size is larger",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "Doing",
+        "label": "Doing",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "another long-ish item to exercise wrapping",
+        "parentId": "Doing",
+        "label": "another long-ish item to exercise wrapping",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}
