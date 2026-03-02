@@ -1640,6 +1640,7 @@ dependencies = [
  "merman-core",
  "merman-render",
  "resvg 0.46.0",
+ "roxmltree 0.20.0",
  "svg2pdf",
  "thiserror 2.0.18",
  "tiny-skia",
