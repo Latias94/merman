@@ -148,6 +148,7 @@ NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
+  - render can also rasterize SVG input when --format is png/jpg/pdf (input starts with '<svg').\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
   - JPG output defaults to writing next to the input file (or ./out.jpg for stdin).\n\
   - PDF output defaults to writing next to the input file (or ./out.pdf for stdin).\n\
@@ -386,6 +387,53 @@ fn run(args: Args) -> Result<(), CliError> {
             Ok(())
         }
         Command::Render => {
+            let input_is_svg = text.trim_start().starts_with("<svg");
+            if input_is_svg && !matches!(args.render_format, RenderFormat::Svg) {
+                match args.render_format {
+                    RenderFormat::Svg => unreachable!(),
+                    RenderFormat::Png => {
+                        let raster = merman::render::raster::RasterOptions {
+                            scale: args.render_scale,
+                            background: args.background.clone(),
+                            ..Default::default()
+                        };
+                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
+                        let bytes = merman::render::raster::svg_to_png(&svg, &raster)?;
+                        let default_out_path =
+                            default_raster_out_path(args.input.as_deref(), "png")
+                                .to_string_lossy()
+                                .into_owned();
+                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
+                        return write_output(Some(out), &bytes);
+                    }
+                    RenderFormat::Jpeg => {
+                        let raster = merman::render::raster::RasterOptions {
+                            scale: args.render_scale,
+                            background: args.background.clone(),
+                            ..Default::default()
+                        };
+                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
+                        let bytes = merman::render::raster::svg_to_jpeg(&svg, &raster)?;
+                        let default_out_path =
+                            default_raster_out_path(args.input.as_deref(), "jpg")
+                                .to_string_lossy()
+                                .into_owned();
+                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
+                        return write_output(Some(out), &bytes);
+                    }
+                    RenderFormat::Pdf => {
+                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
+                        let bytes = merman::render::raster::svg_to_pdf(&svg)?;
+                        let default_out_path =
+                            default_raster_out_path(args.input.as_deref(), "pdf")
+                                .to_string_lossy()
+                                .into_owned();
+                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
+                        return write_output(Some(out), &bytes);
+                    }
+                }
+            }
+
             let measurer: Arc<dyn TextMeasurer + Send + Sync> = match args.text_measurer {
                 TextMeasurerKind::Deterministic => Arc::new(DeterministicTextMeasurer::default()),
                 TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),

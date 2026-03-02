@@ -45,6 +45,41 @@ fn cli_renders_png_smoke() {
 }
 
 #[test]
+fn cli_rasterizes_svg_input_to_png() {
+    let root = repo_root();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let svg_in = tmp.path().join("in.svg");
+    let out = tmp.path().join("out.png");
+
+    fs::write(
+        &svg_in,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" fill='#000'/></svg>"#,
+    )
+    .expect("write svg");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .current_dir(&root)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--out",
+            out.to_string_lossy().as_ref(),
+            svg_in.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read png");
+    assert!(
+        bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "output is not a PNG"
+    );
+}
+
+#[test]
 fn cli_renders_png_with_default_out_path_for_file_input() {
     let root = repo_root();
     let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");
