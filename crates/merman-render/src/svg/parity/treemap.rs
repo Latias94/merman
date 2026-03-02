@@ -456,29 +456,33 @@ pub(super) fn render_treemap_diagram_svg(
     let css = treemap_css(diagram_id);
 
     let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{min_x} {min_y} {w} {h}" style="max-width: {max_w}px; background-color: white;" class="flowchart" role="graphics-document document" aria-roledescription="treemap""#,
-        min_x = fmt(vb_x),
-        min_y = fmt(vb_y),
-        w = fmt(vb_w.max(1.0)),
-        h = fmt(vb_h.max(1.0)),
-        max_w = fmt(vb_w.max(1.0)),
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
+    let viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_x),
+        fmt(vb_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0))
     );
-
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{diagram_id_esc}""#
-        );
-    }
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="chart-title-{diagram_id_esc}""#
-        );
-    }
-    out.push('>');
+    let max_w_attr = fmt(vb_w.max(1.0)).to_string();
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    let extra_attrs: [(&str, &str); 1] = [("class", "flowchart")];
+    root_svg::push_svg_root_open_ex(
+        &mut out,
+        diagram_id,
+        None,
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        viewbox_attr.as_str(),
+        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        &extra_attrs,
+        "treemap",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        false,
+    );
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
