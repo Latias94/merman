@@ -11,6 +11,11 @@ pub(super) enum SvgRootStyleViewBoxOrder {
     ViewBoxThenStyle,
 }
 
+pub(super) enum SvgRootAriaAttrOrder {
+    DescribedbyThenLabelledby,
+    LabelledbyThenDescribedby,
+}
+
 pub(super) enum SvgRootFixedHeightPlacement {
     BeforeXmlns,
     AfterXmlns,
@@ -106,6 +111,46 @@ pub(super) fn push_svg_root_open_ex3(
     tail_attrs: &[(&str, &str)],
     fixed_height_placement: SvgRootFixedHeightPlacement,
     trailing_newline: bool,
+) {
+    push_svg_root_open_ex4(
+        out,
+        diagram_id,
+        class,
+        width,
+        height_attr,
+        style_attr,
+        viewbox_attr,
+        style_viewbox_order,
+        extra_attrs,
+        aria_roledescription,
+        aria_labelledby,
+        aria_describedby,
+        after_roledescription_attrs,
+        tail_attrs,
+        fixed_height_placement,
+        trailing_newline,
+        SvgRootAriaAttrOrder::DescribedbyThenLabelledby,
+    );
+}
+
+pub(super) fn push_svg_root_open_ex4(
+    out: &mut String,
+    diagram_id: &str,
+    class: Option<&str>,
+    width: SvgRootWidth<'_>,
+    height_attr: Option<&str>,
+    style_attr: Option<&str>,
+    viewbox_attr: Option<&str>,
+    style_viewbox_order: SvgRootStyleViewBoxOrder,
+    extra_attrs: &[(&str, &str)],
+    aria_roledescription: &str,
+    aria_labelledby: Option<&str>,
+    aria_describedby: Option<&str>,
+    after_roledescription_attrs: &[(&str, &str)],
+    tail_attrs: &[(&str, &str)],
+    fixed_height_placement: SvgRootFixedHeightPlacement,
+    trailing_newline: bool,
+    aria_attr_order: SvgRootAriaAttrOrder,
 ) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
     // id, width/height (with configurable fixed-height placement), xmlns, class?,
@@ -235,15 +280,31 @@ pub(super) fn push_svg_root_open_ex3(
         out.push_str(v);
         out.push('"');
     }
-    if let Some(v) = aria_describedby {
-        out.push_str(r#" aria-describedby=""#);
-        out.push_str(v);
-        out.push('"');
-    }
-    if let Some(v) = aria_labelledby {
-        out.push_str(r#" aria-labelledby=""#);
-        out.push_str(v);
-        out.push('"');
+    match aria_attr_order {
+        SvgRootAriaAttrOrder::DescribedbyThenLabelledby => {
+            if let Some(v) = aria_describedby {
+                out.push_str(r#" aria-describedby=""#);
+                out.push_str(v);
+                out.push('"');
+            }
+            if let Some(v) = aria_labelledby {
+                out.push_str(r#" aria-labelledby=""#);
+                out.push_str(v);
+                out.push('"');
+            }
+        }
+        SvgRootAriaAttrOrder::LabelledbyThenDescribedby => {
+            if let Some(v) = aria_labelledby {
+                out.push_str(r#" aria-labelledby=""#);
+                out.push_str(v);
+                out.push('"');
+            }
+            if let Some(v) = aria_describedby {
+                out.push_str(r#" aria-describedby=""#);
+                out.push_str(v);
+                out.push('"');
+            }
+        }
     }
 
     for (k, v) in tail_attrs {

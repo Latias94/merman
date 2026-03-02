@@ -877,42 +877,38 @@ pub(super) fn render_class_diagram_v2_svg_model(
         + model.notes.len().saturating_mul(256)
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let _ = write!(
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{}", escape_xml(diagram_id)));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{}", escape_xml(diagram_id)));
+    let aria_roledescription_attr = super::util::escape_attr(aria_roledescription);
+    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
+    root_svg::push_svg_root_open_ex4(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: "#,
-        escape_xml_display(diagram_id),
+        diagram_id,
+        Some("classDiagram"),
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        Some(style_attr.as_str()),
+        Some(VIEWBOX_PLACEHOLDER),
+        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+        &[],
+        aria_roledescription_attr.as_str(),
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
+        &[],
+        &[],
+        root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
+        false,
+        root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
     );
-    let max_width_placeholder_range = {
-        let start = out.len();
-        out.push_str(MAX_WIDTH_PLACEHOLDER);
-        start..out.len()
-    };
-    out.push_str(r#"px; background-color: white;" viewBox=""#);
-    let viewbox_placeholder_range = {
-        let start = out.len();
-        out.push_str(VIEWBOX_PLACEHOLDER);
-        start..out.len()
-    };
-    let _ = write!(
-        &mut out,
-        r#"" role="graphics-document document" aria-roledescription="{}""#,
-        escape_attr_display(aria_roledescription)
-    );
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="chart-title-{}""#,
-            escape_xml_display(diagram_id)
-        );
-    }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{}""#,
-            escape_xml_display(diagram_id)
-        );
-    }
-    out.push('>');
+
+    let viewbox_pos = out
+        .find(VIEWBOX_PLACEHOLDER)
+        .expect("class svg root must contain viewBox placeholder");
+    let viewbox_placeholder_range = viewbox_pos..(viewbox_pos + VIEWBOX_PLACEHOLDER.len());
+    let max_width_pos = out
+        .find(MAX_WIDTH_PLACEHOLDER)
+        .expect("class svg root must contain max-width placeholder");
+    let max_width_placeholder_range = max_width_pos..(max_width_pos + MAX_WIDTH_PLACEHOLDER.len());
 
     if has_acc_title {
         let _ = write!(
