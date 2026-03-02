@@ -456,7 +456,6 @@ pub(super) fn render_requirement_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
-    let diagram_id_esc = escape_xml(diagram_id);
 
     let model: RequirementSemanticModel = crate::json::from_value_ref(semantic)?;
     let relationships = model.relationships.clone();
@@ -635,25 +634,23 @@ pub(super) fn render_requirement_diagram_svg(
 
     let mut out = String::new();
 
-    let mut vb_x_attr = fmt_string(vb_x);
-    let mut vb_y_attr = fmt_string(vb_y);
+    let vb_x_attr = fmt_string(vb_x);
+    let vb_y_attr = fmt_string(vb_y);
     let mut vb_w_attr = fmt_string(vb_w);
     let mut vb_h_attr = fmt_string(vb_h);
     let mut max_width_style_attr = max_width_style.clone();
-    if let Some((viewbox, max_w)) =
-        crate::generated::requirement_root_overrides_11_12_2::lookup_requirement_root_viewport_override(
-            diagram_id,
-        )
-    {
-        let mut it = viewbox.split_whitespace();
-        vb_x_attr = it.next().unwrap_or("0").to_string();
-        vb_y_attr = it.next().unwrap_or("0").to_string();
-        vb_w_attr = it.next().unwrap_or("0").to_string();
-        vb_h_attr = it.next().unwrap_or("0").to_string();
-        max_width_style_attr = max_w.to_string();
-    }
+    let mut viewbox_attr = format!("{vb_x_attr} {vb_y_attr} {vb_w_attr} {vb_h_attr}");
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut vb_w_attr,
+        &mut vb_h_attr,
+        &mut max_width_style_attr,
+        crate::generated::requirement_root_overrides_11_12_2::lookup_requirement_root_viewport_override,
+    );
 
-    let mut aria_attrs = String::new();
+    let mut aria_labelledby: Option<String> = None;
+    let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
     if let Some(t) = model
         .acc_title
@@ -662,11 +659,7 @@ pub(super) fn render_requirement_diagram_svg(
         .filter(|t| !t.is_empty())
     {
         let title_id = format!("chart-title-{diagram_id}");
-        let _ = write!(
-            &mut aria_attrs,
-            r#" aria-labelledby="{}""#,
-            escape_xml(&title_id)
-        );
+        aria_labelledby = Some(escape_xml(&title_id));
         let _ = write!(
             &mut a11y_nodes,
             r#"<title id="{}">{}</title>"#,
@@ -681,11 +674,7 @@ pub(super) fn render_requirement_diagram_svg(
         .filter(|d| !d.is_empty())
     {
         let desc_id = format!("chart-desc-{diagram_id}");
-        let _ = write!(
-            &mut aria_attrs,
-            r#" aria-describedby="{}""#,
-            escape_xml(&desc_id)
-        );
+        aria_describedby = Some(escape_xml(&desc_id));
         let _ = write!(
             &mut a11y_nodes,
             r#"<desc id="{}">{}</desc>"#,
@@ -694,15 +683,17 @@ pub(super) fn render_requirement_diagram_svg(
         );
     }
 
-    let _ = write!(
+    root_svg::push_svg_root_open(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="requirementDiagram" style="max-width: {max_w}px; background-color: white;" viewBox="{x} {y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="requirement"{aria_attrs}>"#,
-        x = vb_x_attr,
-        y = vb_y_attr,
-        max_w = max_width_style_attr,
-        vb_w = vb_w_attr,
-        vb_h = vb_h_attr,
-        aria_attrs = aria_attrs,
+        diagram_id,
+        "requirementDiagram",
+        root_svg::SvgRootWidth::Percent100,
+        None,
+        &format!("max-width: {max_width_style_attr}px; background-color: white;"),
+        &viewbox_attr,
+        "requirement",
+        aria_labelledby.as_deref(),
+        aria_describedby.as_deref(),
     );
 
     out.push_str(&a11y_nodes);
