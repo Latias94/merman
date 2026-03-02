@@ -161,6 +161,7 @@ pub(super) fn render_c4_diagram_svg(
     let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
 
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
+    let aria_roledescription_attr = escape_attr(aria_roledescription);
 
     let mut root_viewbox = format!(
         "{} {} {} {}",
@@ -170,61 +171,64 @@ pub(super) fn render_c4_diagram_svg(
         fmt(height + extra_vert_for_title)
     );
     let mut root_max_w = fmt_string(width);
+    let mut root_w_attr = fmt_string(width);
+    let mut root_h_attr = fmt_string(height + extra_vert_for_title);
 
-    if let Some((viewbox, max_w)) =
-        crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id)
-    {
-        root_viewbox = viewbox.to_string();
-        root_max_w = max_w.to_string();
-    }
+    apply_root_viewport_override(
+        diagram_id,
+        &mut root_viewbox,
+        &mut root_w_attr,
+        &mut root_h_attr,
+        &mut root_max_w,
+        crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override,
+    );
+
+    let aria_describedby = model
+        .acc_descr
+        .as_ref()
+        .map(|s| s.trim_end_matches('\n'))
+        .filter(|s| !s.trim().is_empty())
+        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = model
+        .acc_title
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|_| format!("chart-title-{diagram_id_esc}"));
 
     let mut out = String::new();
     if use_max_width {
-        let _ = write!(
+        let style_attr = format!("max-width: {root_max_w}px; background-color: white;");
+        root_svg::push_svg_root_open_ex(
             &mut out,
-            r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{vb}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
-            diagram_id_esc = diagram_id_esc,
-            max_w = escape_attr(&root_max_w),
-            vb = escape_attr(&root_viewbox),
-            aria = escape_attr(aria_roledescription),
-            aria_describedby = model
-                .acc_descr
-                .as_ref()
-                .map(|s| s.trim_end_matches('\n'))
-                .filter(|s| !s.trim().is_empty())
-                .map(|_| format!(r#" aria-describedby="chart-desc-{diagram_id_esc}""#))
-                .unwrap_or_default(),
-            aria_labelledby = model
-                .acc_title
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|_| format!(r#" aria-labelledby="chart-title-{diagram_id_esc}""#))
-                .unwrap_or_default(),
+            diagram_id,
+            None,
+            root_svg::SvgRootWidth::Percent100,
+            None,
+            Some(style_attr.as_str()),
+            Some(root_viewbox.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            &aria_roledescription_attr,
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
+            false,
         );
     } else {
-        let _ = write!(
+        root_svg::push_svg_root_open_ex(
             &mut out,
-            r#"<svg id="{diagram_id_esc}" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background-color: white;" viewBox="{vb}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
-            diagram_id_esc = diagram_id_esc,
-            w = fmt(width),
-            h = fmt(height + extra_vert_for_title),
-            vb = escape_attr(&root_viewbox),
-            aria = escape_attr(aria_roledescription),
-            aria_describedby = model
-                .acc_descr
-                .as_ref()
-                .map(|s| s.trim_end_matches('\n'))
-                .filter(|s| !s.trim().is_empty())
-                .map(|_| format!(r#" aria-describedby="chart-desc-{diagram_id_esc}""#))
-                .unwrap_or_default(),
-            aria_labelledby = model
-                .acc_title
-                .as_ref()
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|_| format!(r#" aria-labelledby="chart-title-{diagram_id_esc}""#))
-                .unwrap_or_default(),
+            diagram_id,
+            None,
+            root_svg::SvgRootWidth::Fixed(&root_w_attr),
+            Some(&root_h_attr),
+            Some("background-color: white;"),
+            Some(root_viewbox.as_str()),
+            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            &[],
+            &aria_roledescription_attr,
+            aria_labelledby.as_deref(),
+            aria_describedby.as_deref(),
+            false,
         );
     }
 
