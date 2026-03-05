@@ -2381,6 +2381,44 @@ impl VendoredFontMetricsTextMeasurer {
                 continue;
             }
 
+            if !break_long_words && tok != " " && !cur.trim().is_empty() {
+                // Browser HTML layout uses punctuation-aware break opportunities even when a token
+                // would fit on its own line (e.g. URLs inside parentheses). Try to consume a
+                // breakable prefix before forcing the whole token onto the next line.
+                let segments = split_html_breakable_segments(&tok);
+                if segments.len() > 1 {
+                    let mut cur_candidate = cur.clone();
+                    let mut consumed = 0usize;
+                    for seg in &segments {
+                        let candidate = format!("{cur_candidate}{seg}");
+                        let candidate_trimmed = candidate.trim_end();
+                        if Self::line_width_px(
+                            entries,
+                            default_em,
+                            kern_pairs,
+                            space_trigrams,
+                            trigrams,
+                            candidate_trimmed,
+                            bold,
+                            font_size,
+                        ) <= max_width_px
+                        {
+                            cur_candidate = candidate;
+                            consumed += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if consumed > 0 {
+                        cur = cur_candidate;
+                        for seg in segments.into_iter().skip(consumed).rev() {
+                            tokens.push_front(seg);
+                        }
+                        continue;
+                    }
+                }
+            }
+
             if !cur.trim().is_empty() {
                 out.push(cur.trim_end().to_string());
                 cur.clear();

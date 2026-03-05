@@ -267,11 +267,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         .get("themeVariables")
         .and_then(|tv| tv.get("fontSize"))
         .and_then(parse_font_size_px)
-        .or_else(|| {
-            effective_config_value
-                .get("fontSize")
-                .and_then(parse_font_size_px)
-        })
         .unwrap_or(16.0)
         .max(1.0);
 

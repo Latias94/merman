@@ -877,11 +877,6 @@ fn layout_flowchart_v2_with_model(
         .get("themeVariables")
         .and_then(|tv| tv.get("fontSize"))
         .and_then(parse_font_size_px)
-        .or_else(|| {
-            effective_config_value
-                .get("fontSize")
-                .and_then(parse_font_size_px)
-        })
         .unwrap_or(16.0);
     let font_weight = config_string(effective_config_value, &["fontWeight"]);
     let text_style = TextStyle {

@@ -29,6 +29,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,
   - underscore-heavy identifiers (e.g. `a__node`) no longer get misparsed as emphasis.
+- Flowchart: align SVG edge label background rectangle offset (`y=-1`) with upstream Mermaid.
+- Flowchart: match Mermaid's flowchart font sizing rules by reading `themeVariables.fontSize` only (top-level `fontSize`
+  no longer affects flowchart layout/label measurement).
+- Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
   notably in xychart).
 
