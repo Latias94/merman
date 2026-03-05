@@ -128,10 +128,13 @@ fn render_sequence_diagram_svg_inner(
         .and_then(|v| v.as_f64())
         .unwrap_or(150.0)
         .max(1.0);
-    let actor_label_font_size = seq_cfg
-        .get("messageFontSize")
+    // Upstream Mermaid's Sequence renderer treats the global `fontSize` as authoritative. Even
+    // when per-sequence overrides like `sequence.messageFontSize` are set via frontmatter/init,
+    // the effective SVG output sticks to the global font size as long as it is present.
+    let actor_label_font_size = effective_config
+        .get("fontSize")
         .and_then(|v| v.as_f64())
-        .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
+        .or_else(|| seq_cfg.get("messageFontSize").and_then(|v| v.as_f64()))
         .unwrap_or(16.0)
         .max(1.0);
     let loop_text_style = TextStyle {

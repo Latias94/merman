@@ -475,8 +475,51 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             inner.trim().to_string()
         }
 
-        let decoded = decode_mermaid_entities_for_render_text(text);
-        let text = decoded.as_ref();
+        fn escape_amp_preserving_entities(raw: &str) -> String {
+            fn is_valid_entity(entity: &str) -> bool {
+                if entity.is_empty() {
+                    return false;
+                }
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
+                }
+                if let Some(dec) = entity.strip_prefix('#') {
+                    return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
+                }
+                let mut it = entity.chars();
+                let Some(first) = it.next() else {
+                    return false;
+                };
+                if !first.is_ascii_alphabetic() {
+                    return false;
+                }
+                it.all(|c| c.is_ascii_alphanumeric())
+            }
+
+            let mut out = String::with_capacity(raw.len());
+            let mut i = 0usize;
+            while let Some(rel) = raw[i..].find('&') {
+                let amp = i + rel;
+                out.push_str(&raw[i..amp]);
+                let tail = &raw[amp + 1..];
+                if let Some(semi_rel) = tail.find(';') {
+                    let semi = amp + 1 + semi_rel;
+                    let entity = &raw[amp + 1..semi];
+                    if is_valid_entity(entity) {
+                        out.push_str(&raw[amp..=semi]);
+                        i = semi + 1;
+                        continue;
+                    }
+                }
+                out.push_str("&amp;");
+                i = amp + 1;
+            }
+            out.push_str(&raw[i..]);
+            out
+        }
 
         if label_type == "markdown" {
             if is_simple_markdown(text) {
@@ -485,10 +528,12 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 html_out.push_str(text);
                 html_out.push_str("</p>");
                 let html_out = crate::text::replace_fontawesome_icons(&html_out);
-                out.push_str(&html_out);
+                let html_out = decode_mermaid_entities_for_render_text(&html_out);
+                out.push_str(&escape_amp_preserving_entities(html_out.as_ref()));
             } else {
                 let html = markdown_to_sanitized_xhtml(text, config);
-                out.push_str(&html);
+                let html = decode_mermaid_entities_for_render_text(&html);
+                out.push_str(&escape_amp_preserving_entities(html.as_ref()));
             }
         } else if text.contains('\n') || text.contains('\r') {
             // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
@@ -522,9 +567,16 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             } else {
                 text
             };
-            // Mindmap fixtures use backticks to denote "verbatim" markdown-string labels. Mermaid
-            // keeps the backticks as literal text (no Markdown evaluation) in that mode.
-            if text.contains('`') {
+            // Mindmap fixtures use *wrapping* backticks to denote "verbatim" labels. Mermaid keeps
+            // those backticks as literal text (no Markdown evaluation) in that mode.
+            //
+            // Do not treat the presence of any backtick as verbatim. Upstream Mermaid's
+            // `encodeEntities(...)` pass can introduce `&`-prefixed backticks (e.g. `&#96;` ->
+            // `&ﬂ°°96¶ß` -> `&\``), and those should still participate in Markdown parsing.
+            let trimmed = text.trim();
+            let is_verbatim =
+                trimmed.len() >= 2 && trimmed.starts_with('`') && trimmed.ends_with('`');
+            if is_verbatim {
                 out.push_str("<p>");
                 out.push_str(&escape_xml(text));
                 out.push_str("</p>");
@@ -534,14 +586,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 html_out.push_str(text);
                 html_out.push_str("</p>");
                 let html_out = crate::text::replace_fontawesome_icons(&html_out);
-                out.push_str(&html_out);
+                let html_out = decode_mermaid_entities_for_render_text(&html_out);
+                out.push_str(&escape_amp_preserving_entities(html_out.as_ref()));
             } else {
                 let html = markdown_to_sanitized_xhtml(&text, config);
                 if is_single_img_fragment(&html) {
                     let html = unwrap_single_img_p(&html);
-                    out.push_str(&html);
+                    let html = decode_mermaid_entities_for_render_text(&html);
+                    out.push_str(&escape_amp_preserving_entities(html.as_ref()));
                 } else {
-                    out.push_str(&html);
+                    let html = decode_mermaid_entities_for_render_text(&html);
+                    out.push_str(&escape_amp_preserving_entities(html.as_ref()));
                 }
             }
         }

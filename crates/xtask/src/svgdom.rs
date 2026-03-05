@@ -109,6 +109,36 @@ fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> Strin
     }
 }
 
+fn extract_style_prop_value(style: &str, prop_name: &str) -> Option<String> {
+    let target = prop_name.trim().to_ascii_lowercase();
+    if target.is_empty() {
+        return None;
+    }
+
+    for decl in style.split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue;
+        }
+        let (k, v) = decl.split_once(':')?;
+        if k.trim().to_ascii_lowercase() != target {
+            continue;
+        }
+        let v = v.trim();
+        if v.is_empty() {
+            return None;
+        }
+        return Some(v.to_string());
+    }
+    None
+}
+
+fn normalize_style_font_size_for_parity(style: &str, decimals: u32) -> Option<String> {
+    let v = extract_style_prop_value(style, "font-size")?;
+    let v = normalize_numeric_tokens(&v, decimals);
+    Some(format!("font-size:{v}"))
+}
+
 fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
     // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
     // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
@@ -566,6 +596,15 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                     }
                     if key == "style" {
                         if n.tag_name().name() == "svg" && mode == DomMode::ParityRoot {
+                        } else if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                            && matches!(n.tag_name().name(), "text" | "tspan")
+                        {
+                            let Some(filtered) =
+                                normalize_style_font_size_for_parity(&val, decimals)
+                            else {
+                                continue;
+                            };
+                            val = filtered;
                         } else {
                             continue;
                         }
@@ -1242,6 +1281,27 @@ mod tests {
             dom_a.attrs.get("viewBox").map(|s| s.as_str()),
             Some("<n> <n> 560.25 10")
         );
+    }
+
+    #[test]
+    fn parity_keeps_style_font_size_on_text_nodes() {
+        let a = r#"<svg><text style="text-anchor: middle; font-size: 16px; font-weight: 400;">Hi</text></svg>"#;
+        let b = r#"<svg><text style="text-anchor: middle; font-size: 18px; font-weight: 400;">Hi</text></svg>"#;
+        let dom_a = dom_signature(a, DomMode::Parity, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::Parity, 3).unwrap();
+        let text_a = &dom_a.children[0];
+        let text_b = &dom_b.children[0];
+        assert_eq!(text_a.name, "text");
+        assert_eq!(text_b.name, "text");
+        assert_eq!(
+            text_a.attrs.get("style").map(|s| s.as_str()),
+            Some("font-size:16px")
+        );
+        assert_eq!(
+            text_b.attrs.get("style").map(|s| s.as_str()),
+            Some("font-size:18px")
+        );
+        assert_ne!(dom_a, dom_b);
     }
 
     #[test]

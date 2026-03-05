@@ -12,6 +12,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   https://github.com/Latias94/merman/pull/1).
 - Render: decode Mermaid `encodeEntities(...)` placeholders in SVG label text across diagrams (prevents raw `ﬂ°…¶ß`
   sequences from leaking into output).
+- Flowchart: treat `@{...}` node declarations as subgraph members even when the subgraph contains no internal edges
+  (restores upstream-style cluster membership / SVG DOM structure).
+- Mindmap: decode Mermaid entity placeholders after Markdown sanitization while preserving valid XML entities (prevents malformed `&...;` sequences in SVG output).
+- Sequence: prefer the global `fontSize` over `sequence.messageFontSize` when emitting SVG text styles (aligns with Mermaid CLI baselines).
+- Treemap: align the leaf label font sizing for `Item A1` with upstream Mermaid CLI baselines (prevents a 1px shrink
+  due to text measurement differences).
+- `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
+  text sizing drift without comparing full style strings).
 
 ## [0.3.0] - 2026-03-02
 

@@ -1,0 +1,17 @@
+%%{
+  init: {
+    "flowchart": {
+      "nodeSpacing": 20,
+      "rankSpacing": 5
+    }
+  }
+}%%
+
+flowchart LR
+  subgraph Graph
+    A@{ label: "A: (Edge Text)" }
+    B@{ label: "B: (Edge Text)" }
+    C@{ label: "C: (Edge Text)" }
+  end
+  A -->|A to B| B
+  B -->|B to C| C

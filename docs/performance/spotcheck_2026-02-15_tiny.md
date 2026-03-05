@@ -36,4 +36,3 @@ This report is intended for quick perf triage (stage attribution).
 - `layout`: `1.09x`
 - `render`: `2.41x`
 - `end_to_end`: `1.54x`
-

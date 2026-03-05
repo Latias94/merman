@@ -48,4 +48,3 @@ high-confidence benchmarking.
 - `layout`: `1.46x`
 - `render`: `1.88x`
 - `end_to_end`: `1.44x`
-

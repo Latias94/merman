@@ -59,7 +59,7 @@ impl SubgraphBuilder {
                 Stmt::ClassAssign(_) => {}
                 Stmt::Click(_) => {}
                 Stmt::LinkStyle(_) => {}
-                Stmt::ShapeData { .. } => {}
+                Stmt::ShapeData { target, .. } => out.push(StatementItem::Id(target.clone())),
             }
         }
         out
