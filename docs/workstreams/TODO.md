@@ -147,6 +147,9 @@ For each item:
   - Gantt: `fixtures/gantt/stress_gantt_font_size_precedence_001.mmd`
     - Compare: `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-decimals 3 --filter stress_gantt_font_size_precedence_001`
     - Compare (root): `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_gantt_font_size_precedence_001`
+  - Journey: `fixtures/journey/stress_journey_font_size_precedence_001.mmd`
+    - Compare: `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-decimals 3 --filter stress_journey_font_size_precedence_001`
+    - Compare (root): `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_journey_font_size_precedence_001`
 
 ## C) Markdown subset parity
 
