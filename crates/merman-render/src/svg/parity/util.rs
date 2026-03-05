@@ -2,6 +2,8 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
+use std::borrow::Cow;
+
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
     for key in path {
@@ -383,7 +385,21 @@ pub(super) fn escape_xml(text: &str) -> String {
     out
 }
 
+pub(super) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
+    // Mermaid preprocesses diagrams with `encodeEntities(...)`, rewriting `#...;` sequences into
+    // `ﬂ°...¶ß` placeholders so grammars that treat `#` / `;` specially do not break.
+    //
+    // In headless SVG output we must decode those placeholders back into Unicode so text labels
+    // match upstream Mermaid's browser-decoded output.
+    if !text.contains('ﬂ') && !text.contains('¶') && !text.contains('#') {
+        return Cow::Borrowed(text);
+    }
+    merman_core::entities::decode_mermaid_entities_to_unicode(text)
+}
+
 pub(super) fn escape_xml_into(out: &mut String, text: &str) {
+    let decoded = decode_mermaid_entities_for_render_text(text);
+    let text = decoded.as_ref();
     let bytes = text.as_bytes();
     let mut start = 0usize;
     for (i, &b) in bytes.iter().enumerate() {
@@ -416,7 +432,8 @@ pub(super) struct EscapeXmlDisplay<'a>(&'a str);
 
 impl std::fmt::Display for EscapeXmlDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text = self.0;
+        let decoded = decode_mermaid_entities_for_render_text(self.0);
+        let text = decoded.as_ref();
         let bytes = text.as_bytes();
         let mut start = 0usize;
         for (i, &b) in bytes.iter().enumerate() {

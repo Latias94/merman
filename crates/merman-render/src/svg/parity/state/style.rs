@@ -570,7 +570,8 @@ pub(super) fn html_paragraph_with_br(raw: &str) -> String {
         out
     }
 
-    let normalized = normalize_br_tags(raw);
+    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+    let normalized = normalize_br_tags(decoded.as_ref());
     let lines: Vec<&str> = normalized.split('\n').collect();
     let mut out = String::new();
     out.push_str("<p>");
@@ -673,7 +674,8 @@ pub(super) fn html_inline_with_br(raw: &str) -> String {
         out
     }
 
-    let normalized = normalize_br_tags(raw);
+    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+    let normalized = normalize_br_tags(decoded.as_ref());
     let lines: Vec<&str> = normalized.split('\n').collect();
     let mut out = String::new();
     for (idx, line) in lines.iter().enumerate() {
@@ -797,7 +799,8 @@ pub(super) fn state_edge_label_html(raw: &str) -> String {
         out
     }
 
-    let normalized = normalize_br_tags(raw);
+    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+    let normalized = normalize_br_tags(decoded.as_ref());
 
     if !crate::text::mermaid_markdown_wants_paragraph_wrap(&normalized) {
         // Upstream falls back to raw Markdown for unsupported block constructs without wrapping.

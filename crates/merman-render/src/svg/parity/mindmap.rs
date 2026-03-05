@@ -475,6 +475,9 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             inner.trim().to_string()
         }
 
+        let decoded = decode_mermaid_entities_for_render_text(text);
+        let text = decoded.as_ref();
+
         if label_type == "markdown" {
             if is_simple_markdown(text) {
                 let mut html_out = String::with_capacity(text.len() + 7);

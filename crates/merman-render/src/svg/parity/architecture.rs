@@ -1025,7 +1025,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 .join("\n")
         }
 
-        let preprocessed = preprocess_svg_markdown(text);
+        let decoded = decode_mermaid_entities_for_render_text(text);
+        let preprocessed = preprocess_svg_markdown(decoded.as_ref());
 
         let mut parsed_lines: Vec<SvgLine> = vec![Vec::new()];
         let mut current_line: usize = 0;

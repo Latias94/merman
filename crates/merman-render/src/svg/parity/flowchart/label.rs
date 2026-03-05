@@ -254,8 +254,9 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     match label_type {
         "markdown" => {
             let mut html_out = String::new();
+            let decoded = decode_mermaid_entities_for_render_text(label);
             let parser = pulldown_cmark::Parser::new_ext(
-                label,
+                decoded.as_ref(),
                 pulldown_cmark::Options::ENABLE_TABLES
                     | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
                     | pulldown_cmark::Options::ENABLE_TASKLISTS,
@@ -271,8 +272,9 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         }
         _ if looks_like_markdown => {
             let mut html_out = String::new();
+            let decoded = decode_mermaid_entities_for_render_text(label);
             let parser = pulldown_cmark::Parser::new_ext(
-                label,
+                decoded.as_ref(),
                 pulldown_cmark::Options::ENABLE_TABLES
                     | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
                     | pulldown_cmark::Options::ENABLE_TASKLISTS,

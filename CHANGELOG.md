@@ -6,7 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-_No changes yet._
+### Fixed
+
+- Flowchart: decode Mermaid entity placeholders in subgraph titles (contributed by @aydiler in PR #1:
+  https://github.com/Latias94/merman/pull/1).
+- Render: decode Mermaid `encodeEntities(...)` placeholders in SVG label text across diagrams (prevents raw `ﬂ°…¶ß`
+  sequences from leaking into output).
 
 ## [0.3.0] - 2026-03-02
 

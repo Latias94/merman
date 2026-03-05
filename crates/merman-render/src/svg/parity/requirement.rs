@@ -182,7 +182,8 @@ pub(super) fn render_requirement_diagram_svg(
             out
         }
 
-        let normalized = normalize_br_tags(raw);
+        let decoded = decode_mermaid_entities_for_render_text(raw);
+        let normalized = normalize_br_tags(decoded.as_ref());
 
         if !crate::text::mermaid_markdown_wants_paragraph_wrap(&normalized) {
             return html_inline_with_br(&normalized);

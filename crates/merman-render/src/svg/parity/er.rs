@@ -1105,7 +1105,8 @@ pub(super) fn render_er_diagram_svg(
         }
 
         fn html_label_content(text: &str, span_style_attr: &str) -> String {
-            let text = text.trim();
+            let decoded = decode_mermaid_entities_for_render_text(text);
+            let text = decoded.as_ref().trim();
             if text.is_empty() {
                 return format!(r#"<span class="nodeLabel"{}></span>"#, span_style_attr);
             }
