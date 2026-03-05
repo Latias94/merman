@@ -6,7 +6,7 @@
         "min_x": -5.0,
         "min_y": -61.0,
         "max_x": 890.0,
-        "max_y": 621.4
+        "max_y": 603.8
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -49,24 +49,23 @@
                 "x1": 295.0,
                 "y1": 235.6,
                 "x2": 295.0,
-                "y2": 571.4
+                "y2": 553.8
               },
               "events": [
                 {
                   "x": 200.0,
                   "y": 367.8,
                   "width": 190.0,
-                  "height": 135.8,
+                  "height": 118.2,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "This is a long event label that should fit without wrapping when width is large enough",
                   "label_lines": [
-                    "This   is   a   long",
-                    "event   label   that",
-                    "should   fit   without",
-                    "wrapping   when",
-                    "width   is   large",
+                    "This   is   a   long   event",
+                    "label   that   should   fit",
+                    "without   wrapping",
+                    "when   width   is   large",
                     "enough"
                   ],
                   "kind": "event"
@@ -93,24 +92,23 @@
                 "x1": 495.0,
                 "y1": 235.6,
                 "x2": 495.0,
-                "y2": 571.4
+                "y2": 553.8
               },
               "events": [
                 {
                   "x": 400.0,
                   "y": 367.8,
                   "width": 190.0,
-                  "height": 118.2,
+                  "height": 100.6,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "Another long event label with punctuation ((), [], {}) and unicode — dash",
                   "label_lines": [
                     "Another   long   event",
-                    "label   with",
-                    "punctuation   ((),   [],",
-                    "{})   and   unicode   —",
-                    "dash"
+                    "label   with   punctuation",
+                    "((),   [],   {})   and   unicode",
+                    "—   dash"
                   ],
                   "kind": "event"
                 }

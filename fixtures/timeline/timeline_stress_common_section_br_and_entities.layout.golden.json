@@ -6,7 +6,7 @@
         "min_x": 95.0,
         "min_y": -61.0,
         "max_x": 1090.0,
-        "max_y": 719.4
+        "max_y": 701.8
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -50,7 +50,7 @@
                 "x1": 295.0,
                 "y1": 253.2,
                 "x2": 295.0,
-                "y2": 669.4
+                "y2": 651.8
               },
               "events": [
                 {
@@ -138,7 +138,7 @@
                 "x1": 495.0,
                 "y1": 253.2,
                 "x2": 495.0,
-                "y2": 669.4
+                "y2": 651.8
               },
               "events": [
                 {
@@ -160,20 +160,19 @@
                   "x": 400.0,
                   "y": 460.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
                   "label": "Stabilize DOM ordering",
                   "label_lines": [
-                    "Stabilize   DOM",
-                    "ordering"
+                    "Stabilize   DOM   ordering"
                   ],
                   "kind": "event"
                 },
                 {
                   "x": 400.0,
-                  "y": 536.2,
+                  "y": 520.8,
                   "width": 190.0,
                   "height": 65.4,
                   "content_width": 150.0,
@@ -227,7 +226,7 @@
                 "x1": 695.0,
                 "y1": 253.2,
                 "x2": 695.0,
-                "y2": 669.4
+                "y2": 651.8
               },
               "events": [
                 {

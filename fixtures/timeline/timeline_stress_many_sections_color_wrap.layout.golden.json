@@ -746,9 +746,9 @@
                   "section_class": "section--1",
                   "label": "Event 13 (should reuse the first section color)",
                   "label_lines": [
-                    "Event   13   (should",
-                    "reuse   the   first",
-                    "section   color)"
+                    "Event   13   (should   reuse",
+                    "the   first   section",
+                    "color)"
                   ],
                   "kind": "event"
                 }

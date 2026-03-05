@@ -63,10 +63,10 @@
                   "label": "A long event that should wrap because the configured timeline width is small",
                   "label_lines": [
                     "A   long   event   that",
-                    "should   wrap",
-                    "because   the",
-                    "configured   timeline",
-                    "width   is   small"
+                    "should   wrap   because",
+                    "the   configured",
+                    "timeline   width   is",
+                    "small"
                   ],
                   "kind": "event"
                 },
@@ -132,17 +132,16 @@
                   "x": 310.0,
                   "y": 367.8,
                   "width": 190.0,
-                  "height": 118.2,
+                  "height": 100.6,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
                   "label": "Markdown *emphasis* and `inline code` should be treated as plain text",
                   "label_lines": [
-                    "Markdown",
-                    "*emphasis*   and",
-                    "`inline   code`",
-                    "should   be   treated",
-                    "as   plain   text"
+                    "Markdown   *emphasis*",
+                    "and   `inline   code`",
+                    "should   be   treated   as",
+                    "plain   text"
                   ],
                   "kind": "event"
                 }

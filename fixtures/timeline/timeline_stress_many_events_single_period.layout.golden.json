@@ -6,7 +6,7 @@
         "min_x": -105.0,
         "min_y": -61.0,
         "max_x": 690.0,
-        "max_y": 1377.8
+        "max_y": 1342.6
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -49,7 +49,7 @@
                 "x1": 295.0,
                 "y1": 235.6,
                 "x2": 295.0,
-                "y2": 1327.8
+                "y2": 1292.6
               },
               "events": [
                 {
@@ -98,20 +98,19 @@
                   "x": 200.0,
                   "y": 547.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "Implement feature A",
                   "label_lines": [
-                    "Implement   feature",
-                    "A"
+                    "Implement   feature   A"
                   ],
                   "kind": "event"
                 },
                 {
                   "x": 200.0,
-                  "y": 623.2,
+                  "y": 607.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -125,7 +124,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 683.2,
+                  "y": 667.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -139,7 +138,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 743.2,
+                  "y": 727.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -153,7 +152,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 803.2,
+                  "y": 787.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -167,7 +166,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 863.2,
+                  "y": 847.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -181,7 +180,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 923.2,
+                  "y": 907.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -195,7 +194,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 983.2,
+                  "y": 967.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -209,7 +208,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 1043.2,
+                  "y": 1027.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -223,7 +222,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 1103.2,
+                  "y": 1087.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -237,22 +236,21 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 1163.2,
+                  "y": 1147.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "Prepare release notes",
                   "label_lines": [
-                    "Prepare   release",
-                    "notes"
+                    "Prepare   release   notes"
                   ],
                   "kind": "event"
                 },
                 {
                   "x": 200.0,
-                  "y": 1238.6,
+                  "y": 1207.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,

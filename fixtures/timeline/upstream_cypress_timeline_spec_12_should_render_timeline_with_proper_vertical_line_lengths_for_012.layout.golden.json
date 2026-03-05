@@ -4,9 +4,9 @@
     "TimelineDiagram": {
       "bounds": {
         "min_x": 100.0,
-        "min_y": -61.0,
+        "min_y": -62.938,
         "max_x": 2290.0,
-        "max_y": 857.6
+        "max_y": 830.4
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -18,7 +18,7 @@
             "x": 200.0,
             "y": 50.0,
             "width": 590.0,
-            "height": 67.8,
+            "height": 68.8,
             "content_width": 550.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -32,9 +32,9 @@
             {
               "node": {
                 "x": 200.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -48,16 +48,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 295.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 295.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 200.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -70,9 +70,9 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 443.2,
+                  "y": 446.3,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -88,9 +88,9 @@
             {
               "node": {
                 "x": 400.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -104,16 +104,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 495.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 495.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 400.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -126,9 +126,9 @@
                 },
                 {
                   "x": 400.0,
-                  "y": 443.2,
+                  "y": 446.3,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -144,32 +144,32 @@
             {
               "node": {
                 "x": 600.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
                 "label": "Resource Management (6)",
                 "label_lines": [
-                  "Resource",
-                  "Management   (6)"
+                  "Resource   Management",
+                  "(6)"
                 ],
                 "kind": "task"
               },
               "connector": {
                 "kind": "task-events",
                 "x1": 695.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 695.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 600.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -182,7 +182,7 @@
                 },
                 {
                   "x": 600.0,
-                  "y": 443.2,
+                  "y": 446.3,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -203,7 +203,7 @@
             "x": 800.0,
             "y": 50.0,
             "width": 990.0,
-            "height": 67.8,
+            "height": 68.8,
             "content_width": 950.0,
             "padding": 20.0,
             "section_class": "section-0",
@@ -217,9 +217,9 @@
             {
               "node": {
                 "x": 800.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -233,29 +233,28 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 895.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 895.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 800.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
                   "label": "RnD Planning (7.3.2)",
                   "label_lines": [
-                    "RnD   Planning",
-                    "(7.3.2)"
+                    "RnD   Planning   (7.3.2)"
                   ],
                   "kind": "event"
                 },
                 {
                   "x": 800.0,
-                  "y": 443.2,
+                  "y": 428.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -269,7 +268,7 @@
                 },
                 {
                   "x": 800.0,
-                  "y": 503.2,
+                  "y": 488.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -283,7 +282,7 @@
                 },
                 {
                   "x": 800.0,
-                  "y": 563.2,
+                  "y": 548.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -297,7 +296,7 @@
                 },
                 {
                   "x": 800.0,
-                  "y": 623.2,
+                  "y": 608.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -311,7 +310,7 @@
                 },
                 {
                   "x": 800.0,
-                  "y": 683.2,
+                  "y": 668.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -328,9 +327,9 @@
             {
               "node": {
                 "x": 1000.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -343,16 +342,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1095.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 1095.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 1000.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -365,9 +364,9 @@
                 },
                 {
                   "x": 1000.0,
-                  "y": 443.2,
+                  "y": 446.3,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -383,9 +382,9 @@
             {
               "node": {
                 "x": 1200.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -398,16 +397,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1295.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 1295.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 1200.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -420,9 +419,9 @@
                 },
                 {
                   "x": 1200.0,
-                  "y": 443.2,
+                  "y": 446.3,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -438,9 +437,9 @@
             {
               "node": {
                 "x": 1400.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -453,16 +452,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1495.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 1495.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 1400.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -478,9 +477,9 @@
             {
               "node": {
                 "x": 1600.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -493,16 +492,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1695.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 1695.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 1600.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -522,7 +521,7 @@
             "x": 1800.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 67.8,
+            "height": 68.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section-1",
@@ -536,9 +535,9 @@
             {
               "node": {
                 "x": 1800.0,
-                "y": 167.8,
+                "y": 168.8,
                 "width": 190.0,
-                "height": 85.4,
+                "height": 68.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-1",
@@ -552,14 +551,14 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1895.0,
-                "y1": 253.2,
+                "y1": 237.6,
                 "x2": 1895.0,
-                "y2": 807.6
+                "y2": 780.4
               },
               "events": [
                 {
                   "x": 1800.0,
-                  "y": 367.8,
+                  "y": 368.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -573,7 +572,7 @@
                 },
                 {
                   "x": 1800.0,
-                  "y": 427.8,
+                  "y": 428.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -587,9 +586,9 @@
                 },
                 {
                   "x": 1800.0,
-                  "y": 487.8,
+                  "y": 488.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 67.5,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
@@ -609,9 +608,9 @@
       "activity_line": {
         "kind": "activity",
         "x1": 150.0,
-        "y1": 303.2,
+        "y1": 287.6,
         "x2": 2240.0,
-        "y2": 303.2
+        "y2": 287.6
       },
       "title": "Medical Device Lifecycle",
       "title_x": 745.0,

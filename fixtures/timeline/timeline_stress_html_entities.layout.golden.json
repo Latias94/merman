@@ -103,8 +103,8 @@
                   "section_class": "section--1",
                   "label": "Use &lt; and &gt; to represent angle brackets",
                   "label_lines": [
-                    "Use   &lt;   and   &gt;",
-                    "to   represent   angle",
+                    "Use   &lt;   and   &gt;   to",
+                    "represent   angle",
                     "brackets"
                   ],
                   "kind": "event"
@@ -159,8 +159,8 @@
                   "label": "&amp; &lt;br&gt; should be literal text, not a <br> token",
                   "label_lines": [
                     "&amp;   &lt;br&gt;",
-                    "should   be   literal",
-                    "text,   not   a",
+                    "should   be   literal   text,",
+                    "not   a",
                     "token"
                   ],
                   "kind": "event"

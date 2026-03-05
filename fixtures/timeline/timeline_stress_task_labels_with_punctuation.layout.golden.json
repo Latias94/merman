@@ -6,7 +6,7 @@
         "min_x": 95.0,
         "min_y": -61.0,
         "max_x": 1090.0,
-        "max_y": 626.4
+        "max_y": 608.8
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -49,7 +49,7 @@
                 "x1": 295.0,
                 "y1": 235.6,
                 "x2": 295.0,
-                "y2": 576.4
+                "y2": 558.8
               },
               "events": [
                 {
@@ -88,7 +88,7 @@
                 "x1": 495.0,
                 "y1": 235.6,
                 "x2": 495.0,
-                "y2": 576.4
+                "y2": 558.8
               },
               "events": [
                 {
@@ -127,27 +127,26 @@
                 "x1": 695.0,
                 "y1": 235.6,
                 "x2": 695.0,
-                "y2": 576.4
+                "y2": 558.8
               },
               "events": [
                 {
                   "x": 600.0,
                   "y": 367.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "Added feature X (beta) ",
                   "label_lines": [
-                    "Added   feature   X",
-                    "(beta)"
+                    "Added   feature   X   (beta)"
                   ],
                   "kind": "event"
                 },
                 {
                   "x": 600.0,
-                  "y": 443.2,
+                  "y": 427.8,
                   "width": 190.0,
                   "height": 65.4,
                   "content_width": 150.0,

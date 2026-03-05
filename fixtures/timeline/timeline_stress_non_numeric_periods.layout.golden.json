@@ -173,14 +173,13 @@
                   "x": 800.0,
                   "y": 367.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "Hardening and polish",
                   "label_lines": [
-                    "Hardening   and",
-                    "polish"
+                    "Hardening   and   polish"
                   ],
                   "kind": "event"
                 }

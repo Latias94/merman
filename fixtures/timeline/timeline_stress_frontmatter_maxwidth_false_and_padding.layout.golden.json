@@ -62,9 +62,9 @@
                   "section_class": "section--1",
                   "label": "A long event label that should wrap to multiple lines automatically",
                   "label_lines": [
-                    "A   long   event   label",
-                    "that   should   wrap",
-                    "to   multiple   lines",
+                    "A   long   event   label   that",
+                    "should   wrap   to",
+                    "multiple   lines",
                     "automatically"
                   ],
                   "kind": "event"
@@ -105,9 +105,9 @@
                   "label": "Another long event label that should wrap to multiple lines automatically",
                   "label_lines": [
                     "Another   long   event",
-                    "label   that   should",
-                    "wrap   to   multiple",
-                    "lines   automatically"
+                    "label   that   should   wrap",
+                    "to   multiple   lines",
+                    "automatically"
                   ],
                   "kind": "event"
                 }

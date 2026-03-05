@@ -200,8 +200,8 @@
                   "section_class": "section-0",
                   "label": "Event F %% trailing comment",
                   "label_lines": [
-                    "Event   F   %%",
-                    "trailing   comment"
+                    "Event   F   %%   trailing",
+                    "comment"
                   ],
                   "kind": "event"
                 },

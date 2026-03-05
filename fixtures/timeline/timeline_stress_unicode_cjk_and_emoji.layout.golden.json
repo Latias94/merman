@@ -141,8 +141,8 @@
                   "label": "Emoji support 🚀 should be treated as text",
                   "label_lines": [
                     "Emoji   support   🚀",
-                    "should   be   treated",
-                    "as   text"
+                    "should   be   treated   as",
+                    "text"
                   ],
                   "kind": "event"
                 }

@@ -102,8 +102,8 @@
                   "section_class": "section--1",
                   "label": "Second section with same name",
                   "label_lines": [
-                    "Second   section",
-                    "with   same   name"
+                    "Second   section   with",
+                    "same   name"
                   ],
                   "kind": "event"
                 }
@@ -239,8 +239,8 @@
                   "section_class": "section-0",
                   "label": "Second section with same name",
                   "label_lines": [
-                    "Second   section",
-                    "with   same   name"
+                    "Second   section   with",
+                    "same   name"
                   ],
                   "kind": "event"
                 }

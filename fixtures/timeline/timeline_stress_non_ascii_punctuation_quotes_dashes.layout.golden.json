@@ -6,7 +6,7 @@
         "min_x": -5.0,
         "min_y": -61.0,
         "max_x": 890.0,
-        "max_y": 644.0
+        "max_y": 626.4
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -49,7 +49,7 @@
                 "x1": 295.0,
                 "y1": 235.6,
                 "x2": 295.0,
-                "y2": 594.0
+                "y2": 576.4
               },
               "events": [
                 {
@@ -72,14 +72,13 @@
                   "x": 200.0,
                   "y": 460.8,
                   "width": 190.0,
-                  "height": 65.4,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
                   "label": "em—dash and en–dash",
                   "label_lines": [
-                    "em—dash   and",
-                    "en–dash"
+                    "em—dash   and   en–dash"
                   ],
                   "kind": "event"
                 }
@@ -105,7 +104,7 @@
                 "x1": 495.0,
                 "y1": 235.6,
                 "x2": 495.0,
-                "y2": 594.0
+                "y2": 576.4
               },
               "events": [
                 {
@@ -133,8 +132,8 @@
                   "section_class": "section--1",
                   "label": "Fullwidth punctuation ：，。",
                   "label_lines": [
-                    "Fullwidth",
-                    "punctuation   ：，。"
+                    "Fullwidth   punctuation",
+                    "：，。"
                   ],
                   "kind": "event"
                 }

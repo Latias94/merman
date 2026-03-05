@@ -100,9 +100,9 @@
               "section_class": "section-0",
               "label": "Unknown entity should be escaped in SVG XML",
               "label_lines": [
-                "Unknown   entity",
-                "should   be   escaped",
-                "in   SVG   XML"
+                "Unknown   entity   should",
+                "be   escaped   in   SVG",
+                "XML"
               ],
               "kind": "event"
             },
