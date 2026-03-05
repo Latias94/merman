@@ -34,15 +34,21 @@ For each item:
   Notes:
   - Fixture: `fixtures/flowchart/stress_flowchart_html_label_url_punct_wrap_067.mmd`
 
-- [ ] Mixed CJK + ASCII + emoji measurement stability  
+- [x] Mixed CJK + ASCII + emoji measurement stability  
   Gap check:
   - Look for existing fixtures: `rg -n "中文|漢字|emoji|😀" fixtures/ docs/alignment -S`
   - If present, verify parity-root stability at `--dom-decimals 3`.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_unicode_punct_in_ids_labels_035.mmd`
+  - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter unicode_punct_in_ids_labels_035`
 
-- [ ] Whitespace corner cases (`&nbsp;`, multiple spaces, trailing spaces)  
+- [x] Whitespace corner cases (`&nbsp;`, multiple spaces, trailing spaces)  
   Gap check:
   - Find tests: `rg -n "nbsp|multiple spaces|trailing" crates/merman-render/src/text -S`
   - Add a fixture that includes repeated spaces and verify DOM parity does not regress.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_html_label_whitespace_068.mmd`
+  - Compare (structure): `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter whitespace_068`
 
 - [x] HTML label whitespace stress fixture (`&nbsp;`, multiple spaces, trailing spaces)  
   Evidence:
@@ -50,32 +56,46 @@ For each item:
   - Compare (structure): `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter whitespace_068`
   - Compare (root viewport): `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter whitespace_068`
 
-- [ ] Quoted-string whitespace height parity (leading+trailing vs trailing-only)  
+- [x] Quoted-string whitespace height parity (leading+trailing vs trailing-only)  
   Gap check:
   - Confirm we do not inflate node height for trailing-only whitespace in `labelType=string` labels.
   Evidence:
   - `parity-root` should match upstream: `--dom-mode parity-root --dom-decimals 6`.
 
-- [ ] Newline normalization (`\\n` literal vs newline vs `<br>` variants)  
+- [x] Newline normalization (`\\n` literal vs newline vs `<br>` variants)  
   Gap check:
   - Locate existing coverage: `rg -n "replace_br_variants|<br" crates/merman-render/src/text.rs`
   - Ensure both SVG labels and HTML labels handle `<br/>` consistently.
+  Evidence:
+  - Implementation: `crates/merman-render/src/text.rs` (`replace_br_variants`)
+  - Tests: `text::tests::html_br_trims_trailing_space_before_break_for_flowchart_labels`, `text::tests::wrap_label_like_mermaid_does_not_split_escaped_br`
 
 ## B) `htmlLabels` semantics and config precedence
 
-- [ ] Flowchart label-mode precedence matrix  
+- [x] Flowchart label-mode precedence matrix  
   Gap check:
   - Build a small fixture matrix:
     - global `htmlLabels` (T/F)
     - `flowchart.htmlLabels` (unset/T/F)
     - node vs edge vs subgraph titles
   Evidence:
-  - DOM parity compare passes and emitted label modes match upstream.
+  - Fixtures:
+    - `fixtures/flowchart/stress_flowchart_html_labels_global_false_flowchart_true_069.mmd`
+    - `fixtures/flowchart/stress_flowchart_html_labels_global_true_flowchart_false_070.mmd`
+    - `fixtures/flowchart/stress_flowchart_html_labels_global_false_flowchart_unset_071.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_html_labels_global_`
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_html_labels_global_`
 
-- [ ] `wrappingWidth` applies to the right label categories  
+- [x] `wrappingWidth` applies to the right label categories  
   Gap check:
   - Ensure node HTML label max-width tracks `flowchart.wrappingWidth`.
   - Ensure edge labels remain capped at 200px unless upstream says otherwise.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_wrappingwidth_node_vs_edge_072.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
 
 - [ ] Font-size precedence rules per diagram  
   Gap check:

@@ -1,0 +1,6 @@
+%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": true, "wrappingWidth": 120}} }%%
+flowchart TB
+  subgraph SG[This subgraph title should wrap at 200 not 120]
+    A[This node label should wrap at 120] -->|This edge label should still wrap at 200| B[Short]
+  end
+
