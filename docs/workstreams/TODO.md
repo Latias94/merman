@@ -117,6 +117,11 @@ For each item:
   Evidence:
   - A “fontSize smoke fixture” per diagram with `init` directives.
   Evidence (partial):
+  - Class (SVG labels): Mermaid’s `createText(..., { width: calculateTextWidth(text, config) + 50 })` uses the
+    top-level `fontSize` for the width probe, while the rendered SVG `<text>` inherits the root `font-size`
+    (typically from `themeVariables.fontSize`). If those differ, upstream can wrap/split unexpectedly.
+    - Fixture: `fixtures/class/stress_class_svg_font_size_precedence_025.mmd`
+    - Upstream: `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg`
   - Flowchart: `fixtures/flowchart/stress_flowchart_font_size_precedence_073.mmd`
     - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_font_size_precedence_073`
     - Note: root `viewBox` is pinned via `crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs` for this fixture.

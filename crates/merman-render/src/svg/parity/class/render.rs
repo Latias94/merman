@@ -57,12 +57,24 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
 
-    // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI baselines
-    // show that those HTML labels do not reliably inherit the surrounding SVG-root `font-size`
-    // rules, so they effectively render at the browser default (16px) even when users override
-    // `fontSize` / `themeVariables.fontSize`. Use 16px here so label sizing and viewport bounds
-    // match upstream Mermaid CLI output.
-    let font_size = 16.0;
+    let diagram_use_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+    let font_size = if diagram_use_html_labels {
+        // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI
+        // baselines show that those HTML labels do not reliably inherit the surrounding SVG-root
+        // `font-size` rules, so they effectively render at the browser default (16px) even when
+        // users override `fontSize` / `themeVariables.fontSize`.
+        16.0
+    } else {
+        // In SVG-label mode, the `<text>` elements inherit the root `font-size` (typically from
+        // `themeVariables.fontSize`) in upstream Mermaid SVG baselines.
+        config_f64(effective_config, &["themeVariables", "fontSize"])
+            .or_else(|| config_f64(effective_config, &["fontSize"]))
+            .unwrap_or(16.0)
+            .max(1.0)
+    };
+    let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
     let line_height = font_size * 1.5;
     // Mermaid defaults `config.class.padding` to 12 (used for node sizing, not SVG viewport padding).
     let _class_padding = effective_config
@@ -1316,7 +1328,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         );
         out.push_str("</g>");
 
-        let use_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+        let use_html_labels = diagram_use_html_labels;
         if use_html_labels {
             let title_text = decode_entities_minimal_cow(node.text.trim());
             let title_metrics = measurer.measure_wrapped(
@@ -1572,11 +1584,153 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let gap = padding;
             let text_padding = 3.0;
 
+            fn mermaid_class_svg_create_text_width_px(
+                measurer: &dyn TextMeasurer,
+                text: &str,
+                style: &TextStyle,
+                wrap_probe_font_size: f64,
+            ) -> Option<f64> {
+                let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
+                let wrap_probe_style = TextStyle {
+                    font_family: style.font_family.clone(),
+                    font_size: wrap_probe_font_size,
+                    font_weight: style.font_weight.clone(),
+                };
+                let w = measurer
+                    .measure_svg_simple_text_bbox_width_px(text, &wrap_probe_style)
+                    .round()
+                    + 50.0;
+                if w.is_finite() && w > 0.0 {
+                    Some(w)
+                } else {
+                    None
+                }
+            }
+
+            fn wrap_class_svg_text_like_mermaid(
+                text: &str,
+                measurer: &dyn TextMeasurer,
+                style: &TextStyle,
+                wrap_probe_font_size: f64,
+                bold: bool,
+            ) -> String {
+                let Some(wrap_width_px) = mermaid_class_svg_create_text_width_px(
+                    measurer,
+                    text,
+                    style,
+                    wrap_probe_font_size,
+                ) else {
+                    return text.to_string();
+                };
+
+                let mut lines: Vec<String> = Vec::new();
+                for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
+                    let mut tokens = std::collections::VecDeque::from(
+                        crate::text::DeterministicTextMeasurer::split_line_to_words(&line),
+                    );
+                    let mut cur = String::new();
+
+                    while let Some(tok) = tokens.pop_front() {
+                        if cur.is_empty() && tok == " " {
+                            continue;
+                        }
+
+                        let candidate = format!("{cur}{tok}");
+                        let candidate_w = if bold {
+                            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                                measurer,
+                                &format!("**{}**", candidate.trim_end()),
+                                style,
+                                None,
+                                WrapMode::SvgLike,
+                            )
+                            .width
+                        } else {
+                            measurer.measure(candidate.trim_end(), style).width
+                        };
+                        if candidate_w <= wrap_width_px {
+                            cur = candidate;
+                            continue;
+                        }
+
+                        if !cur.trim().is_empty() {
+                            lines.push(cur.trim_end().to_string());
+                            cur.clear();
+                            tokens.push_front(tok);
+                            continue;
+                        }
+
+                        if tok == " " {
+                            continue;
+                        }
+
+                        let chars = tok.chars().collect::<Vec<_>>();
+                        let mut cut = 1usize;
+                        while cut < chars.len() {
+                            let head: String = chars[..cut].iter().collect();
+                            let head_w = if bold {
+                                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                                    measurer,
+                                    &format!("**{head}**"),
+                                    style,
+                                    None,
+                                    WrapMode::SvgLike,
+                                )
+                                .width
+                            } else {
+                                measurer.measure(&head, style).width
+                            };
+                            if head_w > wrap_width_px {
+                                break;
+                            }
+                            cut += 1;
+                        }
+                        cut = cut.saturating_sub(1).max(1);
+                        let head: String = chars[..cut].iter().collect();
+                        let tail: String = chars[cut..].iter().collect();
+                        lines.push(head);
+                        if !tail.is_empty() {
+                            tokens.push_front(tail);
+                        }
+                    }
+
+                    if !cur.trim().is_empty() {
+                        lines.push(cur.trim_end().to_string());
+                    }
+                }
+
+                if lines.len() <= 1 {
+                    text.to_string()
+                } else {
+                    lines.join("\n")
+                }
+            }
+
             let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
             if title_text.starts_with('\\') {
                 title_text = title_text.trim_start_matches('\\').to_string();
             }
-            let title_md = format!("**{title_text}**");
+            let wrapped_title_text = if !(title_text.contains('*')
+                || title_text.contains('_')
+                || title_text.contains('`'))
+            {
+                wrap_class_svg_text_like_mermaid(
+                    &title_text,
+                    measurer,
+                    &text_style,
+                    wrap_probe_font_size,
+                    true,
+                )
+            } else {
+                title_text.clone()
+            };
+            let title_lines =
+                crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
+            let title_md = title_lines
+                .iter()
+                .map(|l| format!("**{l}**"))
+                .collect::<Vec<_>>()
+                .join("\n");
             let title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
                 measurer,
                 &title_md,
@@ -1592,7 +1746,16 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let mut annotation_group_width: f64 = 0.0;
             if let Some(a) = node.annotations.first() {
                 let decoded = decode_entities_minimal(a.trim());
-                let text = format!("\u{00AB}{decoded}\u{00BB}");
+                let mut text = format!("\u{00AB}{decoded}\u{00BB}");
+                if !(text.contains('*') || text.contains('_') || text.contains('`')) {
+                    text = wrap_class_svg_text_like_mermaid(
+                        &text,
+                        measurer,
+                        &text_style,
+                        wrap_probe_font_size,
+                        false,
+                    );
+                }
                 let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
                     measurer,
                     &text,
@@ -1626,6 +1789,15 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     let mut t = decode_entities_minimal(m.display_text.trim());
                     if t.starts_with('\\') {
                         t = t.trim_start_matches('\\').to_string();
+                    }
+                    if !(t.contains('*') || t.contains('_') || t.contains('`')) {
+                        t = wrap_class_svg_text_like_mermaid(
+                            &t,
+                            measurer,
+                            &text_style,
+                            wrap_probe_font_size,
+                            false,
+                        );
                     }
                     let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
                         measurer,
@@ -1666,6 +1838,15 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     let mut t = decode_entities_minimal(m.display_text.trim());
                     if t.starts_with('\\') {
                         t = t.trim_start_matches('\\').to_string();
+                    }
+                    if !(t.contains('*') || t.contains('_') || t.contains('`')) {
+                        t = wrap_class_svg_text_like_mermaid(
+                            &t,
+                            measurer,
+                            &text_style,
+                            wrap_probe_font_size,
+                            false,
+                        );
                     }
                     let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
                         measurer,
@@ -1823,11 +2004,31 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
                 let _ = write!(
                     &mut out,
-                    r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight=""><tspan font-style="normal" class="text-inner-tspan" font-weight="">"#,
+                    r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="">"#,
                     fmt(t_y)
                 );
-                escape_xml_into(&mut out, title_text.as_str());
-                out.push_str("</tspan></tspan></text></g></g>");
+                for (idx, line) in title_lines.iter().enumerate() {
+                    if idx == 0 {
+                        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#);
+                    } else {
+                        let y_em = if idx == 1 {
+                            "1em".to_string()
+                        } else {
+                            format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+                        };
+                        let _ = write!(
+                            &mut out,
+                            r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
+                            y_em
+                        );
+                    }
+                    out.push_str(
+                        r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="">"#,
+                    );
+                    escape_xml_into(&mut out, line);
+                    out.push_str("</tspan></tspan>");
+                }
+                out.push_str("</text></g></g>");
             }
             out.push_str("</g>");
 

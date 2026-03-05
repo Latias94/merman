@@ -714,20 +714,31 @@ fn layout_prepared(
     Ok((fragments, bounds))
 }
 
-fn class_text_style(effective_config: &Value) -> TextStyle {
+fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle {
     // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Class diagram labels are
     // rendered via HTML `<foreignObject>` and inherit the global font family.
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid's class diagram renderer emits labels via HTML `<foreignObject>` (see upstream SVG
-    // baselines under `fixtures/upstream-svgs/class/*`). In Mermaid CLI (Puppeteer headless),
-    // those HTML labels do **not** reliably inherit `font-size` from the surrounding SVG/CSS
-    // (`#id{font-size:...}`), so the effective font size for measurement is the browser default
-    // (16px) even when `themeVariables.fontSize` is overridden.
-    //
-    // Keep 16px here so our deterministic layout sizing matches Mermaid CLI baselines.
-    let font_size = 16.0;
+    let font_size = match wrap_mode {
+        WrapMode::HtmlLike => {
+            // Mermaid's class diagram renderer emits labels via HTML `<foreignObject>` (see
+            // upstream SVG baselines under `fixtures/upstream-svgs/class/*`). In Mermaid CLI
+            // (Puppeteer headless), those HTML labels do **not** reliably inherit `font-size`
+            // from the surrounding SVG/CSS (`#id{font-size:...}`), so the effective font size
+            // for measurement is the browser default (16px) even when `themeVariables.fontSize`
+            // is overridden.
+            //
+            // Keep 16px here so our deterministic layout sizing matches Mermaid CLI baselines.
+            16.0
+        }
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+            config_f64(effective_config, &["themeVariables", "fontSize"])
+                .or_else(|| config_f64(effective_config, &["fontSize"]))
+                .unwrap_or(16.0)
+                .max(1.0)
+        }
+    };
     TextStyle {
         font_family,
         font_size,
@@ -739,6 +750,7 @@ fn class_box_dimensions(
     node: &ClassNode,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    wrap_probe_font_size: f64,
     wrap_mode: WrapMode,
     padding: f64,
     hide_empty_members_box: bool,
@@ -754,10 +766,138 @@ fn class_box_dimensions(
     let gap = padding;
     let text_padding = if use_html_labels { 0.0 } else { 3.0 };
 
+    fn mermaid_class_svg_create_text_width_px(
+        measurer: &dyn TextMeasurer,
+        text: &str,
+        style: &TextStyle,
+        wrap_probe_font_size: f64,
+    ) -> Option<f64> {
+        let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
+        let wrap_probe_style = TextStyle {
+            font_family: style.font_family.clone(),
+            font_size: wrap_probe_font_size,
+            font_weight: style.font_weight.clone(),
+        };
+        // Mermaid class diagram SVG labels call:
+        // `createText(..., { width: calculateTextWidth(text, config) + 50 })`.
+        //
+        // `calculateTextWidth(...)` uses `config.fontSize` (top-level). The final rendered SVG
+        // text inherits the root `font-size` (typically from `themeVariables.fontSize`). If
+        // those differ, Mermaid can wrap unexpectedly (see upstream baseline:
+        // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg`).
+        let w = measurer
+            .measure_svg_simple_text_bbox_width_px(text, &wrap_probe_style)
+            .round()
+            + 50.0;
+        if w.is_finite() && w > 0.0 {
+            Some(w)
+        } else {
+            None
+        }
+    }
+
+    fn wrap_class_svg_text_like_mermaid(
+        text: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        wrap_probe_font_size: f64,
+        bold: bool,
+    ) -> String {
+        let Some(wrap_width_px) =
+            mermaid_class_svg_create_text_width_px(measurer, text, style, wrap_probe_font_size)
+        else {
+            return text.to_string();
+        };
+
+        let mut lines: Vec<String> = Vec::new();
+        for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
+            let mut tokens = std::collections::VecDeque::from(
+                crate::text::DeterministicTextMeasurer::split_line_to_words(&line),
+            );
+            let mut cur = String::new();
+
+            while let Some(tok) = tokens.pop_front() {
+                if cur.is_empty() && tok == " " {
+                    continue;
+                }
+
+                let candidate = format!("{cur}{tok}");
+                let candidate_w = if bold {
+                    crate::text::measure_markdown_with_flowchart_bold_deltas(
+                        measurer,
+                        &format!("**{}**", candidate.trim_end()),
+                        style,
+                        None,
+                        WrapMode::SvgLike,
+                    )
+                    .width
+                } else {
+                    measurer.measure(candidate.trim_end(), style).width
+                };
+                if candidate_w <= wrap_width_px {
+                    cur = candidate;
+                    continue;
+                }
+
+                if !cur.trim().is_empty() {
+                    lines.push(cur.trim_end().to_string());
+                    cur.clear();
+                    tokens.push_front(tok);
+                    continue;
+                }
+
+                if tok == " " {
+                    continue;
+                }
+
+                // Token itself does not fit on an empty line; split by characters.
+                let chars = tok.chars().collect::<Vec<_>>();
+                let mut cut = 1usize;
+                while cut < chars.len() {
+                    let head: String = chars[..cut].iter().collect();
+                    let head_w = if bold {
+                        crate::text::measure_markdown_with_flowchart_bold_deltas(
+                            measurer,
+                            &format!("**{head}**"),
+                            style,
+                            None,
+                            WrapMode::SvgLike,
+                        )
+                        .width
+                    } else {
+                        measurer.measure(&head, style).width
+                    };
+                    if head_w > wrap_width_px {
+                        break;
+                    }
+                    cut += 1;
+                }
+                cut = cut.saturating_sub(1).max(1);
+                let head: String = chars[..cut].iter().collect();
+                let tail: String = chars[cut..].iter().collect();
+                lines.push(head);
+                if !tail.is_empty() {
+                    tokens.push_front(tail);
+                }
+            }
+
+            if !cur.trim().is_empty() {
+                lines.push(cur.trim_end().to_string());
+            }
+        }
+
+        if lines.len() <= 1 {
+            text.to_string()
+        } else {
+            lines.join("\n")
+        }
+    }
+
     fn measure_label(
         measurer: &dyn TextMeasurer,
         text: &str,
         style: &TextStyle,
+        wrap_probe_font_size: f64,
         wrap_mode: WrapMode,
     ) -> crate::text::TextMetrics {
         // Mermaid class diagram text uses `createText(..., { classes: 'markdown-node-label' })`,
@@ -770,7 +910,12 @@ fn class_box_dimensions(
                 measurer, text, style, None, wrap_mode,
             )
         } else {
-            measurer.measure_wrapped(text, style, None, wrap_mode)
+            let text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
+                wrap_class_svg_text_like_mermaid(text, measurer, style, wrap_probe_font_size, false)
+            } else {
+                text.to_string()
+            };
+            measurer.measure_wrapped(&text, style, None, wrap_mode)
         }
     }
 
@@ -793,7 +938,7 @@ fn class_box_dimensions(
     let mut annotation_group_height = 0.0;
     if let Some(a) = node.annotations.first() {
         let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
-        let m = measure_label(measurer, &t, text_style, wrap_mode);
+        let m = measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
         annotation_rect = label_rect(m, 0.0);
         if let Some(r) = annotation_rect {
             annotation_group_height = r.height().max(0.0);
@@ -808,7 +953,26 @@ fn class_box_dimensions(
     // Mermaid renders class titles as bold (`font-weight: bolder`) and sizes boxes via SVG bbox.
     // The vendored text measurer does not model bold glyph widths, so apply the same flowchart
     // bold deltas used for Markdown `<strong>` spans.
-    let title_md = format!("**{title_text}**");
+    let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+        && !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`'))
+    {
+        wrap_class_svg_text_like_mermaid(
+            &title_text,
+            measurer,
+            text_style,
+            wrap_probe_font_size,
+            true,
+        )
+    } else {
+        title_text.clone()
+    };
+    let title_lines =
+        crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
+    let title_md = title_lines
+        .iter()
+        .map(|l| format!("**{l}**"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
         measurer, &title_md, text_style, None, wrap_mode,
     );
@@ -826,7 +990,7 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            let metrics = measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
             if let Some(out) = members_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -857,7 +1021,7 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            let metrics = measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
             if let Some(out) = methods_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1039,7 +1203,10 @@ pub fn layout_class_diagram_v2_typed(
     let hide_empty_members_box =
         config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
 
-    let text_style = class_text_style(effective_config);
+    let text_style = class_text_style(effective_config, wrap_mode_node);
+    let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
@@ -1086,6 +1253,7 @@ pub fn layout_class_diagram_v2_typed(
             c,
             measurer,
             &text_style,
+            wrap_probe_font_size,
             wrap_mode_node,
             class_padding,
             hide_empty_members_box,

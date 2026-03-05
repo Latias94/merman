@@ -15,6 +15,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
+- Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
 
 ### Fixed
 
@@ -30,6 +31,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   due to text measurement differences).
 - Class/Mindmap: match Mermaid CLI baselines by measuring HTML `<foreignObject>` labels at the browser default (16px)
   instead of relying on SVG-root `font-size` inheritance when `themeVariables.fontSize` is overridden.
+- Class: match upstream Mermaid SVG-label wrapping when `fontSize` (used by `calculateTextWidth`) differs from the root
+  `font-size` inherited by `<text>` (often from `themeVariables.fontSize`).
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:

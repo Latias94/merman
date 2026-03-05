@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "FontSizeSvgProbe",
+          "x": 153.038,
+          "y": 91.8,
+          "width": 306.076,
+          "height": 183.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 306.076,
+        "max_y": 183.6
+      }
+    }
+  }
+}
