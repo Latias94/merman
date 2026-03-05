@@ -32,6 +32,7 @@ Scope:
 
 - HTML label wrapping boundaries (URLs, punctuation, long tokens).
 - Whitespace/newline normalization and markdown token boundaries.
+- `foreignObject` label font-size inheritance quirks (Mermaid CLI often measures at 16px default).
 - Flowchart `parity-root` stabilization for text-driven node height changes (avoid viewport drift).
 
 Exit criteria:

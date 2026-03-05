@@ -97,7 +97,20 @@ For each item:
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
 
-- [ ] Font-size precedence rules per diagram  
+- [x] `foreignObject` font-size inheritance (Mermaid CLI / Puppeteer)  
+  Gap check:
+  - Add a fixture that overrides `fontSize` and `themeVariables.fontSize` while forcing HTML labels.
+  - Confirm upstream Mermaid CLI still measures at the browser default (16px) for the HTML label content.
+  Evidence:
+  - Class: `fixtures/class/stress_class_font_size_precedence_024.mmd`
+    - Upstream: `fixtures/upstream-svgs/class/stress_class_font_size_precedence_024.svg`
+  - Mindmap: `fixtures/mindmap/stress_mindmap_font_size_precedence_037.mmd`
+    - Upstream: `fixtures/upstream-svgs/mindmap/stress_mindmap_font_size_precedence_037.svg`
+  Notes:
+  - This matches what we observe in Mermaid CLI baselines: HTML label contents do not reliably inherit SVG-root
+    `font-size` CSS rules, so the effective label size is often the browser default (16px).
+
+- [ ] Font-size precedence rules per diagram (SVG text vs HTML labels)  
   Gap check:
   - Search docs: `docs/alignment/*MINIMUM.md` and per-diagram render modules for `fontSize`.
   - Confirm whether each diagram reads from `themeVariables.fontSize`, top-level `fontSize`, or a diagram override.

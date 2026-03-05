@@ -99,6 +99,19 @@ Suggested fixture matrix:
 - Token types: URL, `a__b`, `` `code` ``, `_italic_`, `**bold**`, `~~strike~~`
 - Inputs with `\r\n`, trailing newline, multiple spaces
 
+#### `foreignObject` font-size inheritance (Mermaid CLI / Puppeteer)
+
+Some diagrams render labels via HTML `<foreignObject>`. In Mermaid CLI (Puppeteer headless), those
+HTML labels do **not** reliably inherit `font-size` from the surrounding SVG/CSS
+(`svg#id { font-size: ... }`). In practice this means that overriding `themeVariables.fontSize`
+may still measure/render at the browser default (16px), which cascades into node sizing and root
+viewport bounds.
+
+Evidence fixtures:
+
+- Class: `fixtures/class/stress_class_font_size_precedence_024.mmd` (+ upstream SVG baseline)
+- Mindmap: `fixtures/mindmap/stress_mindmap_font_size_precedence_037.mmd` (+ upstream SVG baseline)
+
 #### Flowchart-specific: quoted-string whitespace height parity
 
 Mermaid FlowDB preserves whitespace for `labelType=string` labels (quoted strings), but upstream
@@ -148,6 +161,7 @@ Common triggers:
 - `themeVariables` vs top-level config (`fontSize`, `fontFamily`, `fontWeight`, colors).
 - `theme=default` special cases (avoid implicitly applying `base` defaults).
 - Inline `classDef` / `style` overriding label font properties.
+- `foreignObject` labels not inheriting SVG-root `font-size` rules (often effectively 16px in Mermaid CLI).
 
 How to validate coverage:
 
