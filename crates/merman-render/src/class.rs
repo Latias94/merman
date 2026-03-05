@@ -715,6 +715,19 @@ fn layout_prepared(
 }
 
 fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle {
+    fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+        let s = s.trim();
+        let raw = s.strip_suffix("px").unwrap_or(s).trim();
+        raw.parse::<f64>().ok().filter(|v| v.is_finite())
+    }
+
+    fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+        config_f64(cfg, path).or_else(|| {
+            let s = config_string(cfg, path)?;
+            parse_css_px_to_f64(&s)
+        })
+    }
+
     // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Class diagram labels are
     // rendered via HTML `<foreignObject>` and inherit the global font family.
     let font_family = config_string(effective_config, &["fontFamily"])
@@ -733,8 +746,8 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
             16.0
         }
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-            config_f64(effective_config, &["themeVariables", "fontSize"])
-                .or_else(|| config_f64(effective_config, &["fontSize"]))
+            config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+                .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
                 .unwrap_or(16.0)
                 .max(1.0)
         }
