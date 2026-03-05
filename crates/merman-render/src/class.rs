@@ -720,12 +720,14 @@ fn class_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid class diagram node labels inherit the global `fontSize` (via the root `#id{font-size}` rule)
-    // and render via HTML labels (`foreignObject`). Prefer the global value for sizing/layout parity.
-    let font_size = config_f64(effective_config, &["fontSize"])
-        .or_else(|| config_f64(effective_config, &["class", "fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    // Mermaid's class diagram renderer emits labels via HTML `<foreignObject>` (see upstream SVG
+    // baselines under `fixtures/upstream-svgs/class/*`). In Mermaid CLI (Puppeteer headless),
+    // those HTML labels do **not** reliably inherit `font-size` from the surrounding SVG/CSS
+    // (`#id{font-size:...}`), so the effective font size for measurement is the browser default
+    // (16px) even when `themeVariables.fontSize` is overridden.
+    //
+    // Keep 16px here so our deterministic layout sizing matches Mermaid CLI baselines.
+    let font_size = 16.0;
     TextStyle {
         font_family,
         font_size,

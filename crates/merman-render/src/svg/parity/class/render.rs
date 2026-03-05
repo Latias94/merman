@@ -57,11 +57,12 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
 
-    let font_size = effective_config
-        .get("fontSize")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(16.0)
-        .max(1.0);
+    // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI baselines
+    // show that those HTML labels do not reliably inherit the surrounding SVG-root `font-size`
+    // rules, so they effectively render at the browser default (16px) even when users override
+    // `fontSize` / `themeVariables.fontSize`. Use 16px here so label sizing and viewport bounds
+    // match upstream Mermaid CLI output.
+    let font_size = 16.0;
     let line_height = font_size * 1.5;
     // Mermaid defaults `config.class.padding` to 12 (used for node sizing, not SVG viewport padding).
     let _class_padding = effective_config

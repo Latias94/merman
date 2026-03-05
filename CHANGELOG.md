@@ -14,6 +14,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
+- Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 
 ### Fixed
 
@@ -27,6 +28,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence: prefer the global `fontSize` over `sequence.messageFontSize` when emitting SVG text styles (aligns with Mermaid CLI baselines).
 - Treemap: align the leaf label font sizing for `Item A1` with upstream Mermaid CLI baselines (prevents a 1px shrink
   due to text measurement differences).
+- Class/Mindmap: match Mermaid CLI baselines by measuring HTML `<foreignObject>` labels at the browser default (16px)
+  instead of relying on SVG-root `font-size` inheritance when `themeVariables.fontSize` is overridden.
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
