@@ -32,6 +32,7 @@ Scope:
 
 - HTML label wrapping boundaries (URLs, punctuation, long tokens).
 - Whitespace/newline normalization and markdown token boundaries.
+- Flowchart `parity-root` stabilization for text-driven node height changes (avoid viewport drift).
 
 Exit criteria:
 
@@ -88,4 +89,3 @@ Exit criteria:
   - a small fixture batch import or promotion
   - green parity gates
   - a short note in `docs/alignment/STATUS.md` (optional but recommended)
-

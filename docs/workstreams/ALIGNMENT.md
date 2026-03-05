@@ -79,6 +79,14 @@ Common triggers:
 - `&nbsp;`, multiple spaces, trailing whitespace, `\r\n`, trailing blank lines.
 - `\\n` literal vs newline vs `<br>` variants.
 
+Notes:
+
+- `dom-mode parity` is primarily **structural**. It intentionally does not try to prove geometry
+  parity for all numeric attributes (e.g. `translate(x,y)` payloads). For geometry-sensitive
+  issues (especially text measurement), use `dom-mode parity-root` and/or layout goldens.
+- Flowchart HTML labels are the highest churn area because small changes in measured line count
+  cascade into Dagre node sizes → edge routes → root viewport (`viewBox`/`max-width`) deltas.
+
 How to validate coverage:
 
 - Search existing tests: `rg -n "wrap|measure|markdown|htmlLabels" crates/merman-render/src/text.rs`
@@ -90,6 +98,23 @@ Suggested fixture matrix:
 - `wrappingWidth: 80|120|200`
 - Token types: URL, `a__b`, `` `code` ``, `_italic_`, `**bold**`, `~~strike~~`
 - Inputs with `\r\n`, trailing newline, multiple spaces
+
+#### Flowchart-specific: quoted-string whitespace height parity
+
+Mermaid FlowDB preserves whitespace for `labelType=string` labels (quoted strings), but upstream
+SVG baselines do **not** consistently allocate extra line height for *trailing-only* whitespace.
+This is easy to over-model in headless measurement and causes large `parity-root` deltas.
+
+Gap check:
+
+- Use `parity-root` to surface the symptom:  
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter whitespace_068`
+- Inspect whether node heights inflate (e.g. a 1-line label becomes 2 lines worth of height) and
+  whether root `viewBox` height grows as a result.
+
+Evidence fixture:
+
+- `fixtures/flowchart/stress_flowchart_html_label_whitespace_068.mmd`
 
 ### 2) `htmlLabels` semantics (diagram-specific precedence)
 
@@ -171,4 +196,3 @@ How to validate coverage:
 5. Run:
    - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
    - `cargo nextest run -p merman-render`
-

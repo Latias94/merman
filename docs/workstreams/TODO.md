@@ -44,6 +44,18 @@ For each item:
   - Find tests: `rg -n "nbsp|multiple spaces|trailing" crates/merman-render/src/text -S`
   - Add a fixture that includes repeated spaces and verify DOM parity does not regress.
 
+- [x] HTML label whitespace stress fixture (`&nbsp;`, multiple spaces, trailing spaces)  
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_html_label_whitespace_068.mmd`
+  - Compare (structure): `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter whitespace_068`
+  - Compare (root viewport): `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter whitespace_068`
+
+- [ ] Quoted-string whitespace height parity (leading+trailing vs trailing-only)  
+  Gap check:
+  - Confirm we do not inflate node height for trailing-only whitespace in `labelType=string` labels.
+  Evidence:
+  - `parity-root` should match upstream: `--dom-mode parity-root --dom-decimals 6`.
+
 - [ ] Newline normalization (`\\n` literal vs newline vs `<br>` variants)  
   Gap check:
   - Locate existing coverage: `rg -n "replace_br_variants|<br" crates/merman-render/src/text.rs`

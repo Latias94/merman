@@ -10,6 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - `xtask`: extended `gen-upstream-svgs` and `compare-svg-xml` to support generating/comparing SVG baselines from custom
   fixture roots (useful for strict XML diffs when iterating on layout parity).
+- Docs: expanded `docs/workstreams/*` guidance for text-measurement parity work (including `parity-root` root viewport checks).
 - Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 
