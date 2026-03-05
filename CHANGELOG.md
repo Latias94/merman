@@ -33,6 +33,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   instead of relying on SVG-root `font-size` inheritance when `themeVariables.fontSize` is overridden.
 - Class: match upstream Mermaid SVG-label wrapping when `fontSize` (used by `calculateTextWidth`) differs from the root
   `font-size` inherited by `<text>` (often from `themeVariables.fontSize`).
+- Text: treat backtick-delimited spans as literal during Mermaid Markdown tokenization so emphasis/strong delimiters
+  inside them are not interpreted (aligns with upstream Mermaid CLI baselines for inline-code-like labels).
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:

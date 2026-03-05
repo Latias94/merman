@@ -182,3 +182,19 @@ fn markdown_underscore_delimiters_match_mermaid() {
         vec![vec![("a".to_string(), Strong)]]
     );
 }
+
+#[test]
+fn markdown_inline_code_suppresses_emphasis_delimiters() {
+    use MermaidMarkdownWordType::*;
+
+    // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not interpret
+    // `**...**` inside them as strong/emphasis.
+    assert_eq!(
+        mermaid_markdown_to_lines("inline: `**not bold**`", true),
+        vec![vec![
+            ("inline:".to_string(), Normal),
+            ("`**not".to_string(), Normal),
+            ("bold**`".to_string(), Normal),
+        ]]
+    );
+}

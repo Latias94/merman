@@ -141,7 +141,7 @@ For each item:
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_markdown_underscore_delims_074`
   - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_underscore_delimiters_match_mermaid`)
 
-- [ ] Inline code suppresses emphasis parsing  
+- [x] Inline code suppresses emphasis parsing  
   Gap check:
   - Ensure `` `**not bold**` `` remains literal in both SVG-label and HTML-label modes.
   Evidence (partial):
@@ -149,6 +149,8 @@ For each item:
     - Fixture: `fixtures/class/stress_class_markdown_inline_code_022.mmd`
     - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
     - Compare (root): `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
+  - Tokenizer behavior:
+    - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_inline_code_suppresses_emphasis_delimiters`)
 
 - [ ] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:

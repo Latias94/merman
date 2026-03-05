@@ -794,6 +794,7 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut stack: Vec<MermaidMarkdownWordType> = vec![MermaidMarkdownWordType::Normal];
     let mut word = String::new();
     let mut word_ty = MermaidMarkdownWordType::Normal;
+    let mut in_code_span = false;
 
     let mut flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
                           line_idx: &mut usize,
@@ -842,7 +843,25 @@ pub(crate) fn mermaid_markdown_to_lines(
             }
         }
 
+        if ch == '`' {
+            if word.is_empty() {
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+            }
+            word.push(ch);
+            in_code_span = !in_code_span;
+            i += 1;
+            continue;
+        }
+
         if ch == '*' || ch == '_' {
+            if in_code_span {
+                if word.is_empty() {
+                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                }
+                word.push(ch);
+                i += 1;
+                continue;
+            }
             let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
                 2
             } else {
