@@ -13,6 +13,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut dom_decimals: Option<u32> = None;
     let mut filter: Option<String> = None;
     let mut text_measurer: Option<String> = None;
+    let mut upstream_root_arg: Option<PathBuf> = None;
+    let mut fixtures_root_arg: Option<PathBuf> = None;
+    let mut out_root_arg: Option<PathBuf> = None;
     let mut only_diagrams: Vec<String> = Vec::new();
 
     let mut i = 0;
@@ -34,6 +37,18 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             "--text-measurer" => {
                 i += 1;
                 text_measurer = args.get(i).map(|s| s.trim().to_ascii_lowercase());
+            }
+            "--upstream-root" => {
+                i += 1;
+                upstream_root_arg = args.get(i).map(|s| PathBuf::from(s.trim()));
+            }
+            "--fixtures-root" => {
+                i += 1;
+                fixtures_root_arg = args.get(i).map(|s| PathBuf::from(s.trim()));
+            }
+            "--out-root" => {
+                i += 1;
+                out_root_arg = args.get(i).map(|s| PathBuf::from(s.trim()));
             }
             "--diagram" => {
                 i += 1;
@@ -82,9 +97,35 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..");
-    let upstream_root = workspace_root.join("fixtures").join("upstream-svgs");
-    let fixtures_root = workspace_root.join("fixtures");
-    let out_root = workspace_root.join("target").join("compare").join("xml");
+
+    fn resolve_root(workspace_root: &PathBuf, raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
+        let Some(raw) = raw else {
+            return default;
+        };
+        if raw.is_absolute() {
+            return raw;
+        }
+        if raw.as_os_str().is_empty() {
+            return default;
+        }
+        workspace_root.join(raw)
+    }
+
+    let upstream_root = resolve_root(
+        &workspace_root,
+        upstream_root_arg,
+        workspace_root.join("fixtures").join("upstream-svgs"),
+    );
+    let fixtures_root = resolve_root(
+        &workspace_root,
+        fixtures_root_arg,
+        workspace_root.join("fixtures"),
+    );
+    let out_root = resolve_root(
+        &workspace_root,
+        out_root_arg,
+        workspace_root.join("target").join("compare").join("xml"),
+    );
 
     fn sanitize_svg_id(raw: &str) -> String {
         let mut out = String::with_capacity(raw.len());

@@ -221,12 +221,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         if needs_wrap {
             let _ = write!(
                 &mut div_style,
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;",
-                fmt_display(ctx.wrapping_width)
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+                mw = fmt_display(ctx.wrapping_width)
             );
         } else {
-            div_style.push_str(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
+            let _ = write!(
+                &mut div_style,
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
+                mw = fmt_display(ctx.wrapping_width)
             );
         }
         if compact_label_translate {

@@ -1,7 +1,9 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_flowchart_v2_debug_svg};
+use merman_render::svg::{
+    SvgRenderOptions, render_flowchart_v2_debug_svg, render_flowchart_v2_svg,
+};
 use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
@@ -97,4 +99,66 @@ fn flowchart_v2_fontawesome_edge_label_width_matches_upstream() {
     let lbl = edge.label.as_ref().expect("edge label");
     assert_eq!(lbl.width, 45.015625);
     assert_eq!(lbl.height, 24.0);
+}
+
+#[test]
+fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
+    let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true, \"wrappingWidth\": 120}}}%%\nflowchart TB\nA[\"Hello\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains("max-width: 120px"),
+        "expected flowchart.wrappingWidth=120 to affect html label max-width style"
+    );
+}
+
+#[test]
+fn flowchart_html_labels_unescape_double_backslashes() {
+    let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains("line1\\nline2"),
+        "expected output to contain a single backslash in `\\\\n` escape"
+    );
+    assert!(
+        !svg.contains("line1\\\\nline2"),
+        "expected output to not contain the raw double-backslash input"
+    );
 }

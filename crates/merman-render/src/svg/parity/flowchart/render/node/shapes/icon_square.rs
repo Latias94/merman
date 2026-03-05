@@ -154,11 +154,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         };
         let _ = write!(
             out,
-            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
+            r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
             fmt(-label_bbox_w / 2.0),
             fmt(label_y),
             fmt(label_bbox_w),
             fmt(label_bbox_h),
+            fmt(ctx.wrapping_width),
             label_html
         );
 

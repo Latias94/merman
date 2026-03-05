@@ -734,6 +734,9 @@ fn layout_flowchart_v2_with_model(
     let state_padding = config_f64(effective_config_value, &["state", "padding"]).unwrap_or(8.0);
     let wrapping_width =
         config_f64(effective_config_value, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+    // Mermaid measures edge labels via `createText(...)` without overriding the default
+    // wrapping width (200px), independent of `flowchart.wrappingWidth`.
+    let edge_label_wrapping_width = 200.0;
     // Mermaid@11.12.2 renders subgraph titles via the `createText(...)` path and applies a default
     // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
     // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
@@ -787,9 +790,99 @@ fn layout_flowchart_v2_with_model(
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let font_family = config_string(effective_config_value, &["fontFamily"])
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64(effective_config_value, &["fontSize"]).unwrap_or(16.0);
+    fn normalize_css_font_family(font_family: &str) -> String {
+        let s = font_family.trim().trim_end_matches(';').trim();
+        if s.is_empty() {
+            return String::new();
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        let mut in_single = false;
+        let mut in_double = false;
+
+        for ch in s.chars() {
+            match ch {
+                '\'' if !in_double => {
+                    in_single = !in_single;
+                    cur.push(ch);
+                }
+                '"' if !in_single => {
+                    in_double = !in_double;
+                    cur.push(ch);
+                }
+                ',' if !in_single && !in_double => {
+                    let p = cur.trim();
+                    if !p.is_empty() {
+                        parts.push(p.to_string());
+                    }
+                    cur.clear();
+                }
+                _ => cur.push(ch),
+            }
+        }
+
+        let p = cur.trim();
+        if !p.is_empty() {
+            parts.push(p.to_string());
+        }
+        parts.join(",")
+    }
+
+    fn parse_font_size_px(v: &serde_json::Value) -> Option<f64> {
+        if let Some(n) = v.as_f64() {
+            return Some(n);
+        }
+        if let Some(n) = v.as_i64() {
+            return Some(n as f64);
+        }
+        if let Some(n) = v.as_u64() {
+            return Some(n as f64);
+        }
+        let s = v.as_str()?.trim();
+        if s.is_empty() {
+            return None;
+        }
+        let mut num = String::new();
+        for (idx, ch) in s.chars().enumerate() {
+            if ch.is_ascii_digit() {
+                num.push(ch);
+                continue;
+            }
+            if idx == 0 && (ch == '-' || ch == '+') {
+                num.push(ch);
+                continue;
+            }
+            break;
+        }
+        if num.trim().is_empty() {
+            return None;
+        }
+        num.parse::<f64>().ok()
+    }
+
+    let default_theme_font_family = "\"trebuchet ms\",verdana,arial,sans-serif".to_string();
+    let theme_font_family =
+        config_string(effective_config_value, &["themeVariables", "fontFamily"])
+            .map(|s| normalize_css_font_family(&s));
+    let top_font_family = config_string(effective_config_value, &["fontFamily"])
+        .map(|s| normalize_css_font_family(&s));
+    let font_family = Some(match (top_font_family, theme_font_family) {
+        (Some(top), Some(theme)) if theme == default_theme_font_family => top,
+        (_, Some(theme)) => theme,
+        (Some(top), None) => top,
+        (None, None) => default_theme_font_family,
+    });
+    let font_size = effective_config_value
+        .get("themeVariables")
+        .and_then(|tv| tv.get("fontSize"))
+        .and_then(parse_font_size_px)
+        .or_else(|| {
+            effective_config_value
+                .get("fontSize")
+                .and_then(parse_font_size_px)
+        })
+        .unwrap_or(16.0);
     let font_weight = config_string(effective_config_value, &["fontWeight"]);
     let text_style = TextStyle {
         font_family,
@@ -1091,7 +1184,7 @@ fn layout_flowchart_v2_with_model(
                 label_text,
                 label_type,
                 edge_text_style.as_ref(),
-                Some(wrapping_width),
+                Some(edge_label_wrapping_width),
                 edge_wrap_mode,
                 effective_config,
                 math_renderer,

@@ -510,6 +510,11 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         }
         _ => {
             let mut t = label.replace("\r\n", "\n");
+            // Mermaid flowchart labels treat `\\` as an escaped literal backslash. This matters
+            // for things like `\\n` in labels (which should render as `\n`).
+            if t.contains("\\\\") {
+                t = t.replace("\\\\", "\\");
+            }
             if html_labels || label_type == "html" {
                 // Keep the raw label text for layout, then strip HTML tags/entities.
                 //

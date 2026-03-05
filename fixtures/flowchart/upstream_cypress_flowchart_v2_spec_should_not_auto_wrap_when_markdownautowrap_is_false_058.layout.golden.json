@@ -5,15 +5,15 @@
       "nodes": [
         {
           "id": "angular_velocity",
-          "x": 138.0,
+          "x": 141.125,
           "y": 83.0,
-          "width": 260.0,
+          "width": 266.25,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "frequency",
-          "x": 414.08,
+          "x": 420.33,
           "y": 83.0,
           "width": 192.16,
           "height": 102.0,
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 510.16,
+        "max_x": 516.41,
         "max_y": 158.0
       }
     }

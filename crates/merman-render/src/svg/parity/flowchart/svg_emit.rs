@@ -219,12 +219,59 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let (render_edges, extra_nodes) = prepare_render_edges_and_extra_nodes(model);
 
-    let font_family = config_string(effective_config_value, &["fontFamily"])
-        .map(|s| normalize_css_font_family(&s))
-        .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
+    fn parse_font_size_px(v: &serde_json::Value) -> Option<f64> {
+        if let Some(n) = v.as_f64() {
+            return Some(n);
+        }
+        if let Some(n) = v.as_i64() {
+            return Some(n as f64);
+        }
+        if let Some(n) = v.as_u64() {
+            return Some(n as f64);
+        }
+        let s = v.as_str()?.trim();
+        if s.is_empty() {
+            return None;
+        }
+        let mut num = String::new();
+        for (idx, ch) in s.chars().enumerate() {
+            if ch.is_ascii_digit() {
+                num.push(ch);
+                continue;
+            }
+            if idx == 0 && (ch == '-' || ch == '+') {
+                num.push(ch);
+                continue;
+            }
+            break;
+        }
+        if num.trim().is_empty() {
+            return None;
+        }
+        num.parse::<f64>().ok()
+    }
+
+    let default_theme_font_family = "\"trebuchet ms\",verdana,arial,sans-serif".to_string();
+    let theme_font_family =
+        config_string(effective_config_value, &["themeVariables", "fontFamily"])
+            .map(|s| normalize_css_font_family(&s));
+    let top_font_family = config_string(effective_config_value, &["fontFamily"])
+        .map(|s| normalize_css_font_family(&s));
+    let font_family = match (top_font_family, theme_font_family) {
+        (Some(top), Some(theme)) if theme == default_theme_font_family => top,
+        (_, Some(theme)) => theme,
+        (Some(top), None) => top,
+        (None, None) => default_theme_font_family,
+    };
     let font_size = effective_config_value
-        .get("fontSize")
-        .and_then(|v| v.as_f64())
+        .get("themeVariables")
+        .and_then(|tv| tv.get("fontSize"))
+        .and_then(parse_font_size_px)
+        .or_else(|| {
+            effective_config_value
+                .get("fontSize")
+                .and_then(parse_font_size_px)
+        })
         .unwrap_or(16.0)
         .max(1.0);
 

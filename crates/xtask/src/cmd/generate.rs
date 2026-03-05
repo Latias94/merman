@@ -17,6 +17,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_root: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut install: bool = false;
+    let mut fixtures_root: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -33,6 +34,10 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 filter = args.get(i).map(|s| s.to_string());
             }
+            "--fixtures-root" => {
+                i += 1;
+                fixtures_root = args.get(i).map(|s| PathBuf::from(s.trim()));
+            }
             "--install" => install = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -43,6 +48,15 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..");
+    let fixtures_root = fixtures_root
+        .map(|p| {
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(p)
+            }
+        })
+        .unwrap_or_else(|| workspace_root.join("fixtures"));
     let out_root =
         out_root.unwrap_or_else(|| workspace_root.join("fixtures").join("upstream-svgs"));
 
@@ -86,12 +100,13 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn run_one(
         workspace_root: &Path,
+        fixtures_root: &Path,
         out_root: &Path,
         mmdc: &Path,
         diagram: &str,
         filter: Option<&str>,
     ) -> Result<(), XtaskError> {
-        let fixtures_dir = workspace_root.join("fixtures").join(diagram);
+        let fixtures_dir = fixtures_root.join(diagram);
         let out_dir = out_root.join(diagram);
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
         let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
@@ -430,7 +445,9 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "treemap",
                 "xychart",
             ] {
-                if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
+                if let Err(err) =
+                    run_one(&workspace_root, &fixtures_root, &out_root, &mmdc, d, filter)
+                {
                     failures.push(format!("{d}: {err}"));
                 }
             }
@@ -443,7 +460,14 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
         | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap"
-        | "architecture" => run_one(&workspace_root, &out_root, &mmdc, &diagram, filter),
+        | "architecture" => run_one(
+            &workspace_root,
+            &fixtures_root,
+            &out_root,
+            &mmdc,
+            &diagram,
+            filter,
+        ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
             "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, all)"
         ))),

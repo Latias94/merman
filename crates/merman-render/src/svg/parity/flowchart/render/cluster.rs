@@ -3,6 +3,8 @@
 use super::super::*;
 use super::root::flowchart_wrap_svg_text_lines;
 
+const FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH: f64 = 200.0;
+
 pub(in crate::svg::parity) fn render_flowchart_cluster(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -54,7 +56,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             ctx.measurer,
             &title_text,
             &ctx.text_style,
-            Some(200.0),
+            Some(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH),
             true,
         )
         .join("\n");
@@ -87,14 +89,16 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
     let span_style_attr = OptionalStyleXmlAttr(label_style);
-    let div_style = if label_w >= ctx.wrapping_width - 1e-3 {
+    let div_style = if label_w >= FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH - 1e-3 {
         format!(
             "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-            mw = fmt_display(ctx.wrapping_width)
+            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
         )
     } else {
-        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"
-            .to_string()
+        format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
+            mw = fmt_display(FLOWCHART_CLUSTER_TITLE_WRAP_WIDTH)
+        )
     };
 
     let _ = write!(

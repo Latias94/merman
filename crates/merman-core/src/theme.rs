@@ -718,6 +718,12 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         "primaryTextColor",
         Value::String(if dark_mode { "#eee" } else { "#333" }.to_string()),
     );
+    set_if_missing(
+        &mut tv,
+        "fontFamily",
+        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+    );
+    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
 
     let primary_text_color = get_truthy_string(&tv, "primaryTextColor")
         .unwrap_or_else(|| if dark_mode { "#eee" } else { "#333" }.to_string());

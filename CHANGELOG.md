@@ -6,6 +6,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- `xtask`: extended `gen-upstream-svgs` and `compare-svg-xml` to support generating/comparing SVG baselines from custom
+  fixture roots (useful for strict XML diffs when iterating on layout parity).
+
 ### Fixed
 
 - Flowchart: decode Mermaid entity placeholders in subgraph titles (contributed by @aydiler in PR #1:
@@ -20,6 +25,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   due to text measurement differences).
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
+- Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
+  - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
+  - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,
+  - underscore-heavy identifiers (e.g. `a__node`) no longer get misparsed as emphasis.
+- Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
+  notably in xychart).
 
 ## [0.3.0] - 2026-03-02
 

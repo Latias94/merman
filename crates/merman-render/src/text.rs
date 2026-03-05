@@ -627,8 +627,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
     let mut width = round_to_1_64_px(max_line_width);
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
-            if max_line_width > w {
-                width = w;
+            let raw_w = measurer
+                .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
+                .width;
+            let needs_wrap = raw_w > w;
+            if needs_wrap {
+                // Mermaid clamps the container to `max-width`, but long unbreakable words can
+                // force the measured width beyond that limit (tables expand to min-content).
+                width = width.max(w);
             } else {
                 width = width.min(w);
             }
@@ -1131,8 +1137,12 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     let mut width = round_to_1_64_px(max_line_width);
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
-            if max_line_width > w {
-                width = w;
+            let raw_w = measurer
+                .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
+                .width;
+            let needs_wrap = raw_w > w;
+            if needs_wrap {
+                width = width.max(w);
             } else {
                 width = width.min(w);
             }
@@ -1575,7 +1585,25 @@ impl VendoredFontMetricsTextMeasurer {
         } else {
             key.as_str()
         };
-        crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(key)
+        if let Some(t) = crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(key)
+        {
+            return Some(t);
+        }
+
+        // Best-effort aliases for common stacks in upstream fixtures (Mermaid measures via DOM,
+        // while our vendored tables cover a small set of representative families).
+        let key_lower = key;
+        if key_lower.contains("courier") || key_lower.contains("monospace") {
+            return crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(
+                "courier",
+            );
+        }
+        if key_lower.contains("sans-serif") {
+            return crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(
+                "sans-serif",
+            );
+        }
+        None
     }
 
     fn lookup_char_em(entries: &[(char, f64)], default_em: f64, ch: char) -> f64 {
@@ -2282,6 +2310,50 @@ impl VendoredFontMetricsTextMeasurer {
         break_long_words: bool,
         bold: bool,
     ) -> Vec<String> {
+        fn split_html_breakable_segments(tok: &str) -> Vec<String> {
+            // Browser HTML line breaking (UAX #14) provides extra break opportunities inside
+            // punctuation-heavy tokens (notably URLs). Mermaid's HTML labels rely on that
+            // behavior; model a small, stable subset here.
+            //
+            // Intentionally *exclude* '=': upstream fixtures show tokens like `wrappingWidth=120`
+            // overflowing rather than breaking at '='.
+            fn is_break_after(ch: char) -> bool {
+                matches!(
+                    ch,
+                    '/' | '-' | ':' | '?' | '&' | '#' | ')' | ']' | '}' | '.'
+                )
+            }
+
+            let mut out: Vec<String> = Vec::new();
+            let mut cur = String::new();
+            for ch in tok.chars() {
+                cur.push(ch);
+                if is_break_after(ch) {
+                    if !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                    }
+                }
+            }
+            if !cur.is_empty() {
+                out.push(cur);
+            }
+            if out.len() <= 1 {
+                vec![tok.to_string()]
+            } else {
+                out
+            }
+        }
+
+        // HTML measurement in upstream Mermaid comes from the browser layout engine and tends to
+        // be slightly more permissive at wrap boundaries than our glyph-advance sum (especially
+        // after the 1/64px lattice quantization seen in fixtures). Add a tiny slack to reduce
+        // off-by-one-line wrapping deltas near the threshold.
+        let max_width_px = if break_long_words {
+            max_width_px
+        } else {
+            max_width_px + (1.0 / 64.0)
+        };
+
         let mut tokens =
             std::collections::VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
         let mut out: Vec<String> = Vec::new();
@@ -2334,6 +2406,13 @@ impl VendoredFontMetricsTextMeasurer {
             }
 
             if !break_long_words {
+                let segments = split_html_breakable_segments(&tok);
+                if segments.len() > 1 {
+                    for seg in segments.into_iter().rev() {
+                        tokens.push_front(seg);
+                    }
+                    continue;
+                }
                 out.push(tok);
                 continue;
             }
@@ -2555,6 +2634,68 @@ fn vendored_measure_wrapped_impl(
         None
     };
 
+    // Mermaid's HTML label measurements are taken from a `<div style="max-width: wpx">` that is
+    // later switched to `display: table; width: wpx; white-space: break-spaces` when it hits the
+    // max width. If any unbreakable word exceeds `w`, the table expands to the min-content width,
+    // and subsequent lines wrap against that wider effective width.
+    //
+    // Model this by expanding the wrapping width to the widest unbreakable token when needed.
+    let effective_html_wrap_width = if wrap_mode == WrapMode::HtmlLike {
+        if let Some(w) = max_width {
+            let mut max_word_w: f64 = 0.0;
+            for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+                for part in line.split(' ') {
+                    let part = part.trim();
+                    if part.is_empty() {
+                        continue;
+                    }
+                    // Mirror the punctuation break opportunities used by HTML wrapping.
+                    let segments = {
+                        let mut out: Vec<String> = Vec::new();
+                        let mut cur = String::new();
+                        for ch in part.chars() {
+                            cur.push(ch);
+                            if matches!(
+                                ch,
+                                '/' | '-' | ':' | '?' | '&' | '#' | ')' | ']' | '}' | '.'
+                            ) {
+                                if !cur.is_empty() {
+                                    out.push(std::mem::take(&mut cur));
+                                }
+                            }
+                        }
+                        if !cur.is_empty() {
+                            out.push(cur);
+                        }
+                        if out.len() <= 1 {
+                            vec![part.to_string()]
+                        } else {
+                            out
+                        }
+                    };
+                    for seg in segments {
+                        max_word_w =
+                            max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
+                                table.entries,
+                                table.default_em.max(0.1),
+                                table.kern_pairs,
+                                table.space_trigrams,
+                                table.trigrams,
+                                seg.as_str(),
+                                bold,
+                                font_size,
+                            ));
+                    }
+                }
+            }
+            Some(w.max(max_word_w))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let lines = match wrap_mode {
         WrapMode::HtmlLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_px(
             table.entries,
@@ -2565,7 +2706,7 @@ fn vendored_measure_wrapped_impl(
             text,
             style,
             bold,
-            max_width,
+            effective_html_wrap_width.or(max_width),
             wrap_mode,
         ),
         WrapMode::SvgLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
@@ -2621,12 +2762,13 @@ fn vendored_measure_wrapped_impl(
     }
 
     // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
-    // layout width is effectively clamped to the max width.
+    // layout width is at least the max width in "wrapped" mode (tables), and may exceed it for
+    // long unbreakable tokens.
     if wrap_mode == WrapMode::HtmlLike {
+        let needs_wrap = max_width.is_some_and(|w| raw_width_unscaled.is_some_and(|rw| rw > w));
         if let Some(w) = max_width {
-            let needs_wrap = raw_width_unscaled.is_some_and(|rw| rw > w);
             if needs_wrap {
-                width = w;
+                width = width.max(w);
             } else {
                 width = width.min(w);
             }
@@ -2635,7 +2777,11 @@ fn vendored_measure_wrapped_impl(
         // lattice. Quantize to that grid to keep our layout math stable.
         width = round_to_1_64_px(width);
         if let Some(w) = max_width {
-            width = width.min(w);
+            width = if needs_wrap {
+                width.max(w)
+            } else {
+                width.min(w)
+            };
         }
     }
 
