@@ -112,12 +112,16 @@ For each item:
 
 ## C) Markdown subset parity
 
-- [ ] `_` delimiter correctness (`a__b`, `_a_b_`, `_a__b_`)  
+- [x] `_` delimiter correctness (`a__b`, `_a_b_`, `_a__b_`)  
   Gap check:
   - Confirm existing tests cover underscore-heavy ids and labels:
     - `docs/alignment/FLOWCHART_*`, `crates/merman-render/src/text/tests.rs`
   Evidence:
-  - Add a minimal fixture for each edge case if missing.
+  - Fixture: `fixtures/flowchart/stress_flowchart_markdown_underscore_delims_074.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_markdown_underscore_delims_074`
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_markdown_underscore_delims_074`
+  - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_underscore_delimiters_match_mermaid`)
 
 - [ ] Inline code suppresses emphasis parsing  
   Gap check:

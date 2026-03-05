@@ -160,3 +160,25 @@ fn wrap_label_like_mermaid_does_not_split_escaped_br() {
         "wrapLabel should short-circuit when explicit `<br>` breaks are present, and must not treat escaped `#lt;br#gt;` as a break"
     );
 }
+
+#[test]
+fn markdown_underscore_delimiters_match_mermaid() {
+    use MermaidMarkdownWordType::*;
+
+    assert_eq!(
+        mermaid_markdown_to_lines("`a__b`", true),
+        vec![vec![("a__b".to_string(), Normal)]]
+    );
+    assert_eq!(
+        mermaid_markdown_to_lines("`_a_b_`", true),
+        vec![vec![("a_b".to_string(), Em)]]
+    );
+    assert_eq!(
+        mermaid_markdown_to_lines("`_a__b_`", true),
+        vec![vec![("a__b".to_string(), Em)]]
+    );
+    assert_eq!(
+        mermaid_markdown_to_lines("`__a__`", true),
+        vec![vec![("a".to_string(), Strong)]]
+    );
+}

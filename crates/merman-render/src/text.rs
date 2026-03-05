@@ -881,6 +881,18 @@ pub(crate) fn mermaid_markdown_to_lines(
                 i += run_len;
                 continue;
             }
+
+            // Treat the delimiter run as literal if it can't open/close. Mermaid's upstream
+            // behavior does not reinterpret a failed `__` run as two separate `_` runs (e.g.
+            // `a__b` must remain literal, not split into `a_` + `_b_`).
+            if word.is_empty() {
+                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+            }
+            for _ in 0..run_len {
+                word.push(ch);
+            }
+            i += run_len;
+            continue;
         }
 
         if word.is_empty() {
