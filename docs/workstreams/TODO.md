@@ -144,6 +144,9 @@ For each item:
     - Note: root `viewBox`/`max-width` is pinned via `crates/merman-render/src/generated/sequence_root_overrides_11_12_2.rs` for this fixture.
   - Sequence: `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_with_an_init_directive_049.mmd`
     - Compare: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter should_render_with_an_init_directive_049`
+  - Gantt: `fixtures/gantt/stress_gantt_font_size_precedence_001.mmd`
+    - Compare: `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-decimals 3 --filter stress_gantt_font_size_precedence_001`
+    - Compare (root): `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_gantt_font_size_precedence_001`
 
 ## C) Markdown subset parity
 
