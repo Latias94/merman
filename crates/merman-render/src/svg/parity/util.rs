@@ -18,6 +18,16 @@ pub(super) fn json_f64(v: &serde_json::Value) -> Option<f64> {
         .or_else(|| v.as_u64().map(|n| n as f64))
 }
 
+pub(super) fn json_f64_css_px(v: &serde_json::Value) -> Option<f64> {
+    json_f64(v).or_else(|| {
+        let raw = v.as_str()?;
+        let t = raw.trim().trim_end_matches(';').trim();
+        let t = t.trim_end_matches("!important").trim();
+        let t = t.trim_end_matches("px").trim();
+        t.parse::<f64>().ok()
+    })
+}
+
 pub(super) fn json_bool(v: &serde_json::Value) -> Option<bool> {
     v.as_bool()
         .or_else(|| v.as_i64().map(|n| n != 0))
@@ -38,6 +48,14 @@ pub(super) fn config_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> 
         cur = cur.get(*key)?;
     }
     json_f64(cur)
+}
+
+pub(super) fn config_f64_css_px(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    json_f64_css_px(cur)
 }
 
 pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {

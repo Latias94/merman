@@ -1195,6 +1195,18 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
 pub trait TextMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;
 
+    /// Measures SVG `<tspan>.getComputedTextLength()`-like widths (advance length along the
+    /// baseline).
+    ///
+    /// Mermaid's Timeline diagram uses `getComputedTextLength()` to decide when to wrap tokens
+    /// into additional `<tspan>` lines. This length can differ meaningfully from `getBBox().width`
+    /// (which includes glyph overhang), especially near wrapping boundaries.
+    ///
+    /// Default implementation falls back to bbox-derived widths.
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_simple_text_bbox_width_px(text, style)
+    }
+
     /// Measures the horizontal extents of an SVG `<text>` element relative to its anchor `x`.
     ///
     /// Mermaid's flowchart-v2 viewport sizing uses `getBBox()` on the rendered SVG. For `<text>`
@@ -1634,6 +1646,9 @@ impl VendoredFontMetricsTextMeasurer {
                 "courier",
             );
         }
+        // Prefer explicit generic stacks. If the font family does not match a known table and
+        // does not include an explicit fallback token like `sans-serif`, fall back to the
+        // deterministic measurer (unknown fonts vary widely across environments).
         if key_lower.contains("sans-serif") {
             return crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(
                 "sans-serif",
@@ -2910,6 +2925,35 @@ fn vendored_measure_wrapped_impl(
 impl TextMeasurer for VendoredFontMetricsTextMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+    }
+
+    fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let Some(table) = self.lookup_table(style) else {
+            return self
+                .fallback
+                .measure_svg_text_computed_length_px(text, style);
+        };
+
+        let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
+        let font_size = style.font_size.max(1.0);
+        let mut width: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(
+                table.entries,
+                table.default_em.max(0.1),
+                table.kern_pairs,
+                table.space_trigrams,
+                table.trigrams,
+                &line,
+                bold,
+                font_size,
+            ));
+        }
+        if width.is_finite() && width >= 0.0 {
+            width
+        } else {
+            0.0
+        }
     }
 
     fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {

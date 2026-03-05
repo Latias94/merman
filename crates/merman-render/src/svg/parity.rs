@@ -60,7 +60,7 @@ use state::{
 };
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
-    apply_root_viewport_override, config_bool, config_f64, config_string,
+    apply_root_viewport_override, config_bool, config_f64, config_f64_css_px, config_string,
     decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_xml,
     escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
     fmt_max_width_px, fmt_path, fmt_path_into, fmt_string, json_f64, json_stringify_points,

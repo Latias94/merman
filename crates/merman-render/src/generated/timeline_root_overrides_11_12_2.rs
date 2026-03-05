@@ -29,6 +29,9 @@ pub fn lookup_timeline_root_viewport_override(
         "timeline_stress_inline_hashes_and_semicolons" => {
             Some(("-5 -61 967.921875 740.2000122070312", "967.922"))
         }
+        "timeline_stress_font_size_precedence" => {
+            Some(("-5 -77 1228.375 530.3999938964844", "1228.38"))
+        }
         "timeline_stress_many_events_single_period" => {
             Some(("-105 -61 795 1421.199951171875", "795"))
         }

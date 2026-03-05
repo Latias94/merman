@@ -61,7 +61,8 @@ pub(super) fn state_css(
     }
 
     let ff = font_family_css(effective_config);
-    let font_size = config_f64(effective_config, &["fontSize"])
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(effective_config, &["fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
     let id = escape_xml(diagram_id);

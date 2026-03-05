@@ -7,6 +7,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use serde::Deserialize;
+use std::borrow::Cow;
 
 const MAX_SECTIONS: i64 = 12;
 
@@ -74,18 +75,30 @@ fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn cfg_f64_css_px(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_f64()
+        .or_else(|| cur.as_i64().map(|n| n as f64))
+        .or_else(|| cur.as_u64().map(|n| n as f64))
+        .or_else(|| {
+            let raw = cur.as_str()?;
+            let t = raw.trim().trim_end_matches(';').trim();
+            let t = t.trim_end_matches("!important").trim();
+            let t = t.trim_end_matches("px").trim();
+            t.parse::<f64>().ok()
+        })
+}
+
 fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
-    let font_family = cfg_string(effective_config, &["fontFamily"])
-        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
+    let font_family = cfg_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| cfg_string(effective_config, &["fontFamily"]))
         .map(|s| s.trim().trim_end_matches(';').trim().to_string())
         .filter(|s| !s.is_empty());
-    let font_size = effective_config
-        .get("fontSize")
-        .and_then(|v| {
-            v.as_f64()
-                .or_else(|| v.as_i64().map(|n| n as f64))
-                .or_else(|| v.as_u64().map(|n| n as f64))
-        })
+    let font_size = cfg_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| cfg_f64_css_px(effective_config, &["fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
     TextStyle {
@@ -155,6 +168,39 @@ fn join_trim(tokens: &[String]) -> String {
     tokens.join(" ").trim().to_string()
 }
 
+fn svg_collapse_whitespace_for_measure(s: &str) -> Cow<'_, str> {
+    // Mermaid timeline wrap decisions use `tspan.getComputedTextLength()`, which measures the
+    // rendered text. SVG text collapses whitespace runs unless `xml:space="preserve"` is set.
+    // Mermaid does not set `xml:space`, so we mirror that collapsing here.
+    let mut out: Option<String> = None;
+    let mut last_space = false;
+    let mut saw_non_space = false;
+
+    for ch in s.chars() {
+        if ch.is_whitespace() {
+            if !saw_non_space || last_space {
+                continue;
+            }
+            out.get_or_insert_with(|| String::with_capacity(s.len()))
+                .push(' ');
+            last_space = true;
+        } else {
+            saw_non_space = true;
+            out.get_or_insert_with(|| String::with_capacity(s.len()))
+                .push(ch);
+            last_space = false;
+        }
+    }
+
+    let Some(mut out) = out else {
+        return Cow::Borrowed(s.trim());
+    };
+    if out.ends_with(' ') {
+        out.pop();
+    }
+    Cow::Owned(out)
+}
+
 fn wrap_lines(
     text: &str,
     max_width: f64,
@@ -172,8 +218,12 @@ fn wrap_lines(
     for tok in tokens {
         cur.push(tok.clone());
         let candidate = join_trim(&cur);
-        let (l, r) = measurer.measure_svg_text_bbox_x(&candidate, style);
-        let candidate_width = (l + r).round();
+        let candidate = svg_collapse_whitespace_for_measure(&candidate);
+        // Mermaid uses `getComputedTextLength()` here, but our headless measurer cannot reproduce
+        // the exact font fallback behavior of the Puppeteer baselines. Empirically, the single-run
+        // SVG `getBBox().width` probe is a closer and more stable approximation for wrap
+        // boundaries in timeline fixtures.
+        let candidate_width = measurer.measure_svg_simple_text_bbox_width_px(&candidate, style);
         if candidate_width > max_width || tok == "<br>" {
             cur.pop();
             lines.push(join_trim(&cur));
@@ -205,7 +255,11 @@ fn text_bbox_height(lines: &[String], font_size: f64) -> f64 {
         return 0.0;
     }
     let first_line_em = 1.1875;
-    let first = font_size * first_line_em;
+    // Empirically, browser `getBBox().height` for SVG `<text>` in upstream timeline fixtures can
+    // "snap" the first-line height down to an integer for non-default font sizes (notably when
+    // the diagram sets `themeVariables.fontSize`). Mirror that so our layout stays on the same
+    // lattice as upstream `mmdc` baselines.
+    let first = (font_size * first_line_em).floor();
     let additional = (lines.saturating_sub(1) as f64) * font_size * 1.1;
     first + additional
 }
@@ -214,12 +268,17 @@ fn virtual_node_height(
     text: &str,
     content_width: f64,
     style: &TextStyle,
+    layout_font_size: f64,
     padding: f64,
     measurer: &dyn TextMeasurer,
 ) -> (f64, Vec<String>) {
+    // Mermaid timeline `wrap()` compares `tspan.getComputedTextLength()` against `node.width`
+    // (the configured inner width, excluding padding).
     let lines = wrap_lines(text, content_width.max(1.0), style, measurer);
     let bbox_h = text_bbox_height(&lines, style.font_size);
-    let h = bbox_h + style.font_size.max(1.0) * 1.1 * 0.5 + padding;
+    // Mermaid timeline uses `conf.fontSize` (top-level `config.fontSize`) for the extra vertical
+    // offset, even when the actual rendered font size comes from `themeVariables.fontSize`.
+    let h = bbox_h + layout_font_size.max(1.0) * 1.1 * 0.5 + padding;
     (h, lines)
 }
 
@@ -232,10 +291,17 @@ fn compute_node(
     content_width: f64,
     max_height: f64,
     style: &TextStyle,
+    layout_font_size: f64,
     measurer: &dyn TextMeasurer,
 ) -> TimelineNodeLayout {
-    let (h0, label_lines) =
-        virtual_node_height(label, content_width, style, NODE_PADDING, measurer);
+    let (h0, label_lines) = virtual_node_height(
+        label,
+        content_width,
+        style,
+        layout_font_size,
+        NODE_PADDING,
+        measurer,
+    );
     let height = h0.max(max_height).max(1.0);
     let width = (content_width + NODE_PADDING * 2.0).max(1.0);
     TimelineNodeLayout {
@@ -326,7 +392,10 @@ pub fn layout_timeline_diagram(
     );
 
     let text_style = timeline_text_style(effective_config);
-    let font_size = text_style.font_size;
+    let render_font_size = text_style.font_size;
+    let layout_font_size = cfg_f64_css_px(effective_config, &["fontSize"])
+        .unwrap_or(render_font_size)
+        .max(1.0);
 
     let left_margin = cfg_f64(effective_config, &["timeline", "leftMargin"])
         .unwrap_or(150.0)
@@ -347,6 +416,7 @@ pub fn layout_timeline_diagram(
             section,
             task_content_width,
             &text_style,
+            layout_font_size,
             NODE_PADDING,
             measurer,
         );
@@ -356,10 +426,15 @@ pub fn layout_timeline_diagram(
     let mut max_task_height: f64 = 0.0;
     let mut max_event_line_length: f64 = 0.0;
     for task in &model.tasks {
+        // Upstream Mermaid's Timeline renderer computes `maxTaskHeight` by passing the entire
+        // task object into `getVirtualNodeHeight(...)`, which stringifies to `"[object Object]"`.
+        // This inflates `maxTaskHeight` when all task labels are short; replicate for parity.
+        let virtual_task_label = "[object Object]";
         let (h, _lines) = virtual_node_height(
-            &task.task,
+            virtual_task_label,
             task_content_width,
             &text_style,
+            layout_font_size,
             NODE_PADDING,
             measurer,
         );
@@ -367,8 +442,14 @@ pub fn layout_timeline_diagram(
 
         let mut task_event_len: f64 = 0.0;
         for ev in &task.events {
-            let (eh, _lines) =
-                virtual_node_height(ev, task_content_width, &text_style, NODE_PADDING, measurer);
+            let (eh, _lines) = virtual_node_height(
+                ev,
+                task_content_width,
+                &text_style,
+                layout_font_size,
+                NODE_PADDING,
+                measurer,
+            );
             task_event_len += eh;
         }
         if !task.events.is_empty() {
@@ -411,6 +492,7 @@ pub fn layout_timeline_diagram(
                 content_width,
                 max_section_height,
                 &text_style,
+                layout_font_size,
                 measurer,
             );
             all_nodes_pre_title.push(section_node.clone());
@@ -430,6 +512,7 @@ pub fn layout_timeline_diagram(
                     task_content_width,
                     max_task_height,
                     &text_style,
+                    layout_font_size,
                     measurer,
                 );
                 all_nodes_pre_title.push(task_node.clone());
@@ -455,6 +538,7 @@ pub fn layout_timeline_diagram(
                         task_content_width,
                         50.0,
                         &text_style,
+                        layout_font_size,
                         measurer,
                     );
                     event_y += event_node.height + EVENT_GAP_Y;
@@ -493,6 +577,7 @@ pub fn layout_timeline_diagram(
                 task_content_width,
                 max_task_height,
                 &text_style,
+                layout_font_size,
                 measurer,
             );
             all_nodes_pre_title.push(task_node.clone());
@@ -518,6 +603,7 @@ pub fn layout_timeline_diagram(
                     task_content_width,
                     50.0,
                     &text_style,
+                    layout_font_size,
                     measurer,
                 );
                 event_y += event_node.height + EVENT_GAP_Y;
@@ -582,7 +668,7 @@ pub fn layout_timeline_diagram(
         //
         // Note: `ex` depends on the font x-height; for Mermaid's default theme at 16px, `4ex`
         // resolves to ~31px in upstream fixtures.
-        let title_font_size = font_size * 1.9375;
+        let title_font_size = render_font_size * 1.9375;
         let title_style = TextStyle {
             font_family: text_style.font_family.clone(),
             font_size: title_font_size,

@@ -59,8 +59,11 @@ pub(super) fn info_css_parts_with_config(
 ) -> InfoCssParts {
     let id = escape_xml(diagram_id);
 
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+    // Mermaid's legacy `fontFamily` config is migrated into `themeVariables.fontFamily` during
+    // initialization (when `themeVariables.fontFamily` is unset). Prefer the theme variable when
+    // present so our emitted root CSS matches upstream baselines.
+    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(effective_config, &["fontFamily"]))
         .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
     let font_family = normalize_css_font_family(font_family.as_str());
     let font_family = if font_family.is_empty() {
@@ -68,7 +71,8 @@ pub(super) fn info_css_parts_with_config(
     } else {
         font_family
     };
-    let font_size = config_f64(effective_config, &["fontSize"])
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(effective_config, &["fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
 
@@ -196,7 +200,8 @@ pub(super) fn architecture_css_with_config(
     } else {
         font_family
     };
-    let font_size = config_f64(effective_config, &["fontSize"])
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(effective_config, &["fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
 

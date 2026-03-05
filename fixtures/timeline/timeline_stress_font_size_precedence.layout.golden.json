@@ -1,0 +1,108 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": -5.0,
+        "min_y": -76.5,
+        "max_x": 1016.63,
+        "max_y": 453.4
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 390.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 99.9,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2020 ",
+            "label_lines": [
+              "2020"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 149.9,
+            "x2": 295.0,
+            "y2": 403.4
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 53.5,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event A",
+              "label_lines": [
+                "Event   A"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 99.9,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "2021 ",
+            "label_lines": [
+              "2021"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 149.9,
+            "x2": 495.0,
+            "y2": 403.4
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 53.5,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Event B",
+              "label_lines": [
+                "Event   B"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 199.9,
+        "x2": 840.0,
+        "y2": 199.9
+      },
+      "title": "Font size should follow themeVariables.fontSize",
+      "title_x": 45.0,
+      "title_y": 20.0
+    }
+  }
+}

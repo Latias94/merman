@@ -474,7 +474,9 @@ pub(super) fn render_requirement_diagram_svg(
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(effective_config, &["fontSize"]))
+        .unwrap_or(16.0);
     let hand_drawn_seed = effective_config
         .get("handDrawnSeed")
         .and_then(|v| v.as_u64())

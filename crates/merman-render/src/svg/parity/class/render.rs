@@ -67,7 +67,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     } else {
         // In SVG-label mode, the `<text>` elements inherit the root `font-size` (typically from
         // `themeVariables.fontSize`) in upstream Mermaid SVG baselines.
-        config_f64(effective_config, &["themeVariables", "fontSize"])
+        config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
             .or_else(|| config_f64(effective_config, &["fontSize"]))
             .unwrap_or(16.0)
             .max(1.0)

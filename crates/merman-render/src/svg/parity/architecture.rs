@@ -1200,7 +1200,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let arch_font_size_px =
         config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let arch_font_size_px = arch_font_size_px.max(1.0);
-    let svg_font_size_px = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
+    let svg_font_size_px = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(effective_config, &["fontSize"]))
+        .unwrap_or(16.0);
     let svg_font_size_px = svg_font_size_px.max(1.0);
     let use_max_width = effective_config
         .get("architecture")
