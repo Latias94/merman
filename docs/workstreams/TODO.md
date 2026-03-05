@@ -125,6 +125,11 @@ For each item:
     (typically from `themeVariables.fontSize`). If those differ, upstream can wrap/split unexpectedly.
     - Fixture: `fixtures/class/stress_class_svg_font_size_precedence_025.mmd`
     - Upstream: `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg`
+  - Class (SVG labels, `themeVariables.fontSize` px-string parsing): upstream accepts `themeVariables.fontSize`
+    in `"NNpx"` form; treating this as “missing” falls back to defaults and subtly shifts wrap boundaries.
+    - Fixture: `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.mmd`
+    - Upstream: `fixtures/upstream-svgs/class/stress_class_svg_font_size_px_string_precedence_026.svg`
+    - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter stress_class_svg_font_size_px_string_precedence_026`
   - Flowchart: `fixtures/flowchart/stress_flowchart_font_size_precedence_073.mmd`
     - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_font_size_precedence_073`
     - Note: root `viewBox` is pinned via `crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs` for this fixture.

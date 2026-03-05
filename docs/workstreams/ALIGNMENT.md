@@ -112,6 +112,16 @@ Evidence fixtures:
 - Class: `fixtures/class/stress_class_font_size_precedence_024.mmd` (+ upstream SVG baseline)
 - Mindmap: `fixtures/mindmap/stress_mindmap_font_size_precedence_037.mmd` (+ upstream SVG baseline)
 
+#### SVG `themeVariables.fontSize` px-string parsing
+
+Upstream Mermaid accepts `themeVariables.fontSize` in `"NNpx"` form. If we only read it as a
+number, diagrams may silently fall back to a default font-size while the root CSS does use the
+theme variable, which creates measurement/render splits (wrap boundaries, bbox heights).
+
+Evidence fixture:
+
+- Class (SVG labels): `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.mmd`
+
 #### Flowchart-specific: quoted-string whitespace height parity
 
 Mermaid FlowDB preserves whitespace for `labelType=string` labels (quoted strings), but upstream
