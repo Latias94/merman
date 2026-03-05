@@ -64,6 +64,7 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_scale_wrapping_long_edge_labels_038" => {
             Some(("0 0 375.640625 670", "375.641"))
         }
+        "stress_state_font_size_precedence_071" => Some(("0 0 182.296875 386", "182.297")),
         "stress_state_frontmatter_acctitle_accdescr_multiline_039" => {
             Some(("-143.4609375 -50 337.890625 372", "337.891"))
         }

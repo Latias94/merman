@@ -31,6 +31,7 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_autonumber_step_reset_037" => Some(("-50 -10 450 391", "450")),
         "stress_html_entities_and_escaping_038" => Some(("-50 -10 730 327", "730")),
         "stress_message_text_with_colons_039" => Some(("-50 -10 986 318", "986")),
+        "stress_sequence_font_size_precedence_090" => Some(("-50 -10 550 244", "550")),
         "mmdr_benches_fixtures_expanded_sequence_frames_notes" => {
             Some(("-50 -10 1250 948", "1250"))
         }
