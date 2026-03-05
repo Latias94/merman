@@ -16,6 +16,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
+- State/Sequence: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
+  including upstream SVG baselines + local layout goldens.
 - Timeline: added a stress fixture for unknown XML entity escaping (including upstream SVG baseline).
 - Timeline: added a stress fixture for `themeVariables.fontSize` precedence over top-level `fontSize` (including upstream SVG baseline + local layout goldens).
 - Flowchart/State: added stress fixtures for `classDef`/`style` text overrides (font-family/font-size/opacity),
@@ -48,6 +50,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: align SVG edge label background rectangle offset (`y=-1`) with upstream Mermaid.
 - Flowchart: match Mermaid's flowchart font sizing rules by reading `themeVariables.fontSize` only (top-level `fontSize`
   no longer affects flowchart layout/label measurement).
+- State: align state label font sizing by preferring `themeVariables.fontSize` (including `"NNpx"` strings) over the
+  legacy top-level `fontSize` when computing text layout/measurement.
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
 - Text: avoid inflating flowchart HTML label height for quoted-string trailing-only whitespace (improves `parity-root` root viewport alignment).
