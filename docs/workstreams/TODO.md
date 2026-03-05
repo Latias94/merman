@@ -251,10 +251,15 @@ For each item:
   - Fixture: `fixtures/class/stress_class_nested_namespaces_cross_edges_008.mmd`
     - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter nested_namespaces_cross_edges_008`
 
-- [ ] State: composite padding + classDef html label measurement  
+- [x] State: composite padding + classDef html label measurement  
   Gap check:
   - Confirm classDef-driven HTML label metrics don’t drift in parity-root mode.
+  Evidence:
+  - Compare: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 6`
 
-- [ ] Mindmap: multiline CJK + deep nesting viewport drift  
+- [x] Mindmap: multiline CJK + deep nesting viewport drift  
   Gap check:
   - Ensure root viewport bounds include all labels; compare in parity-root mode.
+  Evidence:
+  - Compare: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 6`
+  - Note: `stress_mindmap_font_size_precedence_037` is pinned via `crates/merman-render/src/generated/mindmap_root_overrides_11_12_2.rs`.
