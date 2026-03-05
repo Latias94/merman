@@ -2674,59 +2674,68 @@ fn vendored_measure_wrapped_impl(
 
     // Mermaid's HTML label measurements are taken from a `<div style="max-width: wpx">` that is
     // later switched to `display: table; width: wpx; white-space: break-spaces` when it hits the
-    // max width. If any unbreakable word exceeds `w`, the table expands to the min-content width,
-    // and subsequent lines wrap against that wider effective width.
+    // max width.
     //
-    // Model this by expanding the wrapping width to the widest unbreakable token when needed.
-    let effective_html_wrap_width = if wrap_mode == WrapMode::HtmlLike {
-        if let Some(w) = max_width {
-            let mut max_word_w: f64 = 0.0;
-            for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-                for part in line.split(' ') {
-                    let part = part.trim();
-                    if part.is_empty() {
-                        continue;
-                    }
-                    // Mirror the punctuation break opportunities used by HTML wrapping.
-                    let segments = {
-                        let mut out: Vec<String> = Vec::new();
-                        let mut cur = String::new();
-                        for ch in part.chars() {
-                            cur.push(ch);
-                            if matches!(
-                                ch,
-                                '/' | '-' | ':' | '?' | '&' | '#' | ')' | ']' | '}' | '.'
-                            ) {
-                                if !cur.is_empty() {
-                                    out.push(std::mem::take(&mut cur));
-                                }
-                            }
-                        }
-                        if !cur.is_empty() {
-                            out.push(cur);
-                        }
-                        if out.len() <= 1 {
-                            vec![part.to_string()]
-                        } else {
-                            out
-                        }
-                    };
-                    for seg in segments {
-                        max_word_w =
-                            max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                                table.entries,
-                                table.default_em.max(0.1),
-                                table.kern_pairs,
-                                table.space_trigrams,
-                                table.trigrams,
-                                seg.as_str(),
-                                bold,
-                                font_size,
-                            ));
-                    }
+    // When a "word" (space-delimited token) is wider than the configured max width, browsers may
+    // still wrap other parts of the paragraph, but the element's measured bounding box can expand
+    // to accommodate the token's min-content width. Upstream Mermaid records that via
+    // `getBoundingClientRect()` into `foreignObject width="..."`.
+    //
+    // Model this by tracking the widest space-delimited token width as a separate "min-content"
+    // contributor to the final measured width, without changing the wrapping width used for line
+    // breaking.
+    fn split_html_min_content_segments(tok: &str) -> Vec<String> {
+        // HTML min-content sizing for `display: table` tends to treat URL query separators as
+        // break opportunities, but does not behave like a full `word-break: break-all`.
+        //
+        // Keep this conservative: avoid splitting on `/`/`.`/`:` so we still model wide URL path
+        // segments that expand the measured bounding box beyond `wrappingWidth`.
+        fn is_break_after(ch: char) -> bool {
+            matches!(ch, '-' | '?' | '&' | '#')
+        }
+
+        let mut out: Vec<String> = Vec::new();
+        let mut cur = String::new();
+        for ch in tok.chars() {
+            cur.push(ch);
+            if is_break_after(ch) && !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        }
+        if !cur.is_empty() {
+            out.push(cur);
+        }
+        if out.len() <= 1 {
+            vec![tok.to_string()]
+        } else {
+            out
+        }
+    }
+
+    let html_min_content_width = if wrap_mode == WrapMode::HtmlLike && max_width.is_some() {
+        let mut max_word_w: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            for part in line.split(' ') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+                for seg in split_html_min_content_segments(part) {
+                    max_word_w = max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
+                        table.entries,
+                        table.default_em.max(0.1),
+                        table.kern_pairs,
+                        table.space_trigrams,
+                        table.trigrams,
+                        seg.as_str(),
+                        bold,
+                        font_size,
+                    ));
                 }
             }
-            Some(w.max(max_word_w))
+        }
+        if max_word_w.is_finite() && max_word_w > 0.0 {
+            Some(max_word_w)
         } else {
             None
         }
@@ -2744,7 +2753,7 @@ fn vendored_measure_wrapped_impl(
             text,
             style,
             bold,
-            effective_html_wrap_width.or(max_width),
+            max_width,
             wrap_mode,
         ),
         WrapMode::SvgLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
@@ -2809,6 +2818,11 @@ fn vendored_measure_wrapped_impl(
                 width = width.max(w);
             } else {
                 width = width.min(w);
+            }
+        }
+        if needs_wrap {
+            if let Some(w) = html_min_content_width {
+                width = width.max(w);
             }
         }
         // Empirically, upstream HTML label widths (via `getBoundingClientRect()`) land on a 1/64px

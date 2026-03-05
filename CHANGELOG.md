@@ -11,6 +11,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - `xtask`: extended `gen-upstream-svgs` and `compare-svg-xml` to support generating/comparing SVG baselines from custom
   fixture roots (useful for strict XML diffs when iterating on layout parity).
 - Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
+- Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 
 ### Fixed
 
@@ -34,6 +35,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: match Mermaid's flowchart font sizing rules by reading `themeVariables.fontSize` only (top-level `fontSize`
   no longer affects flowchart layout/label measurement).
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
+- Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
 - Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
   notably in xychart).
 

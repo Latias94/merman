@@ -16,21 +16,23 @@ For each item:
 
 ## Global gap checks (run first)
 
-- [ ] Confirm current parity gates are green:
+- [x] Confirm current parity gates are green:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
   - `cargo run -p xtask -- check-alignment`
-- [ ] Inventory override footprint (to avoid unbounded growth):
+- [x] Inventory override footprint (to avoid unbounded growth):
   - `cargo run -p xtask -- report-overrides`
 
 ## A) Text measurement & wrapping
 
-- [ ] URL / punctuation line breaking in HTML labels  
+- [x] URL / punctuation line breaking in HTML labels  
   Gap check:
   - Search for failing strict-XML cases in local stress fixtures (if any).
   - Add a minimal flowchart fixture with a URL in parentheses at `wrappingWidth=200`.
   Evidence:
   - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3`
   - Strict stress (optional): `compare-svg-xml --dom-mode strict --dom-decimals 3`
+  Notes:
+  - Fixture: `fixtures/flowchart/stress_flowchart_html_label_url_punct_wrap_067.mmd`
 
 - [ ] Mixed CJK + ASCII + emoji measurement stability  
   Gap check:
@@ -144,4 +146,3 @@ For each item:
 - [ ] Mindmap: multiline CJK + deep nesting viewport drift  
   Gap check:
   - Ensure root viewport bounds include all labels; compare in parity-root mode.
-
