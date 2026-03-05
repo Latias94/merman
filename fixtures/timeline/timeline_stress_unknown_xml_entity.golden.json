@@ -1,0 +1,34 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "Known entities",
+          "&amp; &lt; &gt;"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "",
+        "type": "",
+        "task": "2021 ",
+        "score": 0,
+        "events": [
+          "Unknown entity should be escaped in SVG XML",
+          "&madeup;"
+        ]
+      }
+    ]
+  }
+}

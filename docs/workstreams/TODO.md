@@ -152,11 +152,13 @@ For each item:
   - Tokenizer behavior:
     - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_inline_code_suppresses_emphasis_delimiters`)
 
-- [ ] Escaped entities survive markdown→HTML→SVG pipeline  
+- [x] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:
   - Add a fixture containing `&lt;`, `&amp;`, and unknown `&entity;` sequences.
   Evidence:
   - Rendered SVG must remain valid XML and match upstream escaping behavior.
+  - Fixture: `fixtures/timeline/timeline_stress_unknown_xml_entity.mmd`
+    - Compare: `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-decimals 3 --filter timeline_stress_unknown_xml_entity`
 
 ## D) Theme & CSS selector drift
 
