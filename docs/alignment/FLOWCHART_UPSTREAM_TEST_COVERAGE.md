@@ -169,6 +169,7 @@ upstream SVG baselines (rendered via `mmdc` with our pinned CLI config):
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_065.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_render_a_stadium_shaped_node_068.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_066.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_66_more_nested_subgraph_cases_tb_027.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_67_more_nested_subgraph_cases_rl_028.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_68_more_nested_subgraph_cases_bt_029.mmd`
