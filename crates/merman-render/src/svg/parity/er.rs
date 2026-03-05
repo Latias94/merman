@@ -409,16 +409,11 @@ pub(super) fn render_er_diagram_svg(
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
-    // Mermaid ER unified output defaults to the global Mermaid fontSize (16px) via `#id{font-size:...}`.
-    let font_size = effective_config
-        .get("fontSize")
-        .and_then(|v| v.as_f64())
-        .or_else(|| {
-            effective_config
-                .get("er")
-                .and_then(|v| v.get("fontSize"))
-                .and_then(|v| v.as_f64())
-        })
+    // Mermaid ER unified output inherits the root SVG font-size, so `themeVariables.fontSize`
+    // wins when present (including Mermaid's common `"NNpx"` form).
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
     let title_top_margin = effective_config
@@ -611,7 +606,11 @@ pub(super) fn render_er_diagram_svg(
         out.push_str("</desc>");
     }
 
-    let _ = write!(&mut out, r#"<style>{}</style>"#, er_css(diagram_id));
+    let _ = write!(
+        &mut out,
+        r#"<style>{}</style>"#,
+        er_css(diagram_id, effective_config)
+    );
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");

@@ -86,6 +86,19 @@ fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     json_f64(cur)
 }
 
+fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let raw = s.strip_suffix("px").unwrap_or(s).trim();
+    raw.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    config_f64(cfg, path).or_else(|| {
+        let s = config_string(cfg, path)?;
+        parse_css_px_to_f64(&s)
+    })
+}
+
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
     for key in path {
@@ -182,10 +195,11 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
 
 fn er_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"]);
-    // Mermaid ER unified renderer output uses the global Mermaid `fontSize` (defaults to 16px)
-    // via the root `#id{font-size:...}` rule. Prefer the global value for parity.
-    let font_size = config_f64(effective_config, &["fontSize"])
-        .or_else(|| config_f64(effective_config, &["er", "fontSize"]))
+    // Mermaid ER unified renderer inherits the root SVG font-size, so `themeVariables.fontSize`
+    // wins when present (including Mermaid's common `"NNpx"` form).
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0);
     TextStyle {
         font_family,
@@ -666,8 +680,8 @@ pub fn layout_er_diagram(
     };
     let rel_label_style = TextStyle {
         font_family: label_style.font_family.clone(),
-        // Mermaid ER edge labels default to 14px when `fontSize=16`.
-        font_size: (label_style.font_size - 2.0).max(1.0),
+        // Mermaid ER relationship labels stay at a fixed 14px in the emitted stylesheet.
+        font_size: 14.0,
         font_weight: None,
     };
 

@@ -376,17 +376,32 @@ pub(super) fn requirement_css(diagram_id: &str) -> String {
     out
 }
 
-pub(super) fn er_css(diagram_id: &str) -> String {
+pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 ER unified renderer stylesheet ordering (see `diagrams/er/styles.js`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let font = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(effective_config, &["fontFamily"]))
+        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
+    let font = normalize_css_font_family(font.as_str());
+    let font = if font.is_empty() {
+        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
+    } else {
+        font
+    };
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
+        id,
+        font,
+        fmt(font_size)
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -413,8 +428,11 @@ pub(super) fn er_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        id,
+        font,
+        fmt(font_size),
+        id
     );
     let _ = write!(
         &mut out,
