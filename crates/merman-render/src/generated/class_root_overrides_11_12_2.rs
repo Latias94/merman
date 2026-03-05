@@ -11,6 +11,9 @@ pub fn lookup_class_root_viewport_override(
         "mmdr_tests_class_class_multiplicity" => Some(("0 0 101.78125 258", "101.781")),
         "stress_class_markdown_inline_code_022" => Some(("0 0 208.6328125 136", "208.633")),
         "stress_class_markdown_member_strong_023" => Some(("0 0 147.1171875 136", "147.117")),
+        "stress_class_svg_font_size_px_string_precedence_026" => {
+            Some(("0 0 367.0078125 364.9333190917969", "367.008"))
+        }
         "upstream_cross_namespace_relations_spec" => Some(("0 0 367.06640625 406", "367.066")),
         "upstream_docs_classdiagram_cardinality_multiplicity_on_relations_038" => {
             Some(("0 0 376.5078125 258", "376.508"))
