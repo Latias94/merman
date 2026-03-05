@@ -209,6 +209,7 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_mindmap_deep_chain_long_words_036" => {
             Some(("5 5 308.09967041015625 678.5985107421875", "308.1"))
         }
+        "stress_mindmap_font_size_precedence_037" => Some(("5 5 716.6608276367188 240", "716.661")),
         _ => None,
     }
 }
