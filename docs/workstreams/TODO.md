@@ -189,15 +189,19 @@ For each item:
 
 ## E) SVG DOM stability and IDs
 
-- [ ] Stable element ordering (nodes/edges/clusters)  
+- [x] Stable element ordering (nodes/edges/clusters)  
   Gap check:
-  - If strict diffs are noisy, verify parity mode is stable.
-  - Only chase ordering issues when upstream ordering is deterministic and important.
+  - If strict diffs are noisy, verify dom-mode parity is stable and still catches ordering drift.
+  Evidence:
+  - Compare: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
 
-- [ ] Marker/id/url references are stable and correctly escaped  
+- [x] Marker/id/url references are stable and correctly escaped  
   Gap check:
-  - Ensure `marker-end="url(#...)"` ids don’t change run-to-run.
-  - Add a fixture with multiple diagrams on the same page if the renderer supports it.
+  - Ensure identifier-like attrs (e.g. `id`, `href`, `xlink:href`, `aria-*`) are normalized for Mermaid-generated ids
+    so DOM parity remains robust to upstream randomness while still validating escaping.
+  Evidence:
+  - Normalization: `crates/xtask/src/svgdom.rs` (identifier token normalization for compare dom-mode parity).
+  - Compare: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
 
 ## F) Subgraphs, clipping, edge geometry
 
