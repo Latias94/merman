@@ -134,6 +134,9 @@ For each item:
   - Flowchart: `fixtures/flowchart/stress_flowchart_font_size_precedence_073.mmd`
     - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_font_size_precedence_073`
     - Note: root `viewBox` is pinned via `crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs` for this fixture.
+  - ER: `fixtures/er/stress_er_font_size_precedence_001.mmd`
+    - Compare: `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3 --filter stress_er_font_size_precedence_001`
+    - Compare (root): `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_er_font_size_precedence_001`
   - State: `fixtures/state/stress_state_font_size_precedence_071.mmd`
     - Compare: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3 --filter stress_state_font_size_precedence_071`
     - Compare (root): `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_state_font_size_precedence_071`
