@@ -44,6 +44,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_dir_inherit_vs_local_016" => {
             Some(("0 0 589.5625 445", "589.562"))
         }
+        "stress_flowchart_font_size_precedence_073" => Some(("0 0 276 198", "276")),
         "stress_flowchart_edge_label_near_cluster_title_018" => {
             Some(("0 0 201.09375 336", "201.094"))
         }

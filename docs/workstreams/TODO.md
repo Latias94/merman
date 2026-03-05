@@ -103,6 +103,12 @@ For each item:
   - Confirm whether each diagram reads from `themeVariables.fontSize`, top-level `fontSize`, or a diagram override.
   Evidence:
   - A “fontSize smoke fixture” per diagram with `init` directives.
+  Evidence (partial):
+  - Flowchart: `fixtures/flowchart/stress_flowchart_font_size_precedence_073.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_font_size_precedence_073`
+    - Note: root `viewBox` is pinned via `crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs` for this fixture.
+  - Sequence: `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_with_an_init_directive_049.mmd`
+    - Compare: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter should_render_with_an_init_directive_049`
 
 ## C) Markdown subset parity
 
