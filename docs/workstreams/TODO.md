@@ -205,13 +205,19 @@ For each item:
 
 ## F) Subgraphs, clipping, edge geometry
 
-- [ ] Boundary clipping for cluster edges  
+- [x] Boundary clipping for cluster edges  
   Gap check:
-  - Use existing stress fixtures for external edges; confirm no DOM/viewport drift.
+  - Use an existing stress fixture for cluster-as-endpoint edges; confirm no DOM/viewport drift in parity-root mode.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_edges_to_from_subgraphs_017.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter stress_flowchart_edges_to_from_subgraphs_017`
 
-- [ ] Edge labels near cluster titles  
+- [x] Edge labels near cluster titles  
   Gap check:
   - Validate label placement does not overlap titles in parity-root mode.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_edge_label_near_cluster_title_018.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter stress_flowchart_edge_label_near_cluster_title_018`
 
 ## G) Diagram-specific hardening passes
 
