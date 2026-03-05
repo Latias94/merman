@@ -1,0 +1,10 @@
+---
+config:
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+  classDef fancy fill:#bbf,stroke:#333,stroke-width:2px,color:#111,font-family:monospace,font-size:28px,opacity:0.6;
+  A[Fancy label]:::fancy --> B[Styled via `style`]
+  style B fill:#f9f,stroke:#333,stroke-width:2px,color:#111,font-family:serif,font-size:22px,opacity:0.8
+

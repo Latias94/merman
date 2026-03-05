@@ -17,6 +17,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
 - Timeline: added a stress fixture for unknown XML entity escaping (including upstream SVG baseline).
+- Flowchart/State: added stress fixtures for `classDef`/`style` text overrides (font-family/font-size/opacity),
+  including upstream SVG baselines.
 
 ### Fixed
 

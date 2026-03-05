@@ -176,10 +176,16 @@ For each item:
     - `fixtures/xychart/stress_xychart_theme_default_vs_base_base_002.mmd`
     - Compare: `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-decimals 3 --filter theme_default_vs_base`
 
-- [ ] Inline `classDef` / `style` overrides: font-family/font-size/opacity  
+- [x] Inline `classDef` / `style` overrides: font-family/font-size/opacity  
   Gap check:
-  - Find existing fixtures with classDef style usage in `fixtures/upstream-svgs/*`.
-  - Confirm HTML-label div style mirrors upstream (only for properties upstream emits).
+  - Add fixtures that apply `font-family`, `font-size`, and `opacity` via both `classDef` and `style`.
+  Evidence:
+  - Flowchart fixture:
+    - `fixtures/flowchart/stress_flowchart_text_style_overrides_076.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter text_style_overrides`
+  - State fixture:
+    - `fixtures/state/stress_state_text_style_overrides_070.mmd`
+    - Compare: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3 --filter text_style_overrides`
 
 ## E) SVG DOM stability and IDs
 
