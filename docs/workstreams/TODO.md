@@ -126,6 +126,11 @@ For each item:
 - [ ] Inline code suppresses emphasis parsing  
   Gap check:
   - Ensure `` `**not bold**` `` remains literal in both SVG-label and HTML-label modes.
+  Evidence (partial):
+  - Class HTML labels preserve backticks and do not parse `**...**` inside them:
+    - Fixture: `fixtures/class/stress_class_markdown_inline_code_022.mmd`
+    - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
+    - Compare (root): `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
 
 - [ ] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:
