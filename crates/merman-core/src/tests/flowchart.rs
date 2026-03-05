@@ -98,6 +98,44 @@ fn parse_diagram_flowchart_supports_inline_nodes() {
 }
 
 #[test]
+fn parse_diagram_flowchart_allows_dashes_in_node_ids() {
+    let engine = Engine::new();
+    let text = r#"
+flowchart
+    wi-fi["a node with dashes in its name"]
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.meta.diagram_type, "flowchart-v2");
+    assert_eq!(res.model["nodes"][0]["id"], json!("wi-fi"));
+    assert_eq!(
+        res.model["nodes"][0]["label"],
+        json!("a node with dashes in its name")
+    );
+}
+
+#[test]
+fn parse_diagram_flowchart_supports_quoted_edge_labels_and_pipe_labels_with_whitespace() {
+    let engine = Engine::new();
+    let text = r#"
+flowchart TD
+A[Node 1] -- "Some text" --> B[Node 2]
+B --> |Other text| C[Node 3]
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.meta.diagram_type, "flowchart-v2");
+    let edges = res.model["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 2);
+    assert_eq!(edges[0]["label"], json!("Some text"));
+    assert_eq!(edges[0]["labelType"], json!("string"));
+    assert_eq!(edges[1]["label"], json!("Other text"));
+    assert_eq!(edges[1]["labelType"], json!("text"));
+}
+
+#[test]
 fn parse_diagram_flowchart_edge_stroke_and_type_normal_thick_dotted() {
     let engine = Engine::new();
 

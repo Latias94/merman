@@ -590,6 +590,26 @@ test1: 2013-01-01,2013-01-12
 }
 
 #[test]
+fn gantt_relative_after_auto_task_ids_works_with_custom_date_format() {
+    let model = parse(
+        r#"
+gantt
+dateFormat DD.MM.YYYY
+section Section
+Task 1 :done, 07.01.2024, 08.02.2024
+Task 2 :active, after task1, 20d
+"#,
+    );
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(tasks[0]["id"].as_str().unwrap(), "task1");
+    assert_eq!(tasks[1]["id"].as_str().unwrap(), "task2");
+    assert_eq!(
+        tasks[1]["startTime"].as_i64().unwrap(),
+        local_ms(2024, 1, 8, 0, 0, 0)
+    );
+}
+
+#[test]
 fn gantt_relative_refs_work_across_sections_like_upstream() {
     let model = parse(
         r#"
