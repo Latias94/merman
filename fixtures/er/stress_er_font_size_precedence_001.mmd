@@ -1,0 +1,9 @@
+%%{init: {"fontSize": 10, "themeVariables": {"fontSize": "24px"}} }%%
+erDiagram
+  CUSTOMER_ACCOUNT {
+    string customer_name
+  }
+  PURCHASE_ORDER {
+    string order_status
+  }
+  CUSTOMER_ACCOUNT ||--o{ PURCHASE_ORDER : places

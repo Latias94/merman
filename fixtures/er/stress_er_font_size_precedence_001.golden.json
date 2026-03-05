@@ -1,0 +1,69 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "CUSTOMER_ACCOUNT": {
+        "id": "entity-CUSTOMER_ACCOUNT-0",
+        "label": "CUSTOMER_ACCOUNT",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "customer_name",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PURCHASE_ORDER": {
+        "id": "entity-PURCHASE_ORDER-1",
+        "label": "PURCHASE_ORDER",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "order_status",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CUSTOMER_ACCOUNT-0",
+        "roleA": "places",
+        "entityB": "entity-PURCHASE_ORDER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}
