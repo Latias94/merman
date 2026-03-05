@@ -116,6 +116,9 @@ For each item:
   - Confirm whether each diagram reads from `themeVariables.fontSize`, top-level `fontSize`, or a diagram override.
   Evidence:
   - A “fontSize smoke fixture” per diagram with `init` directives.
+  - Timeline (theme `base`, `themeVariables.fontSize: "24px"` vs `fontSize: 10`):
+    - Fixture: `fixtures/timeline/timeline_stress_font_size_precedence.mmd`
+    - Compare: `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-decimals 3 --filter timeline_stress_font_size_precedence`
   Evidence (partial):
   - Class (SVG labels): Mermaid’s `createText(..., { width: calculateTextWidth(text, config) + 50 })` uses the
     top-level `fontSize` for the width probe, while the rendered SVG `<text>` inherits the root `font-size`
