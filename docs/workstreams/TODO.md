@@ -162,9 +162,19 @@ For each item:
 
 ## D) Theme & CSS selector drift
 
-- [ ] Verify `theme=default` vs `base` does not cause implicit defaults  
+- [x] Verify `theme=default` vs `base` does not cause implicit defaults  
   Gap check:
-  - Add a small xychart + flowchart fixture with explicit colors and ensure they stay stable.
+  - Add paired xychart + flowchart fixtures using `theme: default` and `theme: base` (no explicit themeVariables) so
+    default palette/background drift is observable.
+  Evidence:
+  - Flowchart fixtures:
+    - `fixtures/flowchart/stress_flowchart_theme_default_vs_base_default_074.mmd`
+    - `fixtures/flowchart/stress_flowchart_theme_default_vs_base_base_075.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter theme_default_vs_base`
+  - XYChart fixtures:
+    - `fixtures/xychart/stress_xychart_theme_default_vs_base_default_001.mmd`
+    - `fixtures/xychart/stress_xychart_theme_default_vs_base_base_002.mmd`
+    - Compare: `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-decimals 3 --filter theme_default_vs_base`
 
 - [ ] Inline `classDef` / `style` overrides: font-family/font-size/opacity  
   Gap check:

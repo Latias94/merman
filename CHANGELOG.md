@@ -52,6 +52,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text: treat failed `__` delimiter runs as literal in Mermaid Markdown tokenization (fixes `a__b` being misparsed into emphasis spans).
 - Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
   notably in xychart).
+- Theme: seed Mermaid `theme-base` / `theme-neutral` xychart defaults (background + plot palette) so `theme: base`
+  renders match upstream Mermaid CLI SVG baselines.
 
 ## [0.3.0] - 2026-03-02
 

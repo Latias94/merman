@@ -634,6 +634,25 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         _ => Map::new(),
     };
 
+    // `theme-neutral` constructor defaults.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
+    set_if_missing(&mut tv, "background", Value::String("#ffffff".to_string()));
+    set_if_missing(&mut tv, "primaryColor", Value::String("#eee".to_string()));
+    if get_truthy_string(&tv, "primaryTextColor").is_none() {
+        if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
+            if let Some(rgb) = parse_hex_rgb01(&primary_color) {
+                tv.insert(
+                    "primaryTextColor".to_string(),
+                    Value::String(rgb01_to_hex(Rgb01 {
+                        r: 1.0 - rgb.r,
+                        g: 1.0 - rgb.g,
+                        b: 1.0 - rgb.b,
+                    })),
+                );
+            }
+        }
+    }
+
     // Mermaid 11.12.2: `theme-neutral` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
     let c_scales_hex: [&str; 12] = [
@@ -696,6 +715,13 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         );
     }
 
+    // `theme-neutral` xychart palette + colors.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
+    ensure_xychart_theme_defaults(
+        &mut tv,
+        "#EEE,#6BB8E4,#8ACB88,#C7ACD6,#E8DCC2,#FFB2A8,#FFF380,#7E8D91,#FFD8B1,#FAF3E0",
+    );
+
     config.set_value("themeVariables", Value::Object(tv));
 }
 
@@ -712,6 +738,15 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#f4f4f4".to_string());
     let primary_color =
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#fff4dd".to_string());
+
+    // `theme-base` constructor defaults.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-base.js`.
+    set_if_missing(&mut tv, "background", Value::String(background.clone()));
+    set_if_missing(
+        &mut tv,
+        "primaryColor",
+        Value::String(primary_color.clone()),
+    );
 
     set_if_missing(
         &mut tv,
@@ -915,6 +950,13 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(&mut radar, "legendBoxSize", Value::Number(12.into()));
     set_if_missing(&mut radar, "legendFontSize", Value::Number(12.into()));
     tv.insert("radar".to_string(), Value::Object(radar));
+
+    // `theme-base` xychart palette + colors.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-base.js`.
+    ensure_xychart_theme_defaults(
+        &mut tv,
+        "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
+    );
 
     config.set_value("themeVariables", Value::Object(tv));
 }
