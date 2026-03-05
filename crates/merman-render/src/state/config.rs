@@ -43,6 +43,19 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     })
 }
 
+fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let raw = s.strip_suffix("px").unwrap_or(s).trim();
+    raw.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
+fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    config_f64(cfg, path).or_else(|| {
+        let s = config_string(cfg, path)?;
+        parse_css_px_to_f64(&s)
+    })
+}
+
 pub(super) fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
@@ -146,7 +159,12 @@ pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
+    // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
+    // (`themeVariables.fontSize`, typically a `"NNpx"` string).
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
     TextStyle {
         font_family,
         font_size,
