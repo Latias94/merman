@@ -1,0 +1,80 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Foo": {
+        "id": "Foo",
+        "type": "",
+        "label": "Foo",
+        "text": "Foo",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "veryLongMemberNameToWrapTheLayoutProbe: String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+veryLongMemberNameToWrapTheLayoutProbe: String",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "anotherVeryLongMemberNameToWrapTheLayoutProbe: String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+anotherVeryLongMemberNameToWrapTheLayoutProbe: String",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "thirdVeryLongMemberNameToWrapTheLayoutProbe: String",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+thirdVeryLongMemberNameToWrapTheLayoutProbe: String",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Foo-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
