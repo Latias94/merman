@@ -632,9 +632,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 .width;
             let needs_wrap = raw_w > w;
             if needs_wrap {
-                // Mermaid clamps the container to `max-width`, but long unbreakable words can
-                // force the measured width beyond that limit (tables expand to min-content).
-                width = width.max(w);
+                // When wrapping is active, the DOM-driven width behavior is governed by the
+                // wrapped layout, not the unwrapped per-line extents. Reuse the wrapped baseline
+                // width (without bold deltas) so we don't over-inflate `foreignObject width="..."`
+                // from unwrapped lines.
+                //
+                // The underlying measurer is still responsible for modeling any min-content
+                // expansion beyond `max-width`.
+                width = base.width.max(w);
             } else {
                 width = width.min(w);
             }

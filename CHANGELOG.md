@@ -39,6 +39,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
 - Text: avoid inflating flowchart HTML label height for quoted-string trailing-only whitespace (improves `parity-root` root viewport alignment).
+- Text: align wrapped HTML label widths for inline-styled flowchart labels by basing width on wrapped layout (fixes large `parity-root` `max-width/viewBox` deltas in shape stress fixtures).
 - Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
   notably in xychart).
 
