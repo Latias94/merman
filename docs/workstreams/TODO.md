@@ -221,18 +221,27 @@ For each item:
 
 ## G) Diagram-specific hardening passes
 
-- [ ] Sequence: note wrapping / activation stacking / message font precedence  
+- [x] Sequence: note wrapping / activation stacking / message font precedence  
   Gap check:
-  - Review `docs/alignment/SEQUENCE_*` and add a small “stacking matrix” fixture if missing.
+  - Ensure wrapped notes/messages, stacked activations, and message font precedence are parity-gated.
+  Evidence:
+  - Fixture: `fixtures/sequence/activation_stacked.mmd`
+    - Compare: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter activation_stacked`
 
-- [ ] Gantt: date parsing/timezone + “today” determinism  
+- [x] Gantt: date parsing/timezone + “today” determinism  
   Gap check:
-  - Confirm no fixtures depend on real “now” unless frozen.
-  - Add one deterministic “today marker” fixture if upstream has one.
+  - Confirm “today” marker rendering is compared using a frozen `now` derived from the upstream SVG baseline.
+  Evidence:
+  - Compare: `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter today_marker`
 
-- [ ] Class: generics + namespace/member layout  
+- [x] Class: generics + namespace/member layout  
   Gap check:
-  - Ensure `<`/`>` escaping and multiline members match upstream.
+  - Ensure generics and namespaces are covered via upstream fixtures and checked in parity-root mode.
+  Evidence:
+  - Fixture: `fixtures/class/upstream_docs_classdiagram_generic_types_018.mmd`
+    - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter generic_types_018`
+  - Fixture: `fixtures/class/stress_class_nested_namespaces_cross_edges_008.mmd`
+    - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter nested_namespaces_cross_edges_008`
 
 - [ ] State: composite padding + classDef html label measurement  
   Gap check:
