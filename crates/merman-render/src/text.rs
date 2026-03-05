@@ -62,26 +62,26 @@ pub fn flowchart_apply_mermaid_string_whitespace_height_parity(
     }
 
     // Mermaid FlowDB preserves leading/trailing whitespace when the label comes from a quoted
-    // string (e.g. `[" test "]`). In Mermaid@11.12.2, HTML label measurement ends up allocating an
-    // extra empty line for each side when such whitespace is present, even though the rendered
-    // HTML collapses it.
+    // string (e.g. `[" test "]`). Upstream SVG baselines (Mermaid@11.12.3) show that DOM
+    // measurement can allocate extra vertical space in some cases even though the rendered HTML
+    // collapses whitespace.
     //
-    // This behavior is observable in upstream SVG fixtures (e.g.
-    // `upstream_flow_vertice_chaining_with_extras_spec` where `" test "` yields a 3-line label box).
+    // In practice, this "extra line height" behavior is only observed for labels with *both*
+    // leading and trailing whitespace (e.g. `" test "`). Trailing-only whitespace (e.g.
+    // `"Ends with spaces  "`) does not inflate height in upstream baselines.
     let bytes = raw_label.as_bytes();
     if bytes.is_empty() {
         return;
     }
     let leading_ws = matches!(bytes.first(), Some(b' ' | b'\t'));
     let trailing_ws = matches!(bytes.last(), Some(b' ' | b'\t'));
-    let extra = leading_ws as usize + trailing_ws as usize;
-    if extra == 0 {
+    if !(leading_ws && trailing_ws) {
         return;
     }
 
     let line_h = flowchart_html_line_height_px(style.font_size);
-    metrics.height += extra as f64 * line_h;
-    metrics.line_count = metrics.line_count.saturating_add(extra);
+    metrics.height += 2.0 * line_h;
+    metrics.line_count = metrics.line_count.saturating_add(2);
 }
 
 pub fn flowchart_apply_mermaid_styled_node_height_parity(

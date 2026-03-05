@@ -13,6 +13,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: expanded `docs/workstreams/*` guidance for text-measurement parity work (including `parity-root` root viewport checks).
 - Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
+- Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
 
 ### Fixed
 
@@ -37,6 +38,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   no longer affects flowchart layout/label measurement).
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
+- Text: avoid inflating flowchart HTML label height for quoted-string trailing-only whitespace (improves `parity-root` root viewport alignment).
 - Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
   notably in xychart).
 
