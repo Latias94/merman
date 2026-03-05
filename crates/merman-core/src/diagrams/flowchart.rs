@@ -405,10 +405,11 @@ pub fn parse_flowchart_model_for_render(
 }
 
 fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
+    let title = crate::entities::decode_mermaid_entities_to_unicode(&sg.title).into_owned();
     json!({
         "id": sg.id,
         "nodes": sg.nodes,
-        "title": sg.title,
+        "title": title,
         "classes": sg.classes,
         "styles": sg.styles,
         "dir": sg.dir,
@@ -420,7 +421,7 @@ fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
     FlowSubgraph {
         id: sg.id,
         nodes: sg.nodes,
-        title: sg.title,
+        title: crate::entities::decode_mermaid_entities_to_unicode(&sg.title).into_owned(),
         classes: sg.classes,
         styles: sg.styles,
         dir: sg.dir,
