@@ -11,6 +11,9 @@ pub(super) fn render_class_html_label(
         // Fast-path for the common case: no Markdown tokens and no hard/soft line breaks.
         // This avoids pulldown-cmark overhead while producing the same XHTML fragment Mermaid
         // would emit for plain text labels.
+        if text.to_ascii_lowercase().contains("<br") {
+            return false;
+        }
         let bytes = text.as_bytes();
         !bytes.iter().any(|&b| {
             matches!(
@@ -18,65 +21,6 @@ pub(super) fn render_class_html_label(
                 b'\n' | b'\r' | b'*' | b'_' | b'`' | b'~' | b'|' | b'[' | b']'
             )
         })
-    }
-
-    fn mermaid_markdown_to_xhtml_fragment(text: &str) -> String {
-        // Mermaid renders Markdown labels inside a `<foreignObject>` as XHTML-like fragments.
-        // For strict SVG DOM comparisons we must keep this fragment *well-formed XML* (e.g.
-        // explicit `</p>` and `<br />`), and we only need a small subset for class fixtures.
-        let parser = pulldown_cmark::Parser::new_ext(
-            text,
-            pulldown_cmark::Options::ENABLE_TABLES
-                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                | pulldown_cmark::Options::ENABLE_TASKLISTS,
-        )
-        .map(|ev| match ev {
-            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-            other => other,
-        });
-
-        let mut out = String::new();
-        let mut saw_paragraph = false;
-        for ev in parser {
-            match ev {
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
-                    saw_paragraph = true;
-                    out.push_str("<p>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
-                    out.push_str("</p>");
-                }
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
-                    out.push_str("<em>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
-                    out.push_str("</em>");
-                }
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                    out.push_str("<strong>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
-                    out.push_str("</strong>");
-                }
-                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                    escape_xml_into(&mut out, &t);
-                }
-                pulldown_cmark::Event::HardBreak | pulldown_cmark::Event::SoftBreak => {
-                    out.push_str("<br />");
-                }
-                pulldown_cmark::Event::Html(t) => {
-                    // Preserve safety and XML well-formedness: treat raw HTML as literal text.
-                    escape_xml_into(&mut out, &t);
-                }
-                _ => {}
-            }
-        }
-
-        if !saw_paragraph {
-            // Mermaid wraps even empty labels in a paragraph when using HTML labels.
-            out.push_str("<p></p>");
-        }
-        out
     }
 
     out.push_str(r#"<span class=""#);
@@ -99,7 +43,7 @@ pub(super) fn render_class_html_label(
         return;
     }
 
-    let html = mermaid_markdown_to_xhtml_fragment(text);
+    let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
     if include_p {
         out.push_str(&html);
     } else {
