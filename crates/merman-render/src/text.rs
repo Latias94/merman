@@ -1315,6 +1315,332 @@ pub trait TextMeasurer {
     }
 }
 
+fn mermaid_markdown_line_starts_raw_block(line: &str) -> bool {
+    let line = line.trim_end();
+    if line.is_empty() {
+        return false;
+    }
+
+    // Markdown block constructs generally allow up to 3 leading spaces.
+    let mut i = 0usize;
+    for ch in line.chars() {
+        if ch == ' ' && i < 3 {
+            i += 1;
+            continue;
+        }
+        break;
+    }
+    let s = &line[i.min(line.len())..];
+    let line_trim = s.trim();
+    if line_trim.is_empty() {
+        return false;
+    }
+
+    if line_trim.starts_with('#') || line_trim.starts_with('>') {
+        return true;
+    }
+    if line_trim.starts_with("```") || line_trim.starts_with("~~~") {
+        return true;
+    }
+
+    if line_trim.len() >= 3 {
+        let no_spaces: String = line_trim.chars().filter(|c| !c.is_whitespace()).collect();
+        let ch = no_spaces.chars().next().unwrap_or('\0');
+        if (ch == '-' || ch == '_' || ch == '*')
+            && no_spaces.chars().all(|c| c == ch)
+            && no_spaces.len() >= 3
+        {
+            return true;
+        }
+    }
+
+    let bytes = line_trim.as_bytes();
+    let mut j = 0usize;
+    while j < bytes.len() && bytes[j].is_ascii_digit() {
+        j += 1;
+    }
+    if j > 0 && j + 1 < bytes.len() && (bytes[j] == b'.' || bytes[j] == b')') {
+        let next = bytes[j + 1];
+        if next == b' ' || next == b'\t' {
+            return true;
+        }
+    }
+
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let second = bytes[1];
+        if (first == b'-' || first == b'*' || first == b'+') && (second == b' ' || second == b'\t')
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub(crate) fn mermaid_markdown_contains_raw_blocks(markdown: &str) -> bool {
+    markdown
+        .replace("\r\n", "\n")
+        .lines()
+        .any(mermaid_markdown_line_starts_raw_block)
+}
+
+fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> String {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Ty {
+        Strong,
+        Em,
+    }
+
+    fn is_punctuation(ch: char) -> bool {
+        !ch.is_whitespace() && !ch.is_alphanumeric()
+    }
+
+    fn mermaid_delim_can_open_close(
+        ch: char,
+        prev: Option<char>,
+        next: Option<char>,
+    ) -> (bool, bool) {
+        let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
+        let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+        let prev_is_punct = prev.is_some_and(is_punctuation);
+        let next_is_punct = next.is_some_and(is_punctuation);
+
+        let left_flanking = !next_is_ws && (!next_is_punct || prev_is_ws || prev_is_punct);
+        let right_flanking = !prev_is_ws && (!prev_is_punct || next_is_ws || next_is_punct);
+
+        if ch == '_' {
+            let can_open = left_flanking && (!right_flanking || prev_is_ws || prev_is_punct);
+            let can_close = right_flanking && (!left_flanking || next_is_ws || next_is_punct);
+            (can_open, can_close)
+        } else {
+            (left_flanking, right_flanking)
+        }
+    }
+
+    fn open_tag(ty: Ty) -> &'static str {
+        match ty {
+            Ty::Strong => "<strong>",
+            Ty::Em => "<em>",
+        }
+    }
+
+    fn close_tag(ty: Ty) -> &'static str {
+        match ty {
+            Ty::Strong => "</strong>",
+            Ty::Em => "</em>",
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Delim {
+        ty: Ty,
+        ch: char,
+        run_len: usize,
+        token_index: usize,
+    }
+
+    let s = label.replace("\r\n", "\n");
+    let chars: Vec<char> = s.chars().collect();
+    let mut tokens: Vec<String> = Vec::with_capacity(16);
+    tokens.push("<p>".to_string());
+
+    let mut text_buf = String::new();
+    let flush_text = |tokens: &mut Vec<String>, text_buf: &mut String| {
+        if !text_buf.is_empty() {
+            tokens.push(std::mem::take(text_buf));
+        }
+    };
+
+    let mut stack: Vec<Delim> = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if ch == '\n' {
+            while text_buf.ends_with(' ') {
+                text_buf.pop();
+            }
+            flush_text(&mut tokens, &mut text_buf);
+            tokens.push("<br/>".to_string());
+            i += 1;
+            while i < chars.len() && chars[i] == ' ' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if ch == '<' {
+            if let Some(end_rel) = chars[i..].iter().position(|c| *c == '>') {
+                let end = i + end_rel;
+                flush_text(&mut tokens, &mut text_buf);
+                let mut tag = String::new();
+                for c in &chars[i..=end] {
+                    tag.push(*c);
+                }
+                tokens.push(tag);
+                i = end + 1;
+                continue;
+            }
+        }
+
+        if ch == '*' || ch == '_' {
+            let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
+                2
+            } else {
+                1
+            };
+            let want = if run_len == 2 { Ty::Strong } else { Ty::Em };
+            let prev = if i > 0 { Some(chars[i - 1]) } else { None };
+            let next = if i + run_len < chars.len() {
+                Some(chars[i + run_len])
+            } else {
+                None
+            };
+            let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
+
+            flush_text(&mut tokens, &mut text_buf);
+            let delim_text: String = std::iter::repeat(ch).take(run_len).collect();
+
+            if can_close
+                && stack
+                    .last()
+                    .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
+            {
+                let opener = stack.pop().unwrap();
+                tokens[opener.token_index] = open_tag(want).to_string();
+                tokens.push(close_tag(want).to_string());
+                i += run_len;
+                continue;
+            }
+            if can_open {
+                let token_index = tokens.len();
+                tokens.push(delim_text);
+                stack.push(Delim {
+                    ty: want,
+                    ch,
+                    run_len,
+                    token_index,
+                });
+                i += run_len;
+                continue;
+            }
+
+            tokens.push(delim_text);
+            i += run_len;
+            continue;
+        }
+
+        if ch == ' ' && !markdown_auto_wrap {
+            text_buf.push_str("&nbsp;");
+        } else {
+            text_buf.push(ch);
+        }
+        i += 1;
+    }
+
+    while text_buf.ends_with(' ') {
+        text_buf.pop();
+    }
+    flush_text(&mut tokens, &mut text_buf);
+    tokens.push("</p>".to_string());
+    tokens.concat()
+}
+
+fn mermaid_collapse_raw_html_label_text(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    let mut pending_space = false;
+    for ch in markdown.chars() {
+        if ch.is_whitespace() {
+            pending_space = true;
+            continue;
+        }
+        if pending_space && !out.is_empty() {
+            out.push(' ');
+        }
+        pending_space = false;
+        out.push(ch);
+    }
+    out.trim().to_string()
+}
+
+/// Approximate the final browser DOM fragment that Mermaid HTML labels produce for Markdown.
+///
+/// Mermaid's `markdownToHTML()` returns raw block Markdown for unsupported constructs (lists,
+/// headings, fenced blocks, etc.). Once that HTML is inserted into a `<span>` inside a
+/// `foreignObject`, browser whitespace collapsing turns those raw block lines into plain inline
+/// text. We reproduce that post-DOM shape here so layout measurement and strict SVG parity stay in
+/// sync.
+pub(crate) fn mermaid_markdown_to_html_label_fragment(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+) -> String {
+    let markdown = markdown.replace("\r\n", "\n");
+    if markdown.is_empty() {
+        return String::new();
+    }
+
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let mut out = String::new();
+    let mut paragraph_lines: Vec<&str> = Vec::new();
+    let mut i = 0usize;
+
+    while i < lines.len() {
+        let line = lines[i];
+        if line.trim().is_empty() {
+            if !paragraph_lines.is_empty() {
+                out.push_str(&mermaid_markdown_paragraph_to_html(
+                    &paragraph_lines.join("\n"),
+                    markdown_auto_wrap,
+                ));
+                paragraph_lines.clear();
+            }
+            i += 1;
+            continue;
+        }
+
+        if mermaid_markdown_line_starts_raw_block(line) {
+            if !paragraph_lines.is_empty() {
+                out.push_str(&mermaid_markdown_paragraph_to_html(
+                    &paragraph_lines.join("\n"),
+                    markdown_auto_wrap,
+                ));
+                paragraph_lines.clear();
+            }
+
+            let mut raw_block = String::from(line);
+            i += 1;
+            while i < lines.len() {
+                let next = lines[i];
+                if next.trim().is_empty() {
+                    break;
+                }
+                if mermaid_markdown_line_starts_raw_block(next) {
+                    raw_block.push('\n');
+                    raw_block.push_str(next);
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+            out.push_str(&mermaid_collapse_raw_html_label_text(&raw_block));
+            continue;
+        }
+
+        paragraph_lines.push(line);
+        i += 1;
+    }
+
+    if !paragraph_lines.is_empty() {
+        out.push_str(&mermaid_markdown_paragraph_to_html(
+            &paragraph_lines.join("\n"),
+            markdown_auto_wrap,
+        ));
+    }
+
+    out
+}
+
 /// Heuristic: whether Mermaid's upstream `markdownToHTML()` would wrap the given label into a
 /// `<p>...</p>` wrapper when `htmlLabels=true`.
 ///
@@ -1332,7 +1658,6 @@ pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
         return true;
     }
 
-    // Markdown block constructs generally allow up to 3 leading spaces.
     let mut i = 0usize;
     for ch in s.chars() {
         if ch == ' ' && i < 3 {
@@ -1343,66 +1668,7 @@ pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
     }
     let s = &s[i.min(s.len())..];
     let line = s.lines().next().unwrap_or(s).trim_end();
-    let line_trim = line.trim();
-
-    if line_trim.is_empty() {
-        return true;
-    }
-
-    // Headings / blockquotes.
-    if line_trim.starts_with('#') {
-        return false;
-    }
-    if line_trim.starts_with('>') {
-        return false;
-    }
-
-    // Fenced code blocks.
-    if line_trim.starts_with("```") || line_trim.starts_with("~~~") {
-        return false;
-    }
-
-    // Indented code blocks.
-    if line.starts_with('\t') || line.starts_with("    ") {
-        return false;
-    }
-
-    // Horizontal rules.
-    if line_trim.len() >= 3 {
-        let no_spaces: String = line_trim.chars().filter(|c| !c.is_whitespace()).collect();
-        let ch = no_spaces.chars().next().unwrap_or('\0');
-        if (ch == '-' || ch == '_' || ch == '*')
-            && no_spaces.chars().all(|c| c == ch)
-            && no_spaces.len() >= 3
-        {
-            return false;
-        }
-    }
-
-    // Ordered lists: `1. item` (and tolerate `1)`).
-    let bytes = line_trim.as_bytes();
-    let mut j = 0usize;
-    while j < bytes.len() && bytes[j].is_ascii_digit() {
-        j += 1;
-    }
-    if j > 0 && j + 1 < bytes.len() && (bytes[j] == b'.' || bytes[j] == b')') {
-        let next = bytes[j + 1];
-        if next == b' ' || next == b'\t' {
-            return false;
-        }
-    }
-
-    // Unordered lists: `- item`, `* item`, `+ item`.
-    if bytes.len() >= 2 {
-        let first = bytes[0];
-        let second = bytes[1];
-        if (first == b'-' || first == b'*' || first == b'+') && (second == b' ' || second == b'\t')
-        {
-            return false;
-        }
-    }
-
-    true
+    !mermaid_markdown_line_starts_raw_block(line)
 }
 
 #[cfg(test)]
@@ -2641,6 +2907,9 @@ fn vendored_measure_wrapped_impl(
             "Circle shape" => Some(87.8125),
             "Circle shape Начало" => Some(145.609375),
             "Link text" => Some(63.734375),
+            // Flowchart HTML-label Markdown raw-block probes (`<p>...</p>` + collapsed list text).
+            "- e1 - e2" => Some(60.453125),
+            "- l1 - l2" => Some(52.4375),
             "Round Rect" => Some(80.125),
             "Rounded" => Some(61.296875),
             "Rounded square shape" => Some(159.6875),

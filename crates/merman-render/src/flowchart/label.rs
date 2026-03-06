@@ -25,13 +25,43 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     let mut metrics = if let Some(m) = math_metrics {
         m
     } else if label_type == "markdown" {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer,
-            raw_label,
-            style,
-            max_width_px,
-            wrap_mode,
-        )
+        let html_labels = wrap_mode == WrapMode::HtmlLike;
+        let has_raw_blocks =
+            html_labels && crate::text::mermaid_markdown_contains_raw_blocks(raw_label);
+        if has_raw_blocks && !raw_label.contains("![") {
+            let markdown_auto_wrap = config
+                .as_value()
+                .get("markdownAutoWrap")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true);
+            let html =
+                crate::text::mermaid_markdown_to_html_label_fragment(raw_label, markdown_auto_wrap);
+            let html = crate::text::replace_fontawesome_icons(&html);
+            let plain = flowchart_label_plain_text_for_layout(raw_label, label_type, true);
+            let has_inline_markup = html.contains("<strong>")
+                || html.contains("<em>")
+                || html.contains("<img")
+                || html.contains("<i ");
+            if has_inline_markup {
+                crate::text::measure_html_with_flowchart_bold_deltas(
+                    measurer,
+                    &html,
+                    style,
+                    max_width_px,
+                    wrap_mode,
+                )
+            } else {
+                measurer.measure_wrapped(&plain, style, max_width_px, wrap_mode)
+            }
+        } else {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                raw_label,
+                style,
+                max_width_px,
+                wrap_mode,
+            )
+        }
     } else {
         let html_labels = wrap_mode == WrapMode::HtmlLike;
         if html_labels {
@@ -489,6 +519,11 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 
     match label_type {
         "markdown" => {
+            if html_labels && crate::text::mermaid_markdown_contains_raw_blocks(label) {
+                let html = crate::text::mermaid_markdown_to_html_label_fragment(label, true);
+                return strip_html_for_layout(&html).trim().to_string();
+            }
+
             let mut out = String::new();
             let parser = pulldown_cmark::Parser::new_ext(
                 label,

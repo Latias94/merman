@@ -453,9 +453,15 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 .get("markdownAutoWrap")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true);
-            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
-            let html_out =
-                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p);
+            let html_out = if crate::text::mermaid_markdown_contains_raw_blocks(decoded.as_ref()) {
+                crate::text::mermaid_markdown_to_html_label_fragment(
+                    decoded.as_ref(),
+                    markdown_auto_wrap,
+                )
+            } else {
+                let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
+                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
+            };
             let html_out = html_out.trim().to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
@@ -472,9 +478,15 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 .get("markdownAutoWrap")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true);
-            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
-            let html_out =
-                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p);
+            let html_out = if crate::text::mermaid_markdown_contains_raw_blocks(decoded.as_ref()) {
+                crate::text::mermaid_markdown_to_html_label_fragment(
+                    decoded.as_ref(),
+                    markdown_auto_wrap,
+                )
+            } else {
+                let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
+                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
+            };
             let html_out = html_out.trim().to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
