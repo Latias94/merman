@@ -97,6 +97,17 @@ For each item:
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
 
+- [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
+  Gap check:
+  - Confirm nodes without explicit classes still receive implicit `classDef default` styling.
+  - Confirm a node literally named `default` still layers node-id `style default ...` overrides on top.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_html_labels_default_class_077.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_html_labels_default_class_077`
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_html_labels_default_class_077`
+    - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter stress_flowchart_html_labels_default_class_077 --dom-mode strict --dom-decimals 3`
+
 - [x] `foreignObject` font-size inheritance (Mermaid CLI / Puppeteer)  
   Gap check:
   - Add a fixture that overrides `fontSize` and `themeVariables.fontSize` while forcing HTML labels.

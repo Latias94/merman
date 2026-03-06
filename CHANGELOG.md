@@ -14,6 +14,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
+- Flowchart: added a stress fixture for `htmlLabels: true` default-class/default-node styling semantics (`classDef default` + `style default`).
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
 - State/Sequence/Gantt/Journey/ER/Requirement/Block/Radar/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
@@ -43,6 +44,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   inside them are not interpreted (aligns with upstream Mermaid CLI baselines for inline-code-like labels).
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
+- Flowchart: honor implicit `classDef default` styling for unlabeled/default-class nodes under `htmlLabels: true`, while still layering node-id `style default ...` overrides for a node literally named `default`.
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,
