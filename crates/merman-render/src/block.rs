@@ -99,6 +99,36 @@ fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     json_f64(cur)
 }
 
+fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    cur.as_str().map(|s| s.to_string()).or_else(|| {
+        cur.as_array()
+            .and_then(|values| values.first()?.as_str())
+            .map(|s| s.to_string())
+    })
+}
+
+fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+    let raw = s.trim().trim_end_matches(';').trim();
+    let raw = raw.trim_end_matches("!important").trim();
+    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
+    raw.parse::<f64>().ok().filter(|value| value.is_finite())
+}
+
+fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    config_f64(cfg, path).or_else(|| {
+        let raw = config_string(cfg, path)?;
+        parse_css_px_to_f64(&raw)
+    })
+}
+
+fn decode_block_label_html(raw: &str) -> String {
+    raw.replace("&nbsp;", "\u{00A0}")
+}
+
 fn to_sized_block(
     node: &BlockNode,
     padding: f64,
@@ -116,7 +146,7 @@ fn to_sized_block(
     //
     // Block diagrams frequently use `&nbsp;` placeholders (notably for block arrows), so we must
     // decode those before measuring; otherwise node widths drift drastically.
-    let label_decoded = node.label.replace("&nbsp;", "\u{00A0}");
+    let label_decoded = decode_block_label_html(&node.label);
     let label_bbox_html =
         measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
     let label_bbox_svg =
@@ -372,20 +402,11 @@ pub fn layout_block_diagram(
 
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {
-        font_family: effective_config
-            .get("fontFamily")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                effective_config
-                    .get("themeVariables")
-                    .and_then(|tv| tv.get("fontFamily"))
-                    .and_then(|v| v.as_str())
-            })
-            .map(|s| s.to_string())
+        font_family: config_string(effective_config, &["themeVariables", "fontFamily"])
+            .or_else(|| config_string(effective_config, &["fontFamily"]))
             .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
-        font_size: effective_config
-            .get("fontSize")
-            .and_then(|v| v.as_f64())
+        font_size: config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+            .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
             .unwrap_or(16.0)
             .max(1.0),
         font_weight: None,
@@ -440,8 +461,9 @@ pub fn layout_block_diagram(
         let label = if e.label.trim().is_empty() {
             None
         } else {
+            let edge_label = decode_block_label_html(&e.label);
             let metrics =
-                measurer.measure_wrapped(&e.label, &TextStyle::default(), None, WrapMode::HtmlLike);
+                measurer.measure_wrapped(&edge_label, &text_style, None, WrapMode::HtmlLike);
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,

@@ -248,6 +248,7 @@ pub fn lookup_block_root_viewport_override(
         "upstream_warnings" => Some(("-5 -281 109.3125 286", "109.312")),
         "upstream_widths_and_spaces" => Some(("-5 -36 245 41", "245")),
         "upstream_widths_and_spaces_2" => Some(("-5 -18.5 337.296875 37", "337.297")),
+        "stress_block_font_size_precedence_001" => Some(("-5 -23 1009.78125 46", "1009.78")),
         _ => None,
     }
 }
