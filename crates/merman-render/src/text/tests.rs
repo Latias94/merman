@@ -198,3 +198,13 @@ fn markdown_inline_code_suppresses_emphasis_delimiters() {
         ]]
     );
 }
+
+#[test]
+fn markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom() {
+    let input = "Hello\n  - l1\n  - l2";
+    assert!(mermaid_markdown_contains_raw_blocks(input));
+    assert_eq!(
+        mermaid_markdown_to_html_label_fragment(input, true),
+        "<p>Hello</p>- l1 - l2"
+    );
+}
