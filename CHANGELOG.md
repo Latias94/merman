@@ -17,6 +17,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added a stress fixture for `htmlLabels: true` default-class/default-node styling semantics (`classDef default` + `style default`).
 - Flowchart: added a stress fixture for `htmlLabels: true` Markdown labels that mix paragraphs with raw/list-style lines.
 - State/Requirement: added stress fixtures for HTML-label Markdown that keeps `<br/>- ...` list-like continuations inside the same paragraph.
+- Class: added a stress fixture for HTML-label edge Markdown that keeps `<br/>- ...` list-like continuations inside the same paragraph.
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
 - State/Sequence/Gantt/Journey/ER/Requirement/Block/Radar/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
@@ -49,6 +50,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: honor implicit `classDef default` styling for unlabeled/default-class nodes under `htmlLabels: true`, while still layering node-id `style default ...` overrides for a node literally named `default`.
 - Flowchart/Text: keep Mermaid HTML-label Markdown block semantics when a label mixes a normal paragraph with raw/list-style lines (emit `<p>...</p>` plus collapsed literal block text instead of turning everything into `<br/>`-separated paragraphs).
 - State/Requirement/Text: preserve Mermaid HTML-label paragraph semantics for `<br/>- ...` continuation lines, and measure requirement multiline field rows with the same height/max-width behavior as upstream.
+- Class/Text: route class HTML-label Markdown rendering through the shared XHTML helper so inline `<br/>` continuations render as Mermaid paragraphs instead of escaped literal tags.
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,

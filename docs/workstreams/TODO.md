@@ -234,6 +234,9 @@ For each item:
   - Ensure Mermaid keeps `Hello<br/>- l1<br/>- l2` inside a single `<p>...</p>` for htmlLabels,
     instead of treating the `- ...` lines as raw/list blocks or escaping `<br/>` literally.
   Evidence:
+  - Class fixture: `fixtures/class/stress_class_edge_label_markdown_br_listish_027.mmd`
+    - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter stress_class_edge_label_markdown_br_listish_027`
+    - Compare (root): `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_class_edge_label_markdown_br_listish_027`
   - State fixture: `fixtures/state/stress_state_edge_label_markdown_br_listish_072.mmd`
     - Compare: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3 --filter stress_state_edge_label_markdown_br_listish_072`
   - Requirement fixture: `fixtures/requirement/stress_requirement_markdown_br_listish_150.mmd`
