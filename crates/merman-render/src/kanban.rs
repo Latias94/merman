@@ -53,13 +53,24 @@ fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let raw = s.strip_suffix("px").unwrap_or(s).trim();
+    raw.parse::<f64>().ok().filter(|value| value.is_finite())
+}
+
+fn json_f64_css_px(v: &serde_json::Value) -> Option<f64> {
+    v.as_f64()
+        .or_else(|| v.as_i64().map(|n| n as f64))
+        .or_else(|| v.as_u64().map(|n| n as f64))
+        .or_else(|| v.as_str().and_then(parse_css_px_to_f64))
+}
+
 fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
-    cfg.get("fontSize")
-        .and_then(|v| {
-            v.as_f64()
-                .or_else(|| v.as_i64().map(|n| n as f64))
-                .or_else(|| v.as_u64().map(|n| n as f64))
-        })
+    cfg.get("themeVariables")
+        .and_then(|v| v.get("fontSize"))
+        .and_then(json_f64_css_px)
+        .or_else(|| cfg.get("fontSize").and_then(json_f64_css_px))
         .unwrap_or(16.0)
         .max(1.0)
 }
