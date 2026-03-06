@@ -1169,16 +1169,26 @@ fn layout_flowchart_v2_with_model(
                 &e.classes,
                 &e.style,
             );
-            let metrics = flowchart_label_metrics_for_layout(
-                measurer,
-                label_text,
-                label_type,
-                edge_text_style.as_ref(),
-                Some(edge_label_wrapping_width),
-                edge_wrap_mode,
-                effective_config,
-                math_renderer,
-            );
+            let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
+                crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+                    measurer,
+                    label_text,
+                    edge_text_style.as_ref(),
+                    Some(edge_label_wrapping_width),
+                    edge_wrap_mode,
+                )
+            } else {
+                flowchart_label_metrics_for_layout(
+                    measurer,
+                    label_text,
+                    label_type,
+                    edge_text_style.as_ref(),
+                    Some(edge_label_wrapping_width),
+                    edge_wrap_mode,
+                    effective_config,
+                    math_renderer,
+                )
+            };
             let (label_width, label_height) = if edge_html_labels {
                 (metrics.width.max(1.0), metrics.height.max(1.0))
             } else {

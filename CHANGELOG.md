@@ -51,8 +51,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   text sizing drift without comparing full style strings).
 - Flowchart: honor implicit `classDef default` styling for unlabeled/default-class nodes under `htmlLabels: true`, while still layering node-id `style default ...` overrides for a node literally named `default`.
 - Flowchart/Text: keep Mermaid HTML-label Markdown block semantics when a label mixes a normal paragraph with raw/list-style lines (emit `<p>...</p>` plus collapsed literal block text instead of turning everything into `<br/>`-separated paragraphs).
+- Flowchart/Core+Render: keep bare-backtick pipe edge labels literal instead of upgrading them to Markdown, and mirror Mermaid SVG-label behavior where backtick-wrapped `text` edge labels collapse to the empty placeholder while HTML-label mode still preserves the literal backticks/raw tags.
+- Flowchart/Text+Render: align quoted Markdown edge labels that mix closing `</br>` and raw inline HTML (`<strong>...</strong>`) with Mermaid across both `htmlLabels` paths: HTML-label mode now measures/renderers the generated XHTML fragment like browser DOM, while SVG-label mode keeps raw tags literal but wraps them onto Mermaid-matching `<tspan>` lines.
 - State/Requirement/Text: preserve Mermaid HTML-label paragraph semantics for `<br/>- ...` continuation lines, and measure requirement multiline field rows with the same height/max-width behavior as upstream.
 - Class/Text: route class HTML-label Markdown rendering through the shared XHTML helper so inline `<br/>` continuations render as Mermaid paragraphs instead of escaped literal tags.
+- Text/Class: reinterpret malformed partial `**...*` HTML-label star runs the same way Mermaid/CommonMark does, so class members like `+inline: **bold**` (after classifier stripping) emit literal `*` + `<em>bold</em>` instead of fully literal text.
+- Class/Text: size single-glyph SVG class titles from Mermaid-style bold computed text length (instead of the generic SVG bbox path), removing the remaining `htmlLabels=false` simple-node/root-viewport drift on `probe_class_htmllabels_false_981`.
 - ER/Text: route ER relationship HTML labels through Mermaid-style Markdown rendering and markdown-aware measurement, so edge labels honor emphasis (`**...**`, `_..._`) and existing `<br/>` line-break fixtures keep upstream spacing.
 - ER/Text: preserve inline-code backticks in ER HTML labels so entity/attribute labels keep literal `` `**...**` `` text instead of emitting synthetic `<code>` / `<strong>` DOM.
 - Mindmap/Text: route complex markdown HTML labels through Mermaid-style XHTML fragments for DOM output and measurement, so mixed paragraph + list/raw-block labels collapse like upstream instead of emitting synthetic `<ul><li>...` DOM.
@@ -111,6 +115,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: align icon node shape rendering with upstream Mermaid (`icon` vs `iconSquare`) to avoid NaN path data and
   restore SVG DOM parity for AWS icon fixtures.
 - Flowchart: improved `iconSquare` RoughJS path parity (rounded-rect path structure) for upstream icon shape fixtures.
+- Class: align `htmlLabels` split semantics more closely with Mermaid: notes now respect global `htmlLabels` + class padding, while relation title labels switch to SVG `<text>/<tspan>` + background groups only when `flowchart.htmlLabels=false` is explicitly active.
 - Class: render `htmlLabels: false` labels via SVG `<text>/<tspan>` (avoid `<foreignObject>` DOM mismatches in parity
   baselines).
 - Text: closer-to-upstream Mermaid Markdown tokenization for flowchart SVG labels and layout measurement (fixes

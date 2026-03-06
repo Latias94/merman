@@ -118,9 +118,23 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     if !ctx.edge_html_labels {
         if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
             if let Some(lbl) = le.label.as_ref() {
-                if !label_text_plain.trim().is_empty() {
-                    let x = lbl.x + ctx.tx - origin_x;
-                    let y = lbl.y + ctx.ty - origin_y;
+                let x = lbl.x + ctx.tx - origin_x;
+                let y = lbl.y + ctx.ty - origin_y;
+
+                if label_text_plain.trim().is_empty() {
+                    if !label_text.trim().is_empty() {
+                        let _ = write!(
+                            out,
+                            r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate(-2,-2)"><g><rect class="background" style="" x="-2" y="-2" width="4" height="4"/>"#,
+                            fmt_display(x),
+                            fmt_display(y),
+                            escape_xml_display(&edge.id),
+                        );
+                        write_flowchart_svg_text(out, "", true);
+                        out.push_str("</g></g></g>");
+                        return;
+                    }
+                } else {
                     let w = lbl.width.max(0.0);
                     let h = lbl.height.max(0.0);
                     let (dx, dy) = if w > 0.0 && h > 0.0 {
@@ -148,7 +162,14 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     )
                     .join("\n");
                     if label_type == "markdown" {
-                        write_flowchart_svg_text_markdown(out, label_text, true);
+                        write_flowchart_svg_text_markdown_wrapped(
+                            out,
+                            label_text,
+                            true,
+                            ctx.measurer,
+                            &ctx.text_style,
+                            Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+                        );
                     } else {
                         write_flowchart_svg_text(out, &wrapped, true);
                     }
@@ -187,7 +208,14 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 )
                 .join("\n");
                 if label_type == "markdown" {
-                    write_flowchart_svg_text_markdown(out, label_text, true);
+                    write_flowchart_svg_text_markdown_wrapped(
+                        out,
+                        label_text,
+                        true,
+                        ctx.measurer,
+                        &ctx.text_style,
+                        Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
+                    );
                 } else {
                     write_flowchart_svg_text(out, &wrapped, true);
                 }

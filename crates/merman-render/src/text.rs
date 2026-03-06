@@ -678,7 +678,11 @@ pub(crate) fn mermaid_markdown_to_lines(
         let mut s = markdown
             .replace("<br/>", "\n")
             .replace("<br />", "\n")
-            .replace("<br>", "\n");
+            .replace("<br>", "\n")
+            .replace("</br>", "\n")
+            .replace("</br/>", "\n")
+            .replace("</br />", "\n")
+            .replace("</br >", "\n");
 
         // Collapse multiple consecutive newlines to a single `\n`.
         let mut collapsed = String::with_capacity(s.len());
@@ -836,8 +840,21 @@ pub(crate) fn mermaid_markdown_to_lines(
                 let end = i + end;
                 let html: String = chars[i..=end].iter().collect();
                 flush_word(&mut out, &mut line_idx, &mut word, word_ty);
-                out[line_idx].push((html, MermaidMarkdownWordType::Normal));
-                word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                if html.eq_ignore_ascii_case("<br>")
+                    || html.eq_ignore_ascii_case("<br/>")
+                    || html.eq_ignore_ascii_case("<br />")
+                    || html.eq_ignore_ascii_case("</br>")
+                    || html.eq_ignore_ascii_case("</br/>")
+                    || html.eq_ignore_ascii_case("</br />")
+                    || html.eq_ignore_ascii_case("</br >")
+                {
+                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                    line_idx += 1;
+                    out.push(Vec::new());
+                } else {
+                    out[line_idx].push((html, MermaidMarkdownWordType::Normal));
+                    word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+                }
                 i = end + 1;
                 continue;
             }
@@ -931,12 +948,213 @@ pub(crate) fn mermaid_markdown_to_lines(
     out
 }
 
-pub fn measure_markdown_with_flowchart_bold_deltas(
+pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
+    pulldown_cmark::Parser::new_ext(
+        markdown,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    )
+    .any(|ev| {
+        matches!(
+            ev,
+            pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_)
+        )
+    })
+}
+
+fn markdown_word_line_plain_text_and_delta_px(
+    words: &[(String, MermaidMarkdownWordType)],
+    style: &TextStyle,
+    wrap_mode: WrapMode,
+    bold_delta_scale: f64,
+) -> (String, f64) {
+    let mut plain = String::new();
+    let mut delta_px = 0.0;
+    let mut prev_char: Option<char> = None;
+    let mut prev_is_strong = false;
+
+    for (word_idx, (word, ty)) in words.iter().enumerate() {
+        let is_strong = *ty == MermaidMarkdownWordType::Strong;
+        let is_em = *ty == MermaidMarkdownWordType::Em;
+
+        let mut push_char = |ch: char| {
+            plain.push(ch);
+            if !is_flowchart_default_font(style) {
+                prev_char = Some(ch);
+                prev_is_strong = is_strong;
+                return;
+            }
+            let font_size = style.font_size.max(1.0);
+            if let Some(prev) = prev_char {
+                if prev_is_strong && is_strong {
+                    delta_px += flowchart_default_bold_kern_delta_em(prev, ch)
+                        * font_size
+                        * bold_delta_scale;
+                }
+            }
+            if is_strong {
+                delta_px += flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
+            }
+            if is_em {
+                delta_px += flowchart_default_italic_delta_em(ch, wrap_mode) * font_size;
+            }
+            prev_char = Some(ch);
+            prev_is_strong = is_strong;
+        };
+
+        if word_idx > 0 {
+            push_char(' ');
+        }
+        for ch in word.chars() {
+            push_char(ch);
+        }
+    }
+
+    (plain, delta_px)
+}
+
+fn measure_markdown_word_line_width_px(
+    measurer: &dyn TextMeasurer,
+    words: &[(String, MermaidMarkdownWordType)],
+    style: &TextStyle,
+    wrap_mode: WrapMode,
+) -> f64 {
+    let (plain, delta_px) =
+        markdown_word_line_plain_text_and_delta_px(words, style, wrap_mode, 1.0);
+    measurer
+        .measure_wrapped_raw(&plain, style, None, wrap_mode)
+        .width
+        + delta_px
+}
+
+fn split_markdown_word_to_width_px(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    word: &str,
+    ty: MermaidMarkdownWordType,
+    max_width_px: f64,
+    wrap_mode: WrapMode,
+) -> (String, String) {
+    if max_width_px <= 0.0 {
+        return (word.to_string(), String::new());
+    }
+    let chars = word.chars().collect::<Vec<_>>();
+    if chars.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    let mut split_at = 1usize;
+    for idx in 1..=chars.len() {
+        let head = chars[..idx].iter().collect::<String>();
+        let width =
+            measure_markdown_word_line_width_px(measurer, &[(head.clone(), ty)], style, wrap_mode);
+        if width.is_finite() && width <= max_width_px + 0.125 {
+            split_at = idx;
+        } else {
+            break;
+        }
+    }
+
+    let head = chars[..split_at].iter().collect::<String>();
+    let tail = chars[split_at..].iter().collect::<String>();
+    (head, tail)
+}
+
+fn wrap_markdown_word_lines(
+    measurer: &dyn TextMeasurer,
+    parsed: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    wrap_mode: WrapMode,
+    break_long_words: bool,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
+        return parsed.to_vec();
+    };
+
+    let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = Vec::new();
+    for line in parsed {
+        if line.is_empty() {
+            out.push(Vec::new());
+            continue;
+        }
+
+        let mut tokens = std::collections::VecDeque::from(line.clone());
+        let mut cur: Vec<(String, MermaidMarkdownWordType)> = Vec::new();
+
+        while let Some((word, ty)) = tokens.pop_front() {
+            let mut candidate = cur.clone();
+            candidate.push((word.clone(), ty));
+            if measure_markdown_word_line_width_px(measurer, &candidate, style, wrap_mode)
+                <= max_width_px + 0.125
+            {
+                cur = candidate;
+                continue;
+            }
+
+            if !cur.is_empty() {
+                out.push(cur);
+                cur = Vec::new();
+                tokens.push_front((word, ty));
+                continue;
+            }
+
+            let single_word_width = measure_markdown_word_line_width_px(
+                measurer,
+                &[(word.clone(), ty)],
+                style,
+                wrap_mode,
+            );
+            if single_word_width <= max_width_px + 0.125 || !break_long_words {
+                out.push(vec![(word, ty)]);
+                continue;
+            }
+
+            let (head, tail) = split_markdown_word_to_width_px(
+                measurer,
+                style,
+                &word,
+                ty,
+                max_width_px,
+                wrap_mode,
+            );
+            out.push(vec![(head, ty)]);
+            if !tail.is_empty() {
+                tokens.push_front((tail, ty));
+            }
+        }
+
+        if !cur.is_empty() {
+            out.push(cur);
+        }
+    }
+
+    if out.is_empty() {
+        vec![Vec::new()]
+    } else {
+        out
+    }
+}
+
+pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
+    measurer: &dyn TextMeasurer,
+    markdown: &str,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    wrap_mode: WrapMode,
+) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
+    let parsed = mermaid_markdown_to_lines(markdown, true);
+    wrap_markdown_word_lines(measurer, &parsed, style, max_width_px, wrap_mode, true)
+}
+
+fn measure_markdown_with_flowchart_bold_deltas_impl(
     measurer: &dyn TextMeasurer,
     markdown: &str,
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
+    manually_wrap_words: bool,
 ) -> TextMetrics {
     // Mermaid measures Markdown labels via DOM (`getBoundingClientRect`) after converting the
     // Markdown into HTML inside a `<foreignObject>` (for `htmlLabels: true`). In the Mermaid@11.12.2
@@ -1094,78 +1312,50 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
         }
     }
 
-    let parsed = mermaid_markdown_to_lines(markdown, true);
+    let raw_parsed = mermaid_markdown_to_lines(markdown, true);
+    let parsed = if manually_wrap_words {
+        wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true)
+    } else {
+        raw_parsed.clone()
+    };
 
     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
-    let mut deltas_px_by_line: Vec<f64> = vec![0.0; parsed.len().max(1)];
-
-    for (line_idx, words) in parsed.iter().enumerate() {
-        let mut plain = String::new();
-        let mut prev_char: Option<char> = None;
-        let mut prev_is_strong = false;
-
-        for (word_idx, (w, ty)) in words.iter().enumerate() {
-            let is_strong = *ty == MermaidMarkdownWordType::Strong;
-            let is_em = *ty == MermaidMarkdownWordType::Em;
-
-            let mut push_char = |ch: char| {
-                plain.push(ch);
-                if !is_flowchart_default_font(style) {
-                    prev_char = Some(ch);
-                    prev_is_strong = is_strong;
-                    return;
-                }
-                let font_size = style.font_size.max(1.0);
-                if let Some(prev) = prev_char {
-                    if prev_is_strong && is_strong {
-                        deltas_px_by_line[line_idx] +=
-                            flowchart_default_bold_kern_delta_em(prev, ch)
-                                * font_size
-                                * bold_delta_scale;
-                    }
-                }
-                if is_strong {
-                    deltas_px_by_line[line_idx] +=
-                        flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
-                }
-                if is_em {
-                    deltas_px_by_line[line_idx] +=
-                        flowchart_default_italic_delta_em(ch, wrap_mode) * font_size;
-                }
-                prev_char = Some(ch);
-                prev_is_strong = is_strong;
-            };
-
-            if word_idx > 0 {
-                // Mermaid's `<tspan>` runs include a leading space in each word after the first,
-                // so the space inherits the *next* word's style.
-                push_char(' ');
-            }
-            for ch in w.chars() {
-                push_char(ch);
-            }
-        }
-
+    let mut deltas_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
+    for words in &parsed {
+        let (plain, delta_px) =
+            markdown_word_line_plain_text_and_delta_px(words, style, wrap_mode, bold_delta_scale);
         plain_lines.push(plain);
+        deltas_px_by_line.push(delta_px);
     }
 
     let plain = plain_lines.join("\n");
-
     let plain = plain.trim().to_string();
-    let base = measurer.measure_wrapped_raw(&plain, style, max_width, wrap_mode);
-
-    let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-    deltas_px_by_line.resize(lines.len(), 0.0);
+    let base = if manually_wrap_words {
+        measurer.measure_wrapped_raw(&plain, style, None, wrap_mode)
+    } else {
+        measurer.measure_wrapped_raw(&plain, style, max_width, wrap_mode)
+    };
 
     let mut max_line_width: f64 = 0.0;
-    for (idx, line) in lines.iter().enumerate() {
-        let w = measurer
-            .measure_wrapped_raw(line, style, None, wrap_mode)
-            .width;
-        max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
+    if manually_wrap_words {
+        for (idx, line) in plain_lines.iter().enumerate() {
+            let width = measurer
+                .measure_wrapped_raw(line, style, None, wrap_mode)
+                .width;
+            max_line_width = max_line_width.max(width + deltas_px_by_line[idx]);
+        }
+    } else {
+        let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        deltas_px_by_line.resize(lines.len(), 0.0);
+        for (idx, line) in lines.iter().enumerate() {
+            let width = measurer
+                .measure_wrapped_raw(line, style, None, wrap_mode)
+                .width;
+            max_line_width = max_line_width.max(width + deltas_px_by_line[idx]);
+        }
     }
 
     // Mermaid's upstream baselines land on a 1/64px lattice (from DOM measurement). We round to
@@ -1173,12 +1363,29 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     let mut width = round_to_1_64_px(max_line_width);
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
+            let raw_plain = raw_parsed
+                .iter()
+                .map(|words| {
+                    markdown_word_line_plain_text_and_delta_px(
+                        words,
+                        style,
+                        wrap_mode,
+                        bold_delta_scale,
+                    )
+                    .0
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             let raw_w = measurer
-                .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
+                .measure_wrapped_raw(raw_plain.trim(), style, None, wrap_mode)
                 .width;
             let needs_wrap = raw_w > w;
             if needs_wrap {
-                width = width.max(w);
+                if manually_wrap_words {
+                    width = width.max(w);
+                } else {
+                    width = base.width.max(w);
+                }
             } else {
                 width = width.min(w);
             }
@@ -1190,6 +1397,30 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
         height: base.height,
         line_count: base.line_count,
     }
+}
+
+pub fn measure_markdown_with_flowchart_bold_deltas(
+    measurer: &dyn TextMeasurer,
+    markdown: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+) -> TextMetrics {
+    measure_markdown_with_flowchart_bold_deltas_impl(
+        measurer, markdown, style, max_width, wrap_mode, false,
+    )
+}
+
+pub(crate) fn measure_wrapped_markdown_with_flowchart_bold_deltas(
+    measurer: &dyn TextMeasurer,
+    markdown: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+) -> TextMetrics {
+    measure_markdown_with_flowchart_bold_deltas_impl(
+        measurer, markdown, style, max_width, wrap_mode, true,
+    )
 }
 
 pub trait TextMeasurer {
@@ -1496,7 +1727,18 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
                 for c in &chars[i..=end] {
                     tag.push(*c);
                 }
-                tokens.push(tag);
+                if tag.eq_ignore_ascii_case("<br>")
+                    || tag.eq_ignore_ascii_case("<br/>")
+                    || tag.eq_ignore_ascii_case("<br />")
+                    || tag.eq_ignore_ascii_case("</br>")
+                    || tag.eq_ignore_ascii_case("</br/>")
+                    || tag.eq_ignore_ascii_case("</br />")
+                    || tag.eq_ignore_ascii_case("</br >")
+                {
+                    tokens.push("<br />".to_string());
+                } else {
+                    tokens.push(tag);
+                }
                 i = end + 1;
                 continue;
             }
@@ -1530,6 +1772,31 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
                 tokens.push(close_tag(want).to_string());
                 i += run_len;
                 continue;
+            }
+            if ch == '*' && can_close {
+                if run_len == 1
+                    && stack
+                        .last()
+                        .is_some_and(|d| d.ty == Ty::Strong && d.ch == '*' && d.run_len == 2)
+                {
+                    let opener = stack.pop().unwrap();
+                    tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
+                    tokens.push(close_tag(Ty::Em).to_string());
+                    i += 1;
+                    continue;
+                }
+                if run_len == 2
+                    && stack
+                        .last()
+                        .is_some_and(|d| d.ty == Ty::Em && d.ch == '*' && d.run_len == 1)
+                {
+                    let opener = stack.pop().unwrap();
+                    tokens[opener.token_index] = open_tag(Ty::Em).to_string();
+                    tokens.push(close_tag(Ty::Em).to_string());
+                    tokens.push("*".to_string());
+                    i += 2;
+                    continue;
+                }
             }
             if can_open {
                 let token_index = tokens.len();
@@ -1830,7 +2097,18 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
                 for c in &chars[i..=end] {
                     tag.push(*c);
                 }
-                tokens.push(tag);
+                if tag.eq_ignore_ascii_case("<br>")
+                    || tag.eq_ignore_ascii_case("<br/>")
+                    || tag.eq_ignore_ascii_case("<br />")
+                    || tag.eq_ignore_ascii_case("</br>")
+                    || tag.eq_ignore_ascii_case("</br/>")
+                    || tag.eq_ignore_ascii_case("</br />")
+                    || tag.eq_ignore_ascii_case("</br >")
+                {
+                    tokens.push("<br/>".to_string());
+                } else {
+                    tokens.push(tag);
+                }
                 i = end + 1;
                 continue;
             }
@@ -1864,6 +2142,31 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
                 tokens.push(close_tag(want).to_string());
                 i += run_len;
                 continue;
+            }
+            if ch == '*' && can_close {
+                if run_len == 1
+                    && stack
+                        .last()
+                        .is_some_and(|d| d.ty == Ty::Strong && d.ch == '*' && d.run_len == 2)
+                {
+                    let opener = stack.pop().unwrap();
+                    tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
+                    tokens.push(close_tag(Ty::Em).to_string());
+                    i += 1;
+                    continue;
+                }
+                if run_len == 2
+                    && stack
+                        .last()
+                        .is_some_and(|d| d.ty == Ty::Em && d.ch == '*' && d.run_len == 1)
+                {
+                    let opener = stack.pop().unwrap();
+                    tokens[opener.token_index] = open_tag(Ty::Em).to_string();
+                    tokens.push(close_tag(Ty::Em).to_string());
+                    tokens.push("*".to_string());
+                    i += 2;
+                    continue;
+                }
             }
             if can_open {
                 let token_index = tokens.len();

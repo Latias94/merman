@@ -200,6 +200,81 @@ fn markdown_inline_code_suppresses_emphasis_delimiters() {
 }
 
 #[test]
+fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+    let markdown = "This is **bold** </br>and <strong>strong</strong>";
+    assert!(mermaid_markdown_contains_html_tags(markdown));
+
+    let html = mermaid_markdown_to_html_label_fragment(markdown, true);
+    let html_metrics = measure_html_with_flowchart_bold_deltas(
+        &measurer,
+        &html,
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(html_metrics.width, 82.09375);
+    assert_eq!(html_metrics.height, 48.0);
+    assert_eq!(html_metrics.line_count, 2);
+
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        &measurer,
+        markdown,
+        "markdown",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+        &cfg,
+        None,
+    );
+    assert_eq!(metrics.width, 82.09375);
+    assert_eq!(metrics.height, 48.0);
+    assert_eq!(metrics.line_count, 2);
+}
+
+#[test]
+fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
+    use MermaidMarkdownWordType::*;
+
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let lines = mermaid_markdown_to_wrapped_word_lines(
+        &measurer,
+        "This is **bold** </br>and <strong>strong</strong>",
+        &style,
+        Some(200.0),
+        WrapMode::SvgLike,
+    );
+    assert_eq!(
+        lines,
+        vec![
+            vec![
+                ("This".to_string(), Normal),
+                ("is".to_string(), Normal),
+                ("bold".to_string(), Strong),
+            ],
+            vec![
+                ("and".to_string(), Normal),
+                ("<strong>".to_string(), Normal),
+                ("strong".to_string(), Normal),
+            ],
+            vec![("</strong>".to_string(), Normal)],
+        ]
+    );
+}
+
+#[test]
 fn markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom() {
     let input = "Hello\n  - l1\n  - l2";
     assert!(mermaid_markdown_contains_raw_blocks(input));
@@ -219,6 +294,15 @@ fn markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations() {
 }
 
 #[test]
+fn markdown_xhtml_label_fragment_normalizes_raw_br_variants() {
+    let input = "Hello<br>world";
+    assert_eq!(
+        mermaid_markdown_to_xhtml_label_fragment(input, true),
+        "<p>Hello<br/>world</p>"
+    );
+}
+
+#[test]
 fn markdown_html_label_fragment_preserves_inline_code_literals() {
     let input = "inline: `**not bold**`";
     assert_eq!(
@@ -233,5 +317,23 @@ fn markdown_xhtml_label_fragment_preserves_inline_code_literals() {
     assert_eq!(
         mermaid_markdown_to_xhtml_label_fragment(input, true),
         "<p>inline: `**not bold**`</p>"
+    );
+}
+
+#[test]
+fn markdown_html_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
+    let input = "+inline: **bold*";
+    assert_eq!(
+        mermaid_markdown_to_html_label_fragment(input, true),
+        "<p>+inline: *<em>bold</em></p>"
+    );
+}
+
+#[test]
+fn markdown_xhtml_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
+    let input = "+inline: **bold*";
+    assert_eq!(
+        mermaid_markdown_to_xhtml_label_fragment(input, true),
+        "<p>+inline: *<em>bold</em></p>"
     );
 }

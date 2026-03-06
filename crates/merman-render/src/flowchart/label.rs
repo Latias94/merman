@@ -28,7 +28,9 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         let html_labels = wrap_mode == WrapMode::HtmlLike;
         let has_raw_blocks =
             html_labels && crate::text::mermaid_markdown_contains_raw_blocks(raw_label);
-        if has_raw_blocks && !raw_label.contains("![") {
+        let has_inline_html =
+            html_labels && crate::text::mermaid_markdown_contains_html_tags(raw_label);
+        if (has_raw_blocks || has_inline_html) && !raw_label.contains("![") {
             let markdown_auto_wrap = config
                 .as_value()
                 .get("markdownAutoWrap")
@@ -42,7 +44,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 || html.contains("<em>")
                 || html.contains("<img")
                 || html.contains("<i ");
-            if has_inline_markup {
+            if has_inline_html || has_inline_markup {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     measurer,
                     &html,
@@ -544,6 +546,18 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             out.trim().to_string()
         }
         _ => {
+            let trimmed = label.trim();
+            if !html_labels
+                && trimmed.len() >= 2
+                && trimmed.starts_with('`')
+                && trimmed.ends_with('`')
+            {
+                // Mermaid SVG-label mode still routes `text` labels through `markdownToLines(...)`.
+                // A bare backtick-wrapped pipe edge label like `-->|`edge **label**`|` becomes a
+                // code-span token, which upstream drops from the emitted `<tspan>` runs.
+                return String::new();
+            }
+
             let mut t = label.replace("\r\n", "\n");
             // Mermaid flowchart labels treat `\\` as an escaped literal backslash. This matters
             // for things like `\\n` in labels (which should render as `\n`).

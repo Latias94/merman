@@ -97,6 +97,33 @@ For each item:
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
     - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_wrappingwidth_node_vs_edge_072`
 
+- [x] Class note / relation-title `htmlLabels` split  
+  Gap check:
+  - Ensure class notes follow global `htmlLabels` (including SVG-text mode + class-padding sizing).
+  - Ensure relation title labels only flip to SVG text when `flowchart.htmlLabels=false` is explicitly active.
+  - Ensure empty relation-title placeholders keep Mermaid’s HTML placeholder structure when the flowchart override is unset.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/probe_class_htmllabels_false_note_983.mmd`
+    - `fixtures/class/probe_class_flowchart_htmllabels_false_982.mmd`
+    - `fixtures/class/probe_class_flowchart_htmllabels_false_edge_text_984.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter probe_class_htmllabels_false_note_983`
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter probe_class_flowchart_htmllabels_false_982`
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter probe_class_flowchart_htmllabels_false_edge_text_984`
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_class_flowchart_htmllabels_false_`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter probe_class_flowchart_htmllabels_false_ --dom-mode strict --dom-decimals 3`
+
+- [x] Class global `htmlLabels=false` simple-node sizing / root viewport drift  
+  Gap check:
+  - `probe_class_htmllabels_false_981` now matches upstream for single-glyph class titles by sizing the SVG title row from Mermaid-style bold computed text length (with 1/64px upward quantization) instead of the generic SVG bbox approximation.
+  Evidence:
+  - Fixture: `fixtures/class/probe_class_htmllabels_false_981.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter probe_class_htmllabels_false_981`
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_class_htmllabels_false_981`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter probe_class_htmllabels_false_981 --dom-mode strict --dom-decimals 3`
+
 - [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
   Gap check:
   - Confirm nodes without explicit classes still receive implicit `classDef default` styling.
@@ -220,6 +247,29 @@ For each item:
     - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram er --filter stress_er_entity_label_inline_code_004 --dom-mode strict --dom-decimals 3`
   - Tokenizer behavior:
     - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_inline_code_suppresses_emphasis_delimiters`)
+  - Flowchart pipe edge labels keep bare backticks literal (instead of entering Markdown-string mode), across both `htmlLabels` paths:
+    - Fixtures: `fixtures/flowchart/probe_flowchart_edge_markdown_html_true_981.mmd`, `fixtures/flowchart/probe_flowchart_edge_markdown_html_false_982.mmd`, `fixtures/flowchart/probe_flowchart_edge_markdown_partial_star_983.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_flowchart_edge_markdown_`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter probe_flowchart_edge_markdown_ --dom-mode strict --dom-decimals 3`
+  - Flowchart quoted Markdown edge labels normalize closing `</br>` like Mermaid and keep inline raw HTML split correctly across `htmlLabels` modes:
+    - Fixtures: `fixtures/flowchart/probe_flowchart_edge_quoted_markdown_html_true_984.mmd`, `fixtures/flowchart/probe_flowchart_edge_quoted_markdown_html_false_985.mmd`
+    - Compare: `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_flowchart_edge_quoted_markdown_`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter probe_flowchart_edge_quoted_markdown_ --dom-mode strict --dom-decimals 3`
+    - Unit tests: `crates/merman-render/src/text/tests.rs` (`flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid`, `markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid`)
+
+- [x] Partial `**...*` star runs in HTML labels follow Mermaid/CommonMark semantics  
+  Gap check:
+  - Ensure malformed strong-open + single-star-close sequences render as literal `*` plus `<em>...</em>` instead of staying fully literal.
+  - Confirm the class member/classifier interaction (`+inline: **bold**` -> display text `+inline: **bold*`) matches upstream DOM.
+  Evidence:
+  - Fixture: `fixtures/class/stress_class_markdown_member_strong_023.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_class_markdown_member_strong_023`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter stress_class_markdown_member_strong_023 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6`
+  - Unit tests:
+    - `crates/merman-render/src/text/tests.rs` (`markdown_html_label_fragment_reinterprets_partial_star_strong_like_mermaid`)
+    - `crates/merman-render/src/text/tests.rs` (`markdown_xhtml_label_fragment_reinterprets_partial_star_strong_like_mermaid`)
 
 - [x] Mixed paragraph + raw-block Markdown keeps Mermaid HTML-label semantics  
   Gap check:
