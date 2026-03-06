@@ -227,11 +227,16 @@ For each item:
     following raw/list-style lines stay literal text (browser-collapsed), instead of becoming
     extra `<br/>` lines.
   Evidence:
-  - Fixture: `fixtures/flowchart/stress_flowchart_markdown_mixed_raw_blocks_078.mmd`
-  - Compare:
-    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
-    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
-    - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter stress_flowchart_markdown_mixed_raw_blocks_078 --dom-mode strict --dom-decimals 3`
+  - Flowchart fixture: `fixtures/flowchart/stress_flowchart_markdown_mixed_raw_blocks_078.mmd`
+    - Compare:
+      - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
+      - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
+      - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter stress_flowchart_markdown_mixed_raw_blocks_078 --dom-mode strict --dom-decimals 3`
+  - Mindmap fixture: `fixtures/mindmap/stress_mindmap_markdown_mixed_raw_blocks_038.mmd`
+    - Compare:
+      - `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-decimals 3 --filter stress_mindmap_markdown_mixed_raw_blocks_038`
+      - `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_mindmap_markdown_mixed_raw_blocks_038`
+      - `cargo run -p xtask -- compare-svg-xml --diagram mindmap --filter stress_mindmap_markdown_mixed_raw_blocks_038 --dom-mode strict --dom-decimals 3`
   - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom`)
 
 - [x] Inline `<br/>` + list-like continuation stays inside the same HTML-label paragraph

@@ -53,6 +53,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class/Text: route class HTML-label Markdown rendering through the shared XHTML helper so inline `<br/>` continuations render as Mermaid paragraphs instead of escaped literal tags.
 - ER/Text: route ER relationship HTML labels through Mermaid-style Markdown rendering and markdown-aware measurement, so edge labels honor emphasis (`**...**`, `_..._`) and existing `<br/>` line-break fixtures keep upstream spacing.
 - ER/Text: preserve inline-code backticks in ER HTML labels so entity/attribute labels keep literal `` `**...**` `` text instead of emitting synthetic `<code>` / `<strong>` DOM.
+- Mindmap/Text: route complex markdown HTML labels through Mermaid-style XHTML fragments for DOM output and measurement, so mixed paragraph + list/raw-block labels collapse like upstream instead of emitting synthetic `<ul><li>...` DOM.
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,

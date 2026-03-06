@@ -423,19 +423,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         }
         out.push_str(r#""><span class="nodeLabel">"#);
         fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
-            let mut html_out = String::new();
-            let parser = pulldown_cmark::Parser::new_ext(
-                text,
-                pulldown_cmark::Options::ENABLE_TABLES
-                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
-            )
-            .map(|ev| match ev {
-                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-                other => other,
-            });
-            pulldown_cmark::html::push_html(&mut html_out, parser);
-            let html_out = html_out.trim().to_string();
+            let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
             html_out

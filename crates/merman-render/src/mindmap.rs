@@ -104,16 +104,38 @@ fn mindmap_label_bbox_px(
     // Complex Markdown labels require the full DOM-like measurement path (bold/em deltas, inline
     // HTML, sanitizer edge cases). Keep the existing two-pass approach for those.
     if label_type == "markdown" && !is_simple_markdown_label(text) {
-        let wrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+        if text.contains("![") {
+            let wrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                text,
+                style,
+                Some(max_node_width_px),
+                WrapMode::HtmlLike,
+            );
+            let unwrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            );
+            return (
+                wrapped.width.max(unwrapped.width).max(0.0),
+                wrapped.height.max(0.0),
+            );
+        }
+
+        let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+        let wrapped = crate::text::measure_html_with_flowchart_bold_deltas(
             measurer,
-            text,
+            &html,
             style,
             Some(max_node_width_px),
             WrapMode::HtmlLike,
         );
-        let unwrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+        let unwrapped = crate::text::measure_html_with_flowchart_bold_deltas(
             measurer,
-            text,
+            &html,
             style,
             None,
             WrapMode::HtmlLike,
