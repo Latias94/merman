@@ -16,7 +16,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
-- State/Sequence/Gantt/Journey/ER/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
+- State/Sequence/Gantt/Journey/ER/Block/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
   including upstream SVG baselines + local layout goldens.
 - Timeline: added a stress fixture for unknown XML entity escaping (including upstream SVG baseline).
 - Timeline: added a stress fixture for `themeVariables.fontSize` precedence over top-level `fontSize` (including upstream SVG baseline + local layout goldens).
@@ -57,6 +57,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kanban: align card/section layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
   and pin the new smoke fixture's `parity-root` viewport to upstream.
 - GitGraph: align branch-label layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
+  and pin the new smoke fixture's `parity-root` viewport to upstream.
+- Block: align block node/edge layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
   and pin the new smoke fixture's `parity-root` viewport to upstream.
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
