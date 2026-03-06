@@ -117,6 +117,7 @@ pub fn lookup_requirement_root_viewport_override(
         "upstream_requirement_full_requirement_spec" => Some(("0 0 410.8125 200", "410.812")),
         "upstream_requirement_requirement_types_spec" => Some(("0 0 1548.65625 200", "1548.66")),
         "upstream_requirement_styles_spec" => Some(("0 0 331.21875 84", "331.219")),
+        "stress_requirement_font_size_precedence_001" => Some(("0 0 286 758", "286")),
         _ => None,
     }
 }

@@ -472,10 +472,11 @@ pub(super) fn render_requirement_diagram_svg(
         .collect();
 
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-    let font_family = config_string(effective_config, &["fontFamily"])
+    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(effective_config, &["fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
         .unwrap_or(16.0);
     let hand_drawn_seed = effective_config
         .get("handDrawnSeed")
@@ -704,7 +705,7 @@ pub(super) fn render_requirement_diagram_svg(
     let _ = write!(
         &mut out,
         r#"<style>{}</style>"#,
-        requirement_css(diagram_id)
+        requirement_css(diagram_id, effective_config)
     );
 
     out.push_str("<g>");

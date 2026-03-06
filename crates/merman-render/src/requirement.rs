@@ -73,7 +73,25 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     for key in path {
         cur = cur.get(*key)?;
     }
-    cur.as_str().map(|s| s.to_string())
+    cur.as_str().map(|s| s.to_string()).or_else(|| {
+        cur.as_array()
+            .and_then(|values| values.first()?.as_str())
+            .map(|s| s.to_string())
+    })
+}
+
+fn parse_css_px_to_f64(s: &str) -> Option<f64> {
+    let raw = s.trim().trim_end_matches(';').trim();
+    let raw = raw.trim_end_matches("!important").trim();
+    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
+    raw.parse::<f64>().ok().filter(|value| value.is_finite())
+}
+
+fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    config_f64(cfg, path).or_else(|| {
+        let raw = config_string(cfg, path)?;
+        parse_css_px_to_f64(&raw)
+    })
 }
 
 fn normalize_dir(direction: &str) -> String {
@@ -433,9 +451,12 @@ pub fn layout_requirement_diagram(
         .or_else(|| config_f64(effective_config, &["flowchart", "rankSpacing"]))
         .unwrap_or(50.0);
 
-    let font_family = config_string(effective_config, &["fontFamily"])
+    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(effective_config, &["fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .unwrap_or(16.0);
     let calc_style = TextStyle {
         font_family: font_family.clone(),
         font_size,

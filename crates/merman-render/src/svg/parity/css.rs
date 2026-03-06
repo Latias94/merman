@@ -317,16 +317,30 @@ mod tests {
     }
 }
 
-pub(super) fn requirement_css(diagram_id: &str) -> String {
+pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let font = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(effective_config, &["fontFamily"]))
+        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
+    let font = normalize_css_font_family(font.as_str());
+    let font = if font.is_empty() {
+        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
+    } else {
+        font
+    };
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
+        id,
+        font,
+        fmt(font_size)
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -353,15 +367,22 @@ pub(super) fn requirement_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        id,
+        font,
+        fmt(font_size),
+        id
     );
 
     // Requirement diagram styles (duplicated marker/svg rules are present upstream).
     let _ = write!(
         &mut out,
-        r#"#{} marker{{fill:#333333;stroke:#333333;}}#{} marker.cross{{stroke:#333333;}}#{} svg{{font-family:{};font-size:16px;}}"#,
-        id, id, id, font
+        r#"#{} marker{{fill:#333333;stroke:#333333;}}#{} marker.cross{{stroke:#333333;}}#{} svg{{font-family:{};font-size:{}px;}}"#,
+        id,
+        id,
+        id,
+        font,
+        fmt(font_size)
     );
     let _ = write!(
         &mut out,
