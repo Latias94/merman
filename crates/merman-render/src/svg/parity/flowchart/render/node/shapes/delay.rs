@@ -43,7 +43,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
     }
 
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
         &ctx.text_style,
         ctx.class_defs,
         node_classes,
@@ -59,16 +59,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
         ctx.config,
         ctx.math_renderer,
     );
-    let span_css_height_parity = node_classes.iter().any(|c| {
-        ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-            styles.iter().any(|s| {
-                matches!(
-                    s.split_once(':').map(|p| p.0.trim()),
-                    Some("background" | "border")
-                )
-            })
-        })
-    });
+    let span_css_height_parity =
+        crate::flowchart::flowchart_node_has_span_css_height_parity(ctx.class_defs, node_classes);
     if span_css_height_parity {
         crate::text::flowchart_apply_mermaid_styled_node_height_parity(
             &mut metrics,

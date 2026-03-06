@@ -142,3 +142,22 @@ pub(in crate::svg::parity) fn flowchart_compile_styles(
         stroke_dasharray,
     }
 }
+
+pub(in crate::svg::parity) fn flowchart_compile_node_styles(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles_a: &[String],
+    inline_styles_b: &[String],
+) -> FlowchartCompiledStyles {
+    let effective_classes =
+        crate::flowchart::flowchart_effective_node_class_names(class_defs, classes)
+            .into_iter()
+            .map(|class| class.to_string())
+            .collect::<Vec<_>>();
+    flowchart_compile_styles(
+        class_defs,
+        &effective_classes,
+        inline_styles_a,
+        inline_styles_b,
+    )
+}

@@ -13,7 +13,10 @@ use std::collections::HashMap;
 use super::label::compute_bounds;
 use super::node::node_layout_dimensions;
 use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
-use super::{flowchart_effective_text_style_for_classes, flowchart_label_metrics_for_layout};
+use super::{
+    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
+    flowchart_label_metrics_for_layout, flowchart_node_has_span_css_height_parity,
+};
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
@@ -942,7 +945,7 @@ fn layout_flowchart_v2_with_model(
         }
         let raw_label = n.label.as_deref().unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
-        let node_text_style = flowchart_effective_text_style_for_classes(
+        let node_text_style = flowchart_effective_text_style_for_node_classes(
             &text_style,
             &model.class_defs,
             &n.classes,
@@ -958,16 +961,8 @@ fn layout_flowchart_v2_with_model(
             effective_config,
             math_renderer,
         );
-        let span_css_height_parity = n.classes.iter().any(|c| {
-            model.class_defs.get(c.as_str()).is_some_and(|styles| {
-                styles.iter().any(|s| {
-                    matches!(
-                        s.split_once(':').map(|p| p.0.trim()),
-                        Some("background" | "border")
-                    )
-                })
-            })
-        });
+        let span_css_height_parity =
+            flowchart_node_has_span_css_height_parity(&model.class_defs, &n.classes);
         if span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,

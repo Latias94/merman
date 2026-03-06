@@ -45,50 +45,45 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     }
 
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
-    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
         &ctx.text_style,
         ctx.class_defs,
         node_classes,
         node_styles,
     );
-    let mut metrics =
-        if let (Some(w), Some(h)) = (layout_node.label_width, layout_node.label_height) {
-            // Layout already had to measure labels to compute node sizes. Carry those metrics forward so
-            // render does not repeat expensive HTML/markdown measurement work.
-            crate::text::TextMetrics {
-                width: w,
-                height: h,
-                line_count: 0,
-            }
-        } else {
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                ctx.measurer,
-                label_text,
-                label_type,
+    let mut metrics = if let (Some(w), Some(h)) =
+        (layout_node.label_width, layout_node.label_height)
+    {
+        // Layout already had to measure labels to compute node sizes. Carry those metrics forward so
+        // render does not repeat expensive HTML/markdown measurement work.
+        crate::text::TextMetrics {
+            width: w,
+            height: h,
+            line_count: 0,
+        }
+    } else {
+        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+            ctx.measurer,
+            label_text,
+            label_type,
+            &node_text_style,
+            Some(ctx.wrapping_width),
+            ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
+        );
+        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
+            ctx.class_defs,
+            node_classes,
+        );
+        if span_css_height_parity {
+            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                &mut metrics,
                 &node_text_style,
-                Some(ctx.wrapping_width),
-                ctx.node_wrap_mode,
-                ctx.config,
-                ctx.math_renderer,
             );
-            let span_css_height_parity = node_classes.iter().any(|c| {
-                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                    styles.iter().any(|s| {
-                        matches!(
-                            s.split_once(':').map(|p| p.0.trim()),
-                            Some("background" | "border")
-                        )
-                    })
-                })
-            });
-            if span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            metrics
-        };
+        }
+        metrics
+    };
     let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
         || (label_type == "markdown" && label_text.contains("!["));
     if label_text_plain.trim().is_empty() && !label_has_visual_content {

@@ -66,30 +66,28 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     // (`updateNodeBounds`) before running Dagre layout. That bbox is narrower than the
     // theoretical `(text bbox + padding)` width used to generate the stadium points. The
     // SVG path is still generated from the theoretical width, so we recompute it here.
+    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
+        &ctx.text_style,
+        ctx.class_defs,
+        node_classes,
+        &[],
+    );
     let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         ctx.measurer,
         label_text,
         label_type,
-        &ctx.text_style,
+        &node_text_style,
         Some(ctx.wrapping_width),
         ctx.node_wrap_mode,
         ctx.config,
         ctx.math_renderer,
     );
-    let span_css_height_parity = node_classes.iter().any(|c| {
-        ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-            styles.iter().any(|s| {
-                matches!(
-                    s.split_once(':').map(|p| p.0.trim()),
-                    Some("background" | "border")
-                )
-            })
-        })
-    });
+    let span_css_height_parity =
+        crate::flowchart::flowchart_node_has_span_css_height_parity(ctx.class_defs, node_classes);
     if span_css_height_parity {
         crate::text::flowchart_apply_mermaid_styled_node_height_parity(
             &mut metrics,
-            &ctx.text_style,
+            &node_text_style,
         );
     }
     let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(

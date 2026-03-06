@@ -681,7 +681,7 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
                                 let node_text_style =
-                                    crate::flowchart::flowchart_effective_text_style_for_classes(
+                                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
                                         &ctx.text_style,
                                         ctx.class_defs,
                                         &flow_node.classes,

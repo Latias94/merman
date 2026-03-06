@@ -81,7 +81,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     let style_start = timing_enabled.then(std::time::Instant::now);
     let mut compiled_styles =
-        flowchart_compile_styles(ctx.class_defs, node_classes, node_styles, &[]);
+        flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }

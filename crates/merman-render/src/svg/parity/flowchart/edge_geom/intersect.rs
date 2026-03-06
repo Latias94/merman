@@ -539,31 +539,31 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             .clone()
             .unwrap_or_else(|| "text".to_string());
 
+        let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
+            &ctx.text_style,
+            ctx.class_defs,
+            &flow_node.classes,
+            &flow_node.styles,
+        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             ctx.measurer,
             &label_text,
             &label_type,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
             ctx.config,
             ctx.math_renderer,
         );
 
-        let span_css_height_parity = flow_node.classes.iter().any(|c| {
-            ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                styles.iter().any(|s| {
-                    matches!(
-                        s.split_once(':').map(|p| p.0.trim()),
-                        Some("background" | "border")
-                    )
-                })
-            })
-        });
+        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
+            ctx.class_defs,
+            &flow_node.classes,
+        );
         if span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
-                &ctx.text_style,
+                &node_text_style,
             );
         }
 
@@ -638,31 +638,31 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             .clone()
             .unwrap_or_else(|| "text".to_string());
 
+        let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
+            &ctx.text_style,
+            ctx.class_defs,
+            &flow_node.classes,
+            &flow_node.styles,
+        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             ctx.measurer,
             &label_text,
             &label_type,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
             ctx.config,
             ctx.math_renderer,
         );
 
-        let span_css_height_parity = flow_node.classes.iter().any(|c| {
-            ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
-                styles.iter().any(|s| {
-                    matches!(
-                        s.split_once(':').map(|p| p.0.trim()),
-                        Some("background" | "border")
-                    )
-                })
-            })
-        });
+        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
+            ctx.class_defs,
+            &flow_node.classes,
+        );
         if span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
-                &ctx.text_style,
+                &node_text_style,
             );
         }
 
