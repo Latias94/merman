@@ -1640,6 +1640,302 @@ pub(crate) fn mermaid_markdown_to_html_label_fragment(
 
     out
 }
+fn escape_xml_text_preserving_entities(raw: &str) -> String {
+    fn is_valid_entity(entity: &str) -> bool {
+        if entity.is_empty() {
+            return false;
+        }
+        if let Some(hex) = entity
+            .strip_prefix("#x")
+            .or_else(|| entity.strip_prefix("#X"))
+        {
+            return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
+        }
+        if let Some(dec) = entity.strip_prefix('#') {
+            return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
+        }
+        let mut it = entity.chars();
+        let Some(first) = it.next() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic() {
+            return false;
+        }
+        it.all(|c| c.is_ascii_alphanumeric())
+    }
+
+    fn escape_xml_segment(out: &mut String, raw: &str) {
+        for ch in raw.chars() {
+            match ch {
+                '&' => out.push_str("&amp;"),
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                _ => out.push(ch),
+            }
+        }
+    }
+
+    let mut out = String::with_capacity(raw.len());
+    let mut i = 0usize;
+    while let Some(rel) = raw[i..].find('&') {
+        let amp = i + rel;
+        escape_xml_segment(&mut out, &raw[i..amp]);
+        let tail = &raw[amp + 1..];
+        if let Some(semi_rel) = tail.find(';') {
+            let semi = amp + 1 + semi_rel;
+            let entity = &raw[amp + 1..semi];
+            if is_valid_entity(entity) {
+                out.push('&');
+                out.push_str(entity);
+                out.push(';');
+                i = semi + 1;
+                continue;
+            }
+        }
+        out.push_str("&amp;");
+        i = amp + 1;
+    }
+    escape_xml_segment(&mut out, &raw[i..]);
+    out
+}
+
+fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) -> String {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Ty {
+        Strong,
+        Em,
+    }
+
+    fn is_punctuation(ch: char) -> bool {
+        !ch.is_whitespace() && !ch.is_alphanumeric()
+    }
+
+    fn mermaid_delim_can_open_close(
+        ch: char,
+        prev: Option<char>,
+        next: Option<char>,
+    ) -> (bool, bool) {
+        let prev_is_ws = prev.is_none_or(|c| c.is_whitespace());
+        let next_is_ws = next.is_none_or(|c| c.is_whitespace());
+        let prev_is_punct = prev.is_some_and(is_punctuation);
+        let next_is_punct = next.is_some_and(is_punctuation);
+
+        let left_flanking = !next_is_ws && (!next_is_punct || prev_is_ws || prev_is_punct);
+        let right_flanking = !prev_is_ws && (!prev_is_punct || next_is_ws || next_is_punct);
+
+        if ch == '_' {
+            let can_open = left_flanking && (!right_flanking || prev_is_ws || prev_is_punct);
+            let can_close = right_flanking && (!left_flanking || next_is_ws || next_is_punct);
+            (can_open, can_close)
+        } else {
+            (left_flanking, right_flanking)
+        }
+    }
+
+    fn open_tag(ty: Ty) -> &'static str {
+        match ty {
+            Ty::Strong => "<strong>",
+            Ty::Em => "<em>",
+        }
+    }
+
+    fn close_tag(ty: Ty) -> &'static str {
+        match ty {
+            Ty::Strong => "</strong>",
+            Ty::Em => "</em>",
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Delim {
+        ty: Ty,
+        ch: char,
+        run_len: usize,
+        token_index: usize,
+    }
+
+    let s = label.replace("\r\n", "\n");
+    let chars: Vec<char> = s.chars().collect();
+    let mut tokens: Vec<String> = Vec::with_capacity(16);
+    tokens.push("<p>".to_string());
+
+    let mut text_buf = String::new();
+    let flush_text = |tokens: &mut Vec<String>, text_buf: &mut String| {
+        if text_buf.is_empty() {
+            return;
+        }
+        let raw = std::mem::take(text_buf);
+        tokens.push(escape_xml_text_preserving_entities(&raw));
+    };
+
+    let mut stack: Vec<Delim> = Vec::new();
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if ch == '\n' {
+            while text_buf.ends_with(' ') {
+                text_buf.pop();
+            }
+            flush_text(&mut tokens, &mut text_buf);
+            tokens.push("<br/>".to_string());
+            i += 1;
+            while i < chars.len() && chars[i] == ' ' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if ch == '<' {
+            if let Some(end_rel) = chars[i..].iter().position(|c| *c == '>') {
+                let end = i + end_rel;
+                flush_text(&mut tokens, &mut text_buf);
+                let mut tag = String::new();
+                for c in &chars[i..=end] {
+                    tag.push(*c);
+                }
+                tokens.push(tag);
+                i = end + 1;
+                continue;
+            }
+        }
+
+        if ch == '*' || ch == '_' {
+            let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
+                2
+            } else {
+                1
+            };
+            let want = if run_len == 2 { Ty::Strong } else { Ty::Em };
+            let prev = if i > 0 { Some(chars[i - 1]) } else { None };
+            let next = if i + run_len < chars.len() {
+                Some(chars[i + run_len])
+            } else {
+                None
+            };
+            let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
+
+            flush_text(&mut tokens, &mut text_buf);
+            let delim_text: String = std::iter::repeat_n(ch, run_len).collect();
+
+            if can_close
+                && stack
+                    .last()
+                    .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
+            {
+                let opener = stack.pop().unwrap();
+                tokens[opener.token_index] = open_tag(want).to_string();
+                tokens.push(close_tag(want).to_string());
+                i += run_len;
+                continue;
+            }
+            if can_open {
+                let token_index = tokens.len();
+                tokens.push(delim_text);
+                stack.push(Delim {
+                    ty: want,
+                    ch,
+                    run_len,
+                    token_index,
+                });
+                i += run_len;
+                continue;
+            }
+
+            tokens.push(delim_text);
+            i += run_len;
+            continue;
+        }
+
+        if ch == ' ' && !markdown_auto_wrap {
+            text_buf.push_str("&nbsp;");
+        } else {
+            text_buf.push(ch);
+        }
+        i += 1;
+    }
+
+    while text_buf.ends_with(' ') {
+        text_buf.pop();
+    }
+    flush_text(&mut tokens, &mut text_buf);
+    tokens.push("</p>".to_string());
+    tokens.concat()
+}
+
+/// XHTML-safe variant of Mermaid HTML-label Markdown rendering for diagrams that inject the
+/// fragment directly into `<foreignObject>` content without running the flowchart sanitizer path.
+pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+) -> String {
+    let markdown = markdown.replace("\r\n", "\n");
+    if markdown.is_empty() {
+        return String::new();
+    }
+
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let mut out = String::new();
+    let mut paragraph_lines: Vec<&str> = Vec::new();
+    let mut i = 0usize;
+
+    while i < lines.len() {
+        let line = lines[i];
+        if line.trim().is_empty() {
+            if !paragraph_lines.is_empty() {
+                out.push_str(&mermaid_markdown_paragraph_to_xhtml(
+                    &paragraph_lines.join("\n"),
+                    markdown_auto_wrap,
+                ));
+                paragraph_lines.clear();
+            }
+            i += 1;
+            continue;
+        }
+
+        if mermaid_markdown_line_starts_raw_block(line) {
+            if !paragraph_lines.is_empty() {
+                out.push_str(&mermaid_markdown_paragraph_to_xhtml(
+                    &paragraph_lines.join("\n"),
+                    markdown_auto_wrap,
+                ));
+                paragraph_lines.clear();
+            }
+
+            let mut raw_block = String::from(line);
+            i += 1;
+            while i < lines.len() {
+                let next = lines[i];
+                if next.trim().is_empty() {
+                    break;
+                }
+                if mermaid_markdown_line_starts_raw_block(next) {
+                    raw_block.push('\n');
+                    raw_block.push_str(next);
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+            out.push_str(&escape_xml_text_preserving_entities(
+                &mermaid_collapse_raw_html_label_text(&raw_block),
+            ));
+            continue;
+        }
+
+        paragraph_lines.push(line);
+        i += 1;
+    }
+
+    if !paragraph_lines.is_empty() {
+        out.push_str(&mermaid_markdown_paragraph_to_xhtml(
+            &paragraph_lines.join("\n"),
+            markdown_auto_wrap,
+        ));
+    }
+
+    out
+}
 
 /// Heuristic: whether Mermaid's upstream `markdownToHTML()` would wrap the given label into a
 /// `<p>...</p>` wrapper when `htmlLabels=true`.

@@ -123,6 +123,11 @@ struct RequirementLabelMetrics {
     max_width_px: i64,
 }
 
+fn requirement_label_uses_markdown_html(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
+}
+
 pub(crate) fn requirement_upstream_html_label_override_em(text: &str, bold: bool) -> Option<f64> {
     // Mermaid requirement fixtures are generated via DOM measurement (`getBoundingClientRect()`).
     // Our vendored font metrics table is flowchart-oriented and can drift for some strings, so we
@@ -317,33 +322,35 @@ fn measure_requirement_label_metrics(
     }
 
     let font_size = html_style.font_size.max(1.0);
-    let height = (font_size * 1.5).max(1.0);
+    let looks_like_markdown_inline = requirement_label_uses_markdown_html(display_text);
+    let measured = if looks_like_markdown_inline {
+        crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            display_text,
+            html_style,
+            None,
+            WrapMode::HtmlLike,
+        )
+    } else {
+        measurer.measure_wrapped(display_text, html_style, None, WrapMode::HtmlLike)
+    };
+    let height = measured.height.max(1.0);
     let width = if let Some(em) = requirement_upstream_html_label_override_em(display_text, bold) {
         (em * font_size).max(1.0)
     } else {
-        let looks_like_markdown_inline = display_text.contains('*') || display_text.contains('_');
-        if looks_like_markdown_inline {
-            crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                display_text,
-                html_style,
-                None,
-                WrapMode::HtmlLike,
-            )
-            .width
-            .max(1.0)
-        } else {
-            measurer
-                .measure_wrapped(display_text, html_style, None, WrapMode::HtmlLike)
-                .width
-                .max(1.0)
-        }
+        measured.width.max(1.0)
     };
     let max_width_px = if let Some(px) = requirement_upstream_calc_max_width_override_px(calc_text)
     {
         px
     } else {
-        let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, calc_text);
+        let calc_input =
+            if calc_text.contains('\n') || calc_text.to_ascii_lowercase().contains("<br") {
+                crate::flowchart::flowchart_label_plain_text_for_layout(calc_text, "text", true)
+            } else {
+                calc_text.to_string()
+            };
+        let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, &calc_input);
         (calc_w + 50).max(0)
     };
 

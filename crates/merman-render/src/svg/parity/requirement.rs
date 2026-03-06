@@ -74,193 +74,17 @@ pub(super) fn render_requirement_diagram_svg(
 
     fn mermaid_markdown_to_html(raw: &str) -> String {
         // Mermaid runs requirement node labels through its `markdownToHTML()` pipeline when
-        // `htmlLabels=true` (via `createText(...)`).
-        //
-        // We don't embed Mermaid's `marked` lexer in Rust. Instead we:
-        // - use the same "paragraph vs raw" heuristic as the rest of the renderer
-        // - parse the small subset of inline formatting that upstream emits (`<em>/<strong>`)
-        //
-        // Note: upstream sanitizes these labels; we intentionally keep entity-like sequences
-        // (e.g. `&lt;`) without double-escaping.
-
-        fn escape_amp_preserving_entities(raw: &str) -> String {
-            fn is_valid_entity(entity: &str) -> bool {
-                if entity.is_empty() {
-                    return false;
-                }
-                if let Some(hex) = entity
-                    .strip_prefix("#x")
-                    .or_else(|| entity.strip_prefix("#X"))
-                {
-                    return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-                }
-                if let Some(dec) = entity.strip_prefix('#') {
-                    return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-                }
-                let mut it = entity.chars();
-                let Some(first) = it.next() else {
-                    return false;
-                };
-                if !first.is_ascii_alphabetic() {
-                    return false;
-                }
-                it.all(|c| c.is_ascii_alphanumeric())
-            }
-
-            let mut out = String::with_capacity(raw.len());
-            let mut i = 0usize;
-            while let Some(rel) = raw[i..].find('&') {
-                let amp = i + rel;
-                out.push_str(&raw[i..amp]);
-                let tail = &raw[amp + 1..];
-                if let Some(semi_rel) = tail.find(';') {
-                    let semi = amp + 1 + semi_rel;
-                    let entity = &raw[amp + 1..semi];
-                    if is_valid_entity(entity) {
-                        out.push_str(&raw[amp..=semi]);
-                        i = semi + 1;
-                        continue;
-                    }
-                }
-                out.push_str("&amp;");
-                i = amp + 1;
-            }
-            out.push_str(&raw[i..]);
-            out
-        }
-
-        fn normalize_br_tags(raw: &str) -> String {
-            let bytes = raw.as_bytes();
-            let mut out = String::with_capacity(raw.len());
-            let mut cur = 0usize;
-            let mut i = 0usize;
-            while i + 2 < bytes.len() {
-                if bytes[i] != b'<' {
-                    i += 1;
-                    continue;
-                }
-                let b1 = bytes[i + 1];
-                let b2 = bytes[i + 2];
-                if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-                    i += 1;
-                    continue;
-                }
-                let next = bytes.get(i + 3).copied();
-                if let Some(n) = next {
-                    if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
-                        i += 1;
-                        continue;
-                    }
-                }
-                if i > cur {
-                    out.push_str(&raw[cur..i]);
-                }
-                let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
-                    cur = i;
-                    break;
-                };
-                out.push('\n');
-                i = i + end_rel + 1;
-                cur = i;
-            }
-            if cur < raw.len() {
-                out.push_str(&raw[cur..]);
-            }
-            out
-        }
-
-        fn html_inline_with_br(raw: &str) -> String {
-            let normalized = normalize_br_tags(raw);
-            let lines: Vec<&str> = normalized.split('\n').collect();
-            let mut out = String::new();
-            for (idx, line) in lines.iter().enumerate() {
-                if idx > 0 {
-                    out.push_str("<br />");
-                }
-                out.push_str(&escape_amp_preserving_entities(line));
-            }
-            out
-        }
-
+        // `htmlLabels=true` (via `createText(...)`). Keep the XHTML fragment XML-safe while still
+        // preserving inline HTML like `<br/>` and Mermaid's minimal emphasis/strong subset.
         let decoded = decode_mermaid_entities_for_render_text(raw);
-        let normalized = normalize_br_tags(decoded.as_ref());
-
-        if !crate::text::mermaid_markdown_wants_paragraph_wrap(&normalized) {
-            return html_inline_with_br(&normalized);
-        }
-
-        let escape_xhtml_text = |raw: &str| -> String {
-            // `pulldown-cmark` decodes entities like `&lt;` into `<` in `Event::Text`.
-            // Convert those back into XML-safe text while preserving any valid entities that remain.
-            let s = escape_amp_preserving_entities(raw);
-            let mut out = String::with_capacity(s.len());
-            for ch in s.chars() {
-                match ch {
-                    '<' => out.push_str("&lt;"),
-                    '>' => out.push_str("&gt;"),
-                    _ => out.push(ch),
-                }
-            }
-            out
-        };
-
-        let parser = pulldown_cmark::Parser::new_ext(
-            &normalized,
-            pulldown_cmark::Options::ENABLE_TABLES
-                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                | pulldown_cmark::Options::ENABLE_TASKLISTS,
-        )
-        .map(|ev| match ev {
-            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-            other => other,
-        });
-
-        let mut out = String::new();
-        let mut saw_paragraph = false;
-        for ev in parser {
-            match ev {
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
-                    saw_paragraph = true;
-                    out.push_str("<p>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
-                    out.push_str("</p>");
-                }
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
-                    out.push_str("<em>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
-                    out.push_str("</em>");
-                }
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                    out.push_str("<strong>");
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
-                    out.push_str("</strong>");
-                }
-                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                    out.push_str(&escape_xhtml_text(&t));
-                }
-                pulldown_cmark::Event::HardBreak | pulldown_cmark::Event::SoftBreak => {
-                    out.push_str("<br />");
-                }
-                pulldown_cmark::Event::Html(t) => {
-                    // Preserve safety and XML well-formedness: treat raw HTML as literal text.
-                    out.push_str(&escape_xhtml_text(&t));
-                }
-                _ => {}
-            }
-        }
-
-        if !saw_paragraph {
-            out.push_str("<p></p>");
-        }
-        out
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
     }
 
     fn requirement_label_uses_markdown_inline(raw: &str) -> bool {
-        // Inline emphasis/strong spans. Keep this intentionally conservative.
-        raw.contains('*') || raw.contains('_')
+        // Inline emphasis/strong spans, explicit `<br>` breaks, or multiline field content all go
+        // through Mermaid's HTML-label Markdown path.
+        let lower = raw.to_ascii_lowercase();
+        raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
     }
 
     enum LabelContent<'a> {
@@ -552,42 +376,43 @@ pub(super) fn render_requirement_diagram_svg(
             html_style_regular
         };
         let font_size = html_style.font_size.max(1.0);
-        let height = (font_size * 1.5).max(1.0);
+        let looks_like_markdown_inline = requirement_label_uses_markdown_inline(display_text);
+        let measured = if looks_like_markdown_inline {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                display_text,
+                html_style,
+                None,
+                crate::text::WrapMode::HtmlLike,
+            )
+        } else {
+            measurer.measure_wrapped(
+                display_text,
+                html_style,
+                None,
+                crate::text::WrapMode::HtmlLike,
+            )
+        };
+        let height = measured.height.max(1.0);
         let width = if let Some(em) =
             crate::requirement::requirement_upstream_html_label_override_em(display_text, bold)
         {
             (em * font_size).max(1.0)
         } else {
-            let looks_like_markdown_inline =
-                display_text.contains('*') || display_text.contains('_');
-            if looks_like_markdown_inline {
-                crate::text::measure_markdown_with_flowchart_bold_deltas(
-                    measurer,
-                    display_text,
-                    html_style,
-                    None,
-                    crate::text::WrapMode::HtmlLike,
-                )
-                .width
-                .max(1.0)
-            } else {
-                measurer
-                    .measure_wrapped(
-                        display_text,
-                        html_style,
-                        None,
-                        crate::text::WrapMode::HtmlLike,
-                    )
-                    .width
-                    .max(1.0)
-            }
+            measured.width.max(1.0)
         };
         let max_w = if let Some(px) =
             crate::requirement::requirement_upstream_calc_max_width_override_px(calc_text)
         {
             px
         } else {
-            let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, calc_text);
+            let calc_input =
+                if calc_text.contains('\n') || calc_text.to_ascii_lowercase().contains("<br") {
+                    crate::flowchart::flowchart_label_plain_text_for_layout(calc_text, "text", true)
+                } else {
+                    calc_text.to_string()
+                };
+            let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, &calc_input);
             (calc_w + 50).max(0)
         };
         Some((width, height, max_w))
