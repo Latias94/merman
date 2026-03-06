@@ -1,0 +1,67 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "ingress",
+          "x": 222.52,
+          "y": 0.0,
+          "width": 445.04,
+          "height": 34.4,
+          "is_cluster": false
+        },
+        {
+          "id": "dispatch",
+          "x": 675.56,
+          "y": 0.0,
+          "width": 445.04,
+          "height": 34.4,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "1-ingress-dispatch",
+          "from": "ingress",
+          "to": "dispatch",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 222.52,
+              "y": 0.0
+            },
+            {
+              "x": 449.04,
+              "y": 0.0
+            },
+            {
+              "x": 675.56,
+              "y": 0.0
+            }
+          ],
+          "label": {
+            "x": 449.04,
+            "y": 0.0,
+            "width": 149.28,
+            "height": 36.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -17.2,
+        "max_x": 898.08,
+        "max_y": 17.2
+      }
+    }
+  }
+}

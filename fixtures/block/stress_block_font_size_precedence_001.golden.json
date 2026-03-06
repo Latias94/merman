@@ -1,0 +1,74 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "ingress",
+        "type": "square",
+        "label": "Font size precedence should widen this block",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "dispatch",
+        "type": "square",
+        "label": "Second block",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "1-ingress-dispatch",
+        "type": "edge",
+        "label": "Wide edge label",
+        "children": [],
+        "start": "ingress",
+        "end": "dispatch",
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open"
+      }
+    ],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "ingress",
+            "type": "square",
+            "label": "Font size precedence should widen this block",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "dispatch",
+            "type": "square",
+            "label": "Second block",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2
+      },
+      {
+        "id": "ingress",
+        "type": "square",
+        "label": "Font size precedence should widen this block",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "dispatch",
+        "type": "square",
+        "label": "Second block",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}
