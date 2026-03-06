@@ -1,0 +1,16 @@
+%%{init: {"fontSize": 10, "themeVariables": {"fontSize": "24px"}} }%%
+requirementDiagram
+
+requirement req_font_size {
+id: req_font_size
+text: font size precedence should be deterministic
+risk: low
+verifymethod: test
+}
+
+element renderer {
+type: simulation
+docRef: docs/font_size
+}
+
+renderer - satisfies -> req_font_size

@@ -1,0 +1,67 @@
+{
+  "diagramType": "requirement",
+  "layout": {
+    "RequirementDiagram": {
+      "nodes": [
+        {
+          "id": "req_font_size",
+          "x": 8.0,
+          "y": 278.0,
+          "width": 512.48,
+          "height": 256.0,
+          "is_cluster": false
+        },
+        {
+          "id": "renderer",
+          "x": 139.881,
+          "y": 8.0,
+          "width": 248.719,
+          "height": 184.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "renderer-req_font_size-0",
+          "from": "renderer",
+          "to": "req_font_size",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 264.24,
+              "y": 192.0
+            },
+            {
+              "x": 264.24,
+              "y": 235.0
+            },
+            {
+              "x": 264.24,
+              "y": 278.0
+            }
+          ],
+          "label": {
+            "x": 264.24,
+            "y": 235.0,
+            "width": 137.273,
+            "height": 36.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 520.48,
+        "max_y": 534.0
+      }
+    }
+  }
+}

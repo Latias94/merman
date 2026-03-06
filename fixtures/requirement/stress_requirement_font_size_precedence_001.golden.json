@@ -1,0 +1,42 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "req_font_size",
+        "type": "Requirement",
+        "requirementId": "req_font_size",
+        "text": "font size precedence should be deterministic",
+        "risk": "Low",
+        "verifyMethod": "Test",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "elements": [
+      {
+        "name": "renderer",
+        "type": "simulation",
+        "docRef": "docs/font_size",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "type": "satisfies",
+        "src": "renderer",
+        "dst": "req_font_size"
+      }
+    ],
+    "classes": {}
+  }
+}
