@@ -41,6 +41,10 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-191.484375 -34.72539138793945 699.484375 250.8622283935547",
             "699.484375",
         )),
+        "upstream_merges_spec" => Some((
+            "-146.375 -34.72539138793945 654.375 341.15484619140625",
+            "654.375",
+        )),
         "upstream_docs_gitgraph_cherry_pick_commit_from_another_branch_010" => {
             Some(("-117.421875 -19 575.421875 251.5328826904297", "575.421875"))
         }

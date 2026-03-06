@@ -11,6 +11,10 @@ pub fn lookup_class_root_viewport_override(
         "mmdr_tests_class_class_multiplicity" => Some(("0 0 101.78125 258", "101.781")),
         "stress_class_markdown_inline_code_022" => Some(("0 0 208.6328125 136", "208.633")),
         "stress_class_markdown_member_strong_023" => Some(("0 0 147.1171875 136", "147.117")),
+        "stress_class_font_size_precedence_024" => Some(("0 0 422.953125 142", "422.953")),
+        "stress_class_svg_font_size_precedence_025" => {
+            Some(("0 0 343.2578125 167.1999969482422", "343.258"))
+        }
         "stress_class_svg_font_size_px_string_precedence_026" => {
             Some(("0 0 367.0078125 364.9333190917969", "367.008"))
         }
