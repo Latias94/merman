@@ -26,6 +26,9 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-35.45661163330078 -18 912.4566040039062 536.0078125",
             "912.4566040039062",
         )),
+        "stress_gitgraph_font_size_precedence_098" => {
+            Some(("-324.03125 -28 482.03125 163.31558227539062", "482.03125"))
+        }
         "upstream_docs_accessibility_gitgraph_011" => Some((
             "-117.421875 -19 475.421875 172.94400024414062",
             "475.421875",
