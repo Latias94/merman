@@ -153,6 +153,10 @@ For each item:
   - Journey: `fixtures/journey/stress_journey_font_size_precedence_001.mmd`
     - Compare: `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-decimals 3 --filter stress_journey_font_size_precedence_001`
     - Compare (root): `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_journey_font_size_precedence_001`
+  - Kanban: `fixtures/kanban/stress_kanban_font_size_precedence_098.mmd`
+    - Compare: `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-decimals 3 --filter stress_kanban_font_size_precedence_098`
+    - Compare (root): `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_kanban_font_size_precedence_098`
+    - Note: root `viewBox`/`max-width` is pinned via `crates/merman-render/src/generated/kanban_root_overrides_11_12_2.rs`.
 
 ## C) Markdown subset parity
 
