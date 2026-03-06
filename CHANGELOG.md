@@ -15,6 +15,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
 - Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
 - Flowchart: added a stress fixture for `htmlLabels: true` default-class/default-node styling semantics (`classDef default` + `style default`).
+- Flowchart: added a stress fixture for `htmlLabels: true` Markdown labels that mix paragraphs with raw/list-style lines.
 - Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
 - Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
 - State/Sequence/Gantt/Journey/ER/Requirement/Block/Radar/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
@@ -45,6 +46,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
   text sizing drift without comparing full style strings).
 - Flowchart: honor implicit `classDef default` styling for unlabeled/default-class nodes under `htmlLabels: true`, while still layering node-id `style default ...` overrides for a node literally named `default`.
+- Flowchart/Text: keep Mermaid HTML-label Markdown block semantics when a label mixes a normal paragraph with raw/list-style lines (emit `<p>...</p>` plus collapsed literal block text instead of turning everything into `<br/>`-separated paragraphs).
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,

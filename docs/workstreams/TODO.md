@@ -216,6 +216,19 @@ For each item:
   - Tokenizer behavior:
     - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_inline_code_suppresses_emphasis_delimiters`)
 
+- [x] Mixed paragraph + raw-block Markdown keeps Mermaid HTML-label semantics  
+  Gap check:
+  - Ensure `htmlLabels: true` Markdown labels preserve a leading paragraph as `<p>...</p>` while
+    following raw/list-style lines stay literal text (browser-collapsed), instead of becoming
+    extra `<br/>` lines.
+  Evidence:
+  - Fixture: `fixtures/flowchart/stress_flowchart_markdown_mixed_raw_blocks_078.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
+    - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_flowchart_markdown_mixed_raw_blocks_078`
+    - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter stress_flowchart_markdown_mixed_raw_blocks_078 --dom-mode strict --dom-decimals 3`
+  - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom`)
+
 - [x] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:
   - Add a fixture containing `&lt;`, `&amp;`, and unknown `&entity;` sequences.
