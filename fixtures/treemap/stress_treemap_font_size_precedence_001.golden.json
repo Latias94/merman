@@ -1,0 +1,44 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": "Font size precedence should be deterministic",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Root",
+          "children": [
+            {
+              "name": "Item A",
+              "value": 10
+            },
+            {
+              "name": "Item B",
+              "value": 5
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "level": 1,
+        "name": "Item A",
+        "value": 10
+      },
+      {
+        "level": 1,
+        "name": "Item B",
+        "value": 5
+      }
+    ],
+    "classes": {}
+  }
+}
