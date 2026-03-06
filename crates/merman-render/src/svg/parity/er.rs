@@ -863,19 +863,14 @@ pub(super) fn render_er_diagram_svg(
                         fmt(w),
                         fmt(h)
                     );
-                    out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
-                    // Mermaid ER relationship labels are rendered as HTML (foreignObject) and treat
-                    // `<br>`-style tags as actual line breaks (not escaped text).
-                    for (idx, part) in crate::text::split_html_br_lines(rel_text)
-                        .iter()
-                        .enumerate()
-                    {
-                        if idx > 0 {
-                            out.push_str("<br />");
-                        }
-                        escape_xml_into(&mut out, part);
-                    }
-                    out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
+                    out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">"#);
+                    // Mermaid ER relationship labels use the generic HTML edge-label path, so they
+                    // inherit `markdownToHTML()` semantics (Markdown emphasis + inline `<br/>`
+                    // handling) rather than rendering literal `**...**` marker text.
+                    let html =
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(rel_text, true);
+                    out.push_str(&html);
+                    out.push_str(r#"</span></div></foreignObject></g></g>"#);
                 } else {
                     out.push_str("<g>");
                     let _ = write!(
@@ -1113,6 +1108,7 @@ pub(super) fn render_er_diagram_svg(
             let lower = text.to_ascii_lowercase();
             let has_inline_html =
                 lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
+            let has_inline_code = text.contains('`');
             let has_markdown = text.contains('*') || text.contains('_');
 
             // Mermaid's DOM serialization for generics (`type<T>`) avoids nested HTML tags.
@@ -1120,9 +1116,15 @@ pub(super) fn render_er_diagram_svg(
                 return escape_xml(text);
             }
 
+            if has_inline_code {
+                let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+                return format!(
+                    r#"<span class="nodeLabel"{}>{}</span>"#,
+                    span_style_attr, html_out
+                );
+            }
+
             if has_markdown || has_inline_html {
-                // Mermaid converts label text into HTML using a Markdown pipeline, then injects
-                // the fragment into an XHTML `<foreignObject>`.
                 let mut html_out = String::new();
                 let parser = pulldown_cmark::Parser::new_ext(
                     text,
@@ -1136,8 +1138,6 @@ pub(super) fn render_er_diagram_svg(
                 });
                 pulldown_cmark::html::push_html(&mut html_out, parser);
                 let html_out = html_out.trim().to_string();
-
-                // `foreignObject` content is XML, so ensure XHTML void tags (`<br />`).
                 let html_out = html_out
                     .replace("<br>", "<br />")
                     .replace("<br/>", "<br />")
@@ -1450,15 +1450,7 @@ pub(super) fn render_er_diagram_svg(
             }
         }
 
-        let name_w = measurer
-            .measure_wrapped(
-                &measure.label_text,
-                &label_style,
-                None,
-                crate::text::WrapMode::HtmlLike,
-            )
-            .width
-            .max(0.0);
+        let name_w = measure.label_html_width.max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
         let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
@@ -1496,42 +1488,19 @@ pub(super) fn render_er_diagram_svg(
             let row_h = row.height.max(1.0);
             let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
 
-            let type_w = measurer
-                .measure_wrapped(
-                    &row.type_text,
-                    &attr_style,
-                    None,
-                    crate::text::WrapMode::HtmlLike,
-                )
+            let type_w = crate::er::er_html_label_metrics(&row.type_text, measurer, &attr_style)
                 .width
                 .max(0.0);
-            let name_w = measurer
-                .measure_wrapped(
-                    &row.name_text,
-                    &attr_style,
-                    None,
-                    crate::text::WrapMode::HtmlLike,
-                )
+            let name_w = crate::er::er_html_label_metrics(&row.name_text, measurer, &attr_style)
                 .width
                 .max(0.0);
-            let keys_w = measurer
-                .measure_wrapped(
-                    &row.key_text,
-                    &attr_style,
-                    None,
-                    crate::text::WrapMode::HtmlLike,
-                )
+            let keys_w = crate::er::er_html_label_metrics(&row.key_text, measurer, &attr_style)
                 .width
                 .max(0.0);
-            let comment_w = measurer
-                .measure_wrapped(
-                    &row.comment_text,
-                    &attr_style,
-                    None,
-                    crate::text::WrapMode::HtmlLike,
-                )
-                .width
-                .max(0.0);
+            let comment_w =
+                crate::er::er_html_label_metrics(&row.comment_text, measurer, &attr_style)
+                    .width
+                    .max(0.0);
 
             let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,

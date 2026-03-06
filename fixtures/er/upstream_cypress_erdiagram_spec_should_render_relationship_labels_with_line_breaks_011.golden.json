@@ -6,6 +6,22 @@
     "accTitle": null,
     "accDescr": null,
     "entities": {
+      "c": {
+        "id": "entity-c-3",
+        "label": "c",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Customer Account Tertiary",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
       "a": {
         "id": "entity-a-1",
         "label": "a",
@@ -22,9 +38,9 @@
         "cssClasses": "default",
         "cssStyles": []
       },
-      "b": {
-        "id": "entity-b-2",
-        "label": "b",
+      "d": {
+        "id": "entity-d-4",
+        "label": "d",
         "attributes": [
           {
             "type": "string",
@@ -33,7 +49,7 @@
             "comment": ""
           }
         ],
-        "alias": "Customer Account Secondary",
+        "alias": "Customer Account Nth",
         "shape": "erBox",
         "cssClasses": "default",
         "cssStyles": []
@@ -60,9 +76,9 @@
         "cssClasses": "default",
         "cssStyles": []
       },
-      "c": {
-        "id": "entity-c-3",
-        "label": "c",
+      "b": {
+        "id": "entity-b-2",
+        "label": "b",
         "attributes": [
           {
             "type": "string",
@@ -71,23 +87,7 @@
             "comment": ""
           }
         ],
-        "alias": "Customer Account Tertiary",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "d": {
-        "id": "entity-d-4",
-        "label": "d",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "email",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "Customer Account Nth",
+        "alias": "Customer Account Secondary",
         "shape": "erBox",
         "cssClasses": "default",
         "cssStyles": []

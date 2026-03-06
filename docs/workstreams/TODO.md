@@ -213,6 +213,11 @@ For each item:
     - Fixture: `fixtures/class/stress_class_markdown_inline_code_022.mmd`
     - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
     - Compare (root): `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter stress_class_markdown_inline_code_022`
+  - ER HTML labels preserve backticks and do not synthesize `<code>` / `<strong>` inside them:
+    - Fixture: `fixtures/er/stress_er_entity_label_inline_code_004.mmd`
+    - Compare: `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3 --filter stress_er_entity_label_inline_code_004`
+    - Compare (root): `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_er_entity_label_inline_code_004`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram er --filter stress_er_entity_label_inline_code_004 --dom-mode strict --dom-decimals 3`
   - Tokenizer behavior:
     - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_inline_code_suppresses_emphasis_delimiters`)
 
@@ -243,6 +248,17 @@ For each item:
     - Compare: `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3 --filter stress_requirement_markdown_br_listish_150`
     - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram requirement --filter stress_requirement_markdown_br_listish_150 --dom-mode strict --dom-decimals 3`
   - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations`)
+
+- [x] ER relationship HTML labels preserve Mermaid Markdown emphasis semantics
+  Gap check:
+  - Ensure `htmlLabels: true` ER relationship labels route through Mermaid `markdownToHTML()` semantics,
+    so `**...**` / `_..._` become `<strong>` / `<em>` in `<foreignObject>` output and use the same
+    markdown-aware bbox measurement for layout spacing.
+  Evidence:
+  - Fixture: `fixtures/er/stress_er_edge_label_markdown_002.mmd`
+    - Compare: `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3 --filter stress_er_edge_label_markdown_002`
+    - Compare (root): `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_er_edge_label_markdown_002`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram er --filter stress_er_edge_label_markdown_002 --dom-mode strict --dom-decimals 3`
 
 - [x] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:

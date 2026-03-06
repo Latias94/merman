@@ -1,5 +1,5 @@
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
@@ -151,6 +151,36 @@ pub(crate) fn parse_generic_types_like_mermaid(text: &str) -> String {
     out
 }
 
+pub(crate) fn er_html_label_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> TextMetrics {
+    let text = text.trim();
+    if text.is_empty() {
+        return TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 0,
+        };
+    }
+
+    let lower = text.to_ascii_lowercase();
+    let has_inline_html =
+        lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
+
+    if (text.contains('<') || text.contains('>')) && !has_inline_html {
+        return measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    }
+
+    let mut metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    if text.contains('`') {
+        let svg_bbox_w = measurer.measure_svg_simple_text_bbox_width_px(text, style);
+        metrics.width = crate::text::round_to_1_64_px(metrics.width.max(svg_bbox_w));
+    }
+    metrics
+}
+
 pub(crate) fn calculate_text_width_like_mermaid_px(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
@@ -253,9 +283,9 @@ pub(crate) fn measure_entity_box(
     // - It uses `if (!config.htmlLabels) { PADDING *= 1.25; TEXT_PADDING *= 1.25; }`, where
     //   `undefined` behaves as `false` and triggers the multiplier even when HTML labels are used.
     //
-    // Upstream SVG fixtures at Mermaid@11.12.2 reflect this quirk. Mirror it by separating the
-    // "effective" htmlLabels value (defaults to true) from the raw truthiness (defaults to false).
-    let html_labels_effective = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+    // Upstream SVG fixtures at Mermaid@11.12.2 reflect this quirk. The padding multiplier still
+    // keys off the raw truthiness (`undefined` behaves like `false`) even though the rendered labels
+    // use HTML `<foreignObject>` output by default.
     let html_labels_raw = config_bool(effective_config, &["htmlLabels"]).unwrap_or(false);
 
     // Mermaid ER unified shape (`erBox.ts`) uses:
@@ -268,12 +298,6 @@ pub(crate) fn measure_entity_box(
         .unwrap_or(200.0)
         .round()
         .max(0.0) as i64;
-
-    let wrap_mode = if html_labels_effective {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
 
     let label_text = if entity.alias.trim().is_empty() {
         entity.label.as_str()
@@ -292,7 +316,7 @@ pub(crate) fn measure_entity_box(
         }
     }
 
-    let label_metrics = measurer.measure_wrapped(&label_text, label_style, None, wrap_mode);
+    let label_metrics = er_html_label_metrics(&label_text, measurer, label_style);
     let label_html_width = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
         label_style.font_size,
         &label_text,
@@ -361,8 +385,8 @@ pub(crate) fn measure_entity_box(
 
     for a in &entity.attributes {
         let ty = parse_generic_types_like_mermaid(&a.ty);
-        let type_m = measurer.measure_wrapped(&ty, attr_style, None, wrap_mode);
-        let name_m = measurer.measure_wrapped(&a.name, attr_style, None, wrap_mode);
+        let type_m = er_html_label_metrics(&ty, measurer, attr_style);
+        let name_m = er_html_label_metrics(&a.name, measurer, attr_style);
 
         let type_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
             attr_style.font_size,
@@ -382,7 +406,7 @@ pub(crate) fn measure_entity_box(
         max_name_col_w = max_name_col_w.max(name_w + padding);
 
         let key_text = a.keys.join(",");
-        let keys_m = measurer.measure_wrapped(&key_text, attr_style, None, wrap_mode);
+        let keys_m = er_html_label_metrics(&key_text, measurer, attr_style);
         let keys_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
             attr_style.font_size,
             &key_text,
@@ -393,7 +417,7 @@ pub(crate) fn measure_entity_box(
         max_keys_col_w = max_keys_col_w.max(keys_w + padding);
 
         let comment_text = a.comment.clone();
-        let comment_m = measurer.measure_wrapped(&comment_text, attr_style, None, wrap_mode);
+        let comment_m = er_html_label_metrics(&comment_text, measurer, attr_style);
         let comment_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
             attr_style.font_size,
             &comment_text,
@@ -492,16 +516,35 @@ fn entity_box_dimensions(
 }
 
 fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> (f64, f64) {
-    if text.trim().is_empty() {
+    let text = text.trim();
+    if text.is_empty() {
         return (0.0, 0.0);
     }
+
+    let lower = text.to_ascii_lowercase();
+    let has_inline_html =
+        lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
+    let has_markdown = text.contains('*') || text.contains('_');
+
+    // Mermaid ER relationship labels go through the shared HTML edge-label pipeline when
+    // `htmlLabels=true`, so Markdown emphasis affects both the emitted `<foreignObject>` DOM and
+    // the measured bbox used by dagre spacing.
+    if has_markdown || has_inline_html {
+        let m = crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            text,
+            style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        return (m.width.max(0.0), m.height.max(0.0));
+    }
+
     // Mermaid ER uses HTML labels by default (foreignObject) and uses line-height: 1.5.
     let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    let w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-        style.font_size,
-        text.trim(),
-    )
-    .unwrap_or(m.width);
+    let w =
+        crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
+            .unwrap_or(m.width);
     (w.max(0.0), m.height.max(0.0))
 }
 
