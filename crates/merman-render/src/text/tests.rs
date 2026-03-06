@@ -217,3 +217,21 @@ fn markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations() {
         "<p>Hello<br/>- l1<br/>- l2</p>"
     );
 }
+
+#[test]
+fn markdown_html_label_fragment_preserves_inline_code_literals() {
+    let input = "inline: `**not bold**`";
+    assert_eq!(
+        mermaid_markdown_to_html_label_fragment(input, true),
+        "<p>inline: `**not bold**`</p>"
+    );
+}
+
+#[test]
+fn markdown_xhtml_label_fragment_preserves_inline_code_literals() {
+    let input = "inline: `**not bold**`";
+    assert_eq!(
+        mermaid_markdown_to_xhtml_label_fragment(input, true),
+        "<p>inline: `**not bold**`</p>"
+    );
+}

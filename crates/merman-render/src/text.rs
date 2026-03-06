@@ -1453,6 +1453,7 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
     };
 
     let mut stack: Vec<Delim> = Vec::new();
+    let mut in_code_span = false;
     let mut i = 0usize;
     while i < chars.len() {
         let ch = chars[i];
@@ -1467,6 +1468,23 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
             while i < chars.len() && chars[i] == ' ' {
                 i += 1;
             }
+            continue;
+        }
+
+        if ch == '`' {
+            text_buf.push(ch);
+            in_code_span = !in_code_span;
+            i += 1;
+            continue;
+        }
+
+        if in_code_span {
+            if ch == ' ' && !markdown_auto_wrap {
+                text_buf.push_str("&nbsp;");
+            } else {
+                text_buf.push(ch);
+            }
+            i += 1;
             continue;
         }
 
@@ -1769,6 +1787,7 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
     };
 
     let mut stack: Vec<Delim> = Vec::new();
+    let mut in_code_span = false;
     let mut i = 0usize;
     while i < chars.len() {
         let ch = chars[i];
@@ -1783,6 +1802,23 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
             while i < chars.len() && chars[i] == ' ' {
                 i += 1;
             }
+            continue;
+        }
+
+        if ch == '`' {
+            text_buf.push(ch);
+            in_code_span = !in_code_span;
+            i += 1;
+            continue;
+        }
+
+        if in_code_span {
+            if ch == ' ' && !markdown_auto_wrap {
+                text_buf.push_str("&nbsp;");
+            } else {
+                text_buf.push(ch);
+            }
+            i += 1;
             continue;
         }
 
