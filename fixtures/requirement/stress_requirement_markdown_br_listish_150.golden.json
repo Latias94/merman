@@ -1,0 +1,26 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "type": "requirement",
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "requirements": [
+      {
+        "name": "req1",
+        "type": "Requirement",
+        "requirementId": "1",
+        "text": "Hello<br/>- l1<br/>- l2",
+        "risk": "Medium",
+        "verifyMethod": "Test",
+        "cssStyles": [],
+        "classes": [
+          "default"
+        ]
+      }
+    ],
+    "elements": [],
+    "relationships": [],
+    "classes": {}
+  }
+}

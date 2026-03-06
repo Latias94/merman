@@ -208,3 +208,12 @@ fn markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom() {
         "<p>Hello</p>- l1 - l2"
     );
 }
+
+#[test]
+fn markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations() {
+    let input = "Hello<br/>- l1<br/>- l2";
+    assert_eq!(
+        mermaid_markdown_to_xhtml_label_fragment(input, true),
+        "<p>Hello<br/>- l1<br/>- l2</p>"
+    );
+}
