@@ -521,6 +521,628 @@ pub(super) fn render_architecture_diagram_svg_with_config(
     )
 }
 
+fn escape_xml_ampersands_preserving_xml_entities(raw: &str) -> std::borrow::Cow<'_, str> {
+    fn is_xml_predefined_entity(entity: &str) -> bool {
+        matches!(entity, "amp" | "lt" | "gt" | "quot" | "apos")
+    }
+
+    fn is_xml_numeric_entity(entity: &str) -> bool {
+        if let Some(hex) = entity
+            .strip_prefix("#x")
+            .or_else(|| entity.strip_prefix("#X"))
+        {
+            return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
+        }
+        if let Some(dec) = entity.strip_prefix('#') {
+            return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
+        }
+        false
+    }
+
+    if !raw.as_bytes().contains(&b'&') {
+        return std::borrow::Cow::Borrowed(raw);
+    }
+
+    let mut out = String::with_capacity(raw.len());
+    let mut i = 0usize;
+    while let Some(rel) = raw[i..].find('&') {
+        let amp = i + rel;
+        out.push_str(&raw[i..amp]);
+
+        let tail = &raw[amp + 1..];
+        if let Some(semi_rel) = tail.find(';') {
+            let semi = amp + 1 + semi_rel;
+            let entity = &raw[amp + 1..semi];
+            if is_xml_predefined_entity(entity) || is_xml_numeric_entity(entity) {
+                out.push_str(&raw[amp..=semi]);
+                i = semi + 1;
+                continue;
+            }
+        }
+
+        out.push_str("&amp;");
+        i = amp + 1;
+    }
+    out.push_str(&raw[i..]);
+    std::borrow::Cow::Owned(out)
+}
+
+#[derive(Debug, Clone)]
+enum ForeignObjectFragmentNode {
+    Text(String),
+    Element(ForeignObjectFragmentElement),
+    RawTag(String),
+}
+
+#[derive(Debug, Clone)]
+struct ForeignObjectFragmentElement {
+    raw_open: String,
+    raw_close: Option<String>,
+    name_lc: String,
+    children: Vec<ForeignObjectFragmentNode>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForeignObjectNamespace {
+    Svg,
+    Html,
+}
+
+fn is_foreign_object_void_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
+fn is_svg_tag_for_foreign_object(name: &str) -> bool {
+    matches!(
+        name,
+        "a" | "altglyph"
+            | "altglyphdef"
+            | "altglyphitem"
+            | "animate"
+            | "animatecolor"
+            | "animatemotion"
+            | "animatetransform"
+            | "circle"
+            | "clippath"
+            | "defs"
+            | "desc"
+            | "ellipse"
+            | "feblend"
+            | "fecolormatrix"
+            | "fecomponenttransfer"
+            | "fecomposite"
+            | "feconvolvematrix"
+            | "fediffuselighting"
+            | "fedisplacementmap"
+            | "fedistantlight"
+            | "fedropshadow"
+            | "feflood"
+            | "fefunca"
+            | "fefuncb"
+            | "fefuncg"
+            | "fefuncr"
+            | "fegaussianblur"
+            | "feimage"
+            | "femerge"
+            | "femergenode"
+            | "femorphology"
+            | "feoffset"
+            | "fepointlight"
+            | "fespecularlighting"
+            | "fespotlight"
+            | "fetile"
+            | "feturbulence"
+            | "filter"
+            | "font"
+            | "foreignobject"
+            | "g"
+            | "glyph"
+            | "glyphref"
+            | "hkern"
+            | "image"
+            | "line"
+            | "lineargradient"
+            | "marker"
+            | "mask"
+            | "metadata"
+            | "mpath"
+            | "path"
+            | "pattern"
+            | "polygon"
+            | "polyline"
+            | "radialgradient"
+            | "rect"
+            | "set"
+            | "stop"
+            | "svg"
+            | "switch"
+            | "symbol"
+            | "text"
+            | "textpath"
+            | "title"
+            | "tref"
+            | "tspan"
+            | "use"
+            | "view"
+    )
+}
+
+fn is_svg_html_integration_point(name: &str) -> bool {
+    matches!(name, "foreignobject")
+}
+
+fn classify_foreign_object_element_namespace(
+    parent_ns: ForeignObjectNamespace,
+    name_lc: &str,
+) -> ForeignObjectNamespace {
+    match parent_ns {
+        ForeignObjectNamespace::Html => {
+            if name_lc == "svg" {
+                ForeignObjectNamespace::Svg
+            } else {
+                ForeignObjectNamespace::Html
+            }
+        }
+        ForeignObjectNamespace::Svg => {
+            if is_svg_tag_for_foreign_object(name_lc) {
+                ForeignObjectNamespace::Svg
+            } else {
+                ForeignObjectNamespace::Html
+            }
+        }
+    }
+}
+
+fn child_namespace_for_foreign_object_element(
+    element_ns: ForeignObjectNamespace,
+    name_lc: &str,
+) -> ForeignObjectNamespace {
+    match element_ns {
+        ForeignObjectNamespace::Html => ForeignObjectNamespace::Html,
+        ForeignObjectNamespace::Svg => {
+            if is_svg_html_integration_point(name_lc) {
+                ForeignObjectNamespace::Html
+            } else {
+                ForeignObjectNamespace::Svg
+            }
+        }
+    }
+}
+
+fn parse_foreign_object_fragment(raw: &str) -> Vec<ForeignObjectFragmentNode> {
+    fn push_node(
+        stack: &mut [ForeignObjectFragmentElement],
+        roots: &mut Vec<ForeignObjectFragmentNode>,
+        node: ForeignObjectFragmentNode,
+    ) {
+        if let Some(parent) = stack.last_mut() {
+            parent.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    }
+
+    fn tag_name_from_inner(inner: &str) -> Option<String> {
+        let mut j = 0usize;
+        let bytes = inner.as_bytes();
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        let start = j;
+        while j < bytes.len() {
+            let c = bytes[j] as char;
+            if c.is_ascii_whitespace() || c == '/' {
+                break;
+            }
+            j += 1;
+        }
+        (start < j).then(|| inner[start..j].to_ascii_lowercase())
+    }
+
+    let mut roots = Vec::new();
+    let mut stack: Vec<ForeignObjectFragmentElement> = Vec::new();
+    let mut cursor = 0usize;
+
+    while cursor < raw.len() {
+        let Some(lt_rel) = raw[cursor..].find('<') else {
+            if cursor < raw.len() {
+                push_node(
+                    &mut stack,
+                    &mut roots,
+                    ForeignObjectFragmentNode::Text(raw[cursor..].to_string()),
+                );
+            }
+            break;
+        };
+
+        let lt = cursor + lt_rel;
+        if lt > cursor {
+            push_node(
+                &mut stack,
+                &mut roots,
+                ForeignObjectFragmentNode::Text(raw[cursor..lt].to_string()),
+            );
+        }
+
+        let Some(gt_rel) = raw[lt..].find('>') else {
+            push_node(
+                &mut stack,
+                &mut roots,
+                ForeignObjectFragmentNode::Text(raw[lt..].to_string()),
+            );
+            break;
+        };
+
+        let gt = lt + gt_rel;
+        let raw_tag = raw[lt..=gt].to_string();
+        let inner = raw[lt + 1..gt].trim();
+
+        if inner.is_empty() {
+            push_node(
+                &mut stack,
+                &mut roots,
+                ForeignObjectFragmentNode::RawTag(raw_tag),
+            );
+            cursor = gt + 1;
+            continue;
+        }
+
+        match inner.as_bytes()[0] as char {
+            '!' | '?' => {
+                push_node(
+                    &mut stack,
+                    &mut roots,
+                    ForeignObjectFragmentNode::RawTag(raw_tag),
+                );
+            }
+            '/' => {
+                let Some(name_lc) = tag_name_from_inner(&inner[1..]) else {
+                    push_node(
+                        &mut stack,
+                        &mut roots,
+                        ForeignObjectFragmentNode::RawTag(raw_tag),
+                    );
+                    cursor = gt + 1;
+                    continue;
+                };
+
+                if let Some(pos) = stack.iter().rposition(|el| el.name_lc == name_lc) {
+                    while stack.len() > pos + 1 {
+                        let mut orphan = stack.pop().expect("stack length checked");
+                        if orphan.raw_close.is_none() {
+                            orphan.raw_close = Some(format!("</{}>", orphan.name_lc));
+                        }
+                        push_node(
+                            &mut stack,
+                            &mut roots,
+                            ForeignObjectFragmentNode::Element(orphan),
+                        );
+                    }
+                    let mut element = stack.pop().expect("matching close exists");
+                    element.raw_close = Some(raw_tag);
+                    push_node(
+                        &mut stack,
+                        &mut roots,
+                        ForeignObjectFragmentNode::Element(element),
+                    );
+                } else {
+                    push_node(
+                        &mut stack,
+                        &mut roots,
+                        ForeignObjectFragmentNode::RawTag(raw_tag),
+                    );
+                }
+            }
+            _ => {
+                let Some(name_lc) = tag_name_from_inner(inner) else {
+                    push_node(
+                        &mut stack,
+                        &mut roots,
+                        ForeignObjectFragmentNode::RawTag(raw_tag),
+                    );
+                    cursor = gt + 1;
+                    continue;
+                };
+                let self_closed = inner.ends_with('/') || is_foreign_object_void_tag(&name_lc);
+                let element = ForeignObjectFragmentElement {
+                    raw_open: raw_tag,
+                    raw_close: None,
+                    name_lc,
+                    children: Vec::new(),
+                };
+                if self_closed {
+                    push_node(
+                        &mut stack,
+                        &mut roots,
+                        ForeignObjectFragmentNode::Element(element),
+                    );
+                } else {
+                    stack.push(element);
+                }
+            }
+        }
+
+        cursor = gt + 1;
+    }
+
+    while let Some(mut element) = stack.pop() {
+        if element.raw_close.is_none() {
+            element.raw_close = Some(format!("</{}>", element.name_lc));
+        }
+        push_node(
+            &mut stack,
+            &mut roots,
+            ForeignObjectFragmentNode::Element(element),
+        );
+    }
+
+    roots
+}
+
+fn serialize_foreign_object_fragment(nodes: &[ForeignObjectFragmentNode]) -> String {
+    fn write_node(node: &ForeignObjectFragmentNode, out: &mut String) {
+        match node {
+            ForeignObjectFragmentNode::Text(text) | ForeignObjectFragmentNode::RawTag(text) => {
+                out.push_str(text)
+            }
+            ForeignObjectFragmentNode::Element(element) => {
+                out.push_str(&element.raw_open);
+                for child in &element.children {
+                    write_node(child, out);
+                }
+                if let Some(raw_close) = &element.raw_close {
+                    out.push_str(raw_close);
+                }
+            }
+        }
+    }
+
+    let mut out = String::new();
+    for node in nodes {
+        write_node(node, &mut out);
+    }
+    out
+}
+
+fn node_allowed_in_svg_content(
+    node: &ForeignObjectFragmentNode,
+    child_ns: ForeignObjectNamespace,
+) -> bool {
+    match node {
+        ForeignObjectFragmentNode::Text(_) | ForeignObjectFragmentNode::RawTag(_) => true,
+        ForeignObjectFragmentNode::Element(element) => {
+            classify_foreign_object_element_namespace(child_ns, &element.name_lc)
+                == ForeignObjectNamespace::Svg
+        }
+    }
+}
+
+fn rewrite_foreign_object_fragment_nodes(
+    nodes: Vec<ForeignObjectFragmentNode>,
+    parent_ns: ForeignObjectNamespace,
+) -> Vec<ForeignObjectFragmentNode> {
+    let mut out = Vec::new();
+
+    for node in nodes {
+        match node {
+            ForeignObjectFragmentNode::Text(_) | ForeignObjectFragmentNode::RawTag(_) => {
+                out.push(node)
+            }
+            ForeignObjectFragmentNode::Element(mut element) => {
+                let element_ns =
+                    classify_foreign_object_element_namespace(parent_ns, &element.name_lc);
+                let child_ns =
+                    child_namespace_for_foreign_object_element(element_ns, &element.name_lc);
+                element.children =
+                    rewrite_foreign_object_fragment_nodes(element.children, child_ns);
+
+                if element_ns == ForeignObjectNamespace::Svg
+                    && !is_svg_html_integration_point(&element.name_lc)
+                {
+                    let mut kept = Vec::new();
+                    let mut moved = Vec::new();
+                    let mut keep_prefix = true;
+
+                    for child in element.children {
+                        if keep_prefix && node_allowed_in_svg_content(&child, child_ns) {
+                            kept.push(child);
+                        } else {
+                            keep_prefix = false;
+                            moved.push(child);
+                        }
+                    }
+
+                    element.children = kept;
+                    out.push(ForeignObjectFragmentNode::Element(element));
+                    out.extend(moved);
+                } else {
+                    out.push(ForeignObjectFragmentNode::Element(element));
+                }
+            }
+        }
+    }
+
+    out
+}
+
+fn normalize_raw_xhtml_fragment_for_foreign_object(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len() + 16);
+    let mut i = 0usize;
+    let bytes = raw.as_bytes();
+    while i < bytes.len() {
+        let Some(lt_rel) = raw[i..].find('<') else {
+            out.push_str(&raw[i..]);
+            break;
+        };
+        let lt = i + lt_rel;
+        out.push_str(&raw[i..lt]);
+        let Some(gt_rel) = raw[lt..].find('>') else {
+            out.push_str(&raw[lt..]);
+            break;
+        };
+        let gt = lt + gt_rel;
+        let inner = raw[lt + 1..gt].trim();
+
+        if inner.is_empty() {
+            out.push_str("<>");
+            i = gt + 1;
+            continue;
+        }
+
+        let first = inner.as_bytes()[0] as char;
+        if matches!(first, '/' | '!' | '?') {
+            out.push('<');
+            out.push_str(inner);
+            out.push('>');
+            i = gt + 1;
+            continue;
+        }
+
+        let mut j = 0usize;
+        let inner_bytes = inner.as_bytes();
+        while j < inner_bytes.len() && inner_bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        let name_start = j;
+        while j < inner_bytes.len() {
+            let c = inner_bytes[j] as char;
+            if c.is_ascii_whitespace() || c == '/' {
+                break;
+            }
+            j += 1;
+        }
+        let tag_name = inner[name_start..j].trim();
+        if tag_name.is_empty() {
+            out.push('<');
+            out.push_str(inner);
+            out.push('>');
+            i = gt + 1;
+            continue;
+        }
+        let tag_name_lc = tag_name.to_ascii_lowercase();
+
+        let mut rest = inner[j..].trim();
+        let mut self_close = false;
+        if rest.ends_with('/') {
+            self_close = true;
+            rest = rest[..rest.len().saturating_sub(1)].trim_end();
+        }
+
+        out.push('<');
+        out.push_str(tag_name);
+
+        let mut k = 0usize;
+        let rest_bytes = rest.as_bytes();
+        while k < rest_bytes.len() {
+            while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                k += 1;
+            }
+            if k >= rest_bytes.len() {
+                break;
+            }
+
+            let attr_start = k;
+            while k < rest_bytes.len() {
+                let c = rest_bytes[k] as char;
+                if c.is_ascii_whitespace() || c == '=' {
+                    break;
+                }
+                k += 1;
+            }
+            let attr_name = rest[attr_start..k].trim();
+            if attr_name.is_empty() {
+                break;
+            }
+            while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                k += 1;
+            }
+
+            if k < rest_bytes.len() && rest_bytes[k] as char == '=' {
+                k += 1;
+                while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
+                    k += 1;
+                }
+                if k >= rest_bytes.len() {
+                    out.push(' ');
+                    out.push_str(attr_name);
+                    out.push_str("=\"\"");
+                    break;
+                }
+                let q = rest_bytes[k] as char;
+                if q == '"' || q == '\'' {
+                    let quote = q;
+                    k += 1;
+                    let val_start = k;
+                    while k < rest_bytes.len() && rest_bytes[k] as char != quote {
+                        k += 1;
+                    }
+                    let val = &rest[val_start..k];
+                    if k < rest_bytes.len() {
+                        k += 1;
+                    }
+                    out.push(' ');
+                    out.push_str(attr_name);
+                    out.push_str("=\"");
+                    out.push_str(val);
+                    out.push('"');
+                } else {
+                    let val_start = k;
+                    while k < rest_bytes.len() {
+                        let c = rest_bytes[k] as char;
+                        if c.is_ascii_whitespace() {
+                            break;
+                        }
+                        k += 1;
+                    }
+                    let val = &rest[val_start..k];
+                    out.push(' ');
+                    out.push_str(attr_name);
+                    out.push_str("=\"");
+                    out.push_str(val);
+                    out.push('"');
+                }
+            } else {
+                out.push(' ');
+                out.push_str(attr_name);
+                out.push_str("=\"");
+                out.push_str(attr_name);
+                out.push('"');
+            }
+        }
+
+        if is_foreign_object_void_tag(tag_name_lc.as_str()) || self_close {
+            out.push_str(" />");
+        } else {
+            out.push('>');
+        }
+        i = gt + 1;
+    }
+    out
+}
+
+fn normalize_xhtml_fragment_for_foreign_object(raw: &str) -> String {
+    let parsed = parse_foreign_object_fragment(raw);
+    let rewritten = rewrite_foreign_object_fragment_nodes(parsed, ForeignObjectNamespace::Svg);
+    let rewritten = serialize_foreign_object_fragment(&rewritten);
+    normalize_raw_xhtml_fragment_for_foreign_object(&rewritten)
+}
+
 fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     layout: &ArchitectureDiagramLayout,
     model: &M,
@@ -536,236 +1158,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         dst: &'a mut std::time::Duration,
     ) -> Option<super::timing::TimingGuard<'a>> {
         enabled.then(|| super::timing::TimingGuard::new(dst))
-    }
-
-    fn escape_xml_ampersands_preserving_xml_entities(raw: &str) -> std::borrow::Cow<'_, str> {
-        fn is_xml_predefined_entity(entity: &str) -> bool {
-            matches!(entity, "amp" | "lt" | "gt" | "quot" | "apos")
-        }
-
-        fn is_xml_numeric_entity(entity: &str) -> bool {
-            if let Some(hex) = entity
-                .strip_prefix("#x")
-                .or_else(|| entity.strip_prefix("#X"))
-            {
-                return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-            }
-            if let Some(dec) = entity.strip_prefix('#') {
-                return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-            }
-            false
-        }
-
-        if !raw.as_bytes().contains(&b'&') {
-            return std::borrow::Cow::Borrowed(raw);
-        }
-
-        let mut out = String::with_capacity(raw.len());
-        let mut i = 0usize;
-        while let Some(rel) = raw[i..].find('&') {
-            let amp = i + rel;
-            out.push_str(&raw[i..amp]);
-
-            let tail = &raw[amp + 1..];
-            if let Some(semi_rel) = tail.find(';') {
-                let semi = amp + 1 + semi_rel;
-                let entity = &raw[amp + 1..semi];
-                if is_xml_predefined_entity(entity) || is_xml_numeric_entity(entity) {
-                    out.push_str(&raw[amp..=semi]);
-                    i = semi + 1;
-                    continue;
-                }
-            }
-
-            out.push_str("&amp;");
-            i = amp + 1;
-        }
-        out.push_str(&raw[i..]);
-        std::borrow::Cow::Owned(out)
-    }
-
-    fn normalize_xhtml_fragment_for_foreign_object(raw: &str) -> String {
-        // Mermaid inserts sanitized HTML into `<foreignObject>` (XHTML). Browser DOM serialization
-        // normalizes attribute quoting and void-tag closure (e.g. `<img src=x>` becomes
-        // `<img src="x" />`). Our DOMPurify-like sanitizer operates on raw HTML text and does not
-        // perform that normalization, which can yield SVG that is not well-formed XML.
-        //
-        // This is a best-effort, minimal XHTML normalization pass tailored for Mermaid's
-        // `sanitizeText()` output (no scripts, small tag surface).
-        fn is_void_tag(name: &str) -> bool {
-            matches!(
-                name,
-                "area"
-                    | "base"
-                    | "br"
-                    | "col"
-                    | "embed"
-                    | "hr"
-                    | "img"
-                    | "input"
-                    | "link"
-                    | "meta"
-                    | "param"
-                    | "source"
-                    | "track"
-                    | "wbr"
-            )
-        }
-
-        let mut out = String::with_capacity(raw.len() + 16);
-        let mut i = 0usize;
-        let bytes = raw.as_bytes();
-        while i < bytes.len() {
-            let Some(lt_rel) = raw[i..].find('<') else {
-                out.push_str(&raw[i..]);
-                break;
-            };
-            let lt = i + lt_rel;
-            out.push_str(&raw[i..lt]);
-            let Some(gt_rel) = raw[lt..].find('>') else {
-                out.push_str(&raw[lt..]);
-                break;
-            };
-            let gt = lt + gt_rel;
-            let inner = raw[lt + 1..gt].trim();
-
-            if inner.is_empty() {
-                out.push_str("<>");
-                i = gt + 1;
-                continue;
-            }
-
-            let first = inner.as_bytes()[0] as char;
-            if matches!(first, '/' | '!' | '?') {
-                out.push('<');
-                out.push_str(inner);
-                out.push('>');
-                i = gt + 1;
-                continue;
-            }
-
-            let mut j = 0usize;
-            let inner_bytes = inner.as_bytes();
-            while j < inner_bytes.len() && inner_bytes[j].is_ascii_whitespace() {
-                j += 1;
-            }
-            let name_start = j;
-            while j < inner_bytes.len() {
-                let c = inner_bytes[j] as char;
-                if c.is_ascii_whitespace() || c == '/' {
-                    break;
-                }
-                j += 1;
-            }
-            let tag_name = inner[name_start..j].trim();
-            if tag_name.is_empty() {
-                out.push('<');
-                out.push_str(inner);
-                out.push('>');
-                i = gt + 1;
-                continue;
-            }
-            let tag_name_lc = tag_name.to_ascii_lowercase();
-
-            let mut rest = inner[j..].trim();
-            let mut self_close = false;
-            if rest.ends_with('/') {
-                self_close = true;
-                rest = rest[..rest.len().saturating_sub(1)].trim_end();
-            }
-
-            out.push('<');
-            out.push_str(tag_name);
-
-            let mut k = 0usize;
-            let rest_bytes = rest.as_bytes();
-            while k < rest_bytes.len() {
-                while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
-                    k += 1;
-                }
-                if k >= rest_bytes.len() {
-                    break;
-                }
-
-                let attr_start = k;
-                while k < rest_bytes.len() {
-                    let c = rest_bytes[k] as char;
-                    if c.is_ascii_whitespace() || c == '=' {
-                        break;
-                    }
-                    k += 1;
-                }
-                let attr_name = rest[attr_start..k].trim();
-                if attr_name.is_empty() {
-                    break;
-                }
-                while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
-                    k += 1;
-                }
-
-                if k < rest_bytes.len() && rest_bytes[k] as char == '=' {
-                    k += 1;
-                    while k < rest_bytes.len() && rest_bytes[k].is_ascii_whitespace() {
-                        k += 1;
-                    }
-                    if k >= rest_bytes.len() {
-                        out.push(' ');
-                        out.push_str(attr_name);
-                        out.push_str("=\"\"");
-                        break;
-                    }
-                    let q = rest_bytes[k] as char;
-                    if q == '"' || q == '\'' {
-                        let quote = q;
-                        k += 1;
-                        let val_start = k;
-                        while k < rest_bytes.len() && rest_bytes[k] as char != quote {
-                            k += 1;
-                        }
-                        let val = &rest[val_start..k];
-                        if k < rest_bytes.len() {
-                            k += 1;
-                        }
-                        out.push(' ');
-                        out.push_str(attr_name);
-                        out.push_str("=\"");
-                        out.push_str(val);
-                        out.push('"');
-                    } else {
-                        let val_start = k;
-                        while k < rest_bytes.len() {
-                            let c = rest_bytes[k] as char;
-                            if c.is_ascii_whitespace() {
-                                break;
-                            }
-                            k += 1;
-                        }
-                        let val = &rest[val_start..k];
-                        out.push(' ');
-                        out.push_str(attr_name);
-                        out.push_str("=\"");
-                        out.push_str(val);
-                        out.push('"');
-                    }
-                } else {
-                    // Boolean attr: make it XML-friendly.
-                    out.push(' ');
-                    out.push_str(attr_name);
-                    out.push_str("=\"");
-                    out.push_str(attr_name);
-                    out.push('"');
-                }
-            }
-
-            let void_tag = is_void_tag(tag_name_lc.as_str());
-            if void_tag || self_close {
-                out.push_str(" />");
-            } else {
-                out.push('>');
-            }
-            i = gt + 1;
-        }
-        out
     }
 
     fn arch_icon_body(name: &str) -> &'static str {
@@ -2918,4 +3310,37 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_xhtml_fragment_splits_root_svg_anchor_from_html_children() {
+        assert_eq!(
+            normalize_xhtml_fragment_for_foreign_object(
+                r#"<a href='https://example.com'><code>code</code></a>"#,
+            ),
+            r#"<a href="https://example.com"></a><code>code</code>"#,
+        );
+    }
+
+    #[test]
+    fn normalize_xhtml_fragment_preserves_anchor_inside_html_context() {
+        assert_eq!(
+            normalize_xhtml_fragment_for_foreign_object(
+                r#"<p><a href='https://example.com'><code>code</code></a></p>"#,
+            ),
+            r#"<p><a href="https://example.com"><code>code</code></a></p>"#,
+        );
+    }
+
+    #[test]
+    fn normalize_xhtml_fragment_splits_svg_content_before_html_children() {
+        assert_eq!(
+            normalize_xhtml_fragment_for_foreign_object(r#"<g>x<b>y</b>z</g>"#),
+            r#"<g>x</g><b>y</b>z"#,
+        );
+    }
 }

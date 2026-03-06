@@ -368,3 +368,12 @@ For each item:
   Evidence:
   - Compare: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 6`
   - Note: `stress_mindmap_font_size_precedence_037` is pinned via `crates/merman-render/src/generated/mindmap_root_overrides_11_12_2.rs`.
+
+- [x] Architecture: `iconText` `foreignObject` HTML / link wrapper parity  
+  Gap check:
+  - Confirm root-level SVG-namespace `<a>` wrappers inside `iconText` split inline HTML descendants (`<code>`, `<span>`, `<b>`, etc.) the same way Mermaid CLI / Chromium serializes them from `foreignObject`.
+  Evidence:
+  - Fixture: `fixtures/architecture/stress_architecture_icontext_anchor_code_044.mmd`
+    - Compare: `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-decimals 3 --filter stress_architecture_icontext_anchor_code_044`
+    - Compare (root): `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_architecture_icontext_anchor_code_044`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram architecture --filter stress_architecture_icontext_anchor_code_044 --dom-mode strict --dom-decimals 3`

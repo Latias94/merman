@@ -210,6 +210,7 @@ How to validate coverage:
 - **Class**: generics, escaped `<`/`>`, namespaces, multiline member blocks.
 - **State**: composite padding, classDef affecting HTML labels, link sanitization.
 - **Mindmap**: multiline CJK, indentation depth, root viewport drift.
+- **Architecture**: `iconText` `foreignObject` HTML parsing, SVG-namespace link wrappers, icon/title bbox drift.
 
 ## Standard workflow (repeatable loop)
 
