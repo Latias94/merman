@@ -229,6 +229,18 @@ For each item:
     - `cargo run -p xtask -- compare-svg-xml --diagram flowchart --filter stress_flowchart_markdown_mixed_raw_blocks_078 --dom-mode strict --dom-decimals 3`
   - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom`)
 
+- [x] Inline `<br/>` + list-like continuation stays inside the same HTML-label paragraph
+  Gap check:
+  - Ensure Mermaid keeps `Hello<br/>- l1<br/>- l2` inside a single `<p>...</p>` for htmlLabels,
+    instead of treating the `- ...` lines as raw/list blocks or escaping `<br/>` literally.
+  Evidence:
+  - State fixture: `fixtures/state/stress_state_edge_label_markdown_br_listish_072.mmd`
+    - Compare: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3 --filter stress_state_edge_label_markdown_br_listish_072`
+  - Requirement fixture: `fixtures/requirement/stress_requirement_markdown_br_listish_150.mmd`
+    - Compare: `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3 --filter stress_requirement_markdown_br_listish_150`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram requirement --filter stress_requirement_markdown_br_listish_150 --dom-mode strict --dom-decimals 3`
+  - Unit test: `crates/merman-render/src/text/tests.rs` (`markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations`)
+
 - [x] Escaped entities survive markdown→HTML→SVG pipeline  
   Gap check:
   - Add a fixture containing `&lt;`, `&amp;`, and unknown `&entity;` sequences.
