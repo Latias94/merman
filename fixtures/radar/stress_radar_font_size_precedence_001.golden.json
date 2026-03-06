@@ -1,0 +1,50 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "Font size precedence should be deterministic",
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "quality",
+        "label": "Quality"
+      },
+      {
+        "name": "delivery",
+        "label": "Delivery Speed"
+      },
+      {
+        "name": "support",
+        "label": "Support"
+      }
+    ],
+    "curves": [
+      {
+        "name": "alpha",
+        "label": "Alpha team",
+        "entries": [
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "beta",
+        "label": "Beta team",
+        "entries": [
+          5,
+          3,
+          4
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": 5,
+      "min": 0,
+      "graticule": "polygon"
+    }
+  }
+}

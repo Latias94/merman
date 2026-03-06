@@ -1,0 +1,192 @@
+{
+  "diagramType": "radar",
+  "layout": {
+    "RadarDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 700.0
+      },
+      "svg_width": 700.0,
+      "svg_height": 700.0,
+      "center_x": 350.0,
+      "center_y": 350.0,
+      "radius": 300.0,
+      "axis_label_factor": 1.05,
+      "title_y": -350.0,
+      "axes": [
+        {
+          "label": "Quality",
+          "angle": -1.571,
+          "line_x2": 0.0,
+          "line_y2": -300.0,
+          "label_x": 0.0,
+          "label_y": -315.0
+        },
+        {
+          "label": "Delivery Speed",
+          "angle": 0.524,
+          "line_x2": 259.808,
+          "line_y2": 150.0,
+          "label_x": 272.798,
+          "label_y": 157.5
+        },
+        {
+          "label": "Support",
+          "angle": 2.618,
+          "line_x2": -259.808,
+          "line_y2": 150.0,
+          "label_x": -272.798,
+          "label_y": 157.5
+        }
+      ],
+      "graticules": [
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -60.0
+            },
+            {
+              "x": 51.962,
+              "y": 30.0
+            },
+            {
+              "x": -51.962,
+              "y": 30.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -120.0
+            },
+            {
+              "x": 103.923,
+              "y": 60.0
+            },
+            {
+              "x": -103.923,
+              "y": 60.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -180.0
+            },
+            {
+              "x": 155.885,
+              "y": 90.0
+            },
+            {
+              "x": -155.885,
+              "y": 90.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -240.0
+            },
+            {
+              "x": 207.846,
+              "y": 120.0
+            },
+            {
+              "x": -207.846,
+              "y": 120.0
+            }
+          ]
+        },
+        {
+          "kind": "polygon",
+          "r": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -300.0
+            },
+            {
+              "x": 259.808,
+              "y": 150.0
+            },
+            {
+              "x": -259.808,
+              "y": 150.0
+            }
+          ]
+        }
+      ],
+      "curves": [
+        {
+          "label": "Alpha team",
+          "class_index": 0.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -180.0
+            },
+            {
+              "x": 207.846,
+              "y": 120.0
+            },
+            {
+              "x": -259.808,
+              "y": 150.0
+            }
+          ],
+          "path_d": ""
+        },
+        {
+          "label": "Beta team",
+          "class_index": 1.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -300.0
+            },
+            {
+              "x": 155.885,
+              "y": 90.0
+            },
+            {
+              "x": -207.846,
+              "y": 120.0
+            }
+          ],
+          "path_d": ""
+        }
+      ],
+      "legend_items": [
+        {
+          "label": "Alpha team",
+          "class_index": 0.0,
+          "x": 262.5,
+          "y": -262.5
+        },
+        {
+          "label": "Beta team",
+          "class_index": 1.0,
+          "x": 262.5,
+          "y": -242.5
+        }
+      ]
+    }
+  }
+}
