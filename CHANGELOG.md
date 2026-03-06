@@ -62,6 +62,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   and pin the new smoke fixture's `parity-root` viewport to upstream.
 - Requirement: align diagram/root font sizing with `themeVariables.fontSize` (including `"NNpx"` strings),
   accept CSS-style `fontSize` values during layout/parity measurement, and pin the new smoke fixture's `parity-root` viewport to upstream.
+- Flowchart/Class/GitGraph: pin the remaining `parity-root` root viewport overrides for text-style/font-size smoke fixtures
+  and `upstream_merges_spec`, keeping the full `--dom-mode parity-root --dom-decimals 6` gate green.
 - Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
 - Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
 - Text: avoid inflating flowchart HTML label height for quoted-string trailing-only whitespace (improves `parity-root` root viewport alignment).

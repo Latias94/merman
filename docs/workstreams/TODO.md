@@ -110,7 +110,7 @@ For each item:
   - This matches what we observe in Mermaid CLI baselines: HTML label contents do not reliably inherit SVG-root
     `font-size` CSS rules, so the effective label size is often the browser default (16px).
 
-- [ ] Font-size precedence rules per diagram (SVG text vs HTML labels)  
+- [x] Font-size precedence rules per diagram (SVG text vs HTML labels)  
   Gap check:
   - Search docs: `docs/alignment/*MINIMUM.md` and per-diagram render modules for `fontSize`.
   - Confirm whether each diagram reads from `themeVariables.fontSize`, top-level `fontSize`, or a diagram override.
@@ -177,6 +177,9 @@ For each item:
     - Compare: `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-decimals 3 --filter stress_treemap_font_size_precedence_001`
     - Compare (root): `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_treemap_font_size_precedence_001`
     - Note: current smoke passes without extra layout/code changes.
+  Status:
+  - Full corpus now passes both `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
+    and `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 6`.
 
 ## C) Markdown subset parity
 
