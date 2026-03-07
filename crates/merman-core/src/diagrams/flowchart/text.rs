@@ -42,6 +42,23 @@ pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
     (unquoted, TitleKind::Text)
 }
 
+pub(super) fn parse_edge_label_text(raw: &str) -> (String, TitleKind) {
+    let trimmed = raw.trim();
+    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
+
+    if quoted {
+        return parse_label_text(trimmed);
+    }
+
+    // Mermaid flowchart edge labels only enter Markdown-string mode via the lexer's `MD_STR`
+    // token, i.e. a double-quoted string whose payload is wrapped in backticks:
+    //   -- "`edge **label**`" -->
+    //
+    // Bare pipe labels like `-->|`edge **label**`|` keep the backticks literally and stay `text`.
+    (trimmed.to_string(), TitleKind::Text)
+}
+
 pub(super) fn strip_wrapping_backticks(s: &str) -> (String, bool) {
     let trimmed = s.trim();
     if trimmed.len() >= 2 && trimmed.starts_with('`') && trimmed.ends_with('`') {
@@ -52,7 +69,7 @@ pub(super) fn strip_wrapping_backticks(s: &str) -> (String, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_label_text;
+    use super::{parse_edge_label_text, parse_label_text};
     use crate::diagrams::flowchart::TitleKind;
 
     #[test]
@@ -67,5 +84,30 @@ mod tests {
         let (text, kind) = parse_label_text(r#""$$\nabla\therefore\alpha$$""#);
         assert_eq!(kind, TitleKind::String);
         assert_eq!(text, r#"$$\nabla\therefore\alpha$$"#);
+    }
+
+    #[test]
+    fn parse_edge_label_text_keeps_unquoted_backticks_literal() {
+        let (text, kind) =
+            parse_edge_label_text(r#"`This is **bold** </br>and <strong>strong</strong>`"#);
+        assert_eq!(kind, TitleKind::Text);
+        assert_eq!(
+            text,
+            r#"`This is **bold** </br>and <strong>strong</strong>`"#
+        );
+    }
+
+    #[test]
+    fn parse_edge_label_text_keeps_unquoted_partial_markdown_literal() {
+        let (text, kind) = parse_edge_label_text(r#"`**bold*`"#);
+        assert_eq!(kind, TitleKind::Text);
+        assert_eq!(text, r#"`**bold*`"#);
+    }
+
+    #[test]
+    fn parse_edge_label_text_supports_quoted_markdown_strings() {
+        let (text, kind) = parse_edge_label_text(r#""`Bold **edge label**`""#);
+        assert_eq!(kind, TitleKind::Markdown);
+        assert_eq!(text, r#"Bold **edge label**"#);
     }
 }

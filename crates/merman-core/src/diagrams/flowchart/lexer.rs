@@ -1,6 +1,6 @@
 use super::{
     LabeledText, LexError, LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
-    destruct_end_link, destruct_start_link, lex, parse_label_text,
+    destruct_end_link, destruct_start_link, lex, parse_edge_label_text,
 };
 use std::collections::VecDeque;
 
@@ -797,7 +797,7 @@ impl<'input> Lexer<'input> {
                     }
                     if self.pos < self.input.len() && bytes[self.pos] == b'|' {
                         let raw = self.input[label_start..self.pos].trim();
-                        let (text, kind) = parse_label_text(raw);
+                        let (text, kind) = parse_edge_label_text(raw);
                         self.pos += 1;
                         self.pending.push_back((
                             pipe_pos,
@@ -858,7 +858,7 @@ impl<'input> Lexer<'input> {
         while scan < self.input.len() {
             if let Some((match_start, match_end, arrow)) = match_link_end(scan, family, true) {
                 let raw_text = self.input[edge_text_start..match_start].trim();
-                let (text, kind) = parse_label_text(raw_text);
+                let (text, kind) = parse_edge_label_text(raw_text);
                 self.pos = match_end;
 
                 while self.pos < self.input.len() && is_space_ws(bytes[self.pos]) {

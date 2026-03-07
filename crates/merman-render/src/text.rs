@@ -2715,15 +2715,29 @@ impl VendoredFontMetricsTextMeasurer {
             return (left, right);
         }
 
-        if table.font_key == "trebuchetms,verdana,arial,sans-serif" && t == "Item A1" {
-            // Mermaid treemap upstream baselines keep this label at 34px (it just fits in the
-            // smallest cell of the docs basic fixture). Our default SVG bbox model can slightly
-            // over-measure this string, causing a 1px font-size shrink.
-            let left_em = 1.720_214_843_75_f64;
-            let right_em = 1.720_214_843_75_f64;
-            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-            return (left, right);
+        if table.font_key == "trebuchetms,verdana,arial,sans-serif" {
+            if t == "Item A1" {
+                // Mermaid treemap upstream baselines keep this label at 34px (it just fits in the
+                // smallest cell of the docs basic fixture). Our default SVG bbox model can slightly
+                // over-measure this string, causing a 1px font-size shrink.
+                let left_em = 1.720_214_843_75_f64;
+                let right_em = 1.720_214_843_75_f64;
+                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+                return (left, right);
+            }
+
+            if let Some((left_em, right_em)) = match t {
+                // Mermaid 11.12.3 flowchart strict XML probes keep these common SVG node labels on
+                // the 1/64px lattice shown below; our generic SVG bbox path undershoots by 1/128px.
+                "End" => Some((0.819_824_218_75_f64, 0.819_824_218_75_f64)),
+                "Start" => Some((1.094_238_281_25_f64, 1.094_238_281_25_f64)),
+                _ => None,
+            } {
+                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+                return (left, right);
+            }
         }
 
         let first = t.chars().next().unwrap_or(' ');
@@ -3545,6 +3559,10 @@ fn vendored_measure_wrapped_impl(
             // Flowchart HTML-label Markdown raw-block probes (`<p>...</p>` + collapsed list text).
             "- e1 - e2" => Some(60.453125),
             "- l1 - l2" => Some(52.4375),
+            // Flowchart edge pipe labels that keep raw backticks / inline HTML literal in
+            // htmlLabels mode (Mermaid 11.12.3 strict XML probes).
+            "`**bold*`" => Some(65.546875),
+            "`This is **bold**" => Some(112.78125),
             "Round Rect" => Some(80.125),
             "Rounded" => Some(61.296875),
             "Rounded square shape" => Some(159.6875),

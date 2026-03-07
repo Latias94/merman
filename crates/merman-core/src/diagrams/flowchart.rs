@@ -24,7 +24,9 @@ mod subgraph;
 mod text;
 mod tokens;
 
-use text::{parse_label_text, strip_wrapping_backticks, title_kind_str, unquote};
+use text::{
+    parse_edge_label_text, parse_label_text, strip_wrapping_backticks, title_kind_str, unquote,
+};
 
 pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartV2Model};
 

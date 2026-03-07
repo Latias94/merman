@@ -180,7 +180,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 let label_text = e.label.as_deref().unwrap_or_default();
                 let label_type = e.label_type.as_deref().unwrap_or("text");
                 let label_plain = flowchart_label_plain_text(label_text, label_type, false);
-                if label_plain.trim().is_empty() {
+                if label_plain.trim().is_empty() && label_text.trim().is_empty() {
                     out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
                 }
             }
