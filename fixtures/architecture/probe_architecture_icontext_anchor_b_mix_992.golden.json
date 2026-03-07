@@ -1,0 +1,34 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "worker",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "<a href='https://example.com'>x<b>y</b>z</a>",
+        "title": "Worker",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "worker",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "<a href='https://example.com'>x<b>y</b>z</a>",
+        "title": "Worker",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": []
+  }
+}

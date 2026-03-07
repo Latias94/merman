@@ -61,6 +61,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - ER/Text: preserve inline-code backticks in ER HTML labels so entity/attribute labels keep literal `` `**...**` `` text instead of emitting synthetic `<code>` / `<strong>` DOM.
 - Mindmap/Text: route complex markdown HTML labels through Mermaid-style XHTML fragments for DOM output and measurement, so mixed paragraph + list/raw-block labels collapse like upstream instead of emitting synthetic `<ul><li>...` DOM.
 - Architecture/Text: normalize `iconText` HTML fragments with Mermaid/Chromium's SVG-namespace `foreignObject` parsing semantics, so root-level `<a>` wrappers no longer retain inline HTML descendants that upstream breaks into sibling nodes.
+- Architecture: align singleton top-level `iconText` service Y offset and root `viewBox` with Mermaid, removing the remaining strict-XML drift on anchor/html probe fixtures.
 - Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
   - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
   - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,

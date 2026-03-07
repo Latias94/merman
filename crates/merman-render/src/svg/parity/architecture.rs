@@ -1752,11 +1752,43 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     // fixtures get a systematic viewBox height inflation (~7.1875px at 16px).
     const CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM: f64 = 17.0 / 16.0;
 
+    // Mermaid singleton top-level `iconText` services render 18px lower than the nominal
+    // layout origin; keep the emitted transform and root bbox estimate in sync.
+    const SINGLETON_ICON_TEXT_SERVICE_OFFSET_Y: f64 = 18.0;
+
+    let groups_len = model.groups_len();
+    let edges_len = model.edges_len();
+    let service_count = model.services().count();
+    let junction_count = model.junctions().count();
+    let singleton_icon_text_service_id =
+        if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
+            model.services().next().and_then(|service| {
+                if service.in_group.is_none()
+                    && service
+                        .icon_text
+                        .map(str::trim)
+                        .is_some_and(|text: &str| !text.is_empty())
+                {
+                    Some(service.id)
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        };
+    let singleton_icon_text_offset_y = |service_id: &str| {
+        if singleton_icon_text_service_id == Some(service_id) {
+            SINGLETON_ICON_TEXT_SERVICE_OFFSET_Y
+        } else {
+            0.0
+        }
+    };
+
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
-    let mut service_count: usize = 0;
     for svc in model.services() {
-        service_count += 1;
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
+        let y = y + singleton_icon_text_offset_y(svc.id);
         let b_icon = bounds_from_rect(x, y, icon_size_px, icon_size_px);
         let mut b_full = b_icon.clone();
         if let Some(title) = svc.title.map(str::trim).filter(|t| !t.is_empty()) {
@@ -1847,9 +1879,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     }
 
     let mut junction_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
-    let mut junction_count: usize = 0;
     for junction in model.junctions() {
-        junction_count += 1;
         let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
         let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
         junction_bounds.insert(junction.id, b.clone());
@@ -2547,6 +2577,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         out.push_str(r#"<g class="architecture-services">"#);
         for svc in model.services() {
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
+            let y = y + singleton_icon_text_offset_y(svc.id);
             let id_esc = escape_xml(svc.id);
 
             let _ = write!(
@@ -2747,9 +2778,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let mut vb_min_y = b.min_y - padding_px;
         let mut vb_w = ((b.max_x - b.min_x) + 2.0 * padding_px).max(1.0);
         let mut vb_h = ((b.max_y - b.min_y) + 2.0 * padding_px).max(1.0);
-
-        let groups_len = model.groups_len();
-        let edges_len = model.edges_len();
 
         let enable_viewport_calibration = std::env::var("MERMAN_ARCH_ENABLE_VIEWPORT_CALIBRATION")
             .ok()

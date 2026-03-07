@@ -436,8 +436,11 @@ For each item:
 - [x] Architecture: `iconText` `foreignObject` HTML / link wrapper parity  
   Gap check:
   - Confirm root-level SVG-namespace `<a>` wrappers inside `iconText` split inline HTML descendants (`<code>`, `<span>`, `<b>`, etc.) the same way Mermaid CLI / Chromium serializes them from `foreignObject`.
+  - Confirm singleton top-level `iconText` services keep Mermaid’s extra service Y offset / root `viewBox` shift in strict XML mode.
   Evidence:
   - Fixture: `fixtures/architecture/stress_architecture_icontext_anchor_code_044.mmd`
     - Compare: `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-decimals 3 --filter stress_architecture_icontext_anchor_code_044`
     - Compare (root): `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter stress_architecture_icontext_anchor_code_044`
     - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram architecture --filter stress_architecture_icontext_anchor_code_044 --dom-mode strict --dom-decimals 3`
+  - Fixtures: `fixtures/architecture/probe_architecture_icontext_anchor_*_99{1..8}.mmd`
+    - Compare (strict XML): `cargo run -p xtask -- compare-svg-xml --diagram architecture --filter probe_architecture_icontext_ --dom-mode strict --dom-decimals 3`

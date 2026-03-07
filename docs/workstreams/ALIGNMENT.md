@@ -211,7 +211,7 @@ How to validate coverage:
 - **Class**: generics, escaped `<`/`>`, namespaces, multiline member blocks, and `direction`/empty-body HTML `classBox` parity (dynamic `max-width`, compartment translate math, fixed Rough.js seed=1 for borders/dividers).
 - **State**: composite padding, classDef affecting HTML labels, link sanitization.
 - **Mindmap**: multiline CJK, indentation depth, root viewport drift.
-- **Architecture**: `iconText` `foreignObject` HTML parsing, SVG-namespace link wrappers, icon/title bbox drift.
+- **Architecture**: `iconText` `foreignObject` HTML parsing, SVG-namespace link wrappers, singleton `iconText` service Y-offset, icon/title bbox drift.
 
 ## Standard workflow (repeatable loop)
 
