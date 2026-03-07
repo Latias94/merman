@@ -144,6 +144,7 @@ Evidence fixture:
 Flowchart gotchas:
 
 - Global `htmlLabels` vs `flowchart.htmlLabels` (node/subgraph/edge labels may differ).
+- Class-specific split: class nodes/notes primarily follow global `htmlLabels`, while relation title labels only flip when the flowchart override is active.
 - Node label `wrappingWidth` vs edge label default 200px.
 
 How to validate coverage:
@@ -207,7 +208,7 @@ How to validate coverage:
 
 - **Sequence**: note wrapping, activation stacking, message font precedence, title bbox.
 - **Gantt**: date parsing/timezone, “today”, axis formats, label wrapping.
-- **Class**: generics, escaped `<`/`>`, namespaces, multiline member blocks.
+- **Class**: generics, escaped `<`/`>`, namespaces, multiline member blocks, and `direction`/empty-body HTML `classBox` parity (dynamic `max-width`, compartment translate math, fixed Rough.js seed=1 for borders/dividers).
 - **State**: composite padding, classDef affecting HTML labels, link sanitization.
 - **Mindmap**: multiline CJK, indentation depth, root viewport drift.
 - **Architecture**: `iconText` `foreignObject` HTML parsing, SVG-namespace link wrappers, icon/title bbox drift.

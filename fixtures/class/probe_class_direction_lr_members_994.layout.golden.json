@@ -4,49 +4,41 @@
     "ClassDiagramV2": {
       "nodes": [
         {
-          "id": "MyClass",
-          "x": 290.88,
-          "y": 128.0,
-          "width": 79.5,
+          "id": "A",
+          "x": 39.614,
+          "y": 72.0,
+          "width": 79.228,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 146.26,
+          "y": 72.0,
+          "width": 34.063,
           "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 76.24,
-          "y": 18.0,
-          "width": 152.48,
-          "height": 36.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note1",
-          "x": 290.88,
-          "y": 18.0,
-          "width": 176.8,
-          "height": 36.0,
           "is_cluster": false
         }
       ],
       "edges": [
         {
-          "id": "edgeNote2",
-          "from": "note1",
-          "to": "MyClass",
+          "id": "0",
+          "from": "A",
+          "to": "B",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 290.88,
-              "y": 36.0
+              "x": 79.228,
+              "y": 72.0
             },
             {
-              "x": 290.88,
-              "y": 61.0
+              "x": 104.228,
+              "y": 72.0
             },
             {
-              "x": 290.88,
-              "y": 86.0
+              "x": 129.228,
+              "y": 72.0
             }
           ],
           "label": null,
@@ -63,8 +55,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 379.28,
-        "max_y": 170.0
+        "max_x": 163.291,
+        "max_y": 144.0
       }
     }
   }

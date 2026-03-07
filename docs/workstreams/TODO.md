@@ -124,6 +124,20 @@ For each item:
     - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_class_htmllabels_false_981`
     - `cargo run -p xtask -- compare-svg-xml --diagram class --filter probe_class_htmllabels_false_981 --dom-mode strict --dom-decimals 3`
 
+- [x] Class `direction` + `htmlLabels=true` empty-body / members strict parity  
+  Gap check:
+  - Ensure `direction LR/TB` class fixtures keep Mermaid `shapeUtil.ts` / `classBox.ts` compartment transforms.
+  - Ensure HTML class labels use Mermaid-like dynamic `max-width`, relation path `style` attributes, and the fixed Rough.js seed path data used by upstream class boxes/dividers.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/probe_class_direction_lr_991.mmd`
+    - `fixtures/class/probe_class_direction_tb_992.mmd`
+    - `fixtures/class/probe_class_direction_lr_note_993.mmd`
+    - `fixtures/class/probe_class_direction_lr_members_994.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_class_direction_`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter probe_class_direction_ --dom-mode strict --dom-decimals 3`
+
 - [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
   Gap check:
   - Confirm nodes without explicit classes still receive implicit `classDef default` styling.

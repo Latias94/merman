@@ -29,7 +29,7 @@ pub(super) fn render_class_html_label(
         out.push(' ');
         escape_xml_into(out, extra);
     }
-    out.push_str(r#"">"#);
+    out.push_str(r#"" style="">"#);
 
     if is_simple_plain_label(text) {
         if include_p {

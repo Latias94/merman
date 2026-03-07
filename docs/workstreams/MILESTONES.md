@@ -52,6 +52,7 @@ Exit criteria:
 
 - A toggle-matrix fixture set exists and is part of the committed corpus.
 - Output label mode (SVG text vs `<foreignObject>`) matches upstream for each label category.
+- Class `htmlLabels` probes cover global/flowchart precedence plus `direction` empty-body compartments with strict XML green.
 
 ## Milestone M3: Theme/config precedence smoke suite
 

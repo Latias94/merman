@@ -212,3 +212,56 @@ fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() 
     }
     assert!(checked > 0, "expected to check at least one terminal label");
 }
+
+#[test]
+fn class_single_glyph_svg_titles_use_upstream_bbox_width() {
+    let text = r#"---
+config:
+  htmlLabels: false
+---
+classDiagram
+A <|-- B
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: std::sync::Arc::new(
+                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+            ),
+            ..LayoutOptions::default()
+        },
+    )
+    .expect("layout ok");
+    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+
+    let node_a = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .expect("class A node");
+    let node_b = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "B")
+        .expect("class B node");
+
+    let eps = 1e-6;
+    assert!(
+        (node_a.width - 34.140625).abs() <= eps,
+        "unexpected A width: {}",
+        node_a.width
+    );
+    assert!(
+        (node_b.width - 33.53125).abs() <= eps,
+        "unexpected B width: {}",
+        node_b.width
+    );
+}

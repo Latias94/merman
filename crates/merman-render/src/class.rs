@@ -986,9 +986,28 @@ fn class_box_dimensions(
         .map(|l| format!("**{l}**"))
         .collect::<Vec<_>>()
         .join("\n");
-    let title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+    let mut title_metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
         measurer, &title_md, text_style, None, wrap_mode,
     );
+    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+        && title_lines.len() == 1
+        && title_lines[0].chars().count() == 1
+    {
+        // Mermaid class SVG titles are emitted as left-anchored `<text>/<tspan>` runs inside a
+        // parent group with `font-weight: bolder`. Upstream `getBBox().width` for these single-
+        // glyph titles tracks the bold computed text length more closely than our generic
+        // SVG-bbox-based Markdown approximation.
+        let bold_title_style = TextStyle {
+            font_family: text_style.font_family.clone(),
+            font_size: text_style.font_size,
+            font_weight: Some("bolder".to_string()),
+        };
+        title_metrics.width =
+            crate::text::ceil_to_1_64_px(measurer.measure_svg_text_computed_length_px(
+                wrapped_title_text.as_str(),
+                &bold_title_style,
+            ));
+    }
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
 
@@ -1003,7 +1022,12 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
+            let mut metrics =
+                measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
+            if use_html_labels && metrics.width > 0.0 {
+                metrics.width =
+                    crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
+            }
             if let Some(out) = members_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1034,7 +1058,12 @@ fn class_box_dimensions(
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let metrics = measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
+            let mut metrics =
+                measure_label(measurer, &t, text_style, wrap_probe_font_size, wrap_mode);
+            if use_html_labels && metrics.width > 0.0 {
+                metrics.width =
+                    crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
+            }
             if let Some(out) = methods_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1162,6 +1191,23 @@ fn label_metrics(
     (m.width.max(0.0), m.height.max(0.0))
 }
 
+fn edge_title_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+    wrap_mode: WrapMode,
+) -> (f64, f64) {
+    let (width, height) = label_metrics(text, measurer, text_style, wrap_mode);
+    if text.trim().is_empty() {
+        return (width, height);
+    }
+    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
+        (width + 4.0, height + 4.0)
+    } else {
+        (width, height)
+    }
+}
+
 fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: f64, h: f64) {
     let obj = Value::Object(
         [
@@ -1197,8 +1243,9 @@ pub fn layout_class_diagram_v2_typed(
     let ranksep = config_f64(conf, &["rankSpacing"]).unwrap_or(50.0);
 
     let global_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
-    let flowchart_html_labels =
-        config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
+    let flowchart_html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"])
+        .or_else(|| config_bool(effective_config, &["htmlLabels"]))
+        .unwrap_or(true);
     let wrap_mode_node = if global_html_labels {
         WrapMode::HtmlLike
     } else {
@@ -1209,6 +1256,7 @@ pub fn layout_class_diagram_v2_typed(
     } else {
         WrapMode::SvgLike
     };
+    let wrap_mode_note = wrap_mode_node;
 
     // Mermaid defaults `config.class.padding` to 12.
     let class_padding = config_f64(effective_config, &["class", "padding"]).unwrap_or(12.0);
@@ -1222,6 +1270,7 @@ pub fn layout_class_diagram_v2_typed(
         .max(1.0);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
+    let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike);
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
@@ -1307,10 +1356,10 @@ pub fn layout_class_diagram_v2_typed(
             &n.text,
             measurer,
             &text_style,
-            wrap_mode_label,
-            namespace_padding,
+            wrap_mode_note,
+            class_padding,
         );
-        if capture_label_metrics {
+        if capture_note_label_metrics {
             node_label_metrics_by_id.insert(
                 n.id.clone(),
                 (metrics.width.max(0.0), metrics.height.max(0.0)),
@@ -1362,7 +1411,7 @@ pub fn layout_class_diagram_v2_typed(
     }
 
     for rel in &model.relations {
-        let (lw, lh) = label_metrics(&rel.title, measurer, &text_style, wrap_mode_label);
+        let (lw, lh) = edge_title_metrics(&rel.title, measurer, &text_style, wrap_mode_label);
         let start_text = if rel.relation_title_1 == "none" {
             String::new()
         } else {
