@@ -64,4 +64,6 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/block/parser/block.spec.
 - Mermaid does not emit `id="..."` on the node `<g>` for the special ids `id`, `__proto__`, and `constructor`; DOM-parity tests cover this behavior via `fixtures/block/upstream_prototype_properties.mmd`.
 - Strict XML smoke for the basic node fixtures now passes:
   `cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_basic_nodes --dom-mode strict --dom-decimals 3`
-  Remaining block strict mismatches are now concentrated in block-arrow/composite geometry and edge-label/shaped-node SVG details.
+- `compare-svg-xml --diagram block --dom-mode strict` now normalizes Mermaid's randomized internal block ids
+  (`id-<random>-<n>`) so the report focuses on renderer deltas rather than non-semantic UUID noise.
+- Remaining block strict mismatches are now concentrated in block-arrow/composite geometry and edge-label/shaped-node SVG details.

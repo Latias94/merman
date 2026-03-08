@@ -425,6 +425,17 @@ fn is_geometry_attr(name: &str) -> bool {
 fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
+    fn is_block_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+        for a in n.ancestors() {
+            if a.is_element() && a.tag_name().name() == "svg" {
+                return a
+                    .attribute("aria-roledescription")
+                    .is_some_and(|v| v == "block");
+            }
+        }
+        false
+    }
+
     fn is_architecture_diagram(n: roxmltree::Node<'_, '_>) -> bool {
         for a in n.ancestors() {
             if a.is_element() && a.tag_name().name() == "svg" {
@@ -632,6 +643,9 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             {
                 val = normalize_mermaid_generated_id_only(&val);
             } else if mode == DomMode::Strict && is_identifier_like_attr(&key) {
+                if is_block_diagram(n) {
+                    val = normalize_mermaid_generated_id_only(&val);
+                }
                 // In strict mode, keep identifier-like attributes byte-for-byte (aside from XML
                 // escaping). Applying numeric token normalization here is unsafe, as it can
                 // accidentally rewrite IDs like `flowchart-A-0` into `flowchart-A0` by treating
@@ -1186,6 +1200,20 @@ mod tests {
         assert_eq!(
             dom.children[0].attrs.get("id").map(|s| s.as_str()),
             Some("id-abc-0")
+        );
+    }
+
+    #[test]
+    fn strict_normalizes_block_generated_ids_only() {
+        let svg = r#"<svg aria-roledescription="block"><g id="id-abc123def456-1"/><g id="flowchart-A-0"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Strict, 3).unwrap();
+        assert_eq!(
+            dom.children[0].attrs.get("id").map(|s| s.as_str()),
+            Some("id-<id>-1")
+        );
+        assert_eq!(
+            dom.children[1].attrs.get("id").map(|s| s.as_str()),
+            Some("flowchart-A-0")
         );
     }
 

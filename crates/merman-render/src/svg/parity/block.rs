@@ -753,7 +753,7 @@ pub(super) fn render_block_diagram_svg(
             "composite" => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic cluster composite label-container" rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="basic cluster composite label-container" rx="0" ry="0" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt(x),
                     fmt(y),
                     fmt(width),
@@ -795,13 +795,18 @@ pub(super) fn render_block_diagram_svg(
         }
 
         let label = decode_block_label_html(&node.label);
-        let label_w = n.label_width.unwrap_or(0.0).max(0.0);
-        let label_h = n.label_height.unwrap_or(0.0).max(0.0);
+        let (label_tx, label_ty, label_w, label_h) = if node.label.is_empty() {
+            (0.0, 0.0, 0.0, 0.0)
+        } else {
+            let label_w = n.label_width.unwrap_or(0.0).max(0.0);
+            let label_h = n.label_height.unwrap_or(0.0).max(0.0);
+            (-label_w / 2.0, -label_h / 2.0, label_w, label_h)
+        };
         let _ = write!(
             &mut out,
             r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
-            fmt(-label_w / 2.0),
-            fmt(-label_h / 2.0),
+            fmt(label_tx),
+            fmt(label_ty),
             fmt(label_w),
             fmt(label_h),
             escape_xml(&label)

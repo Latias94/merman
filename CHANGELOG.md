@@ -82,8 +82,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Block: align block node/edge layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
   and pin the new smoke fixture's `parity-root` viewport to upstream.
 - Block: carry measured label-helper dimensions into node `foreignObject` output and restore Mermaid
-  marker/style attrs, eliminating the remaining strict XML drift for the `upstream_basic_nodes*` smoke fixtures
-  and reducing full-diagram block strict mismatches (`compare-svg-xml --diagram block`) from 119 to 80.
+  marker/style attrs, and make empty-title composites emit Mermaid-matching `0x0` label placeholders;
+  `compare-svg-xml --diagram block` also now normalizes block's randomized auto-generated ids in strict mode so the report focuses on semantic/geometry deltas, reducing full-diagram block strict mismatches from 119 to 59.
 - Requirement: align diagram/root font sizing with `themeVariables.fontSize` (including `"NNpx"` strings),
   accept CSS-style `fontSize` values during layout/parity measurement, and pin the new smoke fixture's `parity-root` viewport to upstream.
 - Flowchart/Class/GitGraph: pin the remaining `parity-root` root viewport overrides for text-style/font-size smoke fixtures
