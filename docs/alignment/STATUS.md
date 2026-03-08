@@ -515,6 +515,11 @@ requirement mismatches (for the pinned Mermaid@11.12.3 upstream baselines).
 As of 2026-01-29, `xtask compare-svg-xml --diagram gantt --dom-mode strict --dom-decimals 3` reports 0 gantt mismatches.
 As of 2026-02-05, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` reports 175 total strict XML mismatches
 (state=43, architecture=25, block=22, class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=7).
+As of 2026-03-07, `xtask compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` reports 80 block
+mismatches, while the basic node smoke set
+(`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_basic_nodes --dom-mode strict --dom-decimals 3`)
+reports 0 mismatches after propagating measured label-helper dimensions into the emitted node `foreignObject` DOM
+and restoring Mermaid marker/style attributes.
 Recent progress: gitGraph strict XML compares are now deterministic by seeding auto commit ids (`gitGraph.seed=1`)
 in `xtask` and by routing Stage B SVG label measurement through the pipeline `TextMeasurer` (vs an internal
 deterministic fallback). Remaining strict mismatches are dominated by CSS/style parity gaps.

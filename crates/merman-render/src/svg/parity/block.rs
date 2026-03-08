@@ -38,6 +38,7 @@ pub(super) fn render_block_diagram_svg(
     }
 
     let model: crate::block::BlockDiagramModel = crate::json::from_value_ref(semantic)?;
+    let node_padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
         std::collections::HashMap::new();
     for n in &model.blocks_flat {
@@ -558,32 +559,32 @@ pub(super) fn render_block_diagram_svg(
 
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "pointEnd"))
     );
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "pointStart"))
     );
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "circleEnd"))
     );
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker block" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "circleStart"))
     );
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "crossEnd"))
     );
     let _ = write!(
         &mut out,
-        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath"/></marker>"#,
+        r#"<marker id="{}" class="marker cross block" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"/></marker>"#,
         escape_xml(&marker_id(diagram_id, "crossStart"))
     );
 
@@ -630,7 +631,7 @@ pub(super) fn render_block_diagram_svg(
             }
             let _ = write!(
                 out,
-                r#"" class="label-container" transform="translate({},{})"/>"#,
+                r#"" class="label-container" style="" transform="translate({},{})"/>"#,
                 fmt(tx),
                 fmt(ty)
             );
@@ -760,13 +761,11 @@ pub(super) fn render_block_diagram_svg(
                 );
             }
             "block_arrow" => {
-                // Exact sizing is non-semantic in parity checks; keep the arrow point count and element structure.
-                let node_padding = 8.0;
-                let bbox_w = 1.0;
-                let bbox_h = 1.0;
-                let h = bbox_h + 2.0 * node_padding;
+                let bbox_w = n.label_width.unwrap_or(0.0).max(0.0);
+                let bbox_h = n.label_height.unwrap_or(0.0).max(0.0);
+                let h = (bbox_h + 2.0 * node_padding).max(1.0);
                 let m = h / 2.0;
-                let w = bbox_w + 2.0 * m + node_padding;
+                let w = (bbox_w + 2.0 * m + node_padding).max(1.0);
                 let pts = block_arrow_points(&node.directions, bbox_w, bbox_h, node_padding);
 
                 out.push_str(r#"<polygon points=""#);
@@ -778,7 +777,7 @@ pub(super) fn render_block_diagram_svg(
                 }
                 let _ = write!(
                     &mut out,
-                    r#"" class="label-container" transform="translate({},{})"/>"#,
+                    r#"" class="label-container" style="" transform="translate({},{})"/>"#,
                     fmt_display(-w / 2.0),
                     fmt_display(h / 2.0)
                 );
@@ -786,7 +785,7 @@ pub(super) fn render_block_diagram_svg(
             _ => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic label-container" rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="basic label-container" rx="0" ry="0" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt(x),
                     fmt(y),
                     fmt(width),
@@ -796,11 +795,11 @@ pub(super) fn render_block_diagram_svg(
         }
 
         let label = decode_block_label_html(&node.label);
-        let label_w = if label.trim().is_empty() { 0.0 } else { 1.0 };
-        let label_h = if label.trim().is_empty() { 0.0 } else { 1.0 };
+        let label_w = n.label_width.unwrap_or(0.0).max(0.0);
+        let label_h = n.label_height.unwrap_or(0.0).max(0.0);
         let _ = write!(
             &mut out,
-            r#"<g class="label" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
+            r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
             fmt(-label_w / 2.0),
             fmt(-label_h / 2.0),
             fmt(label_w),

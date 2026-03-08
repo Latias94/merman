@@ -81,6 +81,8 @@ struct SizedBlock {
     width_in_columns: i64,
     width: f64,
     height: f64,
+    label_width: f64,
+    label_height: f64,
     x: f64,
     y: f64,
 }
@@ -151,6 +153,8 @@ fn to_sized_block(
         measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
     let label_bbox_svg =
         measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
+    let label_width = label_bbox_html.width.max(0.0);
+    let label_height = label_bbox_svg.height.max(0.0);
 
     match node.block_type.as_str() {
         // Composite/group blocks can become wider than their children due to their label; Mermaid's
@@ -194,6 +198,8 @@ fn to_sized_block(
         width_in_columns,
         width,
         height,
+        label_width,
+        label_height,
         x: 0.0,
         y: 0.0,
     }
@@ -384,8 +390,8 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
             width: block.width,
             height: block.height,
             is_cluster: false,
-            label_width: None,
-            label_height: None,
+            label_width: Some(block.label_width.max(0.0)),
+            label_height: Some(block.label_height.max(0.0)),
         });
     }
     for child in &block.children {
