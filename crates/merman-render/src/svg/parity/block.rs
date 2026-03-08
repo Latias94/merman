@@ -1,4 +1,5 @@
 use super::*;
+use crate::block::{BlockArrowPoint as ArrowPoint, block_arrow_points};
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
@@ -71,435 +72,6 @@ pub(super) fn render_block_diagram_svg(
             "arrow_open" | "" => None,
             _ => None,
         }
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    struct ArrowPoint {
-        x: f64,
-        y: f64,
-    }
-
-    fn block_arrow_points(
-        directions: &[String],
-        bbox_w: f64,
-        bbox_h: f64,
-        node_padding: f64,
-    ) -> Vec<ArrowPoint> {
-        fn expand_and_dedup(directions: &[String]) -> std::collections::BTreeSet<String> {
-            let mut out = std::collections::BTreeSet::new();
-            for d in directions {
-                match d.trim() {
-                    "x" => {
-                        out.insert("right".to_string());
-                        out.insert("left".to_string());
-                    }
-                    "y" => {
-                        out.insert("up".to_string());
-                        out.insert("down".to_string());
-                    }
-                    other if !other.is_empty() => {
-                        out.insert(other.to_string());
-                    }
-                    _ => {}
-                }
-            }
-            out
-        }
-
-        let dirs = expand_and_dedup(directions);
-        let height = bbox_h + 2.0 * node_padding;
-        let midpoint = height / 2.0;
-        let width = bbox_w + 2.0 * midpoint + node_padding;
-        let pad = node_padding / 2.0;
-
-        let has = |name: &str| dirs.contains(name);
-
-        if has("right") && has("left") && has("up") && has("down") {
-            return vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint {
-                    x: midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: 2.0 * pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint { x: width, y: 0.0 },
-                ArrowPoint {
-                    x: width,
-                    y: -height / 3.0,
-                },
-                ArrowPoint {
-                    x: width + 2.0 * pad,
-                    y: -height / 2.0,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: (-2.0 * height) / 3.0,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: -height - 2.0 * pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height,
-                },
-                ArrowPoint { x: 0.0, y: -height },
-                ArrowPoint {
-                    x: 0.0,
-                    y: (-2.0 * height) / 3.0,
-                },
-                ArrowPoint {
-                    x: -2.0 * pad,
-                    y: -height / 2.0,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height / 3.0,
-                },
-            ];
-        }
-        if has("right") && has("left") && has("up") {
-            return vec![
-                ArrowPoint {
-                    x: midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height / 2.0,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height / 2.0,
-                },
-            ];
-        }
-        if has("right") && has("left") && has("down") {
-            return vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height,
-                },
-                ArrowPoint { x: width, y: 0.0 },
-            ];
-        }
-        if has("right") && has("up") && has("down") {
-            return vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint {
-                    x: width,
-                    y: -midpoint,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height + midpoint,
-                },
-                ArrowPoint { x: 0.0, y: -height },
-            ];
-        }
-        if has("left") && has("up") && has("down") {
-            return vec![
-                ArrowPoint { x: width, y: 0.0 },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -midpoint,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height + midpoint,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height,
-                },
-            ];
-        }
-        if has("right") && has("left") {
-            return vec![
-                ArrowPoint {
-                    x: midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height / 2.0,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height / 2.0,
-                },
-            ];
-        }
-        if has("up") && has("down") {
-            return vec![
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: 0.0,
-                },
-                ArrowPoint { x: 0.0, y: -pad },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-                ArrowPoint { x: width, y: -pad },
-            ];
-        }
-        if has("right") && has("up") {
-            return vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint {
-                    x: width,
-                    y: -midpoint,
-                },
-                ArrowPoint { x: 0.0, y: -height },
-            ];
-        }
-        if has("right") && has("down") {
-            return vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint { x: width, y: 0.0 },
-                ArrowPoint { x: 0.0, y: -height },
-            ];
-        }
-        if has("left") && has("up") {
-            return vec![
-                ArrowPoint { x: width, y: 0.0 },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -midpoint,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height,
-                },
-            ];
-        }
-        if has("left") && has("down") {
-            return vec![
-                ArrowPoint { x: width, y: 0.0 },
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint {
-                    x: width,
-                    y: -height,
-                },
-            ];
-        }
-        if has("right") {
-            return vec![
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height / 2.0,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-            ];
-        }
-        if has("left") {
-            return vec![
-                ArrowPoint {
-                    x: midpoint,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height / 2.0,
-                },
-            ];
-        }
-        if has("up") {
-            return vec![
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: -height,
-                },
-                ArrowPoint {
-                    x: width,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-            ];
-        }
-        if has("down") {
-            return vec![
-                ArrowPoint {
-                    x: width / 2.0,
-                    y: 0.0,
-                },
-                ArrowPoint { x: 0.0, y: -pad },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -pad,
-                },
-                ArrowPoint {
-                    x: midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -height + pad,
-                },
-                ArrowPoint {
-                    x: width - midpoint,
-                    y: -pad,
-                },
-                ArrowPoint { x: width, y: -pad },
-            ];
-        }
-
-        vec![ArrowPoint { x: 0.0, y: 0.0 }]
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -621,133 +193,304 @@ pub(super) fn render_block_diagram_svg(
             fmt(n.y)
         );
 
-        fn emit_polygon(out: &mut String, points: &[(f64, f64)], tx: f64, ty: f64) {
+        fn emit_polygon(out: &mut String, points: &[ArrowPoint], base_w: f64, base_h: f64) {
             out.push_str(r#"<polygon points=""#);
-            for (idx, (px, py)) in points.iter().enumerate() {
+            for (idx, point) in points.iter().enumerate() {
                 if idx > 0 {
                     out.push(' ');
                 }
-                let _ = write!(out, "{},{}", fmt(*px), fmt(*py));
+                let _ = write!(out, "{},{}", fmt_display(point.x), fmt_display(point.y));
             }
             let _ = write!(
                 out,
                 r#"" class="label-container" style="" transform="translate({},{})"/>"#,
-                fmt(tx),
-                fmt(ty)
+                fmt_display(-base_w / 2.0),
+                fmt_display(base_h / 2.0)
             );
         }
 
+        let bbox_w = n.label_width.unwrap_or(0.0).max(0.0);
+        let bbox_h = n.label_height.unwrap_or(0.0).max(0.0);
+        let rect_w = (bbox_w + node_padding).max(1.0);
+        let rect_h = (bbox_h + node_padding).max(1.0);
+
         match node.block_type.as_str() {
             "circle" => {
-                // Mermaid renders `type: "circle"` block nodes as a `<circle>` element without a
-                // `class` attribute, but it still emits `rx`/`ry`/`width`/`height` attributes.
-                // Keep that DOM shape for `parity-root` checks.
                 let _ = write!(
                     &mut out,
-                    r#"<circle rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
-                    fmt(width / 2.0),
-                    fmt(width),
-                    fmt(height)
+                    r#"<circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
+                    fmt(rect_w / 2.0),
+                    fmt(rect_w),
+                    fmt(rect_h)
                 );
             }
             "doublecircle" => {
-                // Mermaid renders double-circle blocks as two concentric `<circle>` elements
-                // nested under a `default flowchart-label` group.
-                //
-                // DOM parity checks care about element/tag/class structure much more than exact
-                // numbers, so keep the upstream wrapper/group shape and attribute names.
-                let outer_w = width + 10.0;
-                let outer_h = height + 10.0;
+                let outer_w = rect_w + 10.0;
+                let outer_h = rect_h + 10.0;
                 let _ = write!(
                     &mut out,
                     r#"<g class="default flowchart-label"><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
                     fmt(outer_w / 2.0),
                     fmt(outer_w),
                     fmt(outer_h),
-                    fmt(width / 2.0),
-                    fmt(width),
-                    fmt(height)
+                    fmt(rect_w / 2.0),
+                    fmt(rect_w),
+                    fmt(rect_h)
                 );
             }
             "stadium" => {
-                // Upstream uses a plain `<rect>` (no `class`) for stadium-shaped block nodes.
+                let stadium_w = (bbox_w + rect_h / 4.0 + node_padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<rect rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    fmt(x),
-                    fmt(y),
-                    fmt(width),
-                    fmt(height)
+                    r#"<rect rx="{}" ry="{}" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    fmt(rect_h / 2.0),
+                    fmt(rect_h / 2.0),
+                    fmt(-stadium_w / 2.0),
+                    fmt(-rect_h / 2.0),
+                    fmt(stadium_w),
+                    fmt(rect_h)
                 );
             }
             "cylinder" => {
-                // Cylinder blocks are emitted as a `<path>` in upstream block diagrams.
-                // Keep the command-letter structure stable and treat numeric payload as noise in
-                // `parity-root` mode.
+                let rx = rect_w / 2.0;
+                let ry = rx / (2.5 + rect_w / 50.0);
+                let body_h = (bbox_h + ry + node_padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<path d="M 0 0 a 1 1 0 0 1 2 0 a 1 1 0 0 1 2 0 l 0 10 a 1 1 0 0 1 -2 0 l 0 -10" transform="translate({},{})"/>"#,
-                    fmt(x),
-                    fmt(y)
+                    r#"<path d="M {},{} a {},{} 0,0,0 {} 0 a {},{} 0,0,0 {} 0 l 0,{} a {},{} 0,0,0 {} 0 l 0,{}" style="" transform="translate({},{})"/>"#,
+                    fmt_display(0.0),
+                    fmt_display(ry),
+                    fmt_display(rx),
+                    fmt_display(ry),
+                    fmt_display(rect_w),
+                    fmt_display(rx),
+                    fmt_display(ry),
+                    fmt_display(-rect_w),
+                    fmt_display(body_h),
+                    fmt_display(rx),
+                    fmt_display(ry),
+                    fmt_display(rect_w),
+                    fmt_display(-body_h),
+                    fmt_display(-rect_w / 2.0),
+                    fmt_display(-(body_h / 2.0 + ry))
                 );
             }
             "diamond" => {
-                emit_polygon(
-                    &mut out,
-                    &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
-                    x,
-                    y,
-                );
-            }
-            "hexagon" => {
+                let side = (rect_w + rect_h).max(1.0);
                 emit_polygon(
                     &mut out,
                     &[
-                        (0.0, 0.5),
-                        (0.25, 0.0),
-                        (0.75, 0.0),
-                        (1.0, 0.5),
-                        (0.75, 1.0),
-                        (0.25, 1.0),
+                        ArrowPoint {
+                            x: side / 2.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: side,
+                            y: -side / 2.0,
+                        },
+                        ArrowPoint {
+                            x: side / 2.0,
+                            y: -side,
+                        },
+                        ArrowPoint {
+                            x: 0.0,
+                            y: -side / 2.0,
+                        },
                     ],
-                    x,
-                    y,
+                    side,
+                    side,
+                );
+            }
+            "hexagon" => {
+                let shoulder = rect_h / 4.0;
+                let hex_w = (bbox_w + 2.0 * shoulder + node_padding).max(1.0);
+                emit_polygon(
+                    &mut out,
+                    &[
+                        ArrowPoint {
+                            x: shoulder,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: hex_w - shoulder,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: hex_w,
+                            y: -rect_h / 2.0,
+                        },
+                        ArrowPoint {
+                            x: hex_w - shoulder,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: shoulder,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: 0.0,
+                            y: -rect_h / 2.0,
+                        },
+                    ],
+                    hex_w,
+                    rect_h,
                 );
             }
             "rect_left_inv_arrow" => {
                 emit_polygon(
                     &mut out,
-                    &[(0.0, 0.5), (0.25, 0.0), (1.0, 0.0), (1.0, 1.0), (0.25, 1.0)],
-                    x,
-                    y,
+                    &[
+                        ArrowPoint {
+                            x: -rect_h / 2.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint { x: rect_w, y: 0.0 },
+                        ArrowPoint {
+                            x: rect_w,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: -rect_h / 2.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: 0.0,
+                            y: -rect_h / 2.0,
+                        },
+                    ],
+                    rect_w,
+                    rect_h,
                 );
             }
             "subroutine" => {
-                // Upstream uses a multi-point polygon for subroutine blocks.
                 emit_polygon(
                     &mut out,
                     &[
-                        (0.0, 0.0),
-                        (0.1, 0.0),
-                        (0.1, 1.0),
-                        (0.0, 1.0),
-                        (0.0, 0.0),
-                        (1.0, 0.0),
-                        (1.0, 1.0),
-                        (1.0, 0.0),
-                        (0.9, 0.0),
-                        (0.9, 1.0),
+                        ArrowPoint { x: 0.0, y: 0.0 },
+                        ArrowPoint { x: rect_w, y: 0.0 },
+                        ArrowPoint {
+                            x: rect_w,
+                            y: -rect_h,
+                        },
+                        ArrowPoint { x: 0.0, y: -rect_h },
+                        ArrowPoint { x: 0.0, y: 0.0 },
+                        ArrowPoint { x: -8.0, y: 0.0 },
+                        ArrowPoint {
+                            x: rect_w + 8.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w + 8.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: -8.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint { x: -8.0, y: 0.0 },
                     ],
-                    x,
-                    y,
+                    rect_w,
+                    rect_h,
                 );
             }
-            "lean_right" | "lean_left" | "trapezoid" | "inv_trapezoid" => {
+            "lean_right" => {
                 emit_polygon(
                     &mut out,
-                    &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
-                    x,
-                    y,
+                    &[
+                        ArrowPoint {
+                            x: (-2.0 * rect_h) / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w - rect_h / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w + (2.0 * rect_h) / 6.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: rect_h / 6.0,
+                            y: -rect_h,
+                        },
+                    ],
+                    rect_w,
+                    rect_h,
+                );
+            }
+            "lean_left" => {
+                emit_polygon(
+                    &mut out,
+                    &[
+                        ArrowPoint {
+                            x: (2.0 * rect_h) / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w + rect_h / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w - (2.0 * rect_h) / 6.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: -rect_h / 6.0,
+                            y: -rect_h,
+                        },
+                    ],
+                    rect_w,
+                    rect_h,
+                );
+            }
+            "trapezoid" => {
+                emit_polygon(
+                    &mut out,
+                    &[
+                        ArrowPoint {
+                            x: (-2.0 * rect_h) / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w + (2.0 * rect_h) / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w - rect_h / 6.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: rect_h / 6.0,
+                            y: -rect_h,
+                        },
+                    ],
+                    rect_w,
+                    rect_h,
+                );
+            }
+            "inv_trapezoid" => {
+                emit_polygon(
+                    &mut out,
+                    &[
+                        ArrowPoint {
+                            x: rect_h / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w - rect_h / 6.0,
+                            y: 0.0,
+                        },
+                        ArrowPoint {
+                            x: rect_w + (2.0 * rect_h) / 6.0,
+                            y: -rect_h,
+                        },
+                        ArrowPoint {
+                            x: (-2.0 * rect_h) / 6.0,
+                            y: -rect_h,
+                        },
+                    ],
+                    rect_w,
+                    rect_h,
                 );
             }
             "composite" => {
@@ -761,8 +504,6 @@ pub(super) fn render_block_diagram_svg(
                 );
             }
             "block_arrow" => {
-                let bbox_w = n.label_width.unwrap_or(0.0).max(0.0);
-                let bbox_h = n.label_height.unwrap_or(0.0).max(0.0);
                 let h = (bbox_h + 2.0 * node_padding).max(1.0);
                 let m = h / 2.0;
                 let w = (bbox_w + 2.0 * m + node_padding).max(1.0);
@@ -780,6 +521,16 @@ pub(super) fn render_block_diagram_svg(
                     r#"" class="label-container" style="" transform="translate({},{})"/>"#,
                     fmt_display(-w / 2.0),
                     fmt_display(h / 2.0)
+                );
+            }
+            "round" => {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="basic label-container" rx="5" ry="5" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    fmt(x),
+                    fmt(y),
+                    fmt(width),
+                    fmt(height)
                 );
             }
             _ => {

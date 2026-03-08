@@ -66,4 +66,6 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/block/parser/block.spec.
   `cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_basic_nodes --dom-mode strict --dom-decimals 3`
 - `compare-svg-xml --diagram block --dom-mode strict` now normalizes Mermaid's randomized internal block ids
   (`id-<random>-<n>`) so the report focuses on renderer deltas rather than non-semantic UUID noise.
-- Remaining block strict mismatches are now concentrated in block-arrow/composite geometry and edge-label/shaped-node SVG details.
+- Remaining block strict mismatches are now concentrated in composite/edge-label layout and residual text-width deltas;
+  shape-specific strict SVG parity now covers stadium/cylinder/subroutine and the odd/diamond/hexagon family closely enough
+  that the remaining failures are mostly sub-pixel measurement drift rather than placeholder geometry.

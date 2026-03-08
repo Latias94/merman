@@ -131,6 +131,505 @@ fn decode_block_label_html(raw: &str) -> String {
     raw.replace("&nbsp;", "\u{00A0}")
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BlockArrowPoint {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+}
+
+pub(crate) fn block_arrow_points(
+    directions: &[String],
+    bbox_w: f64,
+    bbox_h: f64,
+    node_padding: f64,
+) -> Vec<BlockArrowPoint> {
+    fn expand_and_dedup(directions: &[String]) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        for d in directions {
+            match d.trim() {
+                "x" => {
+                    out.insert("right".to_string());
+                    out.insert("left".to_string());
+                }
+                "y" => {
+                    out.insert("up".to_string());
+                    out.insert("down".to_string());
+                }
+                other if !other.is_empty() => {
+                    out.insert(other.to_string());
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    let dirs = expand_and_dedup(directions);
+    let height = bbox_h + 2.0 * node_padding;
+    let midpoint = height / 2.0;
+    let width = bbox_w + 2.0 * midpoint + node_padding;
+    let pad = node_padding / 2.0;
+
+    let has = |name: &str| dirs.contains(name);
+
+    if has("right") && has("left") && has("up") && has("down") {
+        return vec![
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint {
+                x: midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: 2.0 * pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint { x: width, y: 0.0 },
+            BlockArrowPoint {
+                x: width,
+                y: -height / 3.0,
+            },
+            BlockArrowPoint {
+                x: width + 2.0 * pad,
+                y: -height / 2.0,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: (-2.0 * height) / 3.0,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: -height - 2.0 * pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height,
+            },
+            BlockArrowPoint { x: 0.0, y: -height },
+            BlockArrowPoint {
+                x: 0.0,
+                y: (-2.0 * height) / 3.0,
+            },
+            BlockArrowPoint {
+                x: -2.0 * pad,
+                y: -height / 2.0,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height / 3.0,
+            },
+        ];
+    }
+    if has("right") && has("left") && has("up") {
+        return vec![
+            BlockArrowPoint {
+                x: midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height / 2.0,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height / 2.0,
+            },
+        ];
+    }
+    if has("right") && has("left") && has("down") {
+        return vec![
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height,
+            },
+            BlockArrowPoint { x: width, y: 0.0 },
+        ];
+    }
+    if has("right") && has("up") && has("down") {
+        return vec![
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint {
+                x: width,
+                y: -midpoint,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height + midpoint,
+            },
+            BlockArrowPoint { x: 0.0, y: -height },
+        ];
+    }
+    if has("left") && has("up") && has("down") {
+        return vec![
+            BlockArrowPoint { x: width, y: 0.0 },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -midpoint,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height + midpoint,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height,
+            },
+        ];
+    }
+    if has("right") && has("left") {
+        return vec![
+            BlockArrowPoint {
+                x: midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height / 2.0,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height / 2.0,
+            },
+        ];
+    }
+    if has("up") && has("down") {
+        return vec![
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: 0.0,
+            },
+            BlockArrowPoint { x: 0.0, y: -pad },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint { x: width, y: -pad },
+        ];
+    }
+    if has("right") && has("up") {
+        return vec![
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint {
+                x: width,
+                y: -midpoint,
+            },
+            BlockArrowPoint { x: 0.0, y: -height },
+        ];
+    }
+    if has("right") && has("down") {
+        return vec![
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint { x: width, y: 0.0 },
+            BlockArrowPoint { x: 0.0, y: -height },
+        ];
+    }
+    if has("left") && has("up") {
+        return vec![
+            BlockArrowPoint { x: width, y: 0.0 },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -midpoint,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height,
+            },
+        ];
+    }
+    if has("left") && has("down") {
+        return vec![
+            BlockArrowPoint { x: width, y: 0.0 },
+            BlockArrowPoint { x: 0.0, y: 0.0 },
+            BlockArrowPoint {
+                x: width,
+                y: -height,
+            },
+        ];
+    }
+    if has("right") {
+        return vec![
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height / 2.0,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+        ];
+    }
+    if has("left") {
+        return vec![
+            BlockArrowPoint {
+                x: midpoint,
+                y: 0.0,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height / 2.0,
+            },
+        ];
+    }
+    if has("up") {
+        return vec![
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: 0.0,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: -height,
+            },
+            BlockArrowPoint {
+                x: width,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+        ];
+    }
+    if has("down") {
+        return vec![
+            BlockArrowPoint {
+                x: width / 2.0,
+                y: 0.0,
+            },
+            BlockArrowPoint { x: 0.0, y: -pad },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint {
+                x: midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -height + pad,
+            },
+            BlockArrowPoint {
+                x: width - midpoint,
+                y: -pad,
+            },
+            BlockArrowPoint { x: width, y: -pad },
+        ];
+    }
+
+    vec![BlockArrowPoint { x: 0.0, y: 0.0 }]
+}
+
+fn polygon_bounds(points: &[BlockArrowPoint]) -> (f64, f64) {
+    if points.is_empty() {
+        return (0.0, 0.0);
+    }
+
+    let mut min_x = points[0].x;
+    let mut max_x = points[0].x;
+    let mut min_y = points[0].y;
+    let mut max_y = points[0].y;
+    for point in &points[1..] {
+        min_x = min_x.min(point.x);
+        max_x = max_x.max(point.x);
+        min_y = min_y.min(point.y);
+        max_y = max_y.max(point.y);
+    }
+
+    ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+}
+
+fn block_shape_size(
+    block_type: &str,
+    directions: &[String],
+    label_width: f64,
+    label_height: f64,
+    padding: f64,
+    has_label: bool,
+) -> Option<(f64, f64)> {
+    let rect_w = (label_width + padding).max(1.0);
+    let rect_h = (label_height + padding).max(1.0);
+
+    match block_type {
+        "composite" => has_label.then(|| (label_width.max(1.0), (label_height + padding).max(1.0))),
+        "group" => has_label.then(|| (rect_w, rect_h)),
+        "space" => None,
+        "circle" => Some((rect_w, rect_w)),
+        "doublecircle" => {
+            let outer_diameter = rect_w + 10.0;
+            Some((outer_diameter, outer_diameter))
+        }
+        "stadium" => Some(((label_width + rect_h / 4.0 + padding).max(1.0), rect_h)),
+        "cylinder" => {
+            let rx = rect_w / 2.0;
+            let ry = rx / (2.5 + rect_w / 50.0);
+            let body_h = (label_height + ry + padding).max(1.0);
+            Some((rect_w, body_h + 2.0 * ry))
+        }
+        "diamond" => {
+            let side = (rect_w + rect_h).max(1.0);
+            Some((side, side))
+        }
+        "hexagon" => {
+            let shoulder = rect_h / 4.0;
+            Some(((label_width + 2.0 * shoulder + padding).max(1.0), rect_h))
+        }
+        "rect_left_inv_arrow" => Some((rect_w + rect_h / 2.0, rect_h)),
+        "subroutine" => Some((rect_w + 16.0, rect_h)),
+        "lean_right" | "trapezoid" | "inv_trapezoid" => {
+            Some((rect_w + (2.0 * rect_h) / 3.0, rect_h))
+        }
+        "lean_left" => Some((rect_w + rect_h / 3.0, rect_h)),
+        "block_arrow" => Some(polygon_bounds(&block_arrow_points(
+            directions,
+            label_width,
+            label_height,
+            padding,
+        ))),
+        _ => Some((rect_w, rect_h)),
+    }
+}
+
 fn to_sized_block(
     node: &BlockNode,
     padding: f64,
@@ -155,33 +654,18 @@ fn to_sized_block(
         measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
     let label_width = label_bbox_html.width.max(0.0);
     let label_height = label_bbox_svg.height.max(0.0);
+    let shape_label_height = label_height;
 
-    match node.block_type.as_str() {
-        // Composite/group blocks can become wider than their children due to their label; Mermaid's
-        // `setBlockSizes` grows children to fit when computed width is smaller than the pre-sized
-        // label width.
-        "composite" | "group" => {
-            if !label_decoded.trim().is_empty() {
-                // Mermaid uses the measured label helper bbox width directly for composite/group
-                // nodes (no extra padding on top of the HTML bbox).
-                width = label_bbox_html.width.max(1.0);
-                height = (label_bbox_svg.height + padding).max(1.0);
-            }
-        }
-        // Mermaid's dagre wrapper uses a dedicated sizing rule for block arrows:
-        // `h = bbox.height + 2 * padding; w = bbox.width + h + padding`.
-        "block_arrow" => {
-            let h = (label_bbox_svg.height + 2.0 * padding).max(1.0);
-            let w = (label_bbox_html.width + h + padding).max(1.0);
-            width = w;
-            height = h;
-        }
-        // Regular blocks: `w = bbox.width + padding; h = bbox.height + padding`.
-        t if t != "space" => {
-            width = (label_bbox_html.width + padding).max(1.0);
-            height = (label_bbox_svg.height + padding).max(1.0);
-        }
-        _ => {}
+    if let Some((computed_width, computed_height)) = block_shape_size(
+        node.block_type.as_str(),
+        &node.directions,
+        label_width,
+        shape_label_height,
+        padding,
+        !label_decoded.trim().is_empty(),
+    ) {
+        width = computed_width;
+        height = computed_height;
     }
 
     let children = node
