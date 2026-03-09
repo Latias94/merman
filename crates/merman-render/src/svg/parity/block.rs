@@ -1,5 +1,7 @@
 use super::*;
-use crate::block::{BlockArrowPoint as ArrowPoint, block_arrow_points};
+use crate::block::{
+    BlockArrowPoint as ArrowPoint, block_arrow_points, block_label_is_effectively_empty,
+};
 use crate::model::LayoutPoint;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
@@ -21,6 +23,7 @@ pub(super) fn render_block_diagram_svg(
         label: String,
         block_type: String,
         classes: Vec<String>,
+        styles: Vec<String>,
         directions: Vec<String>,
     }
 
@@ -28,12 +31,34 @@ pub(super) fn render_block_diagram_svg(
         n: &crate::block::BlockNode,
         out: &mut std::collections::HashMap<String, RenderNode>,
     ) {
-        out.entry(n.id.clone()).or_insert_with(|| RenderNode {
-            label: n.label.clone(),
-            block_type: n.block_type.clone(),
-            classes: n.classes.clone(),
-            directions: n.directions.clone(),
-        });
+        if let Some(existing) = out.get_mut(&n.id) {
+            if !n.label.is_empty() {
+                existing.label = n.label.clone();
+            }
+            if !n.block_type.is_empty() && n.block_type != "na" {
+                existing.block_type = n.block_type.clone();
+            }
+            if !n.classes.is_empty() {
+                existing.classes = n.classes.clone();
+            }
+            if !n.styles.is_empty() {
+                existing.styles = n.styles.clone();
+            }
+            if !n.directions.is_empty() {
+                existing.directions = n.directions.clone();
+            }
+        } else {
+            out.insert(
+                n.id.clone(),
+                RenderNode {
+                    label: n.label.clone(),
+                    block_type: n.block_type.clone(),
+                    classes: n.classes.clone(),
+                    styles: n.styles.clone(),
+                    directions: n.directions.clone(),
+                },
+            );
+        }
         for c in &n.children {
             collect_nodes(c, out);
         }
@@ -79,6 +104,85 @@ pub(super) fn render_block_diagram_svg(
             "arrow_open" | "" => None,
             _ => None,
         }
+    }
+
+    fn parse_hex_rgb_u8(v: &str) -> Option<(u8, u8, u8)> {
+        let v = v.trim();
+        let hex = v.strip_prefix('#')?;
+        match hex.len() {
+            6 => Some((
+                u8::from_str_radix(&hex[0..2], 16).ok()?,
+                u8::from_str_radix(&hex[2..4], 16).ok()?,
+                u8::from_str_radix(&hex[4..6], 16).ok()?,
+            )),
+            3 => Some((
+                u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
+                u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
+                u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
+            )),
+            _ => None,
+        }
+    }
+
+    fn push_ordered_decl(out: &mut Vec<(String, String)>, key: &str, raw: &str) {
+        if let Some((_, value)) = out.iter_mut().find(|(existing, _)| existing == key) {
+            *value = raw.to_string();
+            return;
+        }
+        out.push((key.to_string(), raw.to_string()));
+    }
+
+    fn compile_block_inline_styles(styles: &[String]) -> (String, String, String) {
+        let mut box_decls: Vec<(String, String)> = Vec::new();
+        let mut text_decls: Vec<(String, String)> = Vec::new();
+
+        for raw in styles {
+            let trimmed = raw.trim().trim_end_matches(';').trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Some((key, value)) = parse_style_decl(trimmed) else {
+                let decoded = decode_mermaid_entities_for_render_text(trimmed);
+                let decoded = decoded.as_ref().trim();
+                if !decoded.is_empty() {
+                    push_ordered_decl(&mut box_decls, decoded, decoded);
+                }
+                continue;
+            };
+            if is_rect_style_key(key) {
+                push_ordered_decl(&mut box_decls, key, trimmed);
+            }
+            if is_text_style_key(key) {
+                let _ = value;
+                push_ordered_decl(&mut text_decls, key, trimmed);
+            }
+        }
+
+        let style_attr = |decls: &[(String, String)]| -> String {
+            let mut out = String::new();
+            for (_, raw) in decls {
+                out.push_str(raw);
+                out.push(';');
+            }
+            out
+        };
+
+        let mut div_prefix = String::new();
+        for (key, raw) in &text_decls {
+            if key == "color" {
+                let value = raw.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
+                if let Some((r, g, b)) = parse_hex_rgb_u8(value) {
+                    let _ = write!(&mut div_prefix, "color: rgb({r}, {g}, {b}); ");
+                } else if !value.is_empty() {
+                    let _ = write!(&mut div_prefix, "color: {}; ", value.to_ascii_lowercase());
+                }
+            } else {
+                div_prefix.push_str(raw);
+                div_prefix.push_str("; ");
+            }
+        }
+
+        (style_attr(&box_decls), style_attr(&text_decls), div_prefix)
     }
 
     fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
@@ -596,6 +700,8 @@ pub(super) fn render_block_diagram_svg(
             node.classes.join(" ")
         };
         let class_str = format!("{class_str} flowchart-label");
+        let (node_box_style, node_text_style, node_div_style_prefix) =
+            compile_block_inline_styles(&node.styles);
 
         let width = n.width.max(1.0);
         let height = n.height.max(1.0);
@@ -616,7 +722,13 @@ pub(super) fn render_block_diagram_svg(
             fmt(n.y)
         );
 
-        fn emit_polygon(out: &mut String, points: &[ArrowPoint], base_w: f64, base_h: f64) {
+        fn emit_polygon(
+            out: &mut String,
+            points: &[ArrowPoint],
+            base_w: f64,
+            base_h: f64,
+            style_attr: &str,
+        ) {
             out.push_str(r#"<polygon points=""#);
             for (idx, point) in points.iter().enumerate() {
                 if idx > 0 {
@@ -626,7 +738,8 @@ pub(super) fn render_block_diagram_svg(
             }
             let _ = write!(
                 out,
-                r#"" class="label-container" style="" transform="translate({},{})"/>"#,
+                r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
+                escape_attr(style_attr),
                 fmt_display(-base_w / 2.0),
                 fmt_display(base_h / 2.0)
             );
@@ -641,7 +754,8 @@ pub(super) fn render_block_diagram_svg(
             "circle" => {
                 let _ = write!(
                     &mut out,
-                    r#"<circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
+                    r#"<circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
+                    escape_attr(&node_box_style),
                     fmt(rect_w / 2.0),
                     fmt(rect_w),
                     fmt(rect_h)
@@ -652,10 +766,12 @@ pub(super) fn render_block_diagram_svg(
                 let outer_h = rect_h + 10.0;
                 let _ = write!(
                     &mut out,
-                    r#"<g class="default flowchart-label"><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
+                    r#"<g class="default flowchart-label"><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
+                    escape_attr(&node_box_style),
                     fmt(outer_w / 2.0),
                     fmt(outer_w),
                     fmt(outer_h),
+                    escape_attr(&node_box_style),
                     fmt(rect_w / 2.0),
                     fmt(rect_w),
                     fmt(rect_h)
@@ -665,9 +781,10 @@ pub(super) fn render_block_diagram_svg(
                 let stadium_w = (bbox_w + rect_h / 4.0 + node_padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<rect rx="{}" ry="{}" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect rx="{}" ry="{}" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
                     fmt(rect_h / 2.0),
                     fmt(rect_h / 2.0),
+                    escape_attr(&node_box_style),
                     fmt(-stadium_w / 2.0),
                     fmt(-rect_h / 2.0),
                     fmt(stadium_w),
@@ -680,7 +797,7 @@ pub(super) fn render_block_diagram_svg(
                 let body_h = (bbox_h + ry + node_padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<path d="M {},{} a {},{} 0,0,0 {} 0 a {},{} 0,0,0 {} 0 l 0,{} a {},{} 0,0,0 {} 0 l 0,{}" style="" transform="translate({},{})"/>"#,
+                    r#"<path d="M {},{} a {},{} 0,0,0 {} 0 a {},{} 0,0,0 {} 0 l 0,{} a {},{} 0,0,0 {} 0 l 0,{}" style="{}" transform="translate({},{})"/>"#,
                     fmt_display(0.0),
                     fmt_display(ry),
                     fmt_display(rx),
@@ -694,6 +811,7 @@ pub(super) fn render_block_diagram_svg(
                     fmt_display(ry),
                     fmt_display(rect_w),
                     fmt_display(-body_h),
+                    escape_attr(&node_box_style),
                     fmt_display(-rect_w / 2.0),
                     fmt_display(-(body_h / 2.0 + ry))
                 );
@@ -722,6 +840,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     side,
                     side,
+                    &node_box_style,
                 );
             }
             "hexagon" => {
@@ -757,6 +876,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     hex_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "rect_left_inv_arrow" => {
@@ -783,6 +903,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "subroutine" => {
@@ -814,6 +935,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "lean_right" => {
@@ -839,6 +961,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "lean_left" => {
@@ -864,6 +987,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "trapezoid" => {
@@ -889,6 +1013,7 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "inv_trapezoid" => {
@@ -914,12 +1039,14 @@ pub(super) fn render_block_diagram_svg(
                     ],
                     rect_w,
                     rect_h,
+                    &node_box_style,
                 );
             }
             "composite" => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic cluster composite label-container" rx="0" ry="0" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="basic cluster composite label-container" rx="0" ry="0" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    escape_attr(&node_box_style),
                     fmt(x),
                     fmt(y),
                     fmt(width),
@@ -941,7 +1068,8 @@ pub(super) fn render_block_diagram_svg(
                 }
                 let _ = write!(
                     &mut out,
-                    r#"" class="label-container" style="" transform="translate({},{})"/>"#,
+                    r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
+                    escape_attr(&node_box_style),
                     fmt_display(-w / 2.0),
                     fmt_display(h / 2.0)
                 );
@@ -949,7 +1077,8 @@ pub(super) fn render_block_diagram_svg(
             "round" => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic label-container" rx="5" ry="5" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="basic label-container" rx="5" ry="5" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    escape_attr(&node_box_style),
                     fmt(x),
                     fmt(y),
                     fmt(width),
@@ -959,7 +1088,8 @@ pub(super) fn render_block_diagram_svg(
             _ => {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="basic label-container" rx="0" ry="0" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="basic label-container" rx="0" ry="0" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    escape_attr(&node_box_style),
                     fmt(x),
                     fmt(y),
                     fmt(width),
@@ -969,21 +1099,36 @@ pub(super) fn render_block_diagram_svg(
         }
 
         let label = decode_block_label_html(&node.label);
-        let (label_tx, label_ty, label_w, label_h) = if node.label.is_empty() {
+        let label_effectively_empty =
+            node.label.is_empty() || block_label_is_effectively_empty(&label);
+        let label_for_dom = if label_effectively_empty {
+            String::new()
+        } else {
+            label.clone()
+        };
+        let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
             let label_h = n.label_height.unwrap_or(0.0).max(0.0);
             (-label_w / 2.0, -label_h / 2.0, label_w, label_h)
         };
+        let span_style_attr = if node_text_style.is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_attr(&node_text_style))
+        };
         let _ = write!(
             &mut out,
-            r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
+            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: inline-block; white-space: nowrap;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+            escape_attr(&node_text_style),
             fmt(label_tx),
             fmt(label_ty),
             fmt(label_w),
             fmt(label_h),
-            escape_xml(&label)
+            escape_attr(&node_div_style_prefix),
+            span_style_attr,
+            escape_xml(&label_for_dom)
         );
 
         out.push_str("</g>");

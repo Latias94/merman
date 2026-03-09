@@ -31,6 +31,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Block: complete strict XML parity for the Mermaid block corpus (`cargo run -p xtask -- compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` now reports `0` mismatches).
+- Block/Text+SVG: align the remaining strict block gaps around marker-aware edge terminal insets, `space:N` width handling, upstream HTML-label width/height overrides, direct and nested `style` / `class` application, malformed style passthrough, plain-space vs `&nbsp;` block-arrow labels, and font-size precedence probes.
+
 - Flowchart: decode Mermaid entity placeholders in subgraph titles (contributed by @aydiler in PR #1:
   https://github.com/Latias94/merman/pull/1).
 - Render: decode Mermaid `encodeEntities(...)` placeholders in SVG label text across diagrams (prevents raw `ﬂ°…¶ß`

@@ -66,10 +66,9 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/block/parser/block.spec.
   `cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_basic_nodes --dom-mode strict --dom-decimals 3`
 - `compare-svg-xml --diagram block --dom-mode strict` now normalizes Mermaid's randomized internal block ids
   (`id-<random>-<n>`) so the report focuses on renderer deltas rather than non-semantic UUID noise.
-- Strict XML parity now also covers the focused edge/composite/layout probes `upstream_edges`,
-  `upstream_cypress_block_spec_bl10_should_handle_edges_from_composite_blocks_010`,
-  `upstream_cypress_block_spec_bl11_should_handle_edges_to_composite_blocks_011`, and
-  `upstream_docs_block_text_on_links_022` after aligning marker-aware edge terminal insets, `space:N` slot expansion,
-  and the `BL` HTML-label width lattice.
-- Remaining block strict mismatches are now concentrated in styling/class application, width-alignment follow-ups,
-  and a smaller set of block-arrow / shape-specific parity cases rather than basic edge-label or space-layout geometry.
+- Full strict XML parity for the current block corpus now passes:
+  `cargo run -p xtask -- compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3`
+- The final strict-XML gap closures covered marker-aware edge terminal insets, `space:N` slot expansion,
+  upstream-derived block HTML-label width/height overrides (including font-size precedence probes), direct and nested
+  `style` / `class` application, malformed style passthrough after Mermaid entity decode, and Mermaid's distinction
+  between plain-space-only block-arrow labels and `&nbsp;` placeholders.

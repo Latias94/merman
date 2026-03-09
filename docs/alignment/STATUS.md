@@ -515,17 +515,12 @@ requirement mismatches (for the pinned Mermaid@11.12.3 upstream baselines).
 As of 2026-01-29, `xtask compare-svg-xml --diagram gantt --dom-mode strict --dom-decimals 3` reports 0 gantt mismatches.
 As of 2026-02-05, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` reports 175 total strict XML mismatches
 (state=43, architecture=25, block=22, class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=7).
-As of 2026-03-09, `xtask compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` reports 34 block
-mismatches. The basic node smoke set and the focused edge/composite probes
-(`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_basic_nodes --dom-mode strict --dom-decimals 3`,
-`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_edges --dom-mode strict --dom-decimals 3`,
-`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_cypress_block_spec_bl10_should_handle_edges_from_composite_blocks_010 --dom-mode strict --dom-decimals 3`,
-`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_cypress_block_spec_bl11_should_handle_edges_to_composite_blocks_011 --dom-mode strict --dom-decimals 3`,
-`cargo run -p xtask -- compare-svg-xml --diagram block --filter upstream_docs_block_text_on_links_022 --dom-mode strict --dom-decimals 3`)
-now report 0 mismatches after adding Mermaid-style marker-aware edge terminal insets, fixing `space:N` expansion so cloned
-space placeholders no longer inherit multi-column width, and routing the `BL` HTML-label width through an upstream width
-override. The remaining diff set is now dominated by styling/class application, width-alignment follow-ups, and a smaller
-set of shape/block-arrow parity cases.
+As of 2026-03-09, `xtask compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` reports 0 block
+mismatches. The final strict-XML closure reduced the focused block diff set `34 -> 27 -> 14 -> 8 -> 1 -> 0` by
+extending upstream-derived HTML label width/height overrides, applying direct `style` / `class` parity to block nodes and
+labels, merging later nested-node styling updates, preserving Mermaid's malformed style tokens after entity decode,
+distinguishing plain-space-only block-arrow labels from `&nbsp;` placeholders, and aligning the font-size precedence
+probe `stress_block_font_size_precedence_001`.
 Recent progress: gitGraph strict XML compares are now deterministic by seeding auto commit ids (`gitGraph.seed=1`)
 in `xtask` and by routing Stage B SVG label measurement through the pipeline `TextMeasurer` (vs an internal
 deterministic fallback). Remaining strict mismatches are dominated by CSS/style parity gaps.

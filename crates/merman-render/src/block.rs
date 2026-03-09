@@ -131,6 +131,13 @@ fn decode_block_label_html(raw: &str) -> String {
     raw.replace("&nbsp;", "\u{00A0}")
 }
 
+pub(crate) fn block_label_is_effectively_empty(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .chars()
+            .all(|ch| ch != '\u{00A0}' && ch.is_whitespace())
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlockArrowPoint {
     pub(crate) x: f64,
@@ -648,12 +655,23 @@ fn to_sized_block(
     // Block diagrams frequently use `&nbsp;` placeholders (notably for block arrows), so we must
     // decode those before measuring; otherwise node widths drift drastically.
     let label_decoded = decode_block_label_html(&node.label);
-    let label_bbox_html =
-        measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
-    let label_bbox_svg =
-        measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
-    let label_width = label_bbox_html.width.max(0.0);
-    let label_height = label_bbox_svg.height.max(0.0);
+    let label_effectively_empty = block_label_is_effectively_empty(&label_decoded);
+    let (label_width, label_height) = if label_effectively_empty {
+        (0.0, 0.0)
+    } else {
+        let label_bbox_html =
+            measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
+        let label_bbox_svg =
+            measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
+        (
+            label_bbox_html.width.max(0.0),
+            crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
+                text_style.font_size,
+                &label_decoded,
+            )
+            .unwrap_or(label_bbox_svg.height.max(0.0)),
+        )
+    };
     let shape_label_height = label_height;
 
     if let Some((computed_width, computed_height)) = block_shape_size(
@@ -662,7 +680,7 @@ fn to_sized_block(
         label_width,
         shape_label_height,
         padding,
-        !label_decoded.trim().is_empty(),
+        !label_effectively_empty && !label_decoded.trim().is_empty(),
     ) {
         width = computed_width;
         height = computed_height;
@@ -960,7 +978,11 @@ pub fn layout_block_diagram(
                 x: mid.x,
                 y: mid.y,
                 width: width_metrics.width.max(1.0),
-                height: height_metrics.height.max(1.0),
+                height: crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
+                    text_style.font_size,
+                    &edge_label,
+                )
+                .unwrap_or(height_metrics.height.max(1.0)),
             })
         };
 
