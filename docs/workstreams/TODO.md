@@ -129,6 +129,7 @@ For each item:
   Gap check:
   - Ensure `direction LR/TB` class fixtures keep Mermaid `shapeUtil.ts` / `classBox.ts` compartment transforms.
   - Ensure HTML class labels use Mermaid-like dynamic `max-width`, relation path `style` attributes, and the fixed Rough.js seed path data used by upstream class boxes/dividers.
+  - Status: exact strict-XML compares are now green for `probe_class_direction_lr_991`, `probe_class_flowchart_htmllabels_false_982`, and `probe_class_direction_lr_members_994` after switching class HTML-label `max-width` caps to a Mermaid-like hybrid width probe (Arial + configured family), while preserving Mermaid-style single-character and short-row fallback caps.
   Evidence:
   - Fixtures:
     - `fixtures/class/probe_class_direction_lr_991.mmd`
@@ -138,6 +139,36 @@ For each item:
   - Compare:
     - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter probe_class_direction_`
     - `cargo run -p xtask -- compare-svg-xml --diagram class --filter probe_class_direction_ --dom-mode strict --dom-decimals 3`
+
+- [x] Class node `style` / `classDef` passthrough (`classBox.ts`)  
+  Gap check:
+  - Ensure `classNode.styles.join(';')` reaches the class box background/border paths, divider groups/paths, and HTML `span.nodeLabel` content.
+  - Status: strict XML is now green for `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_style_definition_witho_045`; styled HTML fixtures such as `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_classdefs_being_applie_048` and `upstream_docs_classdiagram_styling_a_node_059` are reduced to residual width/layout deltas instead of missing inline style attrs.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_style_definition_witho_045.mmd`
+    - `fixtures/class/upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_classdefs_being_applie_048.mmd`
+    - `fixtures/class/upstream_docs_classdiagram_styling_a_node_059.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_style_definition_witho_045 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_classdefs_being_applie_048 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter upstream_docs_classdiagram_styling_a_node_059 --dom-mode strict --dom-decimals 3`
+
+- [x] Class HTML-label width repeat offenders (`classBox.ts` / `shapeUtil.ts`)  
+  Gap check:
+  - Audit the remaining single-line HTML title/member/method rows where Mermaid browser widths differ from our hybrid probe by sub-pixel amounts and leak into strict XML via node width, divider path, and edge routing deltas.
+  - Status: targeted calc/rendered width overrides now cover recurring class rows such as `Duck`, `Fish`, `Zebra`, `C1`, `+String beakColor`, `+String gender`, `+int age`, `+mate()`, `+swim()`, `+quack()`, `-int sizeInFeet`, `-canEat()`, `+bool is_wild`, `+run()`, and the malformed Markdown/classifier rows `+inline: **bold*`, `+attribute *italic*`, `~attribute **bold**`, `_italicmethod_()`, `__boldmethod__()`, `_+_swim_() : a_`, and `__+quack() : test__`. Class HTML member/method rows now also honor classifier-derived inline row styles during HTML rendering/measurement. This makes `class/basic`, `upstream_examples_class_basic_class_inheritance_001`, `stress_class_click_and_links_011`, `stress_class_click_strict_sanitization_015`, `stress_class_font_size_precedence_024`, `stress_class_markdown_inline_code_022`, `stress_class_markdown_member_strong_023`, `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_markdown_styling_w_050`, `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_050`, `upstream_docs_classdiagram_styling_a_node_059`, and the remaining style/classDef/no-members fixtures strict-green; full class strict mismatches drop from `232` to `200` with no added regressions.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/basic.mmd`
+    - `fixtures/class/upstream_examples_class_basic_class_inheritance_001.mmd`
+    - `fixtures/class/stress_class_click_and_links_011.mmd`
+    - `fixtures/class/stress_class_click_strict_sanitization_015.mmd`
+    - `fixtures/class/stress_class_font_size_precedence_024.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter basic --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter upstream_examples_class_basic_class_inheritance_001 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3`
 
 - [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
   Gap check:

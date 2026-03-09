@@ -1,11 +1,20 @@
 use super::super::*;
 
+pub(super) struct ClassInlineStyles<'a> {
+    pub style_attr: String,
+    pub fill: Option<&'a str>,
+    pub stroke: Option<&'a str>,
+    pub stroke_width: Option<&'a str>,
+    pub stroke_dasharray: Option<&'a str>,
+}
+
 pub(super) fn render_class_html_label(
     out: &mut String,
     span_class: &str,
     text: &str,
     include_p: bool,
     extra_span_class: Option<&str>,
+    span_style: Option<&str>,
 ) {
     fn is_simple_plain_label(text: &str) -> bool {
         // Fast-path for the common case: no Markdown tokens and no hard/soft line breaks.
@@ -29,7 +38,14 @@ pub(super) fn render_class_html_label(
         out.push(' ');
         escape_xml_into(out, extra);
     }
-    out.push_str(r#"" style="">"#);
+    let span_style = span_style.map(str::trim).unwrap_or("");
+    if span_class == "nodeLabel" || !span_style.is_empty() {
+        out.push_str(r#"" style=""#);
+        super::super::util::escape_attr_into(out, span_style);
+        out.push_str(r#"">"#);
+    } else {
+        out.push_str(r#"">"#);
+    }
 
     if is_simple_plain_label(text) {
         if include_p {
@@ -56,15 +72,26 @@ pub(super) fn render_class_html_label(
     out.push_str("</span>");
 }
 
-pub(super) fn class_apply_inline_styles(
-    node: &super::ClassSvgNode,
-) -> (Option<&str>, Option<&str>, Option<&str>, Option<&str>) {
+pub(super) fn class_apply_inline_styles<'a>(
+    node: &'a super::ClassSvgNode,
+) -> ClassInlineStyles<'a> {
+    let mut style_attr = String::new();
     let mut fill: Option<&str> = None;
     let mut stroke: Option<&str> = None;
     let mut stroke_width: Option<&str> = None;
     let mut stroke_dasharray: Option<&str> = None;
+
     for raw in &node.styles {
-        let Some((k, v)) = raw.split_once(':') else {
+        let trimmed = raw.trim().trim_end_matches(';').trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !style_attr.is_empty() {
+            style_attr.push(';');
+        }
+        style_attr.push_str(trimmed);
+
+        let Some((k, v)) = trimmed.split_once(':') else {
             continue;
         };
         let key = k.trim();
@@ -82,5 +109,12 @@ pub(super) fn class_apply_inline_styles(
             stroke_dasharray = Some(val);
         }
     }
-    (fill, stroke, stroke_width, stroke_dasharray)
+
+    ClassInlineStyles {
+        style_attr,
+        fill,
+        stroke,
+        stroke_width,
+        stroke_dasharray,
+    }
 }
