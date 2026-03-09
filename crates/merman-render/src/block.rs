@@ -637,7 +637,7 @@ fn to_sized_block(
     text_style: &TextStyle,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
-    let width_in_columns = node.width_in_columns.or(node.width).unwrap_or(1).max(1);
+    let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
 
     let mut width = 0.0;
     let mut height = 0.0;
@@ -952,13 +952,15 @@ pub fn layout_block_diagram(
             None
         } else {
             let edge_label = decode_block_label_html(&e.label);
-            let metrics =
+            let width_metrics =
                 measurer.measure_wrapped(&edge_label, &text_style, None, WrapMode::HtmlLike);
+            let height_metrics =
+                measurer.measure_wrapped(&edge_label, &text_style, None, WrapMode::SvgLike);
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
-                width: metrics.width.max(1.0),
-                height: metrics.height.max(1.0),
+                width: width_metrics.width.max(1.0),
+                height: height_metrics.height.max(1.0),
             })
         };
 

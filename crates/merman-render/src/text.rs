@@ -3629,13 +3629,17 @@ fn vendored_measure_wrapped_impl(
         if table.font_key != "trebuchetms,verdana,arial,sans-serif" {
             return None;
         }
-        crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size, line).or_else(
-            || {
+        crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size, line)
+            .or_else(|| {
                 crate::generated::mindmap_text_overrides_11_12_2::lookup_html_width_px(
                     font_size, line,
                 )
-            },
-        )
+            })
+            .or_else(|| {
+                crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(
+                    font_size, line,
+                )
+            })
     };
 
     // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
