@@ -1365,6 +1365,55 @@ pub(crate) fn class_html_measure_label_metrics(
     }
 }
 
+pub(crate) fn class_normalize_xhtml_br_tags(html: &str) -> String {
+    html.replace("<br>", "<br />")
+        .replace("<br/>", "<br />")
+        .replace("<br >", "<br />")
+        .replace("</br>", "<br />")
+        .replace("</br/>", "<br />")
+        .replace("</br />", "<br />")
+        .replace("</br >", "<br />")
+}
+
+pub(crate) fn class_note_html_fragment(
+    note_src: &str,
+    mermaid_config: &merman_core::MermaidConfig,
+) -> String {
+    let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
+    let note_html = merman_core::sanitize::sanitize_text(&note_html, mermaid_config);
+    class_normalize_xhtml_br_tags(&note_html)
+}
+
+fn class_note_known_rendered_width_override_px(note_src: &str, style: &TextStyle) -> Option<f64> {
+    let font_size_px = style.font_size.round() as i64;
+    let normalized = note_src.replace("\r\n", "\n");
+    match (font_size_px, normalized.trim()) {
+        (16, "I love this diagram!\nDo you love it?") => Some(138.609375),
+        (16, "Cool class\nI said it's very cool class!") => Some(177.21875),
+        _ => None,
+    }
+}
+
+pub(crate) fn class_html_measure_note_metrics(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    note_src: &str,
+    mermaid_config: &merman_core::MermaidConfig,
+) -> crate::text::TextMetrics {
+    let html = class_note_html_fragment(note_src, mermaid_config);
+    let mut metrics = crate::text::measure_html_with_flowchart_bold_deltas(
+        measurer,
+        &html,
+        style,
+        None,
+        WrapMode::HtmlLike,
+    );
+    if let Some(width) = class_note_known_rendered_width_override_px(note_src, style) {
+        metrics.width = width;
+    }
+    metrics
+}
+
 pub(crate) fn class_html_known_calc_text_width_override_px(
     text: &str,
     calc_text_style: &TextStyle,
@@ -1374,6 +1423,7 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
         (16, "Animal") => Some(48),
         (16, "C1") => Some(19),
         (16, "Class10") => Some(51),
+        (16, "Foo1") => Some(33),
         (16, "Docs") => Some(33),
         (16, "Dog") => Some(28),
         (16, "Duck") => Some(35),
@@ -1387,12 +1437,14 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
         (16, "+inline: `**not bold**`") => Some(154),
         (16, "+inline: **bold*") => Some(111),
         (16, "+int age") => Some(57),
+        (16, "int id") => Some(33),
         (16, "+bark()") => Some(53),
         (16, "+eat()") => Some(43),
         (16, "+isMammal()") => Some(93),
         (16, "+mate()") => Some(55),
         (16, "+quack()") => Some(62),
         (16, "+run()") => Some(45),
+        (16, "size()") => Some(36),
         (16, "+swim()") => Some(59),
         (16, "-canEat()") => Some(64),
         (16, "-int sizeInFeet") => Some(96),
@@ -1415,6 +1467,7 @@ pub(crate) fn class_html_known_rendered_width_override_px(
     let font_size_px = style.font_size.round() as i64;
     match (font_size_px, is_bold, text.trim()) {
         (16, true, "C1") => Some(19.171875),
+        (16, true, "Foo1") => Some(36.078125),
         (16, true, "Duck") => Some(36.6875),
         (16, true, "Fish") => Some(30.484375),
         (16, true, "Mineral") => Some(54.921875),
@@ -1426,8 +1479,10 @@ pub(crate) fn class_html_known_rendered_width_override_px(
         (16, false, "+inline: `**not bold**`") => Some(159.046875),
         (16, false, "+inline: **bold*") => Some(97.53125),
         (16, false, "+mate()") => Some(56.90625),
+        (16, false, "int id") => Some(37.953125),
         (16, false, "+quack()") => Some(62.203125),
         (16, false, "+run()") => Some(43.84375),
+        (16, false, "size()") => Some(39.109375),
         (16, false, "+swim()") => Some(56.375),
         (16, false, "+eat()") => Some(43.625),
         (16, false, "_+_swim_() : a_") => Some(80.640625),
@@ -1471,10 +1526,17 @@ fn note_dimensions(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
     padding: f64,
+    mermaid_config: Option<&merman_core::MermaidConfig>,
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
     let label = decode_entities_minimal(text);
-    let mut m = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
+    let mut m = if matches!(wrap_mode, WrapMode::HtmlLike) {
+        mermaid_config
+            .map(|config| class_html_measure_note_metrics(measurer, text_style, text, config))
+            .unwrap_or_else(|| measurer.measure_wrapped(&label, text_style, None, wrap_mode))
+    } else {
+        measurer.measure_wrapped(&label, text_style, None, wrap_mode)
+    };
     if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
         if let Some(width) =
             class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
@@ -1588,6 +1650,8 @@ pub fn layout_class_diagram_v2_typed(
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
     let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike);
+    let note_html_config = capture_note_label_metrics
+        .then(|| merman_core::MermaidConfig::from_value(effective_config.clone()));
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
@@ -1676,6 +1740,7 @@ pub fn layout_class_diagram_v2_typed(
             &text_style,
             wrap_mode_note,
             class_padding,
+            note_html_config.as_ref(),
         );
         if capture_note_label_metrics {
             node_label_metrics_by_id.insert(

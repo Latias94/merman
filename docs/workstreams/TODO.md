@@ -170,6 +170,35 @@ For each item:
     - `cargo run -p xtask -- compare-svg-xml --diagram class --filter upstream_examples_class_basic_class_inheritance_001 --dom-mode strict --dom-decimals 3`
     - `cargo run -p xtask -- compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3`
 
+- [x] Class HTML note fragment / width parity (`classRenderer-v2.ts`)  
+  Gap check:
+  - Measure class HTML notes from the sanitized XHTML fragment that Mermaid actually injects into `foreignObject`, instead of a plain wrapped-text fallback.
+  - Reuse layout-captured note label metrics during SVG emission so `foreignObject width/height` stays aligned with the layout pass.
+  - Mirror Mermaid note `<div>` style ordering (`text-align` first) and fill in the remaining small repeat-offender width overrides (`Foo1`, `int id`, `size()`, plus the simple-note texts).
+  - Status: class HTML notes now share a single sanitize/measure/render path, note `foreignObject` sizing stays on the layout metrics, and Mermaid-matching note `<div>` styles are emitted for both nowrap and wrapped-note cases. This makes `upstream_cypress_classdiagram_spec_19_should_render_a_simple_class_diagram_with_notes_017`, `upstream_cypress_classdiagram_v2_spec_18b_should_render_a_simple_class_diagram_with_notes_023`, `upstream_cypress_classdiagram_v3_spec_18b_should_render_a_simple_class_diagram_with_notes_031`, `upstream_cypress_classdiagram_elk_v3_spec_elk_18b_should_render_a_simple_class_diagram_with_notes_031`, and `upstream_separators_labels_notes` strict-green; note-filter mismatches fall from `7` to `2`, and full class strict mismatches drop from `200` to `196`.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/upstream_cypress_classdiagram_spec_19_should_render_a_simple_class_diagram_with_notes_017.mmd`
+    - `fixtures/class/upstream_cypress_classdiagram_v2_spec_18b_should_render_a_simple_class_diagram_with_notes_023.mmd`
+    - `fixtures/class/upstream_cypress_classdiagram_v3_spec_18b_should_render_a_simple_class_diagram_with_notes_031.mmd`
+    - `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_18b_should_render_a_simple_class_diagram_with_notes_031.mmd`
+    - `fixtures/class/upstream_separators_labels_notes.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter notes_ --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3`
+
+- [ ] Class note rank-order / placement parity (`classRenderer-v2.ts` / Dagre ordering)  
+  Gap check:
+  - Investigate the remaining same-rank left/right ordering drift in note-heavy stress fixtures where our Dagre-ish layout mirrors Mermaid horizontally.
+  - Focus on `stress_class_notes_and_keywords_003` and `stress_class_notes_wrap_positions_014`, where note widths/styles now align but note/class rank ordering still differs.
+  Evidence:
+  - Fixtures:
+    - `fixtures/class/stress_class_notes_and_keywords_003.mmd`
+    - `fixtures/class/stress_class_notes_wrap_positions_014.mmd`
+  - Compare:
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter stress_class_notes_and_keywords_003 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter stress_class_notes_wrap_positions_014 --dom-mode strict --dom-decimals 3`
+
 - [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
   Gap check:
   - Confirm nodes without explicit classes still receive implicit `classDef default` styling.

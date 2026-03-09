@@ -196,6 +196,19 @@ fn class_html_div_style(width: f64, max_width_px: i64) -> String {
         )
     }
 }
+
+fn class_note_html_div_style(width: f64, max_width_px: i64) -> String {
+    let max_width_px = max_width_px.max(0);
+    if width >= max_width_px as f64 - 0.01 {
+        format!(
+            "text-align: center; white-space: break-spaces; display: table; line-height: 1.5; max-width: {max_width_px}px; width: {max_width_px}px;"
+        )
+    } else {
+        format!(
+            "text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: {max_width_px}px;"
+        )
+    }
+}
 fn class_html_label_max_width_px(width: f64, is_bold: bool) -> i64 {
     width.max(0.0).ceil() as i64 + if is_bold { 51 } else { 50 }
 }
@@ -1373,14 +1386,25 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let note_src = note.text.trim();
             let note_text = decode_entities_minimal_cow(note_src);
             let note_use_html_labels = diagram_use_html_labels;
-            let note_wrap_mode = if note_use_html_labels {
-                WrapMode::HtmlLike
+            let (label_w_raw, label_h_raw) = if note_use_html_labels {
+                match (n.label_width, n.label_height) {
+                    (Some(w), Some(h)) => (w, h),
+                    _ => {
+                        let note_html_config = sanitize_config.get_or_insert_with(|| {
+                            merman_core::MermaidConfig::from_value(effective_config.clone())
+                        });
+                        let metrics = crate::class::class_html_measure_note_metrics(
+                            measurer,
+                            &text_style,
+                            note_src,
+                            note_html_config,
+                        );
+                        (metrics.width, metrics.height)
+                    }
+                }
             } else {
-                WrapMode::SvgLike
-            };
-            let mut metrics =
-                measurer.measure_wrapped(&note_text, &text_style, None, note_wrap_mode);
-            if !note_use_html_labels {
+                let mut metrics =
+                    measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::SvgLike);
                 if let Some(width) = crate::class::class_svg_single_line_plain_label_width_px(
                     note_text.as_ref(),
                     measurer,
@@ -1388,12 +1412,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 ) {
                     metrics.width = width;
                 }
-            }
-            let label_w = metrics.width.max(1.0);
+                (metrics.width, metrics.height)
+            };
+            let label_w = label_w_raw.max(1.0);
             let label_h = if note_use_html_labels {
-                metrics.height.max(line_height).max(1.0)
+                label_h_raw.max(line_height).max(1.0)
             } else {
-                metrics.height.max(1.0)
+                label_h_raw.max(1.0)
             };
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
@@ -1442,9 +1467,10 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 detail.path_bounds_calls += 1;
             }
             if note_use_html_labels {
+                let note_div_style = class_note_html_div_style(label_w, 200);
                 let _ = write!(
                     &mut out,
-                    r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
+                    r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
                     escape_attr_display(&note.id),
                     fmt(node_tx),
                     fmt(node_ty),
@@ -1461,27 +1487,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     fmt(label_y),
                     fmt(label_w),
                     fmt(label_h),
+                    escape_attr_display(&note_div_style),
                 );
-                // Mermaid stores sanitized note label fragments (entities + limited tags). Mirror the
-                // browser pipeline by running a DOMPurify-like sanitizer and injecting the resulting
-                // HTML nodes into the XHTML foreignObject.
                 let sanitize_start = timing_enabled.then(std::time::Instant::now);
-                let note_html = note_src.replace("\r\n", "\n").replace('\n', "<br />");
-                let note_html = merman_core::sanitize::sanitize_text(
-                    &note_html,
-                    sanitize_config.get_or_insert_with(|| {
-                        merman_core::MermaidConfig::from_value(effective_config.clone())
-                    }),
-                );
-                // `foreignObject` content is XML, so ensure XHTML void tags are self-closed.
-                let note_html = note_html
-                    .replace("<br>", "<br />")
-                    .replace("<br/>", "<br />")
-                    .replace("<br >", "<br />")
-                    .replace("</br>", "<br />")
-                    .replace("</br/>", "<br />")
-                    .replace("</br />", "<br />")
-                    .replace("</br >", "<br />");
+                let note_html_config = sanitize_config.get_or_insert_with(|| {
+                    merman_core::MermaidConfig::from_value(effective_config.clone())
+                });
+                let note_html = crate::class::class_note_html_fragment(note_src, note_html_config);
                 if let Some(s) = sanitize_start {
                     detail.notes_sanitize += s.elapsed();
                 }
