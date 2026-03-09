@@ -187,17 +187,21 @@ For each item:
     - `cargo run -p xtask -- compare-svg-xml --diagram class --filter notes_ --dom-mode strict --dom-decimals 3`
     - `cargo run -p xtask -- compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3`
 
-- [ ] Class note rank-order / placement parity (`classRenderer-v2.ts` / Dagre ordering)  
+- [x] Class note rank-order / placement parity (`classRenderer-v2.ts` / Dagre ordering)  
   Gap check:
-  - Investigate the remaining same-rank left/right ordering drift in note-heavy stress fixtures where our Dagre-ish layout mirrors Mermaid horizontally.
-  - Focus on `stress_class_notes_and_keywords_003` and `stress_class_notes_wrap_positions_014`, where note widths/styles now align but note/class rank ordering still differs.
+  - Canonicalize the note-heavy TB tie case where our Dagre-ish layout picks the horizontally mirrored solution instead of Mermaid's left-leaning arrangement.
+  - Keep the fix narrow: only mirror TB/no-namespace layouts with multiple attached notes that all resolve to the same-or-right side before the note-heavy canonicalization pass.
+  - Match Mermaid DOM emission order for note-heavy fixtures by rendering note edges/empty note labels before relation edges/labels, and fill in the last note/relation width overrides needed by these fixtures.
+  - Status: `stress_class_notes_and_keywords_003` and `stress_class_notes_wrap_positions_014` are now strict-green. The `notes_` strict XML filter is fully green (`0` mismatches), and full class strict mismatches drop from `196` to `194`.
   Evidence:
   - Fixtures:
     - `fixtures/class/stress_class_notes_and_keywords_003.mmd`
     - `fixtures/class/stress_class_notes_wrap_positions_014.mmd`
   - Compare:
-    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter stress_class_notes_and_keywords_003 --dom-mode strict --dom-decimals 3`
-    - `cargo run -p xtask -- compare-svg-xml --diagram class --filter stress_class_notes_wrap_positions_014 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --check --diagram class --filter stress_class_notes_and_keywords_003 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --check --diagram class --filter stress_class_notes_wrap_positions_014 --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --check --diagram class --filter notes_ --dom-mode strict --dom-decimals 3`
+    - `cargo run -p xtask -- compare-svg-xml --check --diagram class --dom-mode strict --dom-decimals 3`
 
 - [x] `classDef default` + node-id `style default` with `htmlLabels: true`  
   Gap check:

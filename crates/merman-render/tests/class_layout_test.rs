@@ -8,6 +8,25 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2Layout {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("class")
+        .join(format!("{name}.mmd"));
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+    layout
+}
+
 fn rect_from_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
     let hw = n.width / 2.0;
     let hh = n.height / 2.0;
@@ -150,6 +169,82 @@ fn class_terminal_labels_exist_for_cardinalities_fixture() {
 fn point_inside(rect: (f64, f64, f64, f64), x: f64, y: f64, eps: f64) -> bool {
     let (min_x, min_y, max_x, max_y) = rect;
     x >= min_x - eps && x <= max_x + eps && y >= min_y - eps && y <= max_y + eps
+}
+
+#[test]
+fn class_note_heavy_tb_layout_prefers_mermaid_leftward_rank_order() {
+    let layout = load_class_layout_fixture("stress_class_notes_wrap_positions_014");
+
+    let node_a = layout.nodes.iter().find(|n| n.id == "A").expect("class A");
+    let node_b = layout.nodes.iter().find(|n| n.id == "B").expect("class B");
+    let node_c = layout.nodes.iter().find(|n| n.id == "C").expect("class C");
+    let note_a = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "note0")
+        .expect("note for A");
+    let note_b = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "note1")
+        .expect("note for B");
+    let note_c = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "note2")
+        .expect("note for C");
+
+    assert!(
+        node_a.x > node_b.x && node_b.x > node_c.x,
+        "expected TB note-heavy classes to lean left, got A={}, B={}, C={}",
+        node_a.x,
+        node_b.x,
+        node_c.x
+    );
+    assert!(
+        (note_a.x - node_a.x).abs() <= 0.01,
+        "expected note for A to stay centered over A, got note={}, class={}",
+        note_a.x,
+        node_a.x
+    );
+    assert!(
+        note_b.x < node_b.x,
+        "expected note for B to stay on the left, got note={}, class={}",
+        note_b.x,
+        node_b.x
+    );
+    assert!(
+        note_c.x < node_c.x,
+        "expected note for C to stay on the left, got note={}, class={}",
+        note_c.x,
+        node_c.x
+    );
+}
+
+#[test]
+fn class_two_note_tb_layout_keeps_secondary_note_left_of_target() {
+    let layout = load_class_layout_fixture("stress_class_notes_and_keywords_003");
+
+    let node_a = layout.nodes.iter().find(|n| n.id == "A").expect("class A");
+    let node_b = layout.nodes.iter().find(|n| n.id == "B").expect("class B");
+    let note_b = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "note1")
+        .expect("note for B");
+
+    assert!(
+        node_a.x > node_b.x,
+        "expected A to remain to the right of B for the mirrored note-heavy solution, got A={}, B={}",
+        node_a.x,
+        node_b.x
+    );
+    assert!(
+        note_b.x < node_b.x,
+        "expected note for B to stay left of B, got note={}, class={}",
+        note_b.x,
+        node_b.x
+    );
 }
 
 #[test]

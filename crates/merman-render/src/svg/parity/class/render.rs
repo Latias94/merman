@@ -3,7 +3,7 @@
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
 use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
-use crate::model::LayoutLabel;
+use crate::model::{LayoutEdge, LayoutLabel};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
@@ -219,6 +219,13 @@ fn class_edge_path_style(edge_id: &str) -> &'static str {
     } else {
         ";;;"
     }
+}
+
+fn class_edge_render_order(edges: &[LayoutEdge]) -> impl Iterator<Item = &LayoutEdge> {
+    edges
+        .iter()
+        .filter(|edge| edge.id.starts_with("edgeNote"))
+        .chain(edges.iter().filter(|edge| !edge.id.starts_with("edgeNote")))
 }
 
 fn class_html_label_metrics(
@@ -764,7 +771,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             // Edge paths.
             let edge_paths_start = timing_enabled.then(std::time::Instant::now);
             out.push_str(r#"<g class="edgePaths">"#);
-            for e in &layout.edges {
+            for e in class_edge_render_order(&layout.edges) {
                 if e.points.len() < 2 {
                     continue;
                 }
@@ -945,7 +952,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     }
                 }
             }
-            for e in &layout.edges {
+            for e in class_edge_render_order(&layout.edges) {
                 class_edge_dom_id_into(&mut edge_dom_id_buf, e, &relation_index_by_id);
                 let label_text = if e.id.starts_with("edgeNote") {
                     ""
@@ -995,7 +1002,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                                         bounds_dy: f64| {
         // Edge paths.
         out.push_str(r#"<g class="edgePaths">"#);
-        for e in &layout.edges {
+        for e in class_edge_render_order(&layout.edges) {
             if e.points.len() < 2 {
                 continue;
             }
@@ -1144,7 +1151,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 }
             }
         }
-        for e in &layout.edges {
+        for e in class_edge_render_order(&layout.edges) {
             let dom_id = class_edge_dom_id(e, &relation_index_by_id);
             let label_text = if e.id.starts_with("edgeNote") {
                 String::new()
