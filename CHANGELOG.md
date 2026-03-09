@@ -31,6 +31,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Class/xtask: align the remaining strict XML `htmlLabels=false` class probes by sizing single-line plain SVG note/relation labels from Mermaid-like computed text length (with 1/64px upward quantization), applying the Mermaid `createText()` note `bbox.y` offset in SVG mode, and passing `aria-roledescription="classDiagram"` for `classDiagram-v2` fixtures during `compare-svg-xml` comparisons.
 - Block: complete strict XML parity for the Mermaid block corpus (`cargo run -p xtask -- compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` now reports `0` mismatches).
 - Block/Text+SVG: align the remaining strict block gaps around marker-aware edge terminal insets, `space:N` width handling, upstream HTML-label width/height overrides, direct and nested `style` / `class` application, malformed style passthrough, plain-space vs `&nbsp;` block-arrow labels, and font-size precedence probes.
 

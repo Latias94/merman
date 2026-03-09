@@ -102,6 +102,7 @@ For each item:
   - Ensure class notes follow global `htmlLabels` (including SVG-text mode + class-padding sizing).
   - Ensure relation title labels only flip to SVG text when `flowchart.htmlLabels=false` is explicitly active.
   - Ensure empty relation-title placeholders keep Mermaid’s HTML placeholder structure when the flowchart override is unset.
+  - Status: `probe_class_htmllabels_false_note_983` / `probe_class_flowchart_htmllabels_false_edge_text_984` strict XML is now green by sizing single-line plain SVG labels from computed text length (1/64px upward quantization), mirroring Mermaid `createText()` note `bbox.y` offset in SVG mode, and passing `aria-roledescription="classDiagram"` for `classDiagram-v2` fixtures in `compare-svg-xml`.
   Evidence:
   - Fixtures:
     - `fixtures/class/probe_class_htmllabels_false_note_983.mmd`

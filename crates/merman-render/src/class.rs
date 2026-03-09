@@ -1164,6 +1164,31 @@ fn class_box_dimensions(
     (rect_w.max(1.0), rect_h.max(1.0), row_metrics)
 }
 
+pub(crate) fn class_svg_single_line_plain_label_width_px(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+) -> Option<f64> {
+    let trimmed = text.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('\n')
+        || trimmed.contains('*')
+        || trimmed.contains('_')
+        || trimmed.contains('`')
+    {
+        return None;
+    }
+
+    let width = crate::text::ceil_to_1_64_px(
+        measurer.measure_svg_text_computed_length_px(trimmed, text_style),
+    );
+    (width.is_finite() && width > 0.0).then_some(width)
+}
+
+pub(crate) fn class_svg_create_text_bbox_y_offset_px(text_style: &TextStyle) -> f64 {
+    crate::text::round_to_1_64_px(text_style.font_size.max(1.0) / 16.0)
+}
+
 fn note_dimensions(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -1173,7 +1198,14 @@ fn note_dimensions(
 ) -> (f64, f64, crate::text::TextMetrics) {
     let p = padding.max(0.0);
     let label = decode_entities_minimal(text);
-    let m = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
+    let mut m = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
+    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
+        if let Some(width) =
+            class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
+        {
+            m.width = width;
+        }
+    }
     (m.width + p, m.height + p, m)
 }
 
@@ -1197,14 +1229,22 @@ fn edge_title_metrics(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> (f64, f64) {
-    let (width, height) = label_metrics(text, measurer, text_style, wrap_mode);
-    if text.trim().is_empty() {
-        return (width, height);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return (0.0, 0.0);
     }
+
+    let label = decode_entities_minimal(text);
+    let mut metrics = measurer.measure_wrapped(&label, text_style, None, wrap_mode);
     if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
-        (width + 4.0, height + 4.0)
+        if let Some(width) =
+            class_svg_single_line_plain_label_width_px(label.as_str(), measurer, text_style)
+        {
+            metrics.width = width;
+        }
+        (metrics.width.max(0.0) + 4.0, metrics.height.max(0.0) + 4.0)
     } else {
-        (width, height)
+        (metrics.width.max(0.0), metrics.height.max(0.0))
     }
 }
 

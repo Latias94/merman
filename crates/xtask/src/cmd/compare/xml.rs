@@ -372,8 +372,18 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
+            let is_classdiagram_v2_header = (diagram == "class")
+                .then(|| {
+                    merman::preprocess_diagram(&text, engine.registry())
+                        .ok()
+                        .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+
             let mut svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(sanitize_svg_id(stem)),
+                aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
             if diagram == "gantt" {

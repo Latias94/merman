@@ -356,10 +356,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     let mut detail = ClassRenderDetails::default();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let aria_roledescription = options
-        .aria_roledescription
-        .as_deref()
-        .unwrap_or("classDiagram");
+    let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
@@ -1363,7 +1360,17 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             } else {
                 WrapMode::SvgLike
             };
-            let metrics = measurer.measure_wrapped(&note_text, &text_style, None, note_wrap_mode);
+            let mut metrics =
+                measurer.measure_wrapped(&note_text, &text_style, None, note_wrap_mode);
+            if !note_use_html_labels {
+                if let Some(width) = crate::class::class_svg_single_line_plain_label_width_px(
+                    note_text.as_ref(),
+                    measurer,
+                    &text_style,
+                ) {
+                    metrics.width = width;
+                }
+            }
             let label_w = metrics.width.max(1.0);
             let label_h = if note_use_html_labels {
                 metrics.height.max(line_height).max(1.0)
@@ -1375,7 +1382,11 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let left = -w / 2.0;
             let top = -h / 2.0;
             let label_x = -label_w / 2.0;
-            let label_y = -label_h / 2.0;
+            let label_y = if note_use_html_labels {
+                -label_h / 2.0
+            } else {
+                -label_h / 2.0 - crate::class::class_svg_create_text_bbox_y_offset_px(&text_style)
+            };
             let (note_stroke_d, note_stroke_pb) = class_rough_rect_stroke_path_and_bounds(
                 left,
                 top,
@@ -2517,9 +2528,9 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 let mut members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
                 if render_extra_box {
                     let shrink = (padding / 2.0).max(0.0);
-                    ann_h = (ann_h - shrink).max(0.0);
-                    label_h = (label_h - shrink).max(0.0);
-                    members_h = (members_h - shrink).max(0.0);
+                    ann_h -= shrink;
+                    label_h -= shrink;
+                    members_h -= shrink;
                 }
                 let divider1_y = ann_h + label_h + y + padding;
                 let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
