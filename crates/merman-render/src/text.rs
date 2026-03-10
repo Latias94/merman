@@ -622,9 +622,15 @@ pub fn measure_html_with_flowchart_bold_deltas(
         max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
     }
 
-    // Mermaid's upstream baselines land on a 1/64px lattice (from DOM measurement). We round to
-    // the nearest lattice point rather than always ceiling, to avoid systematic +1/64 drift.
-    let mut width = round_to_1_64_px(max_line_width);
+    // Mermaid's upstream baselines land on a 1/64px lattice. For SVG-label measurement, the
+    // underlying `getBBox()` numbers can hit exact `.5/64` ties; use ties-to-even rounding to
+    // match the lattice choices observed in upstream class SVG fixtures.
+    let mut width = match wrap_mode {
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
+            wrap::round_to_1_64_px_ties_to_even(max_line_width)
+        }
+        WrapMode::HtmlLike => round_to_1_64_px(max_line_width),
+    };
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
             let raw_w = measurer
@@ -3853,12 +3859,29 @@ fn vendored_measure_wrapped_impl(
                 // Mermaid's SVG `<text>.getBBox().height` behaves as "one taller first line"
                 // plus 1.1em per additional wrapped line (observed in upstream fixtures at
                 // Mermaid@11.12.2).
+                fn round_px_ties_to_even(v: f64) -> f64 {
+                    if !v.is_finite() {
+                        return 0.0;
+                    }
+                    let f = v.floor();
+                    let frac = v - f;
+                    if frac < 0.5 {
+                        f
+                    } else if frac > 0.5 {
+                        f + 1.0
+                    } else {
+                        let fi = f as i64;
+                        if fi % 2 == 0 { f } else { f + 1.0 }
+                    }
+                }
                 let first_line_em = if table.font_key == "courier" {
                     1.125
                 } else {
                     1.1875
                 };
-                let first_line_h = font_size * first_line_em;
+                // Chromium often reports an integer first-line bbox height; keep ties-to-even
+                // rounding so `28.5px` becomes `28px` (matching upstream class SVG probes).
+                let first_line_h = round_px_ties_to_even(font_size * first_line_em);
                 let additional = (lines.len().saturating_sub(1)) as f64 * font_size * 1.1;
                 first_line_h + additional
             }

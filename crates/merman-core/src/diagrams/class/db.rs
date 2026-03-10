@@ -656,7 +656,7 @@ impl<'a> ClassDb<'a> {
         let mut ids = Vec::new();
         for name in class_names {
             let (class_name, _) = self.split_class_name_and_type(name);
-            self.add_class(&class_name);
+            self.add_class(name);
             if let Some(c) = self.classes.get_mut(&class_name) {
                 c.parent = Some(namespace.to_string());
             }
@@ -668,6 +668,8 @@ impl<'a> ClassDb<'a> {
     }
 
     fn add_relation(&mut self, mut rel: RelationData) {
+        let original_id1 = rel.id1.clone();
+        let original_id2 = rel.id2.clone();
         let (id1_name, _) = self.split_class_name_and_type(&rel.id1);
         let (id2_name, _) = self.split_class_name_and_type(&rel.id2);
 
@@ -680,7 +682,7 @@ impl<'a> ClassDb<'a> {
         ];
 
         if rel.relation.type1 == REL_LOLLIPOP && !invalid_types.contains(&rel.relation.type2) {
-            self.add_class(&id2_name);
+            self.add_class(&original_id2);
             let iface_id = format!("interface{}", self.interfaces.len());
             self.interfaces.push(Interface {
                 id: iface_id.clone(),
@@ -688,19 +690,21 @@ impl<'a> ClassDb<'a> {
                 class_id: id2_name.clone(),
             });
             rel.id1 = iface_id;
+            rel.id2 = id2_name;
         } else if rel.relation.type2 == REL_LOLLIPOP && !invalid_types.contains(&rel.relation.type1)
         {
-            self.add_class(&id1_name);
+            self.add_class(&original_id1);
             let iface_id = format!("interface{}", self.interfaces.len());
             self.interfaces.push(Interface {
                 id: iface_id.clone(),
                 label: rel.id2.clone(),
                 class_id: id1_name.clone(),
             });
+            rel.id1 = id1_name;
             rel.id2 = iface_id;
         } else {
-            self.add_class(&id1_name);
-            self.add_class(&id2_name);
+            self.add_class(&original_id1);
+            self.add_class(&original_id2);
             rel.id1 = id1_name;
             rel.id2 = id2_name;
         }

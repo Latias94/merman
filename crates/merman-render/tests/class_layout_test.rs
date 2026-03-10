@@ -140,6 +140,18 @@ fn class_namespaces_contain_member_classes() {
 }
 
 #[test]
+fn class_layout_dense_namespaces_follow_declaration_order() {
+    let layout = load_class_layout_fixture("stress_class_dense_namespaces_generics_001");
+
+    let cluster_ids = layout
+        .clusters
+        .iter()
+        .map(|cluster| cluster.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(cluster_ids, vec!["Core", "API"]);
+}
+
+#[test]
 fn class_terminal_labels_exist_for_cardinalities_fixture() {
     let path = workspace_root()
         .join("fixtures")

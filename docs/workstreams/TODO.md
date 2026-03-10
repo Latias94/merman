@@ -157,7 +157,7 @@ For each item:
 - [x] Class HTML-label width repeat offenders (`classBox.ts` / `shapeUtil.ts`)  
   Gap check:
   - Audit the remaining single-line HTML title/member/method rows where Mermaid browser widths differ from our hybrid probe by sub-pixel amounts and leak into strict XML via node width, divider path, and edge routing deltas.
-  - Status: targeted calc/rendered width overrides now cover recurring class rows such as `Duck`, `Fish`, `Zebra`, `C1`, `+String beakColor`, `+String gender`, `+int age`, `+mate()`, `+swim()`, `+quack()`, `-int sizeInFeet`, `-canEat()`, `+bool is_wild`, `+run()`, and the malformed Markdown/classifier rows `+inline: **bold*`, `+attribute *italic*`, `~attribute **bold**`, `_italicmethod_()`, `__boldmethod__()`, `_+_swim_() : a_`, and `__+quack() : test__`. Class HTML member/method rows now also honor classifier-derived inline row styles during HTML rendering/measurement. This makes `class/basic`, `upstream_examples_class_basic_class_inheritance_001`, `stress_class_click_and_links_011`, `stress_class_click_strict_sanitization_015`, `stress_class_font_size_precedence_024`, `stress_class_markdown_inline_code_022`, `stress_class_markdown_member_strong_023`, `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_markdown_styling_w_050`, `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_050`, `upstream_docs_classdiagram_styling_a_node_059`, and the remaining style/classDef/no-members fixtures strict-green; full class strict mismatches drop from `232` to `200` with no added regressions.
+  - Status: targeted calc/rendered width overrides now cover recurring class rows such as `Duck`, `Fish`, `Zebra`, `C1`, `+String beakColor`, `+String gender`, `+int age`, `+mate()`, `+swim()`, `+quack()`, `-int sizeInFeet`, `-canEat()`, `+bool is_wild`, `+run()`, and the malformed Markdown/classifier rows `+inline: **bold*`, `+attribute *italic*`, `~attribute **bold**`, `_italicmethod_()`, `__boldmethod__()`, `_+_swim_() : a_`, and `__+quack() : test__`. Class HTML member/method rows now also honor classifier-derived inline row styles during HTML rendering/measurement. This makes `class/basic`, `upstream_examples_class_basic_class_inheritance_001`, `stress_class_click_and_links_011`, `stress_class_click_strict_sanitization_015`, `stress_class_font_size_precedence_024`, `stress_class_markdown_inline_code_022`, `stress_class_markdown_member_strong_023`, `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_markdown_styling_w_050`, `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_050`, `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_witho_050`, `upstream_docs_classdiagram_styling_a_node_059`, and the remaining style/classDef/no-members fixtures strict-green; full class strict mismatches drop from `232` to `200` with no added regressions.
   Evidence:
   - Fixtures:
     - `fixtures/class/basic.mmd`
@@ -484,6 +484,33 @@ For each item:
     - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter generic_types_018`
   - Fixture: `fixtures/class/stress_class_nested_namespaces_cross_edges_008.mmd`
     - Compare: `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter nested_namespaces_cross_edges_008`
+
+- [x] Class: remaining strict-XML generic bucket  
+  Gap check:
+  - Preserve relation-only / namespace-attached generic type params in the typed class model and pin the last HTML-label generic repeat offenders against Mermaid strict XML.
+  - Re-run the generic strict bucket after each fix and keep the full-class strict count trending down.
+  Evidence:
+  - Strict XML generic filter is now green (`cargo run -p xtask -- compare-svg-xml --check --diagram class --filter generic --dom-mode strict --dom-decimals 3`).
+  - Green fixtures:
+    - `upstream_cypress_classdiagram_v3_spec_7_should_render_a_simple_class_diagram_with_generic_class_014`
+    - `upstream_cypress_classdiagram_v3_spec_8_should_render_a_simple_class_diagram_with_generic_class_and_re_016`
+    - `upstream_cypress_classdiagram_v3_spec_12_should_render_a_simple_class_diagram_with_generic_types_021`
+    - `stress_class_nested_generics_static_013`
+    - `stress_class_member_types_arrays_generics_022`
+    - `upstream_docs_classdiagram_generic_types_018`
+    - `upstream_namespaces_and_generics`
+    - `stress_class_interfaces_generics_dependencies_018`
+    - `stress_class_dense_namespaces_generics_001`
+  - Additional green fixtures: `stress_class_nested_namespaces_many_levels_021`, `stress_class_comments_inside_namespaces_024`.
+  - Mermaid recursive namespace parity now injects extracted cluster roots before placeholder sizing and keeps multi-root nested namespace wrappers localized like upstream.
+  - Full class strict count is now `128` mismatches.
+  - Relation/cardinality bucket status: terminal `foreignObject` sizing now matches Mermaid's `value.length * 9` rule, relation titles decode entities exactly once (`< owns` no longer double-escapes), terminal layout now keeps Mermaid's 10px marker gap even on plain association ends, `edgeLabels` DOM now matches upstream's `edgeLabel*`-then-`edgeTerminals*` ordering, and class edge-label placement now follows Mermaid's `positionEdgeLabel(updatedPath ? calcLabelPosition(path) : edge.x/y)` midpoint logic when the rendered `curveBasis` path no longer contains the raw mid control point.
+  - Additional title/member/relation-label width overrides (`Class02..24`, `Order`, `Payment`, `Person`, `references`, `reads`, `feedback`, etc.) have collapsed the old layout-width drift into mostly 0.001-level path output differences.
+  - Raw-SVG precision overrides now cover the last repeat offenders in this bucket (`Order`, `Payment`, `Driver`, `Wheel`, `owns`, `references`, `emits`, `feedback`, `+bar : int`, `+foo : bool`), mixed end-only terminal labels keep Mermaid's DOM order, and the single-character `E` title reuses its known 60px HTML cap instead of the generic 61px fallback.
+  - This relation/cardinality repeat-offender set is now strict-green for `stress_class_parallel_edges_and_cardinality_004`, `stress_class_association_aggregation_composition_019`, `stress_class_many_relations_labels_020`, `upstream_cross_namespace_relations_spec`, and `upstream_relation_types_and_cardinalities_spec`; the remaining `class` strict mismatches have shifted back to other buckets (markdown / htmlLabels / interface-enum / unicode fixtures).
+  - Annotation-driven HTML node bounds now reuse the same known rendered-width overrides during layout that render-time `foreignObject` emission already uses; this makes `upstream_annotations_in_brackets_spec`, `stress_class_interfaces_and_abstracts_007`, and `stress_class_member_separators_and_annotations_009` strict-green and removes the last 1/128px class box drift in that bucket.
+  - The next enum/interface mix repeat offender is also green: `stress_class_enums_and_interfaces_mix_023` now uses Mermaid-matching HTML caps for `Status`, `UNKNOWN`, and `+run() : Status`, which also collapses the remaining `Status` node width drift.
+
 
 - [x] State: composite padding + classDef html label measurement  
   Gap check:

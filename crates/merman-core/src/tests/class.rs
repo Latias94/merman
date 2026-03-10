@@ -82,6 +82,32 @@ namespace Company.Project.Module {
 }
 
 #[test]
+fn parse_diagram_class_relation_only_generic_classes_keep_type_params() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+Class01~T~ <|-- AveryLongClass
+Class03~T~ *-- Class04~T~
+Class08 <--> C2: Cool label
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let class01 = &res.model["classes"]["Class01"];
+    assert_eq!(class01["type"], json!("T"));
+    assert_eq!(class01["text"], json!("Class01&lt;T&gt;"));
+
+    let class03 = &res.model["classes"]["Class03"];
+    assert_eq!(class03["type"], json!("T"));
+    assert_eq!(class03["text"], json!("Class03&lt;T&gt;"));
+
+    let class04 = &res.model["classes"]["Class04"];
+    assert_eq!(class04["type"], json!("T"));
+    assert_eq!(class04["text"], json!("Class04&lt;T&gt;"));
+}
+
+#[test]
 fn parse_diagram_class_relation_with_label_and_direction() {
     let engine = Engine::new();
     let text = r#"classDiagram

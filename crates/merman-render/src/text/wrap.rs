@@ -30,6 +30,25 @@ pub fn round_to_1_64_px(v: f64) -> f64 {
     r / 64.0
 }
 
+pub fn round_to_1_64_px_ties_to_even(v: f64) -> f64 {
+    if !(v.is_finite() && v >= 0.0) {
+        return 0.0;
+    }
+    let x = v * 64.0;
+    let f = x.floor();
+    let frac = x - f;
+    let i = if frac < 0.5 {
+        f
+    } else if frac > 0.5 {
+        f + 1.0
+    } else {
+        let fi = f as i64;
+        if fi % 2 == 0 { f } else { f + 1.0 }
+    };
+    let out = i / 64.0;
+    if out == -0.0 { 0.0 } else { out }
+}
+
 pub fn wrap_text_lines_px(
     text: &str,
     style: &TextStyle,
