@@ -73,6 +73,122 @@ fn flowchart_compute_edge_path_geom_impl(
     trace_enabled: bool,
     viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 ) -> Option<FlowchartEdgePathGeom> {
+    fn mermaid_round_number(num: f64, precision: i32) -> f64 {
+        let factor = 10_f64.powi(precision);
+        (num * factor).round() / factor
+    }
+
+    fn mermaid_distance(
+        point: &crate::model::LayoutPoint,
+        prev: Option<&crate::model::LayoutPoint>,
+    ) -> f64 {
+        let Some(prev) = prev else {
+            return 0.0;
+        };
+        ((point.x - prev.x).powi(2) + (point.y - prev.y).powi(2)).sqrt()
+    }
+
+    fn mermaid_calculate_point(
+        points: &[crate::model::LayoutPoint],
+        distance_to_traverse: f64,
+    ) -> Option<crate::model::LayoutPoint> {
+        let mut prev: Option<&crate::model::LayoutPoint> = None;
+        let mut remaining = distance_to_traverse;
+        for point in points {
+            if let Some(prev_point) = prev {
+                let vector_distance = mermaid_distance(point, Some(prev_point));
+                if vector_distance == 0.0 {
+                    return Some(prev_point.clone());
+                }
+                if vector_distance < remaining {
+                    remaining -= vector_distance;
+                } else {
+                    let distance_ratio = remaining / vector_distance;
+                    if distance_ratio <= 0.0 {
+                        return Some(prev_point.clone());
+                    }
+                    if distance_ratio >= 1.0 {
+                        return Some(point.clone());
+                    }
+                    if distance_ratio > 0.0 && distance_ratio < 1.0 {
+                        return Some(crate::model::LayoutPoint {
+                            x: mermaid_round_number(
+                                (1.0 - distance_ratio) * prev_point.x + distance_ratio * point.x,
+                                5,
+                            ),
+                            y: mermaid_round_number(
+                                (1.0 - distance_ratio) * prev_point.y + distance_ratio * point.y,
+                                5,
+                            ),
+                        });
+                    }
+                }
+            }
+            prev = Some(point);
+        }
+        None
+    }
+
+    fn mermaid_calc_label_position(
+        points: &[crate::model::LayoutPoint],
+    ) -> Option<crate::model::LayoutPoint> {
+        if points.is_empty() {
+            return None;
+        }
+        if points.len() == 1 {
+            return Some(points[0].clone());
+        }
+
+        let mut total_distance = 0.0;
+        let mut prev: Option<&crate::model::LayoutPoint> = None;
+        for point in points {
+            total_distance += mermaid_distance(point, prev);
+            prev = Some(point);
+        }
+
+        mermaid_calculate_point(points, total_distance / 2.0)
+    }
+
+    fn mermaid_is_label_coordinate_in_path(
+        point: &crate::model::LayoutPoint,
+        d_attr: &str,
+    ) -> bool {
+        let rounded_x = point.x.round() as i64;
+        let rounded_y = point.y.round() as i64;
+
+        let bytes = d_attr.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let b = bytes[i];
+            let is_start = b.is_ascii_digit() || b == b'-' || b == b'.';
+            if !is_start {
+                i += 1;
+                continue;
+            }
+
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if b.is_ascii_digit() || b == b'.' {
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+
+            let token = &d_attr[start..i];
+            if let Ok(v) = token.parse::<f64>() {
+                let rounded = v.round() as i64;
+                if rounded == rounded_x || rounded == rounded_y {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
         return None;
     };
@@ -264,6 +380,7 @@ fn flowchart_compute_edge_path_geom_impl(
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
     let has_label_text = !label_text_plain.trim().is_empty();
     let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
+    let points_for_label = has_label_text.then(|| points_for_render.clone());
 
     // Mermaid (Dagre + D3 `curveBasis`) can produce a polyline that is effectively straight except
     // for one clipped endpoint. When our route retains many points on the straight run, the SVG
@@ -347,7 +464,7 @@ fn flowchart_compute_edge_path_geom_impl(
 
     let line_data = line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());
 
-    let (mut d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
+    let (mut d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,
         origin_x,
@@ -358,6 +475,21 @@ fn flowchart_compute_edge_path_geom_impl(
         maybe_override_degenerate_subgraph_edge_path_d(ctx, edge, &points_for_data_points)
     {
         d = override_d;
+    }
+    let pb = svg_path_bounds_from_d(&d).or(raw_pb);
+
+    let mut label_position = None;
+    if let Some(points) = points_for_label.as_deref() {
+        let mut points_has_changed = is_cluster_edge;
+        if !points_has_changed && !points.is_empty() {
+            let mid = &points[points.len() / 2];
+            if !mermaid_is_label_coordinate_in_path(mid, &d) {
+                points_has_changed = true;
+            }
+        }
+        if points_has_changed {
+            label_position = mermaid_calc_label_position(points);
+        }
     }
 
     if trace_enabled {
@@ -392,6 +524,7 @@ fn flowchart_compute_edge_path_geom_impl(
         d,
         pb,
         data_points_b64,
+        label_position,
         bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
     })
 }

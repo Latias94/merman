@@ -377,7 +377,11 @@ pub(in super::super) fn render_flowchart_v2_shape(
         "manual-file" | "flipped-triangle" | "flip-tri" => {
             super::render_manual_file(
                 out,
-                layout_node,
+                ctx,
+                *label_text,
+                *label_type,
+                node_classes,
+                node_styles,
                 style,
                 fill_color,
                 stroke_color,
@@ -386,12 +390,17 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 hand_drawn_seed,
                 timing_enabled,
                 details,
+                label_dy,
             );
         }
         "manual-input" | "sloped-rectangle" | "sl-rect" => {
             super::render_manual_input(
                 out,
-                layout_node,
+                ctx,
+                *label_text,
+                *label_type,
+                node_classes,
+                node_styles,
                 style,
                 fill_color,
                 stroke_color,
@@ -400,6 +409,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 hand_drawn_seed,
                 timing_enabled,
                 details,
+                label_dy,
             );
         }
         "docs" | "documents" | "st-doc" | "stacked-document" => {
@@ -451,7 +461,18 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_cylinder(out, ctx, layout_node, style, label_dy);
         }
         "h-cyl" | "das" | "horizontal-cylinder" => {
-            super::render_horizontal_cylinder(out, layout_node, style, label_dx);
+            super::render_horizontal_cylinder(
+                out,
+                ctx,
+                layout_node,
+                *label_text,
+                *label_type,
+                node_classes,
+                node_styles,
+                style,
+                label_dx,
+                label_dy,
+            );
         }
         "win-pane" | "internal-storage" | "window-pane" => {
             super::render_window_pane(
