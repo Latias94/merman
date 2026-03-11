@@ -874,6 +874,7 @@ pub(super) fn node_layout_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
     state_padding: f64,
+    wrap_mode: crate::text::WrapMode,
     node_icon: Option<&str>,
     node_img: Option<&str>,
     node_pos: Option<&str>,
@@ -1001,10 +1002,12 @@ pub(super) fn node_layout_dimensions(
         }
     }
 
-    // Mermaid flowchart-v2 uses `updateNodeBounds(node, polygon)` for hexagon nodes.
-    // Upstream baselines for the roughjs hexagon bbox consistently land on f32-rounded values;
-    // mirroring that improves strict-parity `data-points` stability without affecting rendering.
-    if matches!(shape, "hexagon" | "hex") {
+    // Chromium's `getBBox()` for HTML-label hexagons consistently lands on an `f32` lattice in
+    // upstream baselines, while SVG-label hexagons preserve the exact path-derived width. Keep
+    // the narrower `f32` quantization only for HTML-label flowchart nodes so both profiles align.
+    if matches!(shape, "hexagon" | "hex" | "prepare")
+        && matches!(wrap_mode, crate::text::WrapMode::HtmlLike)
+    {
         let w_f32 = render_w as f32;
         let h_f32 = render_h as f32;
         if w_f32.is_finite()

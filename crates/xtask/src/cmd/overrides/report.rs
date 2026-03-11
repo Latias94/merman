@@ -39,9 +39,12 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     static ROOT_VIEWPORT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
+    static FLOWCHART_TEXT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
     static STATE_TEXT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
     let root_viewport_entry_re = ROOT_VIEWPORT_ENTRY_RE
         .get_or_init(|| Regex::new(r#""[^"]+"\s*=>\s*(?:\{\s*)?Some\("#).expect("valid regex"));
+    let flowchart_text_entry_re =
+        FLOWCHART_TEXT_ENTRY_RE.get_or_init(|| Regex::new(r#"=>\s*Some\("#).expect("valid regex"));
     let state_text_entry_re =
         STATE_TEXT_ENTRY_RE.get_or_init(|| Regex::new(r#"=>\s*Some\("#).expect("valid regex"));
 
@@ -58,6 +61,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let requirement = generated_dir.join("requirement_root_overrides_11_12_2.rs");
     let sankey = generated_dir.join("sankey_root_overrides_11_12_2.rs");
     let sequence = generated_dir.join("sequence_root_overrides_11_12_2.rs");
+    let flowchart_text = generated_dir.join("flowchart_text_overrides_11_12_2.rs");
     let state_root = generated_dir.join("state_root_overrides_11_12_2.rs");
     let state_text = generated_dir.join("state_text_overrides_11_12_2.rs");
     let timeline = generated_dir.join("timeline_root_overrides_11_12_2.rs");
@@ -75,6 +79,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let requirement_txt = read_text(&requirement)?;
     let sankey_txt = read_text(&sankey)?;
     let sequence_txt = read_text(&sequence)?;
+    let flowchart_text_txt = read_text(&flowchart_text)?;
     let state_root_txt = read_text(&state_root)?;
     let state_text_txt = read_text(&state_text)?;
     let timeline_txt = read_text(&timeline)?;
@@ -92,6 +97,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let requirement_n = count_matches(root_viewport_entry_re, &requirement_txt);
     let sankey_n = count_matches(root_viewport_entry_re, &sankey_txt);
     let sequence_n = count_matches(root_viewport_entry_re, &sequence_txt);
+    let flowchart_text_n = count_matches(flowchart_text_entry_re, &flowchart_text_txt);
     let state_root_n = count_matches(root_viewport_entry_re, &state_root_txt);
     let state_text_n = count_matches(state_text_entry_re, &state_text_txt);
     let timeline_n = count_matches(root_viewport_entry_re, &timeline_txt);
@@ -114,6 +120,11 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     println!("- sequence_root_overrides_11_12_2.rs: {sequence_n} entries");
     println!("- state_root_overrides_11_12_2.rs: {state_root_n} entries");
     println!("- timeline_root_overrides_11_12_2.rs: {timeline_n} entries");
+    println!();
+    println!("Flowchart text/bbox overrides:");
+    println!(
+        "- flowchart_text_overrides_11_12_2.rs: {flowchart_text_n} entries (\"=> Some(...)\" match arms)"
+    );
     println!();
     println!("State text/bbox overrides:");
     println!(

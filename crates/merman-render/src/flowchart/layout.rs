@@ -975,6 +975,7 @@ fn layout_flowchart_v2_with_model(
             metrics,
             node_padding,
             state_padding,
+            node_wrap_mode,
             n.icon.as_deref(),
             n.img.as_deref(),
             n.pos.as_deref(),
@@ -1017,6 +1018,7 @@ fn layout_flowchart_v2_with_model(
             metrics,
             cluster_padding,
             state_padding,
+            node_wrap_mode,
             None,
             None,
             None,
@@ -2632,7 +2634,7 @@ fn layout_flowchart_v2_with_model(
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = Some(cluster_title_wrapping_width);
-        let title_metrics = flowchart_label_metrics_for_layout(
+        let mut title_metrics = flowchart_label_metrics_for_layout(
             measurer,
             &sg.title,
             label_type,
@@ -2642,6 +2644,46 @@ fn layout_flowchart_v2_with_model(
             effective_config,
             math_renderer,
         );
+        if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type != "markdown" {
+            // Mermaid's flowchart cluster titles rendered as plain SVG `<text>` are measured via
+            // `getComputedTextLength()` rather than `getBBox().width` (the latter includes ASCII
+            // overhang and differs for short tokens like `One` in upstream docs fixtures).
+            let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+                &sg.title, label_type, false,
+            );
+            let mut w: f64 = 0.0;
+            for line in plain.lines() {
+                w = w.max(
+                    measurer.measure_svg_text_computed_length_px(line.trim_end(), &text_style),
+                );
+            }
+            title_metrics.width = crate::text::round_to_1_64_px(w);
+        } else if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type == "markdown" {
+            // Cluster titles with markdown emphasis are rendered as SVG `<text>/<tspan>` runs and
+            // measured via browser `getBBox()` in upstream Mermaid. For italic `<em>` titles, the
+            // 1/64px-snapped markdown width can be just enough to shift the left-aligned label
+            // transform across a strict-XML rounding boundary; use a tighter lattice width probe.
+            let has_emphasis = crate::text::mermaid_markdown_to_wrapped_word_lines(
+                measurer,
+                &sg.title,
+                &text_style,
+                title_width_limit,
+                cluster_wrap_mode,
+            )
+            .iter()
+            .any(|line| {
+                line.iter()
+                    .any(|(_, ty)| *ty == crate::text::MermaidMarkdownWordType::Em)
+            });
+            if has_emphasis {
+                title_metrics.width = crate::text::measure_markdown_svg_like_precise_width_px(
+                    measurer,
+                    &sg.title,
+                    &text_style,
+                    title_width_limit,
+                );
+            }
+        }
         let title_label = LayoutLabel {
             x: cx,
             y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,

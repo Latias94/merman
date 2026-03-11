@@ -49,13 +49,10 @@ fn markdown_strong_width_matches_flowchart_table() {
         Some(200.0),
         WrapMode::SvgLike,
     );
-    // The whole point of `measure_markdown_with_flowchart_bold_deltas` is that `**...**` uses
-    // the flowchart bold delta table consistently across wrap modes.
-    assert_eq!(
-        strong_svg.width - regular_svg.width,
-        strong_html.width - regular_html.width
-    );
-    assert_eq!(strong_svg.width, 31.515625);
+    // Mermaid's SVG cluster-title probe for `` `**Two**` `` lands on the same total width as the
+    // HTML-label measurement, even though the regular SVG token baseline is wider.
+    assert_eq!(strong_svg.width, strong_html.width);
+    assert_eq!(strong_svg.width - regular_svg.width, 1.125);
 }
 
 #[test]
@@ -124,6 +121,39 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
     assert_eq!(m.width, 45.015625);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
+}
+
+#[test]
+fn courier_html_flowchart_label_width_matches_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let node = measurer.measure_wrapped("Christmas", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(node.width, 86.421875);
+    assert_eq!(node.height, 24.0);
+
+    let edge = measurer.measure_wrapped("Get money", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(edge.width, 86.421875);
+    assert_eq!(edge.height, 24.0);
+}
+
+#[test]
+fn courier_svg_edge_label_width_matches_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let metrics = measurer.measure_wrapped("Get money", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(metrics.width, 86.421875);
+    assert_eq!(metrics.height, 18.0);
+    assert_eq!(metrics.line_count, 1);
 }
 
 #[test]
@@ -219,7 +249,7 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(html_metrics.width, 82.09375);
+    assert_eq!(html_metrics.width, 82.125);
     assert_eq!(html_metrics.height, 48.0);
     assert_eq!(html_metrics.line_count, 2);
 
@@ -233,7 +263,7 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
         &cfg,
         None,
     );
-    assert_eq!(metrics.width, 82.09375);
+    assert_eq!(metrics.width, 82.125);
     assert_eq!(metrics.height, 48.0);
     assert_eq!(metrics.line_count, 2);
 }
