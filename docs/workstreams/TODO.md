@@ -511,6 +511,26 @@ For each item:
   - Annotation-driven HTML node bounds now reuse the same known rendered-width overrides during layout that render-time `foreignObject` emission already uses; this makes `upstream_annotations_in_brackets_spec`, `stress_class_interfaces_and_abstracts_007`, and `stress_class_member_separators_and_annotations_009` strict-green and removes the last 1/128px class box drift in that bucket.
   - The next enum/interface mix repeat offender is also green: `stress_class_enums_and_interfaces_mix_023` now uses Mermaid-matching HTML caps for `Status`, `UNKNOWN`, and `+run() : Status`, which also collapses the remaining `Status` node width drift.
 
+- [x] Class: strict-XML unicode + namespace facade ordering  
+  Gap check:
+  - Ensure unicode/CJK/RTL/emoji labels do not drift node sizing or edge routes under strict canonical XML.
+  - Ensure note nodes and namespace-qualified facade nodes have stable same-rank ordering in Dagre tie cases.
+  Evidence:
+  - Strict XML unicode filter is now green (`cargo run -p xtask -- compare-svg-xml --check --diagram class --filter unicode --dom-mode strict --dom-decimals 3`).
+  - Green fixtures:
+    - `fixtures/class/stress_class_unicode_and_entities_012.mmd`
+    - `fixtures/class/stress_class_unicode_namespace_mix_017.mmd`
+
+- [ ] Markdown + `htmlLabels` repeat offenders sweep (flowchart/class first)  
+  Gap check:
+  - Focus on label-tokenization edge cases (`__`, nested emphasis, backticks/code spans, list-like lines, trailing spaces).
+  - For HTML labels: confirm `foreignObject` width vs `max-width`, font-size inheritance quirks, and wrap boundary parity.
+  Suggested triage loop:
+  - Bucket by fixture name: `--filter markdown`, `--filter html_labels`, `--filter htmlLabels`
+  - Validate with both structural and geometry-sensitive modes:
+    - `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-decimals 3 --filter <bucket>`
+    - `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter <bucket>`
+    - `cargo run -p xtask -- compare-svg-xml --check --diagram <diagram> --filter <bucket> --dom-mode strict --dom-decimals 3`
 
 - [x] State: composite padding + classDef html label measurement  
   Gap check:

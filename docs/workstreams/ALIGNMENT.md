@@ -99,6 +99,22 @@ Suggested fixture matrix:
 - Token types: URL, `a__b`, `` `code` ``, `_italic_`, `**bold**`, `~~strike~~`
 - Inputs with `\r\n`, trailing newline, multiple spaces
 
+#### Markdown + `htmlLabels` repeat offenders
+
+The highest-churn parity area is **Markdown inside HTML labels** (`<foreignObject>`), because:
+
+- Small differences in Markdown tokenization change the DOM tree (`<span>`, `<code>`, `<em>`, `<strong>`, `<a>`),
+  which changes min-content widths and wrap boundaries.
+- Wrap boundary changes cascade into node bbox → edge routes → root viewport (`viewBox` / `max-width`) drift.
+
+Common repeat offenders to align (in roughly descending order):
+
+- `__` runs and underscore-heavy identifiers (`a__node`, `__boldmethod__()`).
+- Inline code spans and backtick edge cases, especially when mixed with emphasis markers.
+- List-like lines (`- foo`) inside paragraphs (Mermaid often serializes these as raw text lines rather than `<ul>`).
+- Trailing whitespace / `&nbsp;` / multiple spaces (quoted-string labels behave differently from Markdown labels).
+- Entity decoding exactly once (avoid double-escaping `<`, `&`, and unknown entities).
+
 #### `foreignObject` font-size inheritance (Mermaid CLI / Puppeteer)
 
 Some diagrams render labels via HTML `<foreignObject>`. In Mermaid CLI (Puppeteer headless), those
