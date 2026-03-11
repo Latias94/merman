@@ -1612,12 +1612,14 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                         let w = c.width.max(1.0);
                         let h = c.height.max(1.0);
                         let root_dx = c.x - w / 2.0 - 8.0;
-                        let root_dy = 0.0;
+                        let root_dy = c.y - h / 2.0;
                         active_namespace_root_offset = Some((root_dx, root_dy));
 
                         out.push_str(r#"<g class="root" transform="translate("#);
                         fmt_into(&mut out, root_dx);
-                        out.push_str(r#",0)">"#);
+                        out.push_str(r#", "#);
+                        fmt_into(&mut out, root_dy);
+                        out.push_str(r#")">"#);
                         out.push_str(r#"<g class="clusters">"#);
 
                         let local_left = 8.0;

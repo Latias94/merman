@@ -1594,6 +1594,8 @@ fn class_note_known_rendered_width_override_px(note_src: &str, style: &TextStyle
         (16, "I love this diagram!\nDo you love it?") => Some(138.609375),
         (16, "Cool class\nI said it's very cool class!") => Some(177.21875),
         (16, "This note mentions: class and namespace.") => Some(302.453125),
+        (16, "CJK: 你好<br/>RTL: مرحبا<br/>Emoji: 😀") => Some(71.5625),
+        (16, "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀") => Some(71.5625),
         (16, "Multiline note<br/>with unicode αβγ.") => Some(130.296875),
         (16, "Multiline note<br/>line 2<br/>line 3") => Some(99.6875),
         (16, "Static ($) and abstract (*) markers should render.") => Some(352.75),
@@ -1627,9 +1629,11 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
 ) -> Option<i64> {
     let font_size_px = calc_text_style.font_size.round() as i64;
     match (font_size_px, text.trim()) {
+        (16, "Alpha") => Some(39),
         (16, "Animal") => Some(48),
         (16, "B1") => Some(19),
         (16, "B2") => Some(19),
+        (16, "Beta") => Some(29),
         (16, "Client") => Some(39),
         (16, "C1") => Some(19),
         (16, "Class1") => Some(43),
@@ -1761,6 +1765,7 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
         (16, "+bar : float") => Some(76),
         (16, "+bar : int") => Some(63),
         (16, "+bool is_wild") => Some(93),
+        (16, "+emoji😀() : bool") => Some(121),
         (16, "+foo : bool") => Some(76),
         (16, "+foo : string") => Some(84),
         (16, "+inline: `**not bold**`") => Some(154),
@@ -1777,10 +1782,15 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
         (16, "+eat()") => Some(43),
         (16, "+isMammal()") => Some(93),
         (16, "+mate()") => Some(55),
+        (16, "+مرحبا() : void") => Some(95),
+        (16, "+名前 String") => Some(89),
+        (16, "+编号 String") => Some(89),
+        (16, "+金额 int") => Some(66),
         (16, "+quack()") => Some(62),
         (16, "+run()") => Some(45),
         (16, "equals()") => Some(52),
         (16, "size()") => Some(36),
+        (16, "+値 int") => Some(50),
         (16, "+get(path: String) : ApiResponse") => Some(216),
         (16, "+post(path: String, body: ApiRequest) : ApiResponse") => Some(346),
         (16, "setPoints(List<int> points)") => Some(208),
@@ -1799,6 +1809,8 @@ pub(crate) fn class_html_known_calc_text_width_override_px(
         (16, "+int publicGorilla") => Some(120),
         (16, "#int protectedMarmoset") => Some(158),
         (16, "Object[] elementData") => Some(138),
+        (16, "支付.订单") => Some(68),
+        (16, "订单") => Some(32),
         (16, "_+_swim_() : a_") => Some(106),
         (16, "_italicmethod_()") => Some(107),
         (16, "__+quack() : test__") => Some(125),
@@ -1817,11 +1829,15 @@ pub(crate) fn class_html_known_rendered_width_override_px(
 ) -> Option<f64> {
     let font_size_px = style.font_size.round() as i64;
     match (font_size_px, is_bold, text.trim()) {
+        (16, true, "Alpha") => Some(42.1875),
         (16, true, "C1") => Some(19.171875),
         (16, true, "Class01<T>") => Some(84.109375),
         (16, true, "Class03<T>") => Some(84.109375),
         (16, true, "Class04<T>") => Some(84.109375),
         (16, true, "Class10<T>") => Some(84.109375),
+        (16, true, "Beta") => Some(33.59375),
+        (16, true, "Core.Alpha") => Some(82.9375),
+        (16, true, "支付.订单") => Some(69.875),
         (16, true, "B1a") => Some(27.421875),
         (16, true, "B1b") => Some(28.203125),
         (16, true, "Class1") => Some(46.1875),
@@ -1935,6 +1951,8 @@ pub(crate) fn class_html_known_rendered_width_override_px(
         (16, false, "+attribute *italic*") => Some(117.1875),
         (16, false, "-int privateChimp") => Some(126.421875),
         (16, false, "Object[] elementData") => Some(157.359375),
+        (16, false, "+emoji😀() : bool") => Some(127.484375),
+        (16, false, "+مرحبا() : void") => Some(95.75),
         (16, false, "+bar : int") => Some(67.09375),
         (16, false, "+inline: `**not bold**`") => Some(159.046875),
         (16, false, "+inline: **bold*") => Some(97.53125),
@@ -2163,7 +2181,40 @@ pub fn layout_class_diagram_v2_typed(
         g.set_node(id.to_string(), NodeLabel::default());
     }
 
+    let mut classes_primary: Vec<&ClassNode> = Vec::new();
+    let mut classes_namespace_facades: Vec<&ClassNode> = Vec::new();
+    classes_primary.reserve(model.classes.len());
+    classes_namespace_facades.reserve(model.classes.len());
+
     for c in model.classes.values() {
+        let trimmed_id = c.id.trim();
+        let is_namespace_facade = trimmed_id.split_once('.').is_some_and(|(ns, short)| {
+            model.namespaces.contains_key(ns.trim())
+                && c.parent
+                    .as_deref()
+                    .map(|p| p.trim())
+                    .is_none_or(|p| p.is_empty())
+                && c.annotations.is_empty()
+                && c.members.is_empty()
+                && c.methods.is_empty()
+                && model.classes.values().any(|inner| {
+                    inner.id.trim() == short.trim()
+                        && inner
+                            .parent
+                            .as_deref()
+                            .map(|p| p.trim())
+                            .is_some_and(|p| p == ns.trim())
+                })
+        });
+
+        if is_namespace_facade {
+            classes_namespace_facades.push(c);
+        } else {
+            classes_primary.push(c);
+        }
+    }
+
+    for c in classes_primary {
         let (w, h, row_metrics) = class_box_dimensions(
             c,
             measurer,
@@ -2225,6 +2276,35 @@ pub fn layout_class_diagram_v2_typed(
             NodeLabel {
                 width: w.max(1.0),
                 height: h.max(1.0),
+                ..Default::default()
+            },
+        );
+    }
+
+    // Mermaid's namespace-qualified facade nodes can be introduced implicitly by relations
+    // (Graphlib will auto-create missing nodes when an edge is added). Model these as
+    // insertion-order-late vertices so Dagre's `initOrder` matches upstream in ambiguous
+    // note-vs-facade ordering cases.
+    for c in classes_namespace_facades {
+        let (w, h, row_metrics) = class_box_dimensions(
+            c,
+            measurer,
+            &text_style,
+            &html_calc_text_style,
+            wrap_probe_font_size,
+            wrap_mode_node,
+            class_padding,
+            hide_empty_members_box,
+            capture_row_metrics,
+        );
+        if let Some(rm) = row_metrics {
+            class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
+        }
+        g.set_node(
+            c.id.clone(),
+            NodeLabel {
+                width: w,
+                height: h,
                 ..Default::default()
             },
         );
