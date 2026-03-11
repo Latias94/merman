@@ -664,7 +664,10 @@ fn render_flowchart_v2_svg_with_config_inner(
                         // the `updateNodeBounds(...)` bbox which can be slightly narrower. Root
                         // viewport comes from DOM `getBBox()`, so adjust the left/right extents to
                         // match the rendered path's asymmetric bbox.
-                        if matches!(shape, "delay" | "curv-trap") {
+                        if matches!(
+                            shape,
+                            "delay" | "curv-trap" | "display" | "curved-trapezoid"
+                        ) {
                             if let Some(label_w) = n.label_width {
                                 // Reuse label metrics computed during layout to avoid re-measuring
                                 // HTML/markdown labels while approximating the root viewBox.
@@ -707,6 +710,47 @@ fn render_flowchart_v2_svg_with_config_inner(
                                 left_hw = pre_w / 2.0;
                                 right_hw = (n.width - left_hw).max(0.0);
                             }
+                        }
+
+                        // Mermaid `taggedWaveEdgedRectangle.ts` (tagged-document) renders from
+                        // the base label box, then `updateNodeBounds(...)` stores a slightly
+                        // shorter outer bbox. The rendered wave is also vertically asymmetric
+                        // because the whole group is shifted by `-waveAmplitude / 2`.
+                        if matches!(shape, "tag-doc" | "tagged-document") {
+                            let label_h = if let Some(h) = n.label_height {
+                                h
+                            } else if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                                let label = flow_node.label.as_deref().unwrap_or("");
+                                let label_type = flow_node
+                                    .label_type
+                                    .as_deref()
+                                    .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let node_text_style =
+                                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                                        &ctx.text_style,
+                                        ctx.class_defs,
+                                        &flow_node.classes,
+                                        &flow_node.styles,
+                                    );
+                                let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    ctx.measurer,
+                                    label,
+                                    label_type,
+                                    &node_text_style,
+                                    Some(ctx.wrapping_width),
+                                    ctx.node_wrap_mode,
+                                    ctx.config,
+                                    ctx.math_renderer,
+                                );
+                                metrics.height
+                            } else {
+                                0.0
+                            };
+
+                            let h = (label_h + 2.0 * node_padding).max(0.0);
+                            let wave_amplitude = h / 4.0;
+                            top_hh = h / 2.0 + wave_amplitude;
+                            bottom_hh = (n.height - top_hh).max(0.0);
                         }
 
                         // Mermaid `forkJoin.ts` inflates Dagre dimensions (via `state.padding/2`)
