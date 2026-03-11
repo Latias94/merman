@@ -215,8 +215,8 @@ fn flowchart_compute_edge_path_geom_impl(
         maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
         maybe_override_degenerate_subgraph_edge_path_d, maybe_pad_cyclic_special_basis_route,
         maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
-        maybe_truncate_data_point, normalize_cyclic_special_data_points,
-        write_flowchart_edge_trace,
+        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
+        normalize_cyclic_special_data_points, write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -458,6 +458,10 @@ fn flowchart_compute_edge_path_geom_impl(
     // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
     // round orthogonal corners before feeding into D3's line generator.
     maybe_fix_corners(&mut line_data);
+
+    if is_basis {
+        maybe_snap_shallow_basis_triplet_y_to_f32(&mut line_data, edge.edge_type.as_deref());
+    }
 
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).

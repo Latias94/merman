@@ -168,6 +168,12 @@ fn flowchart_edge_path_d_for_bbox_impl(
         .collect();
 
     super::edge_geom::maybe_fix_corners(&mut line_data);
+    if is_basis {
+        super::edge_geom::maybe_snap_shallow_basis_triplet_y_to_f32(
+            &mut line_data,
+            edge.edge_type.as_deref(),
+        );
+    }
 
     let line_data =
         super::edge_geom::line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());

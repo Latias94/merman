@@ -66,7 +66,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         && crate::text::mermaid_markdown_to_lines(label_text, true).len() > 1
         && matches!(
             shape,
-            "tag-doc"
+            "doc"
+                | "document"
+                | "lin-cyl"
+                | "disk"
+                | "lined-cylinder"
+                | "tag-doc"
                 | "tagged-document"
                 | "docs"
                 | "documents"
@@ -83,7 +88,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     {
         // Mermaid shape renderers override `labelHelper(...)`'s default centering using
         // `-bbox.y`. Chromium reports these wrapped SVG markdown labels with a small positive
-        // `getBBox().y`, so model that render-time offset here instead of baking a literal `-1`.
+        // `getBBox().y`, so model that render-time offset here instead of baking literal `-1`s
+        // into individual shapes.
         label_dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
     }
     let mut metrics = if let (Some(w), Some(h)) =

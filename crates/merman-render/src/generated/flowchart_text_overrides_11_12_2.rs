@@ -38,6 +38,9 @@ pub fn lookup_flowchart_html_width_px(
         ("trebuchetms,verdana,arial,sans-serif", "Node Label B") => Some(94.0),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_styles_071.svg
         ("trebuchetms,verdana,arial,sans-serif", "new bow-rect shape") => Some(144.78125),
+        // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset4_*_styles_*.svg
+        // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset4_*_classdef_*.svg
+        ("trebuchetms,verdana,arial,sans-serif", "new document shape") => Some(151.546875),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset2_tb_styles_015.svg
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset2_lr_styles_063.svg
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset2_*_classdef_*.svg
@@ -107,6 +110,22 @@ pub fn lookup_flowchart_svg_bbox_x_px(
             Some((97.6171875, 97.6171875))
         }
         ("trebuchetms,verdana,arial,sans-serif", "documents shape") => Some((88.84375, 88.84375)),
+        // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset4_*_md_html_false_*.svg
+        ("trebuchetms,verdana,arial,sans-serif", "</strong> for document") => {
+            Some((85.6015625, 85.6015625))
+        }
+        ("trebuchetms,verdana,arial,sans-serif", "notched-pentagon shape") => {
+            Some((88.21875, 88.21875))
+        }
+        ("trebuchetms,verdana,arial,sans-serif", "</strong> for lined-cylinder") => {
+            Some((99.59375, 99.59375))
+        }
+        ("trebuchetms,verdana,arial,sans-serif", "stacked-document shape") => {
+            Some((89.046875, 89.046875))
+        }
+        ("trebuchetms,verdana,arial,sans-serif", "half-rounded-rectangle") => {
+            Some((83.109375, 83.109375))
+        }
         _ => None,
     }
 }

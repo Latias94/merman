@@ -1112,11 +1112,14 @@ pub(super) fn node_layout_dimensions(
         }
     }
 
-    // Mermaid flowchart-v2 cylinder layout dimensions are derived from `updateNodeBounds(...)`
-    // over an SVG `<path>` with arc commands. On Chromium this tends to round the bbox height to
-    // the next representable f32 value above the theoretical height, which affects Dagre spacing
-    // and therefore edge points (`data-points`) in strict parity mode.
-    if matches!(shape, "cylinder" | "cyl" | "db" | "database") {
+    // Mermaid flowchart-v2 cylinder-like shapes (`cylinder`, `lined-cylinder`) derive layout
+    // dimensions from `updateNodeBounds(...)` over an SVG `<path>` with arc commands. Chromium's
+    // `getBBox()` tends to land one f32 ULP above the theoretical height, which affects Dagre
+    // spacing and therefore edge points (`data-points`) in strict parity mode.
+    if matches!(
+        shape,
+        "cylinder" | "cyl" | "db" | "database" | "lin-cyl" | "disk" | "lined-cylinder"
+    ) {
         let h_f32 = render_h as f32;
         if h_f32.is_finite() && h_f32.is_sign_positive() {
             let bits = h_f32.to_bits();

@@ -109,6 +109,55 @@ pub(in crate::svg::parity::flowchart) fn line_with_offset_points(
     out
 }
 
+pub(in crate::svg::parity::flowchart) fn maybe_snap_shallow_basis_triplet_y_to_f32(
+    points: &mut [crate::model::LayoutPoint],
+    edge_type: Option<&str>,
+) {
+    let (_, arrow_type_end) = arrow_types_for_edge(edge_type);
+    if arrow_type_end != Some("arrow_point") || points.len() != 3 {
+        return;
+    }
+
+    let [p0, p1, p2] = points else {
+        return;
+    };
+
+    if (p0.y - p1.y).abs() > 1e-9 {
+        return;
+    }
+
+    if ((p2.y - p1.y).abs() - 0.5).abs() > 1e-6 {
+        return;
+    }
+
+    fn snap_if_close_to_f32(v: f64) -> Option<f64> {
+        if !v.is_finite() {
+            return None;
+        }
+        let snapped = (v as f32) as f64;
+        if !snapped.is_finite() || snapped + 1e-12 < v || (v - snapped).abs() > 1e-5 {
+            return None;
+        }
+        Some(snapped)
+    }
+
+    let (Some(y0), Some(y1), Some(y2)) = (
+        snap_if_close_to_f32(p0.y),
+        snap_if_close_to_f32(p1.y),
+        snap_if_close_to_f32(p2.y),
+    ) else {
+        return;
+    };
+
+    if (y0 - y1).abs() > 1e-9 || ((y2 - y1).abs() - 0.5).abs() > 1e-5 {
+        return;
+    }
+
+    p0.y = y0;
+    p1.y = y1;
+    p2.y = y2;
+}
+
 pub(in crate::svg::parity::flowchart) fn arrow_types_for_edge(
     edge_type: Option<&str>,
 ) -> (Option<&'static str>, Option<&'static str>) {
