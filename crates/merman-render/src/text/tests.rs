@@ -1,4 +1,5 @@
 use super::*;
+use crate::flowchart::flowchart_label_metrics_for_layout;
 
 #[test]
 fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
@@ -142,6 +143,188 @@ fn courier_html_flowchart_label_width_matches_upstream() {
 }
 
 #[test]
+fn default_font_flowchart_html_width_overrides_match_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let edge_a = measurer.measure_wrapped("A to B", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(edge_a.width, 42.1875);
+    assert_eq!(edge_a.height, 24.0);
+
+    let edge_b = measurer.measure_wrapped("B to C", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(edge_b.width, 43.203125);
+    assert_eq!(edge_b.height, 24.0);
+
+    let node = measurer.measure_wrapped("A: (Edge Text)", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(node.width, 101.046875);
+    assert_eq!(node.height, 24.0);
+
+    let cluster = measurer.measure_wrapped("Inner B", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(cluster.width, 50.765625);
+    assert_eq!(cluster.height, 24.0);
+
+    let edge = measurer.measure_wrapped(
+        "very long edge label",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(edge.width, 145.09375);
+    assert_eq!(edge.height, 24.0);
+
+    let post = measurer.measure_wrapped("post", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(post.width, 30.328125);
+    assert_eq!(post.height, 24.0);
+
+    let dense_cluster =
+        measurer.measure_wrapped("Dense Cluster", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(dense_cluster.width, 98.109375);
+    assert_eq!(dense_cluster.height, 24.0);
+
+    let outside2 = measurer.measure_wrapped("outside2", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(outside2.width, 60.75);
+    assert_eq!(outside2.height, 24.0);
+
+    for level in ["Level 1", "Level 2", "Level 3", "Level 4"] {
+        let metrics = measurer.measure_wrapped(level, &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(metrics.width, 51.328125, "{level}");
+        assert_eq!(metrics.height, 24.0, "{level}");
+    }
+
+    let subgraph_title =
+        measurer.measure_wrapped("Subgraph Title", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(subgraph_title.width, 103.171875);
+    assert_eq!(subgraph_title.height, 24.0);
+
+    let edge_label =
+        measurer.measure_wrapped("Edge Label", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(edge_label.width, 77.9375);
+    assert_eq!(edge_label.height, 24.0);
+
+    let node_label_b =
+        measurer.measure_wrapped("Node Label B", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(node_label_b.width, 94.0);
+    assert_eq!(node_label_b.height, 24.0);
+
+    let custom = measurer.measure_wrapped("custom", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(custom.width, 51.359375);
+    assert_eq!(custom.height, 24.0);
+}
+
+#[test]
+fn flowchart_html_wrapped_measurement_does_not_leak_other_diagram_overrides() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let wrapped = measurer.measure_wrapped("plain", &style, Some(200.0), WrapMode::HtmlLike);
+    let unwrapped = measurer.measure_wrapped("plain", &style, None, WrapMode::HtmlLike);
+    assert_eq!(wrapped.width, 35.34375);
+    assert_eq!(wrapped.height, 24.0);
+    assert_eq!(unwrapped.width, 144.359375);
+}
+
+#[test]
+fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let width = measure_flowchart_svg_like_precise_width_px(
+        &measurer,
+        "A very long cluster title with punctuation: (a/b/c)",
+        &style,
+        Some(200.0),
+    );
+    assert_eq!(width, 186.90625);
+}
+
+#[test]
+fn flowchart_svg_cluster_title_precise_width_matches_upstream_single_line_text() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let width = measure_flowchart_svg_like_precise_width_px(
+        &measurer,
+        "Subgraph Title",
+        &style,
+        Some(200.0),
+    );
+    assert_eq!(width, 103.1875);
+}
+
+#[test]
+fn flowchart_svg_cluster_title_precise_width_matches_upstream_one() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let width = measure_flowchart_svg_like_precise_width_px(&measurer, "One", &style, Some(200.0));
+    assert_eq!(width, 28.25);
+}
+
+#[test]
+fn flowchart_svg_edge_label_width_matches_upstream_single_line_text() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let metrics = measurer.measure_wrapped("Edge Label", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(metrics.width, 77.9375);
+    assert_eq!(metrics.height, 19.0);
+}
+
+#[test]
+fn flowchart_svg_node_label_width_overrides_match_repeat_offenders() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let node_label = measurer.measure_wrapped("Node Label", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(node_label.width, 80.125);
+
+    let node_label_b =
+        measurer.measure_wrapped("Node Label B", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(node_label_b.width, 94.0);
+
+    let cfg = merman_core::MermaidConfig::default();
+    let b = flowchart_label_metrics_for_layout(
+        &measurer,
+        "b",
+        "text",
+        &style,
+        Some(200.0),
+        WrapMode::SvgLike,
+        &cfg,
+        None,
+    );
+    assert_eq!(b.width, 8.921875);
+}
+
+#[test]
 fn courier_svg_edge_label_width_matches_upstream() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -154,6 +337,23 @@ fn courier_svg_edge_label_width_matches_upstream() {
     assert_eq!(metrics.width, 86.421875);
     assert_eq!(metrics.height, 18.0);
     assert_eq!(metrics.line_count, 1);
+}
+
+#[test]
+fn flowchart_svg_edge_label_background_y_matches_upstream_fonts() {
+    let trebuchet = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let courier = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    assert_eq!(flowchart_svg_edge_label_background_y_px(&trebuchet), -1.0);
+    assert_eq!(flowchart_svg_edge_label_background_y_px(&courier), 0.0);
 }
 
 #[test]

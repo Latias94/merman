@@ -521,16 +521,17 @@ For each item:
     - `fixtures/class/stress_class_unicode_and_entities_012.mmd`
     - `fixtures/class/stress_class_unicode_namespace_mix_017.mmd`
 
-- [ ] Markdown + `htmlLabels` repeat offenders sweep (flowchart/class first)  
+- [x] Markdown + `htmlLabels` repeat offenders sweep (flowchart/class first)  
   Gap check:
   - Focus on label-tokenization edge cases (`__`, nested emphasis, backticks/code spans, list-like lines, trailing spaces).
   - For HTML labels: confirm `foreignObject` width vs `max-width`, font-size inheritance quirks, and wrap boundary parity.
-  Suggested triage loop:
-  - Bucket by fixture name: `--filter markdown`, `--filter html_labels`, `--filter htmlLabels`
-  - Validate with both structural and geometry-sensitive modes:
-    - `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-decimals 3 --filter <bucket>`
-    - `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 6 --filter <bucket>`
-    - `cargo run -p xtask -- compare-svg-xml --check --diagram <diagram> --filter <bucket> --dom-mode strict --dom-decimals 3`
+  Evidence:
+  - Strict XML buckets are green:
+    - `target/debug/xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3 --filter markdown --check`
+    - `target/debug/xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3 --filter html_labels --check`
+    - `target/debug/xtask compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3 --filter markdown --check`
+    - `target/debug/xtask compare-svg-xml --diagram class --dom-mode strict --dom-decimals 3 --filter html_labels --check`
+  - Flowchart HTML-label cleanup now isolates explicit wrapped-flowchart measurements from other diagrams' unwrapped HTML width tables, which removes the `plain`/image-label state pollution and closes the remaining flowchart `html_labels` repeat offenders together with the narrow `Subgraph Title` / `Edge Label` / `Node Label*` / `custom` width pins.
 
 - [x] State: composite padding + classDef html label measurement  
   Gap check:

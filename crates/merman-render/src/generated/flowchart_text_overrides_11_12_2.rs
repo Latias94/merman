@@ -34,8 +34,13 @@ pub fn lookup_flowchart_html_width_px(
         | ("trebuchetms,verdana,arial,sans-serif", "Level 2")
         | ("trebuchetms,verdana,arial,sans-serif", "Level 3")
         | ("trebuchetms,verdana,arial,sans-serif", "Level 4") => Some(51.328125),
+        // fixtures/flowchart/stress_flowchart_html_labels_global_false_flowchart_{true,unset}_0{69,71}.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "Subgraph Title") => Some(103.171875),
+        ("trebuchetms,verdana,arial,sans-serif", "Edge Label") => Some(77.9375),
         // fixtures/flowchart/stress_flowchart_html_labels_global_true_flowchart_false_070.mmd
         ("trebuchetms,verdana,arial,sans-serif", "Node Label B") => Some(94.0),
+        // fixtures/flowchart/stress_flowchart_html_labels_default_class_077.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "custom") => Some(51.359375),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_styles_071.svg
         ("trebuchetms,verdana,arial,sans-serif", "new bow-rect shape") => Some(144.78125),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset4_*_styles_*.svg
@@ -66,6 +71,9 @@ pub fn lookup_flowchart_svg_bbox_x_px(
         // fixtures/flowchart/stress_flowchart_html_labels_global_true_flowchart_false_070.mmd
         ("trebuchetms,verdana,arial,sans-serif", "Subgraph Title") => Some((51.59375, 51.59375)),
         ("trebuchetms,verdana,arial,sans-serif", "Edge Label") => Some((38.96875, 38.96875)),
+        // fixtures/flowchart/stress_flowchart_html_labels_global_false_flowchart_{true,unset}_0{69,71}.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "Node Label") => Some((40.0625, 40.0625)),
+        ("trebuchetms,verdana,arial,sans-serif", "Node Label B") => Some((47.0, 47.0)),
         // fixtures/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_md_html_false_070.mmd
         // Default source ids `n0..n4` land one 1/128px wider in upstream Chromium `getBBox()`.
         ("trebuchetms,verdana,arial,sans-serif", "n0")
