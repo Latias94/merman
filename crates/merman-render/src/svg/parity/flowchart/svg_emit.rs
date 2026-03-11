@@ -616,7 +616,8 @@ fn render_flowchart_v2_svg_with_config_inner(
             if n.is_cluster || ctx.node_dom_index.contains_key(n.id.as_str()) {
                 let mut left_hw = n.width / 2.0;
                 let mut right_hw = left_hw;
-                let mut hh = n.height / 2.0;
+                let mut top_hh = n.height / 2.0;
+                let mut bottom_hh = top_hh;
                 if !n.is_cluster {
                     if let Some(shape) = ctx
                         .nodes_by_id
@@ -654,7 +655,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                         if matches!(shape, "cross-circ") {
                             left_hw = 30.0;
                             right_hw = (n.width - 30.0).max(0.0);
-                            hh = 30.0;
+                            top_hh = 30.0;
+                            bottom_hh = 30.0;
                         }
 
                         // Mermaid `halfRoundedRectangle.ts` and `curvedTrapezoid.ts` draw their
@@ -714,20 +716,96 @@ fn render_flowchart_v2_svg_with_config_inner(
                             if n.width >= n.height {
                                 left_hw = 35.0;
                                 right_hw = 35.0;
-                                hh = 5.0;
+                                top_hh = 5.0;
+                                bottom_hh = 5.0;
                             } else {
                                 left_hw = 5.0;
                                 right_hw = 5.0;
-                                hh = 35.0;
+                                top_hh = 35.0;
+                                bottom_hh = 35.0;
+                            }
+                        }
+
+                        // Mermaid `multiWaveEdgedRectangle.ts` (documents / stacked-document)
+                        // emits a bottom sine wave and then translates the whole group upward by
+                        // `waveAmplitude / 2`. The resulting DOM bbox is not vertically symmetric
+                        // around the node center, so do not approximate it as `height / 2`.
+                        if matches!(shape, "docs" | "documents" | "st-doc" | "stacked-document") {
+                            let (label_w, label_h) = if let (Some(w), Some(h)) =
+                                (n.label_width, n.label_height)
+                            {
+                                (w, h)
+                            } else if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                                let label = flow_node.label.as_deref().unwrap_or("");
+                                let label_type = flow_node
+                                    .label_type
+                                    .as_deref()
+                                    .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let node_text_style =
+                                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                                        &ctx.text_style,
+                                        ctx.class_defs,
+                                        &flow_node.classes,
+                                        &flow_node.styles,
+                                    );
+                                let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    ctx.measurer,
+                                    label,
+                                    label_type,
+                                    &node_text_style,
+                                    Some(ctx.wrapping_width),
+                                    ctx.node_wrap_mode,
+                                    ctx.config,
+                                    ctx.math_renderer,
+                                );
+                                (metrics.width, metrics.height)
+                            } else {
+                                (0.0, 0.0)
+                            };
+
+                            let w = label_w + 2.0 * node_padding;
+                            let h = label_h + 2.0 * node_padding;
+                            let wave_amplitude = h / 4.0;
+                            let final_h = h + wave_amplitude;
+                            let rect_offset = 5.0;
+                            let y = -final_h / 2.0;
+                            let baseline_y = y + final_h + rect_offset;
+
+                            let mut max_wave_y = baseline_y;
+                            let delta_x = w;
+                            let cycle_length = if delta_x.abs() < 1e-9 {
+                                delta_x
+                            } else {
+                                delta_x / 0.8
+                            };
+                            let frequency = if cycle_length.abs() < 1e-9 {
+                                0.0
+                            } else {
+                                (2.0 * std::f64::consts::PI) / cycle_length
+                            };
+                            for i in 0..=50 {
+                                let t = i as f64 / 50.0;
+                                let x = t * delta_x;
+                                let wave_y = baseline_y + wave_amplitude * (frequency * x).sin();
+                                max_wave_y = max_wave_y.max(wave_y);
+                            }
+
+                            let top_y = y - rect_offset - wave_amplitude / 2.0;
+                            let bottom_y = max_wave_y - wave_amplitude / 2.0;
+                            top_hh = -top_y;
+                            bottom_hh = bottom_y;
+                            if left_hw == right_hw {
+                                left_hw = w / 2.0 + rect_offset;
+                                right_hw = left_hw;
                             }
                         }
                     }
                 }
                 include_rect(
                     n.x - left_hw,
-                    n.y + y_off - hh,
+                    n.y + y_off - top_hh,
                     n.x + right_hw,
-                    n.y + y_off + hh,
+                    n.y + y_off + bottom_hh,
                 );
             } else {
                 include_rect(n.x, n.y + y_off, n.x + n.width, n.y + y_off + n.height);

@@ -87,8 +87,25 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "bow-rect"
                 | "stored-data"
                 | "bow-tie-rectangle"
+                | "tag-rect"
+                | "tagged-rectangle"
+                | "tag-proc"
+                | "tagged-process"
+                | "docs"
+                | "documents"
+                | "st-doc"
+                | "stacked-document"
                 | "tag-doc"
                 | "tagged-document"
+                | "bolt"
+                | "com-link"
+                | "lightning-bolt"
+                | "f-circ"
+                | "junction"
+                | "filled-circle"
+                | "win-pane"
+                | "internal-storage"
+                | "window-pane"
                 | "stadium"
                 | "terminal"
                 | "pill",
@@ -1207,8 +1224,196 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         intersect_polygon(node, &points, point)
     }
 
+    fn intersect_tagged_rect(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = metrics.width + 2.0 * p;
+        let h = metrics.height + 2.0 * p;
+        let x = -w / 2.0;
+        let y = -h / 2.0;
+        let tag_width = 0.2 * h;
+
+        let points = vec![
+            crate::model::LayoutPoint {
+                x: x - tag_width / 2.0,
+                y,
+            },
+            crate::model::LayoutPoint {
+                x: x + w + tag_width / 2.0,
+                y,
+            },
+            crate::model::LayoutPoint {
+                x: x + w + tag_width / 2.0,
+                y: y + h,
+            },
+            crate::model::LayoutPoint {
+                x: x - tag_width / 2.0,
+                y: y + h,
+            },
+        ];
+
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_multi_wave_edged_rect(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = metrics.width + 2.0 * p;
+        let h = metrics.height + 2.0 * p;
+        let wave_amplitude = h / 4.0;
+        let final_h = h + wave_amplitude;
+        let x = -w / 2.0;
+        let y = -final_h / 2.0;
+        let rect_offset = 5.0;
+
+        let wave_points = generate_full_sine_wave_points(
+            x - rect_offset,
+            y + final_h + rect_offset,
+            x + w - rect_offset,
+            y + final_h + rect_offset,
+            wave_amplitude,
+            0.8,
+        );
+        let last_y = wave_points
+            .last()
+            .map(|p| p.y)
+            .unwrap_or(y + final_h + rect_offset);
+
+        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
+        points.push(crate::model::LayoutPoint {
+            x: x - rect_offset,
+            y: y + rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x - rect_offset,
+            y: y + final_h + rect_offset,
+        });
+        points.extend(wave_points);
+        points.push(crate::model::LayoutPoint {
+            x: x + w - rect_offset,
+            y: last_y - rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + w,
+            y: last_y - rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + w,
+            y: last_y - 2.0 * rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + w + rect_offset,
+            y: last_y - 2.0 * rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + w + rect_offset,
+            y: y - rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + rect_offset,
+            y: y - rect_offset,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: x + rect_offset,
+            y,
+        });
+        points.push(crate::model::LayoutPoint { x, y });
+        points.push(crate::model::LayoutPoint {
+            x,
+            y: y + rect_offset,
+        });
+
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_lightning_bolt(
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let width = 35.0;
+        let height = 35.0;
+        let gap = 7.0;
+        let points = vec![
+            crate::model::LayoutPoint { x: width, y: 0.0 },
+            crate::model::LayoutPoint {
+                x: 0.0,
+                y: height + gap / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: width - 2.0 * gap,
+                y: height + gap / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: 0.0,
+                y: 2.0 * height,
+            },
+            crate::model::LayoutPoint {
+                x: width,
+                y: height - gap / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: 2.0 * gap,
+                y: height - gap / 2.0,
+            },
+        ];
+
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_window_pane(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = metrics.width + 2.0 * p;
+        let h = metrics.height + 2.0 * p;
+        let rect_offset = 5.0;
+        let x = -w / 2.0;
+        let y = -h / 2.0;
+        let points = vec![
+            crate::model::LayoutPoint {
+                x: x - rect_offset,
+                y: y - rect_offset,
+            },
+            crate::model::LayoutPoint {
+                x: x - rect_offset,
+                y: y + h,
+            },
+            crate::model::LayoutPoint { x: x + w, y: y + h },
+            crate::model::LayoutPoint {
+                x: x + w,
+                y: y - rect_offset,
+            },
+        ];
+
+        intersect_polygon(node, &points, point)
+    }
+
     match layout_shape {
         Some("circle") => intersect_circle(node, point),
+        Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
         Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, point),
@@ -1222,7 +1427,17 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("bow-rect" | "stored-data" | "bow-tie-rectangle") => {
             intersect_bow_tie_rect(ctx, node_id, node, point)
         }
+        Some("tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process") => {
+            intersect_tagged_rect(ctx, node_id, node, point)
+        }
+        Some("docs" | "documents" | "st-doc" | "stacked-document") => {
+            intersect_multi_wave_edged_rect(ctx, node_id, node, point)
+        }
         Some("tag-doc" | "tagged-document") => intersect_tagged_document(ctx, node_id, node, point),
+        Some("bolt" | "com-link" | "lightning-bolt") => intersect_lightning_bolt(node, point),
+        Some("win-pane" | "internal-storage" | "window-pane") => {
+            intersect_window_pane(ctx, node_id, node, point)
+        }
         Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
             .map(|pts| intersect_polygon(node, &pts, point))
             .unwrap_or_else(|| intersect_rect(node, point)),

@@ -12,7 +12,7 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    layout_node: &crate::model::LayoutNode,
+    _layout_node: &crate::model::LayoutNode,
     label_text: &str,
     label_type: &str,
     node_classes: &[String],
@@ -46,8 +46,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tag_rect(
         helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
 
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
-    let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+    let w = metrics.width + 2.0 * p;
+    let h = metrics.height + 2.0 * p;
     let x = -w / 2.0;
     let y = -h / 2.0;
     let tag_w = 0.2 * h;

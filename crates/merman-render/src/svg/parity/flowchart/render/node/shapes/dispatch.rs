@@ -415,7 +415,12 @@ pub(in super::super) fn render_flowchart_v2_shape(
         "docs" | "documents" | "st-doc" | "stacked-document" => {
             super::render_stacked_document(
                 out,
+                ctx,
                 layout_node,
+                *label_text,
+                *label_type,
+                node_classes,
+                node_styles,
                 style,
                 fill_color,
                 stroke_color,
@@ -424,6 +429,8 @@ pub(in super::super) fn render_flowchart_v2_shape(
                 hand_drawn_seed,
                 timing_enabled,
                 details,
+                label_dx,
+                label_dy,
             );
         }
         "procs" | "processes" | "st-rect" | "stacked-rectangle" => {

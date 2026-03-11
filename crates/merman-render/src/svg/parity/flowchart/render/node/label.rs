@@ -15,6 +15,7 @@ use super::super::root::flowchart_wrap_svg_text_lines;
 pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_label(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
+    shape: &str,
     layout_node: &crate::model::LayoutNode,
     label_text: &str,
     label_type: &str,
@@ -51,6 +52,40 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         node_classes,
         node_styles,
     );
+    let has_literal_backticks = label_type != "markdown" && label_text.contains('`');
+    let renders_markdown_like = label_type == "markdown"
+        || (label_type != "markdown"
+            && !has_literal_backticks
+            && (label_text.contains("**")
+                || label_text.contains("__")
+                || label_text.contains('*')
+                || label_text.contains('_')));
+    let mut label_dy = label_dy;
+    if !ctx.node_html_labels
+        && renders_markdown_like
+        && crate::text::mermaid_markdown_to_lines(label_text, true).len() > 1
+        && matches!(
+            shape,
+            "tag-doc"
+                | "tagged-document"
+                | "docs"
+                | "documents"
+                | "st-doc"
+                | "stacked-document"
+                | "div-rect"
+                | "div-proc"
+                | "divided-rectangle"
+                | "divided-process"
+                | "win-pane"
+                | "internal-storage"
+                | "window-pane"
+        )
+    {
+        // Mermaid shape renderers override `labelHelper(...)`'s default centering using
+        // `-bbox.y`. Chromium reports these wrapped SVG markdown labels with a small positive
+        // `getBBox().y`, so model that render-time offset here instead of baking a literal `-1`.
+        label_dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
+    }
     let mut metrics = if let (Some(w), Some(h)) =
         (layout_node.label_width, layout_node.label_height)
     {

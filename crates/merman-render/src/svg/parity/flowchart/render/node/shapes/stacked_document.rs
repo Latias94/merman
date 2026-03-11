@@ -5,11 +5,17 @@ use std::fmt::Write as _;
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::geom::{generate_full_sine_wave_points, path_from_points};
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
     out: &mut String,
-    layout_node: &crate::model::LayoutNode,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    _layout_node: &crate::model::LayoutNode,
+    label_text: &str,
+    label_type: &str,
+    node_classes: &[String],
+    node_styles: &[String],
     style: &str,
     fill_color: &str,
     stroke_color: &str,
@@ -18,6 +24,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
     hand_drawn_seed: u64,
     timing_enabled: bool,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+    label_dx: &mut f64,
+    label_dy: &mut f64,
 ) {
     fn rough_timed<T>(
         timing_enabled: bool,
@@ -35,13 +43,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
         }
     }
 
-    let w = layout_node.width.max(1.0);
-    let h = layout_node.height.max(1.0);
+    let metrics =
+        helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
+
+    let p = ctx.node_padding;
+    let w = metrics.width + 2.0 * p;
+    let h = metrics.height + 2.0 * p;
     let wave_amplitude = h / 4.0;
     let final_h = h + wave_amplitude;
     let x = -w / 2.0;
     let y = -final_h / 2.0;
     let rect_offset = 5.0;
+
+    *label_dx = -rect_offset;
+    *label_dy = rect_offset - wave_amplitude / 2.0;
 
     let wave_points = generate_full_sine_wave_points(
         x - rect_offset,
