@@ -394,6 +394,37 @@ fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
 }
 
 #[test]
+fn default_font_extra_svg_bbox_override_keeps_treemap_item_a1_stable() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let (left, right) = measurer.measure_svg_text_bbox_x("Item A1", &style);
+    assert_eq!(left, 27.5234375);
+    assert_eq!(right, 27.5234375);
+}
+
+#[test]
+fn default_font_single_run_svg_bbox_override_keeps_timeline_long_word_stable() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let (left, right) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(
+        "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+        &style,
+    );
+    assert_eq!(left, 235.3203125);
+    assert_eq!(right, 235.84375);
+}
+
+#[test]
 fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

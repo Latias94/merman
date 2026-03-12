@@ -35,6 +35,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text/SVG: unify Courier-like font detection (`courier`, `"Courier New", courier, monospace`, and generic monospace stacks)
   across wrapped SVG first-line bbox height, edge-label background offset, flowchart title viewport bbox, state title bbox,
   and vendored flowchart font-table aliasing so the same stack no longer follows conflicting text-metric branches.
+- Text/SVG: collapse the remaining default-font fixture SVG bbox literals (`Item A1`, `Supercalifragilistic…`, and related
+  flowchart repeat offenders) into shared override tables so treemap/timeline/flowchart fallback paths stop duplicating the
+  same string-specific branches.
 - Flowchart/KaTeX: add an opt-in Node/Puppeteer-backed `NodeKatexMathRenderer`, wire both
   `xtask compare-flowchart-svgs` and `xtask compare-svg-xml --diagram flowchart` to use it automatically when
   `tools/mermaid-cli` is present, switch the KaTeX probe onto the same `mermaid-cli` browser-shell environment used for

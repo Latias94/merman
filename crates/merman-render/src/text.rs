@@ -129,6 +129,22 @@ const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;
 const SVG_DEFAULT_TITLE_DESCENT_EM: f64 = 0.262;
 const SVG_COURIER_TITLE_ASCENT_EM: f64 = 0.8333333333333334;
 const SVG_COURIER_TITLE_DESCENT_EM: f64 = 0.25;
+const DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES: &[(&str, f64, f64)] = &[
+    ("Item A1", 1.720_214_843_75_f64, 1.720_214_843_75_f64),
+    ("End", 0.819_824_218_75_f64, 0.819_824_218_75_f64),
+    ("Start", 1.094_238_281_25_f64, 1.094_238_281_25_f64),
+    ("in the hat", 2.195_800_781_25_f64, 2.195_800_781_25_f64),
+    ("Line 2", 1.354_980_468_75_f64, 1.354_980_468_75_f64),
+    ("Line 3", 1.354_980_468_75_f64, 1.354_980_468_75_f64),
+    ("edge", 2.334_960_937_5_f64, 2.334_960_937_5_f64),
+    ("edge label", 2.334_960_937_5_f64, 2.334_960_937_5_f64),
+    ("1o", 0.530_761_718_75_f64, 0.530_761_718_75_f64),
+];
+const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64, f64)] = &[(
+    "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+    14.707_519_531_25_f64,
+    14.740_234_375_f64,
+)];
 
 pub(crate) fn font_key_uses_courier_metrics(font_key: &str) -> bool {
     font_key
@@ -142,6 +158,20 @@ pub(crate) fn style_uses_courier_metrics(style: &TextStyle) -> bool {
         .as_deref()
         .map(normalize_font_key)
         .is_some_and(|font_key| font_key_uses_courier_metrics(&font_key))
+}
+
+fn lookup_extra_svg_bbox_override_em(
+    font_key: &str,
+    text: &str,
+    overrides: &[(&str, f64, f64)],
+) -> Option<(f64, f64)> {
+    if font_key != FLOWCHART_DEFAULT_FONT_KEY {
+        return None;
+    }
+    overrides
+        .iter()
+        .find(|(candidate, _, _)| *candidate == text)
+        .map(|(_, left, right)| (*left, *right))
 }
 
 pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
@@ -3118,38 +3148,14 @@ impl VendoredFontMetricsTextMeasurer {
             return (left, right);
         }
 
-        if table.font_key == "trebuchetms,verdana,arial,sans-serif" {
-            if t == "Item A1" {
-                // Mermaid treemap upstream baselines keep this label at 34px (it just fits in the
-                // smallest cell of the docs basic fixture). Our default SVG bbox model can slightly
-                // over-measure this string, causing a 1px font-size shrink.
-                let left_em = 1.720_214_843_75_f64;
-                let right_em = 1.720_214_843_75_f64;
-                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-                return (left, right);
-            }
-
-            if let Some((left_em, right_em)) = match t {
-                // Mermaid 11.12.3 flowchart strict XML probes keep these common SVG node labels on
-                // the 1/64px lattice shown below; our generic SVG bbox path undershoots by 1/128px.
-                "End" => Some((0.819_824_218_75_f64, 0.819_824_218_75_f64)),
-                "Start" => Some((1.094_238_281_25_f64, 1.094_238_281_25_f64)),
-                // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd`
-                "in the hat" => Some((2.195_800_781_25_f64, 2.195_800_781_25_f64)),
-                // `fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_007.mmd`
-                "Line 2" | "Line 3" => Some((1.354_980_468_75_f64, 1.354_980_468_75_f64)),
-                // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd`
-                "edge" => Some((2.334_960_937_5_f64, 2.334_960_937_5_f64)),
-                "edge label" => Some((2.334_960_937_5_f64, 2.334_960_937_5_f64)),
-                // `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_sub_graphs_and_markdown_strings_057.mmd`
-                "1o" => Some((0.530_761_718_75_f64, 0.530_761_718_75_f64)),
-                _ => None,
-            } {
-                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-                return (left, right);
-            }
+        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
+            table.font_key,
+            t,
+            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
+        ) {
+            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+            return (left, right);
         }
 
         if let Some((left, right)) =
@@ -3265,9 +3271,11 @@ impl VendoredFontMetricsTextMeasurer {
             return (left, right);
         }
 
-        if table.font_key == "trebuchetms,verdana,arial,sans-serif" && t == "Item A1" {
-            let left_em = 1.720_214_843_75_f64;
-            let right_em = 1.720_214_843_75_f64;
+        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
+            table.font_key,
+            t,
+            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
+        ) {
             let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
             let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
             return (left, right);
@@ -3330,11 +3338,11 @@ impl VendoredFontMetricsTextMeasurer {
         // overflowing long token. Chromium's bbox is measurably asymmetric for this string under
         // Mermaid's default font stack, and small errors bubble into the timeline viewBox/line
         // lengths. Keep a dedicated override so strict SVG parity remains stable.
-        if table.font_key == "trebuchetms,verdana,arial,sans-serif"
-            && t == "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-        {
-            let left_em = 14.70751953125_f64;
-            let right_em = 14.740234375_f64;
+        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
+            table.font_key,
+            t,
+            DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES,
+        ) {
             let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
             let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
             return (left, right);
