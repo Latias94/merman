@@ -103,6 +103,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture/Text: move the remaining Cytoscape label width-scale and 18px service-label
   extension constants into `architecture_text_overrides_11_12_2`, so layout and SVG parity no
   longer duplicate those Architecture-specific text geometry calibrations inline.
+- Sequence/Text: move the remaining self-message/frame pad constants into
+  `sequence_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
+  Mermaid self-loop/frame geometry literals inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.

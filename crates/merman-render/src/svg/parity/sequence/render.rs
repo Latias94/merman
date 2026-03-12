@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
 
 use super::css::sequence_css;
@@ -290,21 +291,20 @@ fn render_sequence_diagram_svg_inner(
         .boxes
         .iter()
         .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
-    let max_box_title_height =
-        if has_box_titles {
-            // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
-            // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
-            let line_h = crate::generated::sequence_text_overrides_11_12_2::
-            sequence_text_dimensions_height_px(actor_label_font_size);
-            model
-                .boxes
-                .iter()
-                .filter_map(|b| b.name.as_deref())
-                .map(|s| crate::text::split_html_br_lines(s).len().max(1) as f64 * line_h)
-                .fold(0.0, f64::max)
-        } else {
-            0.0
-        };
+    let max_box_title_height = if has_box_titles {
+        // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
+        // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
+        let line_h =
+            sequence_text_overrides::sequence_text_dimensions_height_px(actor_label_font_size);
+        model
+            .boxes
+            .iter()
+            .filter_map(|b| b.name.as_deref())
+            .map(|s| crate::text::split_html_br_lines(s).len().max(1) as f64 * line_h)
+            .fold(0.0, f64::max)
+    } else {
+        0.0
+    };
 
     for b in model.boxes.iter().rev() {
         let pad_x = (box_margin * 2.0 + box_text_margin).max(0.0);
@@ -1312,10 +1312,7 @@ fn render_sequence_diagram_svg_inner(
         text: &str,
         use_tspan: bool,
     ) {
-        let line_step =
-            crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
-                style.font_size,
-            );
+        let line_step = sequence_text_overrides::sequence_text_line_step_px(style.font_size);
         let lines = wrap_svg_text_lines(text, measurer, style, max_width);
         for (i, line) in lines.into_iter().enumerate() {
             let y = y0 + (i as f64) * line_step;
@@ -1345,7 +1342,6 @@ fn render_sequence_diagram_svg_inner(
         model: &SequenceSvgModel,
         nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     ) -> Option<(f64, f64)> {
-        const SIDE_PAD: f64 = 11.0;
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         for actor_id in &model.actor_order {
@@ -1357,7 +1353,10 @@ fn render_sequence_diagram_svg_inner(
         if !min_x.is_finite() || !max_x.is_finite() {
             return None;
         }
-        Some((min_x - SIDE_PAD, max_x + SIDE_PAD))
+        Some((
+            min_x - sequence_text_overrides::sequence_frame_side_pad_px(),
+            max_x + sequence_text_overrides::sequence_frame_side_pad_px(),
+        ))
     }
 
     fn msg_line_y(
@@ -1393,8 +1392,12 @@ fn render_sequence_diagram_svg_inner(
         // Mermaid's `boundMessage(...)` self-message branch expands the inserted bounds by 60px
         // below `lineStartY` (see the `+ 30 + totalOffset` bottom coordinate, where `totalOffset`
         // already includes a `+30` bump).
-        const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
-        msg_y_range_with_self_extra(edges_by_id, msg_endpoints, msg_id, SELF_MESSAGE_EXTRA_Y)
+        msg_y_range_with_self_extra(
+            edges_by_id,
+            msg_endpoints,
+            msg_id,
+            sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
+        )
     }
 
     fn msg_y_range_for_separators(
@@ -1405,8 +1408,12 @@ fn render_sequence_diagram_svg_inner(
         // The self-message loop curve itself extends ~30px below the message line.
         // Mermaid's dashed section separators follow the curve geometry, not the full `bounds.insert(...)`
         // envelope used for frame sizing.
-        const SELF_MESSAGE_EXTRA_Y: f64 = 30.0;
-        msg_y_range_with_self_extra(edges_by_id, msg_endpoints, msg_id, SELF_MESSAGE_EXTRA_Y)
+        msg_y_range_with_self_extra(
+            edges_by_id,
+            msg_endpoints,
+            msg_id,
+            sequence_text_overrides::sequence_self_message_separator_extra_y_px(),
+        )
     }
 
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
@@ -1723,14 +1730,10 @@ fn render_sequence_diagram_svg_inner(
             edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
             nodes_by_id: &FxHashMap<&str, &LayoutNode>,
         ) -> Option<(f64, f64, f64)> {
-            const SIDE_PAD: f64 = 11.0;
-            const GEOM_PAD: f64 = 10.0;
             // For single-actor frames containing only self-messages, upstream Mermaid expands the
             // frame to cover at least the actor box width (plus a small asymmetric pad that leaves
             // room for the self-arrow loop on the right). Our deterministic layout edge points can
             // be too narrow for short self-message labels, which would over-wrap frame titles.
-            const SELF_ONLY_FRAME_MIN_PAD_LEFT: f64 = 5.0;
-            const SELF_ONLY_FRAME_MIN_PAD_RIGHT: f64 = 15.0;
             let mut min_left = f64::INFINITY;
             let mut geom_min_x = f64::INFINITY;
             let mut geom_max_x = f64::NEG_INFINITY;
@@ -1742,8 +1745,12 @@ fn render_sequence_diagram_svg_inner(
                 // Notes are nodes (not edges); include their bounding boxes in frame extents.
                 let note_node_id = format!("note-{msg_id}");
                 if let Some(n) = nodes_by_id.get(note_node_id.as_str()).copied() {
-                    geom_min_x = geom_min_x.min(n.x - n.width / 2.0 - GEOM_PAD);
-                    geom_max_x = geom_max_x.max(n.x + n.width / 2.0 + GEOM_PAD);
+                    geom_min_x = geom_min_x.min(
+                        n.x - n.width / 2.0 - sequence_text_overrides::sequence_frame_geom_pad_px(),
+                    );
+                    geom_max_x = geom_max_x.max(
+                        n.x + n.width / 2.0 + sequence_text_overrides::sequence_frame_geom_pad_px(),
+                    );
                 }
 
                 let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
@@ -1768,8 +1775,16 @@ fn render_sequence_diagram_svg_inner(
                         geom_max_x = geom_max_x.max(p.x);
                     }
                     if let Some(label) = e.label.as_ref() {
-                        geom_min_x = geom_min_x.min(label.x - (label.width / 2.0) - GEOM_PAD);
-                        geom_max_x = geom_max_x.max(label.x + (label.width / 2.0) + GEOM_PAD);
+                        geom_min_x = geom_min_x.min(
+                            label.x
+                                - (label.width / 2.0)
+                                - sequence_text_overrides::sequence_frame_geom_pad_px(),
+                        );
+                        geom_max_x = geom_max_x.max(
+                            label.x
+                                + (label.width / 2.0)
+                                + sequence_text_overrides::sequence_frame_geom_pad_px(),
+                        );
                     }
                 }
                 for actor_id in [from, to] {
@@ -1785,8 +1800,8 @@ fn render_sequence_diagram_svg_inner(
             if !min_cx.is_finite() || !max_cx.is_finite() {
                 return None;
             }
-            let mut x1 = min_cx - SIDE_PAD;
-            let mut x2 = max_cx + SIDE_PAD;
+            let mut x1 = min_cx - sequence_text_overrides::sequence_frame_side_pad_px();
+            let mut x2 = max_cx + sequence_text_overrides::sequence_frame_side_pad_px();
             if geom_min_x.is_finite() {
                 x1 = x1.min(geom_min_x);
             }
@@ -1797,8 +1812,10 @@ fn render_sequence_diagram_svg_inner(
                 if let Some(n) = actor_nodes_by_id.get(self_only_actor.unwrap()).copied() {
                     let left = n.x - n.width / 2.0;
                     let right = n.x + n.width / 2.0;
-                    let min_x1 = left - SELF_ONLY_FRAME_MIN_PAD_LEFT;
-                    let min_x2 = right + SELF_ONLY_FRAME_MIN_PAD_RIGHT;
+                    let min_x1 =
+                        left - sequence_text_overrides::sequence_self_only_frame_min_pad_left_px();
+                    let min_x2 = right
+                        + sequence_text_overrides::sequence_self_only_frame_min_pad_right_px();
                     // Only widen when the computed geometry is suspiciously narrow; avoid shifting
                     // frames that already match upstream due to message label geometry.
                     if (x2 - x1) < (min_x2 - min_x1) - 1.0 {
@@ -1844,9 +1861,7 @@ fn render_sequence_diagram_svg_inner(
                 let cx = x + (n.width / 2.0);
                 let text_y = y + 5.0;
                 let line_step =
-                    crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
-                        actor_label_font_size,
-                    );
+                    sequence_text_overrides::sequence_text_line_step_px(actor_label_font_size);
                 out.push_str(r#"<g>"#);
                 let _ = write!(
                     &mut out,
@@ -1863,8 +1878,7 @@ fn render_sequence_diagram_svg_inner(
                     // Layout already computed the note box width (`n.width`) to match Mermaid's
                     // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
                     let wrap_w = (n.width - 2.0 * wrap_padding
-                        + crate::generated::sequence_text_overrides_11_12_2::
-                            sequence_note_wrap_slack_px())
+                        + sequence_text_overrides::sequence_note_wrap_slack_px())
                     .max(1.0);
                     crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                         raw,
@@ -2895,9 +2909,7 @@ fn render_sequence_diagram_svg_inner(
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
             let line_step =
-                crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
-                    actor_label_font_size,
-                );
+                sequence_text_overrides::sequence_text_line_step_px(actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             let raw_lines: Vec<String> = if msg.wrap && !text.is_empty() {
                 // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
