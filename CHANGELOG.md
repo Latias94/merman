@@ -70,6 +70,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence/Text: move the remaining Sequence note-wrap slack / text-height / line-step constants
   into `sequence_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same
   diagram-specific text measurement numbers inline.
+- Architecture/Text: move the shared Architecture icon-text / `createText()` bbox height and
+  bottom-extension constants into `architecture_text_overrides_11_12_2`, so layout and SVG parity
+  stop duplicating the same diagram-specific text measurements inline.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

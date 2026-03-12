@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
 
@@ -1734,15 +1735,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     //
     // Model this geometry in a scale-stable way so `setupGraphViewbox(svg.getBBox() + padding)`
     // aligns in `parity-root` comparisons without browser-dependent measurement.
-    const CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM: f64 = 19.0 / 16.0;
-    const CREATE_TEXT_BBOX_LINE_DY_EM: f64 = 1.1;
     // Empirical bottom extension (beyond the icon bottom) of Mermaid `createText()` output for a
     // single-line label at 16px in Chromium, as observed in upstream Architecture baselines.
     //
     // This is notably larger than just `fontSize`, due to `createText()` using `<text y="-10.1">`
     // and wrapper attributes like `dy="1em"`; Chromium's `getBBox()` includes that geometry.
-    const CREATE_TEXT_BBOX_ROOT_LABEL_EXTRA_BOTTOM_EM: f64 = 24.1875 / 16.0;
-
     // Cytoscape compound bounds (`node.boundingBox()`) include labels but do *not* match
     // Chromium's `text.getBBox()` exactly. In upstream Mermaid Architecture, group rectangles
     // sized from Cytoscape compound bounds tend to extend below the icon by roughly
@@ -1750,7 +1747,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     //
     // If we reuse the larger root `getBBox()` extension for compounds, nested/group-heavy
     // fixtures get a systematic viewBox height inflation (~7.1875px at 16px).
-    const CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM: f64 = 17.0 / 16.0;
 
     // Mermaid singleton top-level `iconText` services render 18px lower than the nominal
     // layout origin; keep the emitted transform and root bbox estimate in sync.
@@ -1804,9 +1800,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 bbox_right_root = bbox_right_root.max(r);
             }
             let line_count_root = lines.len().max(1);
-            let label_extra_bottom_root = svg_font_size_px
-                * (CREATE_TEXT_BBOX_ROOT_LABEL_EXTRA_BOTTOM_EM
-                    + (line_count_root.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
+            let label_extra_bottom_root =
+                architecture_text_overrides::architecture_create_text_root_label_extra_bottom_px(
+                    svg_font_size_px,
+                    line_count_root,
+                );
 
             // Cytoscape compound sizing uses the Architecture `fontSize` and does not apply the
             // same `createText(...)` wrapping behavior. For group rectangles (`node.boundingBox()`),
@@ -1824,9 +1822,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 half = (half * 2.0).round() / 2.0;
                 (half, half)
             };
-            let label_extra_bottom_compound = arch_font_size_px
-                * (CREATE_TEXT_BBOX_COMPOUND_LABEL_EXTRA_BOTTOM_EM
-                    + 0.0 * CREATE_TEXT_BBOX_LINE_DY_EM);
+            let label_extra_bottom_compound = architecture_text_overrides::
+                architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
 
             // Mermaid places the service label in a `<g transform="translate(iconSize/2, iconSize)">`
             // and uses SVG text with `y="-10.1"` + tspans.
@@ -2299,9 +2296,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     bbox_w = bbox_w.max(m.width);
                 }
                 let line_count = lines.len().max(1);
-                let bbox_h = svg_font_size_px
-                    * (CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM
-                        + (line_count.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
+                let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
+                    svg_font_size_px,
+                    line_count,
+                );
 
                 // AABB for rotated labels (90°/45° variants). Mermaid rotates Architecture edge
                 // labels depending on the edge direction; mimic Chromium `getBBox()`-like bounds
@@ -2506,9 +2504,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 }
                 // Mirror Chromium `getBBox()`-like label height for parity-driven transforms.
                 let line_count = lines.len().max(1);
-                let bbox_h = text_style.font_size
-                    * (CREATE_TEXT_BBOX_FIRST_LINE_HEIGHT_EM
-                        + (line_count.saturating_sub(1) as f64) * CREATE_TEXT_BBOX_LINE_DY_EM);
+                let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
+                    text_style.font_size,
+                    line_count,
+                );
                 let half_bbox_h = bbox_h / 2.0;
 
                 let (dominant_baseline, transform) = match axis {
