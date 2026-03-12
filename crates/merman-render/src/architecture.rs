@@ -2225,5 +2225,10 @@ mod tests {
                 architecture_singleton_icon_text_service_offset_y_px(),
             18.0
         );
+        assert_eq!(
+            crate::generated::architecture_text_overrides_11_12_2::
+                architecture_create_text_default_wrap_width_px(),
+            200.0
+        );
     }
 }

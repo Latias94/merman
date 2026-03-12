@@ -125,6 +125,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kanban/Text: make section labels wrap against the configured `kanban.sectionWidth` in both
   layout and SVG render, and keep the section-label `foreignObject` height from the wrapped label
   metrics instead of a leftover fixed single-line height.
+- Architecture/Text: move the remaining `createText()` default wrap fallback width into
+  `architecture_text_overrides_11_12_2`, so architecture SVG parity no longer repeats the same
+  200px fallback inline across helper and XY edge-label paths.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.

@@ -37,3 +37,7 @@ pub fn architecture_service_label_bottom_extension_px() -> f64 {
 pub fn architecture_singleton_icon_text_service_offset_y_px() -> f64 {
     architecture_service_label_bottom_extension_px()
 }
+
+pub fn architecture_create_text_default_wrap_width_px() -> f64 {
+    200.0
+}

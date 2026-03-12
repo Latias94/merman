@@ -1250,7 +1250,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         let max_width_px = if max_width_px.is_finite() && max_width_px > 0.0 {
             max_width_px
         } else {
-            200.0
+            architecture_text_overrides::architecture_create_text_default_wrap_width_px()
         };
 
         fn line_to_string(line: &[SvgWord]) -> String {
@@ -2281,7 +2281,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
                     wrap_width
                 } else {
-                    200.0
+                    architecture_text_overrides::architecture_create_text_default_wrap_width_px()
                 };
                 let lines = wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
 
@@ -2485,7 +2485,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
                     wrap_width
                 } else {
-                    200.0
+                    architecture_text_overrides::architecture_create_text_default_wrap_width_px()
                 };
                 let lines = wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
 
