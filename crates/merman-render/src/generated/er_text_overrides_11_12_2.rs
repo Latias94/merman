@@ -179,3 +179,10 @@ pub fn lookup_calc_text_width_px(font_size: f64, text: &str) -> Option<i64> {
     }
     None
 }
+
+pub fn lookup_entity_drawrect_clamp_to_min_entity_width(label: &str) -> Option<bool> {
+    match label {
+        "DRIVER" => Some(false),
+        _ => None,
+    }
+}

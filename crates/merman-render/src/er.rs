@@ -305,17 +305,6 @@ pub(crate) fn measure_entity_box(
         entity.alias.as_str()
     }
     .to_string();
-    fn er_upstream_entity_drawrect_clamp_to_min_entity_width(label: &str) -> Option<bool> {
-        // Mermaid's `erBox.ts` `drawRect` clamping depends on `calculateTextWidth()` which is a
-        // browser-SVG `getBBox()` probe. Our headless approximation can disagree for a small
-        // number of labels near the `< minEntityWidth` threshold; treat upstream SVG baselines as
-        // the source of truth for strict DOM parity.
-        match label {
-            "DRIVER" => Some(false),
-            _ => None,
-        }
-    }
-
     let label_metrics = er_html_label_metrics(&label_text, measurer, label_style);
     let label_html_width = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
         label_style.font_size,
@@ -332,7 +321,8 @@ pub(crate) fn measure_entity_box(
         // narrower than `minEntityWidth` when `calculateTextWidth()` is larger than the HTML bbox
         // used by `drawRect`.
         let calc_w = calculate_text_width_like_mermaid_px(measurer, label_style, &label_text);
-        let clamp_to_min_w = er_upstream_entity_drawrect_clamp_to_min_entity_width(&label_text)
+        let clamp_to_min_w = crate::generated::er_text_overrides_11_12_2::
+            lookup_entity_drawrect_clamp_to_min_entity_width(&label_text)
             .unwrap_or((calc_w as f64 + label_pad_x * 2.0) < min_w);
         let width = if clamp_to_min_w {
             min_w
@@ -1069,4 +1059,21 @@ pub fn layout_er_diagram(
         edges: out_edges,
         bounds,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn er_drawrect_clamp_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::er_text_overrides_11_12_2::
+                lookup_entity_drawrect_clamp_to_min_entity_width("DRIVER"),
+            Some(false)
+        );
+        assert_eq!(
+            crate::generated::er_text_overrides_11_12_2::
+                lookup_entity_drawrect_clamp_to_min_entity_width("UNKNOWN"),
+            None
+        );
+    }
 }
