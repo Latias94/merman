@@ -2798,11 +2798,7 @@ impl VendoredFontMetricsTextMeasurer {
             f + 1.0
         } else {
             let fi = f as i64;
-            if fi % 2 == 0 {
-                f
-            } else {
-                f + 1.0
-            }
+            if fi % 2 == 0 { f } else { f + 1.0 }
         };
         i / 256.0
     }
@@ -2823,11 +2819,7 @@ impl VendoredFontMetricsTextMeasurer {
             f + 1.0
         } else {
             let fi = f as i64;
-            if fi % 2 == 0 {
-                f
-            } else {
-                f + 1.0
-            }
+            if fi % 2 == 0 { f } else { f + 1.0 }
         };
         i / 1024.0
     }

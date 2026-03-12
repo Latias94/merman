@@ -1060,11 +1060,7 @@ pub(super) fn render_requirement_diagram_svg(
                 if line.bold {
                     p.push_str("font-weight: bold; ");
                 }
-                if p.is_empty() {
-                    None
-                } else {
-                    Some(p)
-                }
+                if p.is_empty() { None } else { Some(p) }
             };
             let div_style_prefix = div_style_prefix.as_deref();
             let _ = write!(

@@ -1,11 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::Result;
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use crate::Result;
 use serde::Deserialize;
 use std::borrow::Cow;
 

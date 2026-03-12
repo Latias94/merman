@@ -1,7 +1,7 @@
 //! Per-diagram SVG compare commands.
 
-use crate::svgdom;
 use crate::XtaskError;
+use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;

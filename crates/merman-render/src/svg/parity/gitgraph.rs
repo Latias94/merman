@@ -703,11 +703,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         if !q.is_finite() {
             return q;
         }
-        if (q as f64) < v {
-            next_up_f32(q)
-        } else {
-            q
-        }
+        if (q as f64) < v { next_up_f32(q) } else { q }
     }
 
     #[allow(dead_code)]
@@ -716,11 +712,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         if !q.is_finite() {
             return q;
         }
-        if (q as f64) > v {
-            next_down_f32(q)
-        } else {
-            q
-        }
+        if (q as f64) > v { next_down_f32(q) } else { q }
     }
 
     let bbox_x = b.min_x as f32;

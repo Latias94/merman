@@ -1,8 +1,8 @@
 //! SVG compare XML helpers.
 
+use crate::XtaskError;
 use crate::svgdom;
 use crate::util::*;
-use crate::XtaskError;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
@@ -274,11 +274,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-        if x == target_x {
-            Some(lo)
-        } else {
-            None
-        }
+        if x == target_x { Some(lo) } else { None }
     }
 
     let mut diagrams: Vec<String> = Vec::new();
