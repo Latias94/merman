@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "BankAccount",
-          "x": 120.595,
+          "x": 120.586,
           "y": 96.0,
-          "width": 241.19,
+          "width": 241.172,
           "height": 192.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 241.19,
+        "max_x": 241.172,
         "max_y": 192.0
       }
     }

@@ -110,7 +110,7 @@
           "label": {
             "x": 134.064,
             "y": 171.8,
-            "width": 101.813,
+            "width": 101.828,
             "height": 21.6
           },
           "start_label_left": null,
@@ -135,7 +135,7 @@
           "title_label": {
             "x": 134.064,
             "y": 16.8,
-            "width": 31.484,
+            "width": 30.078,
             "height": 17.6
           },
           "requested_dir": null,
@@ -156,7 +156,7 @@
           "title_label": {
             "x": 134.064,
             "y": 370.4,
-            "width": 23.36,
+            "width": 23.359,
             "height": 17.6
           },
           "requested_dir": null,

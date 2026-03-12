@@ -8,7 +8,7 @@
           "x": 222.52,
           "y": 0.0,
           "width": 445.04,
-          "height": 34.4,
+          "height": 36.0,
           "is_cluster": false
         },
         {
@@ -16,7 +16,7 @@
           "x": 675.56,
           "y": 0.0,
           "width": 445.04,
-          "height": 34.4,
+          "height": 36.0,
           "is_cluster": false
         }
       ],
@@ -45,7 +45,7 @@
             "x": 449.04,
             "y": 0.0,
             "width": 149.28,
-            "height": 36.0
+            "height": 28.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -58,9 +58,9 @@
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -17.2,
+        "min_y": -18.0,
         "max_x": 898.08,
-        "max_y": 17.2
+        "max_y": 18.0
       }
     }
   }

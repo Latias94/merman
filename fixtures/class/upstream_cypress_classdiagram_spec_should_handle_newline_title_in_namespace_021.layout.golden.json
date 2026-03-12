@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "This\nTitle\nHas\nMany\nNewlines",
-          "x": 109.78,
-          "y": 205.5,
-          "width": 144.561,
+          "x": 109.766,
+          "y": 203.0,
+          "width": 144.531,
           "height": 336.0,
           "is_cluster": false
         },
         {
           "id": "testingNamespace",
-          "x": 109.78,
-          "y": 205.5,
-          "width": 219.561,
-          "height": 411.0,
+          "x": 109.766,
+          "y": 203.0,
+          "width": 219.531,
+          "height": 406.0,
           "is_cluster": true
         }
       ],
@@ -24,15 +24,15 @@
       "clusters": [
         {
           "id": "testingNamespace",
-          "x": 109.78,
-          "y": 205.5,
-          "width": 219.561,
-          "height": 411.0,
+          "x": 109.766,
+          "y": 203.0,
+          "width": 219.531,
+          "height": 406.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "testingNamespace",
           "title_label": {
-            "x": 109.78,
+            "x": 109.766,
             "y": 12.0,
             "width": 116.0,
             "height": 24.0
@@ -47,8 +47,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 219.561,
-        "max_y": 411.0
+        "max_x": 219.531,
+        "max_y": 406.0
       }
     }
   }

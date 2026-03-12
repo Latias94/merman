@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "This\nTitle\nHas\nMany\nNewlines",
-          "x": 72.28,
+          "x": 72.266,
           "y": 168.0,
-          "width": 144.561,
+          "width": 144.531,
           "height": 336.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 144.561,
+        "max_x": 144.531,
         "max_y": 336.0
       }
     }

@@ -148,13 +148,13 @@
           "y": 70.0,
           "width": 251.68,
           "height": 124.0,
-          "diff": -4.0,
+          "diff": 33.519,
           "offset_y": 48.8,
           "title": "A very long cluster title with punctuation: (a/b/c)",
           "title_label": {
             "x": 289.6,
             "y": 34.4,
-            "width": 125.76,
+            "width": 326.719,
             "height": 52.8
           },
           "requested_dir": null,

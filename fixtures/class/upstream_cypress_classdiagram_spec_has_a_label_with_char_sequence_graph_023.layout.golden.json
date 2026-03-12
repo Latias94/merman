@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Person",
-          "x": 107.625,
+          "x": 108.352,
           "y": 96.0,
-          "width": 215.25,
+          "width": 216.703,
           "height": 192.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 215.25,
+        "max_x": 216.703,
         "max_y": 192.0
       }
     }

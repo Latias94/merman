@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "Color",
-          "x": 260.0,
+          "x": 266.68,
           "y": 120.0,
-          "width": 122.08,
+          "width": 131.859,
           "height": 240.0,
           "is_cluster": false
         },
         {
           "id": "Shape",
-          "x": 74.48,
+          "x": 75.375,
           "y": 120.0,
-          "width": 148.96,
+          "width": 150.75,
           "height": 168.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 321.04,
+        "max_x": 332.609,
         "max_y": 240.0
       }
     }

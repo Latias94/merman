@@ -6,7 +6,7 @@
         {
           "id": "ida",
           "x": 38.16,
-          "y": 0.0,
+          "y": -41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -14,7 +14,7 @@
         {
           "id": "idb",
           "x": 122.48,
-          "y": 0.0,
+          "y": -41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -22,7 +22,7 @@
         {
           "id": "idc",
           "x": 206.8,
-          "y": 0.0,
+          "y": -41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "id1",
           "x": 38.16,
-          "y": 41.6,
+          "y": 0.0,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "id2",
           "x": 122.48,
-          "y": 41.6,
+          "y": 0.0,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "blockArrowId",
           "x": 206.8,
-          "y": 41.6,
+          "y": 0.0,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -54,7 +54,7 @@
         {
           "id": "blockArrowId2",
           "x": 38.16,
-          "y": 83.2,
+          "y": 41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -62,7 +62,7 @@
         {
           "id": "blockArrowId3",
           "x": 122.48,
-          "y": 83.2,
+          "y": 41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -70,7 +70,7 @@
         {
           "id": "blockArrowId4",
           "x": 206.8,
-          "y": 83.2,
+          "y": 41.6,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -78,7 +78,7 @@
         {
           "id": "blockArrowId5",
           "x": 38.16,
-          "y": 124.8,
+          "y": 83.2,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -86,7 +86,7 @@
         {
           "id": "blockArrowId6",
           "x": 122.48,
-          "y": 124.8,
+          "y": 83.2,
           "width": 76.32,
           "height": 33.6,
           "is_cluster": false
@@ -95,9 +95,9 @@
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -141.6,
+        "min_y": -100.0,
         "max_x": 244.96,
-        "max_y": 141.6
+        "max_y": 100.0
       }
     }
   }

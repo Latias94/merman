@@ -7,7 +7,7 @@
           "id": "Something",
           "x": 116.32,
           "y": 158.0,
-          "width": 136.975,
+          "width": 136.953,
           "height": 144.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "note0",
           "x": 116.32,
           "y": 18.0,
-          "width": 232.64,
+          "width": 232.641,
           "height": 36.0,
           "is_cluster": false
         }
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 232.64,
+        "max_x": 232.641,
         "max_y": 230.0
       }
     }

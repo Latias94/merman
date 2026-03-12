@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "Admin",
-          "x": 70.883,
-          "y": 79.5,
-          "width": 66.766,
+          "x": 73.195,
+          "y": 77.0,
+          "width": 71.391,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Company.Project.Module",
-          "x": 163.364,
-          "y": 79.5,
-          "width": 326.729,
-          "height": 159.0,
+          "x": 170.617,
+          "y": 77.0,
+          "width": 341.234,
+          "height": 154.0,
           "is_cluster": true
         },
         {
           "id": "User",
-          "x": 261.127,
-          "y": 79.5,
-          "width": 56.203,
+          "x": 274.852,
+          "y": 77.0,
+          "width": 57.766,
           "height": 84.0,
           "is_cluster": false
         }
@@ -37,22 +37,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 104.266,
-              "y": 79.5
+              "x": 108.891,
+              "y": 77.0
             },
             {
-              "x": 168.646,
-              "y": 79.5
+              "x": 177.43,
+              "y": 77.0
             },
             {
-              "x": 233.026,
-              "y": 79.5
+              "x": 245.969,
+              "y": 77.0
             }
           ],
           "label": {
-            "x": 168.646,
-            "y": 79.5,
-            "width": 53.76,
+            "x": 177.43,
+            "y": 77.0,
+            "width": 62.078,
             "height": 24.0
           },
           "start_label_left": null,
@@ -67,17 +67,17 @@
       "clusters": [
         {
           "id": "Company.Project.Module",
-          "x": 163.364,
-          "y": 79.5,
-          "width": 326.729,
-          "height": 159.0,
+          "x": 170.617,
+          "y": 77.0,
+          "width": 341.234,
+          "height": 154.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company.Project.Module",
           "title_label": {
-            "x": 163.364,
+            "x": 170.617,
             "y": 12.0,
-            "width": 159.84,
+            "width": 178.063,
             "height": 24.0
           },
           "requested_dir": null,
@@ -90,8 +90,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 326.729,
-        "max_y": 159.0
+        "max_x": 341.234,
+        "max_y": 154.0
       }
     }
   }

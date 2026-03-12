@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "Square",
-          "x": 167.725,
-          "y": 133.5,
-          "width": 260.451,
+          "x": 171.52,
+          "y": 131.0,
+          "width": 268.039,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "space",
-          "x": 167.725,
-          "y": 133.5,
-          "width": 335.451,
-          "height": 267.0,
+          "x": 171.52,
+          "y": 131.0,
+          "width": 343.039,
+          "height": 262.0,
           "is_cluster": true
         }
       ],
@@ -24,15 +24,15 @@
       "clusters": [
         {
           "id": "space",
-          "x": 167.725,
-          "y": 133.5,
-          "width": 335.451,
-          "height": 267.0,
+          "x": 171.52,
+          "y": 131.0,
+          "width": 343.039,
+          "height": 262.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "space",
           "title_label": {
-            "x": 167.725,
+            "x": 171.52,
             "y": 12.0,
             "width": 34.4,
             "height": 24.0
@@ -47,8 +47,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 335.451,
-        "max_y": 267.0
+        "max_x": 343.039,
+        "max_y": 262.0
       }
     }
   }

@@ -6,23 +6,23 @@
         {
           "id": "ida",
           "x": 13.12,
-          "y": -16.8,
+          "y": 0.0,
           "width": 26.24,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "idb",
-          "x": 355.52,
-          "y": -16.8,
+          "x": 150.08,
+          "y": 0.0,
           "width": 26.24,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "idc",
-          "x": 389.76,
-          "y": -16.8,
+          "x": 184.32,
+          "y": 0.0,
           "width": 26.24,
           "height": 25.6,
           "is_cluster": false
@@ -31,9 +31,9 @@
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -29.6,
-        "max_x": 402.88,
-        "max_y": 0.0
+        "min_y": -12.8,
+        "max_x": 197.44,
+        "max_y": 12.8
       }
     }
   }

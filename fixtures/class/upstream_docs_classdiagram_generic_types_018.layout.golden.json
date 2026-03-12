@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Square",
-          "x": 170.465,
+          "x": 175.16,
           "y": 144.0,
-          "width": 340.931,
+          "width": 350.32,
           "height": 288.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 340.931,
+        "max_x": 350.32,
         "max_y": 288.0
       }
     }

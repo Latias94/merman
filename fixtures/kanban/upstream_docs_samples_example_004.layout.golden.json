@@ -6,11 +6,11 @@
         "min_x": 90.0,
         "min_y": -310.0,
         "max_x": 720.0,
-        "max_y": -15.0
+        "max_y": 8.0
       },
       "section_width": 200.0,
       "padding": 10.0,
-      "max_label_height": 25.0,
+      "max_label_height": 48.0,
       "viewbox_padding": 10.0,
       "sections": [
         {
@@ -21,7 +21,7 @@
           "center_y": 0.0,
           "width": 200.0,
           "rect_y": -300.0,
-          "rect_height": 275.0,
+          "rect_height": 298.0,
           "rx": 5.0,
           "ry": 5.0,
           "label_width": 30.24
@@ -34,7 +34,7 @@
           "center_y": 0.0,
           "width": 200.0,
           "rect_y": -300.0,
-          "rect_height": 79.0,
+          "rect_height": 102.0,
           "rx": 5.0,
           "ry": 5.0,
           "label_width": 72.0
@@ -47,10 +47,10 @@
           "center_y": 0.0,
           "width": 200.0,
           "rect_y": -300.0,
-          "rect_height": 50.0,
+          "rect_height": 73.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 269.12
+          "label_width": 200.0
         }
       ],
       "items": [
@@ -59,7 +59,7 @@
           "label": "Create JISON",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -253.0,
+          "center_y": -230.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,
@@ -74,7 +74,7 @@
           "label": "Update DB function",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -204.0,
+          "center_y": -181.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,
@@ -89,7 +89,7 @@
           "label": "Create parsing tests",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -155.0,
+          "center_y": -132.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,
@@ -104,7 +104,7 @@
           "label": "define getData",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -106.0,
+          "center_y": -83.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,
@@ -119,7 +119,7 @@
           "label": "Create renderer",
           "parent_id": "id1",
           "center_x": 200.0,
-          "center_y": -57.0,
+          "center_y": -34.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,
@@ -134,7 +134,7 @@
           "label": "Design grammar",
           "parent_id": "id7",
           "center_x": 405.0,
-          "center_y": -253.0,
+          "center_y": -230.0,
           "width": 185.0,
           "height": 44.0,
           "rx": 5.0,

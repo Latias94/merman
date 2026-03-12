@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "BaseShapes",
-          "x": 107.2,
-          "y": 176.5,
-          "width": 214.399,
-          "height": 353.0,
+          "x": 107.191,
+          "y": 174.0,
+          "width": 214.383,
+          "height": 348.0,
           "is_cluster": true
         },
         {
           "id": "Rectangle",
-          "x": 107.2,
-          "y": 109.5,
-          "width": 139.399,
+          "x": 107.191,
+          "y": 107.0,
+          "width": 139.383,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Triangle",
-          "x": 107.2,
-          "y": 273.5,
-          "width": 79.578,
+          "x": 107.191,
+          "y": 271.0,
+          "width": 79.563,
           "height": 84.0,
           "is_cluster": false
         }
@@ -32,15 +32,15 @@
       "clusters": [
         {
           "id": "BaseShapes",
-          "x": 107.2,
-          "y": 176.5,
-          "width": 214.399,
-          "height": 353.0,
+          "x": 107.191,
+          "y": 174.0,
+          "width": 214.383,
+          "height": 348.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "BaseShapes",
           "title_label": {
-            "x": 107.2,
+            "x": 107.191,
             "y": 12.0,
             "width": 74.24,
             "height": 24.0
@@ -55,8 +55,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 214.399,
-        "max_y": 353.0
+        "max_x": 214.383,
+        "max_y": 348.0
       }
     }
   }

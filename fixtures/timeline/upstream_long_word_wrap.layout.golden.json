@@ -3,15 +3,15 @@
   "layout": {
     "TimelineDiagram": {
       "bounds": {
-        "min_x": 32.36,
+        "min_x": 9.68,
         "min_y": 0.0,
-        "max_x": 925.28,
+        "max_x": 970.641,
         "max_y": 533.4
       },
       "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
-      "pre_title_box_width": 425.28,
+      "pre_title_box_width": 470.641,
       "sections": [
         {
           "node": {
@@ -77,11 +77,11 @@
         "kind": "activity",
         "x1": 150.0,
         "y1": 285.6,
-        "x2": 875.28,
+        "x2": 920.641,
         "y2": 285.6
       },
       "title": null,
-      "title_x": 62.64,
+      "title_x": 85.32,
       "title_y": 20.0
     }
   }

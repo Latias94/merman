@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "Company.Project.Module",
-          "x": 139.533,
-          "y": 112.5,
-          "width": 279.067,
-          "height": 225.0,
+          "x": 146.332,
+          "y": 110.0,
+          "width": 292.664,
+          "height": 220.0,
           "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 139.533,
-          "y": 112.5,
-          "width": 204.067,
+          "x": 146.332,
+          "y": 110.0,
+          "width": 217.664,
           "height": 150.0,
           "is_cluster": false
         }
@@ -24,17 +24,17 @@
       "clusters": [
         {
           "id": "Company.Project.Module",
-          "x": 139.533,
-          "y": 112.5,
-          "width": 279.067,
-          "height": 225.0,
+          "x": 146.332,
+          "y": 110.0,
+          "width": 292.664,
+          "height": 220.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company.Project.Module",
           "title_label": {
-            "x": 139.533,
+            "x": 146.332,
             "y": 12.0,
-            "width": 159.84,
+            "width": 178.063,
             "height": 24.0
           },
           "requested_dir": null,
@@ -47,8 +47,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 279.067,
-        "max_y": 225.0
+        "max_x": 292.664,
+        "max_y": 220.0
       }
     }
   }

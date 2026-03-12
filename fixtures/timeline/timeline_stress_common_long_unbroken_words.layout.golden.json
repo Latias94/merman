@@ -3,15 +3,15 @@
   "layout": {
     "TimelineDiagram": {
       "bounds": {
-        "min_x": 32.36,
+        "min_x": 9.68,
         "min_y": -61.0,
-        "max_x": 1414.56,
+        "max_x": 1437.24,
         "max_y": 533.4
       },
       "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
-      "pre_title_box_width": 914.56,
+      "pre_title_box_width": 937.24,
       "sections": [
         {
           "node": {
@@ -157,11 +157,11 @@
         "kind": "activity",
         "x1": 150.0,
         "y1": 285.6,
-        "x2": 1364.56,
+        "x2": 1387.24,
         "y2": 285.6
       },
       "title": "Long unbroken words (wrap / measure stress)",
-      "title_x": 307.28,
+      "title_x": 318.62,
       "title_y": 20.0
     }
   }
