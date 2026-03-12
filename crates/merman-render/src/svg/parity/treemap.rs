@@ -763,6 +763,10 @@ pub(super) fn render_treemap_diagram_svg(
         let available_w = w - 2.0 * padding;
         let available_h = h - 2.0 * padding;
 
+        // Chromium text metrics used by upstream Mermaid are slightly less conservative than our
+        // headless measurer for some short treemap labels. Allow a small fit tolerance so labels
+        // keep the upstream size instead of shrinking by 1px.
+        let fit_tolerance_px = 1.0;
         let mut label_font_size = 38.0;
         let min_label_font_size = 8.0;
         let original_value_rel_font_size = 28.0;
@@ -780,7 +784,7 @@ pub(super) fn render_treemap_diagram_svg(
                 font_weight: None,
             };
 
-            while measurer.measure(&leaf.name, &style).width > available_w
+            while measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
                 && label_font_size > min_label_font_size
             {
                 label_font_size -= 1.0;
@@ -806,7 +810,7 @@ pub(super) fn render_treemap_diagram_svg(
             }
 
             style.font_size = label_font_size;
-            if measurer.measure(&leaf.name, &style).width > available_w
+            if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
                 || label_font_size < min_label_font_size
                 || available_h < label_font_size
             {
@@ -880,7 +884,7 @@ pub(super) fn render_treemap_diagram_svg(
                     font_weight: None,
                 };
                 let value_w_px = measurer.measure(&value_text, &style).width;
-                if value_w_px <= available_w_for_value
+                if value_w_px <= available_w_for_value + fit_tolerance_px
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
                 {

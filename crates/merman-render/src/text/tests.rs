@@ -444,7 +444,7 @@ fn generated_timeline_svg_override_paths_cover_long_word_bbox() {
                 16.0,
                 "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
             ),
-        Some((235.3203125, 235.84375))
+        Some((235.3203125, 235.3203125))
     );
     assert_eq!(
         crate::generated::timeline_text_overrides_11_12_2::
@@ -453,7 +453,7 @@ fn generated_timeline_svg_override_paths_cover_long_word_bbox() {
                 16.0,
                 "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
             ),
-        Some((235.3203125, 235.84375))
+        Some((235.3203125, 235.3203125))
     );
     assert_eq!(
         crate::generated::timeline_text_overrides_11_12_2::

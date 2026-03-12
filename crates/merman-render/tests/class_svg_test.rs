@@ -149,7 +149,7 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
     .expect("svg render ok");
 
     assert!(
-        svg.contains(r#"<g class="root" transform="translate(-8,0)"><g class="clusters">"#),
+        svg.contains(r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#),
         "expected nested namespace wrapper to keep Mermaid's -8px root translation"
     );
     assert!(
@@ -195,7 +195,7 @@ fn class_svg_multiple_namespace_subgraphs_keep_local_root_offsets() {
     .expect("svg render ok");
 
     assert!(
-        svg.contains(r#"<g class="root" transform="translate(-8,0)"><g class="clusters">"#),
+        svg.contains(r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#),
         "expected first namespace root to keep Mermaid's left margin wrapper"
     );
     assert!(

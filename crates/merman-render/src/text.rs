@@ -890,10 +890,10 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut word_ty = MermaidMarkdownWordType::Normal;
     let mut in_code_span = false;
 
-    let mut flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
-                          line_idx: &mut usize,
-                          word: &mut String,
-                          word_ty: MermaidMarkdownWordType| {
+    let flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+                      line_idx: &mut usize,
+                      word: &mut String,
+                      word_ty: MermaidMarkdownWordType| {
         if word.is_empty() {
             return;
         }

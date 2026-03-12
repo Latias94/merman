@@ -1628,19 +1628,20 @@ fn layout_architecture_diagram_model(
             });
             let mut deduped: Vec<GroupRel<'_>> = Vec::with_capacity(rels.len());
             for r in rels.drain(..) {
-                if let Some(last) = deduped.last_mut()
-                    && rel_kind(last) == rel_kind(&r)
-                    && rel_a(last) == rel_a(&r)
-                    && rel_b(last) == rel_b(&r)
-                {
-                    match (last, r) {
-                        (GroupRel::LeftOf { gap, .. }, GroupRel::LeftOf { gap: g, .. })
-                        | (GroupRel::Above { gap, .. }, GroupRel::Above { gap: g, .. }) => {
-                            *gap = gap.max(g);
+                if let Some(last) = deduped.last_mut() {
+                    if rel_kind(last) == rel_kind(&r)
+                        && rel_a(last) == rel_a(&r)
+                        && rel_b(last) == rel_b(&r)
+                    {
+                        match (last, r) {
+                            (GroupRel::LeftOf { gap, .. }, GroupRel::LeftOf { gap: g, .. })
+                            | (GroupRel::Above { gap, .. }, GroupRel::Above { gap: g, .. }) => {
+                                *gap = gap.max(g);
+                            }
+                            _ => {}
                         }
-                        _ => {}
+                        continue;
                     }
-                    continue;
                 }
                 deduped.push(r);
             }

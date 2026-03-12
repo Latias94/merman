@@ -41,7 +41,7 @@ pub fn lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
         (
             DEFAULT_FONT_KEY,
             "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
-        ) => Some((235.3203125, 235.84375)),
+        ) => Some((235.3203125, 235.3203125)),
         _ => None,
     }
 }

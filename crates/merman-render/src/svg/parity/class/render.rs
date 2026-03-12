@@ -1670,7 +1670,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     } else {
                         active_namespace_root_offset = Some((0.0, 0.0));
                         out.push_str(
-                            r#"<g class="root" transform="translate(-8,0)"><g class="clusters">"#,
+                            r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#,
                         );
                     }
 

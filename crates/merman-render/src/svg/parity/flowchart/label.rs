@@ -326,7 +326,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         tokens.push("<p>".to_string());
 
         let mut text_buf = String::new();
-        let mut flush_text = |tokens: &mut Vec<String>, text_buf: &mut String| {
+        let flush_text = |tokens: &mut Vec<String>, text_buf: &mut String| {
             if !text_buf.is_empty() {
                 tokens.push(std::mem::take(text_buf));
             }

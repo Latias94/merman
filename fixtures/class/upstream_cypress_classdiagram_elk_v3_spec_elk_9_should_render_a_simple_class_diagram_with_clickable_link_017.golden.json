@@ -8,9 +8,9 @@
     "classes": {
       "Class01": {
         "id": "Class01",
-        "type": "",
+        "type": "T",
         "label": "Class01",
-        "text": "Class01",
+        "text": "Class01&lt;T&gt;",
         "cssClasses": "default clickable",
         "methods": [
           {
@@ -78,9 +78,9 @@
       },
       "Class03": {
         "id": "Class03",
-        "type": "",
+        "type": "T",
         "label": "Class03",
-        "text": "Class03",
+        "text": "Class03&lt;T&gt;",
         "cssClasses": "default",
         "methods": [],
         "members": [],
@@ -97,9 +97,9 @@
       },
       "Class04": {
         "id": "Class04",
-        "type": "",
+        "type": "T",
         "label": "Class04",
-        "text": "Class04",
+        "text": "Class04&lt;T&gt;",
         "cssClasses": "default",
         "methods": [],
         "members": [],
