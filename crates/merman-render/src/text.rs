@@ -146,33 +146,12 @@ const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64,
     14.740_234_375_f64,
 )];
 const DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX: &[(&str, f64)] = &[
-    ("ABlock", 47.796875),
-    ("A wide one in the middle", 179.0625),
-    ("B;", 14.9375),
-    ("BBlock", 47.40625),
-    ("Block 1", 51.5625),
-    ("Block 2", 51.5625),
-    ("Block 3", 51.5625),
-    ("Compound block", 118.375),
-    ("Memcache", 75.078125),
-    ("One Slot", 60.421875),
-    ("Two slots", 65.0),
-    ("__proto__", 72.21875),
-    ("constructor", 82.109375),
-    ("A;", 15.3125),
     (",.?!+-*ز", 51.46875),
-    ("Circle shape", 87.8125),
-    ("Circle shape Начало", 145.609375),
-    ("Link text", 63.734375),
     ("- e1 - e2", 60.453125),
     ("- l1 - l2", 52.4375),
     ("`**bold*`", 65.546875),
     ("`This is **bold**", 112.78125),
-    ("Round Rect", 80.125),
     ("Rounded", 61.296875),
-    ("Rounded square shape", 159.6875),
-    ("Square Rect", 85.1875),
-    ("Square shape", 94.796875),
     ("Line 2", 43.34375),
     ("Line 3", 43.34375),
     ("(1 / period_duration)", 153.0),
@@ -213,6 +192,9 @@ fn lookup_extra_html_override_em(font_key: &str, line: &str) -> Option<f64> {
     if font_key != FLOWCHART_DEFAULT_FONT_KEY {
         return None;
     }
+    // Keep this table limited to the leftovers that are not already covered by generated
+    // flowchart/block/ER/mindmap lookup tables. That prevents unrelated diagrams from sharing
+    // fixture-specific literals through the generic HTML fallback path.
     DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX
         .iter()
         .find(|(candidate, _)| *candidate == line)

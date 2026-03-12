@@ -448,6 +448,30 @@ fn extra_html_override_table_is_default_font_only() {
         lookup_extra_html_override_em("courier", "special characters"),
         None
     );
+    assert_eq!(
+        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "Block 1"),
+        None
+    );
+    assert_eq!(
+        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "Circle shape"),
+        None
+    );
+}
+
+#[test]
+fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let block = measurer.measure_wrapped("Block 1", &style, None, WrapMode::HtmlLike);
+    assert_eq!(block.width, 51.5625);
+
+    let flowchart = measurer.measure_wrapped("Circle shape", &style, None, WrapMode::HtmlLike);
+    assert_eq!(flowchart.width, 87.8125);
 }
 
 #[test]
