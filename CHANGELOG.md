@@ -54,6 +54,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Requirement/Text: move the requirement HTML label width and `calculateTextWidth(...)+50` repeat-offender tables into
   `requirement_text_overrides_11_12_2`, so requirement layout/render parity no longer keeps those upstream literal maps
   inside `requirement.rs`.
+- GitGraph/Text: move the commit-label bbox correction tables into `gitgraph_text_overrides_11_12_2`, so rotated label
+  parity no longer keeps those fixture-derived literal maps inline in `svg/parity/gitgraph.rs`.
 - Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
   `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
   branch entirely.
