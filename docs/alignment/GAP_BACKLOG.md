@@ -32,18 +32,18 @@ spot checks:
 - Generate a report: `cargo run -p xtask -- audit-gaps --out target/audit/gaps.md`
 - Output is intentionally written under `target/` (do not commit it); only summarize conclusions here.
 
-As of `2026-02-28` (see the generated report for details):
+As of `2026-03-12` (see the generated report for details):
 
-- Parser-only fixtures: `10` (not included in SVG DOM parity gates)
-- Deferred fixtures (`fixtures/_deferred`): `44` parse OK, `86` parse ERR
+- Parser-only fixtures: `6` (not included in SVG DOM parity gates)
+- Deferred fixtures (`fixtures/_deferred`): `44` parse OK, `91` parse ERR
 - Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
   parser correctness issues.
 
 Notes:
 
 - `xtask audit-gaps --check-upstream-render` highlights “actionable gaps”: parser-only fixtures that upstream Mermaid
-  CLI can render successfully. Currently, the actionable set is dominated by Flowchart HTML demo fixtures containing
-  `$$...$$` math labels (KaTeX in upstream).
+  CLI can render successfully. After promoting the Flowchart KaTeX HTML-demo fixtures, the remaining parser-only set is
+  down to 6 files (Flowchart ellipse vertex + Sankey/Treemap/XYChart gaps) and is no longer dominated by Flowchart math labels.
 - `xtask audit-gaps --check-upstream-render-deferred-ok` checks which deferred-but-parseable fixtures upstream CLI can
   render, and lists “promotable candidates” (in-scope + upstream renders OK) to guide incremental fixture promotion.
 
@@ -98,8 +98,8 @@ Legend:
    - Risk: L (documentation + fixture policy).
 
 6. **Reduce “parser-only” fixtures by implementing missing semantics**
-   - Candidates (from `xtask audit-gaps --check-upstream-render`): Flowchart `$$...$$` math labels (KaTeX) via a
-     pluggable math backend (`merman_render::math::MathRenderer`).
+   - Remaining candidates (from `xtask audit-gaps --check-upstream-render`) should now be re-audited after the
+     Flowchart KaTeX promotion; the previous Flowchart `$$...$$` math-label backlog item is no longer parser-only.
    - Risk: M (can touch parsing + rendering + DOM parity).
 
 ### P2: Beyond core parity (optional expansions)

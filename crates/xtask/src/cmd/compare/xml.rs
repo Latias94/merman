@@ -1,11 +1,12 @@
 //! SVG compare XML helpers.
 
-use crate::XtaskError;
 use crate::svgdom;
 use crate::util::*;
+use crate::XtaskError;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check: bool = false;
@@ -73,15 +74,26 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let dom_decimals = dom_decimals.unwrap_or(3);
     let mode = svgdom::DomMode::parse(&dom_mode);
 
-    let measurer: std::sync::Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
+    let measurer: Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
         match text_measurer.as_deref().unwrap_or("vendored") {
-            "deterministic" => {
-                std::sync::Arc::new(merman_render::text::DeterministicTextMeasurer::default())
-            }
-            _ => {
-                std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default())
-            }
+            "deterministic" => Arc::new(merman_render::text::DeterministicTextMeasurer::default()),
+            _ => Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default()),
         };
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
+        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
+            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
+                node_cwd,
+            )))
+        } else {
+            None
+        }
+    };
 
     // Mermaid gitGraph auto-generates commit ids using `Math.random()`. Upstream gitGraph SVGs in
     // this repo are generated with a seeded upstream renderer, so keep the local side seeded too
@@ -90,13 +102,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         serde_json::json!({ "handDrawnSeed": 1, "gitGraph": { "seed": 1 } }),
     ));
     let layout_opts = merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::clone(&measurer),
+        text_measurer: Arc::clone(&measurer),
         ..Default::default()
     };
-
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
 
     fn resolve_root(workspace_root: &PathBuf, raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
         let Some(raw) = raw else {
@@ -137,6 +145,24 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         out
+    }
+
+    fn flowchart_fixture_diagram_id(stem: &str, upstream_svg: &str) -> String {
+        let fallback = sanitize_svg_id(stem);
+        if !stem.ends_with("_katex") {
+            return fallback;
+        }
+        let Ok(doc) = roxmltree::Document::parse(upstream_svg) else {
+            return fallback;
+        };
+        let Some(id) = doc.root_element().attribute("id") else {
+            return fallback;
+        };
+        if id.trim().is_empty() {
+            fallback
+        } else {
+            id.to_string()
+        }
     }
 
     fn gantt_upstream_today_x1(svg: &str) -> Option<f64> {
@@ -248,7 +274,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-        if x == target_x { Some(lo) } else { None }
+        if x == target_x {
+            Some(lo)
+        } else {
+            None
+        }
     }
 
     let mut diagrams: Vec<String> = Vec::new();
@@ -364,6 +394,11 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
+            let mut layout_opts = layout_opts.clone();
+            if diagram == "flowchart" {
+                layout_opts.math_renderer = flowchart_math_renderer.clone();
+            }
+
             let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
                 Ok(v) => v,
                 Err(err) => {
@@ -381,11 +416,19 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 })
                 .unwrap_or(false);
 
+            let diagram_id = if diagram == "flowchart" {
+                flowchart_fixture_diagram_id(stem, &upstream_svg)
+            } else {
+                sanitize_svg_id(stem)
+            };
             let mut svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(sanitize_svg_id(stem)),
+                diagram_id: Some(diagram_id),
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
+            if diagram == "flowchart" {
+                svg_opts.math_renderer = flowchart_math_renderer.clone();
+            }
             if diagram == "gantt" {
                 if let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
                 {

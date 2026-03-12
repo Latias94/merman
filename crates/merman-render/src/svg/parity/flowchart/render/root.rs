@@ -170,6 +170,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
+        fn edge_label_is_empty(
+            ctx: &FlowchartRenderCtx<'_>,
+            edge: &crate::flowchart::FlowEdge,
+        ) -> bool {
+            let label_text = edge.label.as_deref().unwrap_or_default();
+            let label_type = edge.label_type.as_deref().unwrap_or("text");
+            let label_plain =
+                flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
+            label_plain.trim().is_empty() && label_text.trim().is_empty()
+        }
+
         out.push_str(r#"<g class="edgeLabels">"#);
         if !ctx.edge_html_labels {
             // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
@@ -177,16 +188,40 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             // The unused wrapper `<g>` (with the `background` rect) remains as a direct child
             // under `.edgeLabels`. Mirror this by emitting one rect-group per empty label.
             for e in &edges {
-                let label_text = e.label.as_deref().unwrap_or_default();
-                let label_type = e.label_type.as_deref().unwrap_or("text");
-                let label_plain = flowchart_label_plain_text(label_text, label_type, false);
-                if label_plain.trim().is_empty() && label_text.trim().is_empty() {
+                if edge_label_is_empty(ctx, e) {
                     out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
                 }
             }
-        }
-        for e in &edges {
-            render_flowchart_edge_label(out, ctx, e, origin_x, content_origin_y);
+            for e in &edges {
+                render_flowchart_edge_label(out, ctx, e, origin_x, content_origin_y, edge_cache);
+            }
+        } else {
+            // Upstream Mermaid inserts empty HTML edge-label wrappers before positioned labels while
+            // preserving edge order within each partition.
+            for e in &edges {
+                if edge_label_is_empty(ctx, e) {
+                    render_flowchart_edge_label(
+                        out,
+                        ctx,
+                        e,
+                        origin_x,
+                        content_origin_y,
+                        edge_cache,
+                    );
+                }
+            }
+            for e in &edges {
+                if !edge_label_is_empty(ctx, e) {
+                    render_flowchart_edge_label(
+                        out,
+                        ctx,
+                        e,
+                        origin_x,
+                        content_origin_y,
+                        edge_cache,
+                    );
+                }
+            }
         }
         out.push_str("</g>");
     }

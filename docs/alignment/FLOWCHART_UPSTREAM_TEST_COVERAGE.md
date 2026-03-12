@@ -261,14 +261,24 @@ baselines:
 - `fixtures/flowchart/upstream_html_demos_flowchart_graph_013.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_graph_035.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_graph_037.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_graph_039_katex.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_002.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_010.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_036.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_038.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_040_katex.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_042_katex.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_044_katex.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_045.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_049.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_051.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_062.mmd`
+
+Notes:
+
+- The four `*_katex` Flowchart HTML-demo fixtures are no longer parser-only. They now run through the opt-in
+  Node/Puppeteer KaTeX backend and are strict-green under
+  `target/debug/xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3 --filter katex --check`.
 
 Source: `repo-ref/mermaid/demos/dataflowchart.html` (via `<pre class="mermaid">` blocks).
 

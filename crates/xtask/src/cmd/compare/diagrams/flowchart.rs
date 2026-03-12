@@ -1,10 +1,11 @@
 //! Per-diagram SVG compare commands.
 
-use crate::XtaskError;
 use crate::svgdom;
+use crate::XtaskError;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -132,11 +133,31 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         layout_opts.text_measurer =
             std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     }
+    let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
+        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
+            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
+                node_cwd,
+            )))
+        } else {
+            None
+        }
+    };
+    if let Some(renderer) = flowchart_math_renderer.clone() {
+        layout_opts.math_renderer = Some(renderer);
+    }
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n",
-        dom_mode, dom_decimals, text_measurer
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n",
+        dom_mode,
+        dom_decimals,
+        text_measurer,
+        if flowchart_math_renderer.is_some() {
+            "node-katex"
+        } else {
+            "none"
+        }
     );
 
     #[derive(Debug, Clone)]
@@ -209,16 +230,6 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             continue;
         };
 
-        let diagram_id: String = stem
-            .chars()
-            .map(|ch| {
-                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
-                    ch
-                } else {
-                    '_'
-                }
-            })
-            .collect();
         let upstream_path = upstream_dir.join(format!("{stem}.svg"));
         let upstream_svg = match fs::read_to_string(&upstream_path) {
             Ok(v) => v,
@@ -230,6 +241,33 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 continue;
             }
         };
+        let diagram_id: String = if stem.ends_with("_katex") {
+            roxmltree::Document::parse(&upstream_svg)
+                .ok()
+                .and_then(|doc| doc.root_element().attribute("id").map(str::to_string))
+                .filter(|id| !id.trim().is_empty())
+                .unwrap_or_else(|| {
+                    stem.chars()
+                        .map(|ch| {
+                            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                                ch
+                            } else {
+                                '_'
+                            }
+                        })
+                        .collect()
+                })
+        } else {
+            stem.chars()
+                .map(|ch| {
+                    if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                        ch
+                    } else {
+                        '_'
+                    }
+                })
+                .collect()
+        };
 
         let text = match fs::read_to_string(&mmd_path) {
             Ok(v) => v,
@@ -240,9 +278,10 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         };
 
         // Upstream Mermaid renders `$$...$$` fragments via KaTeX (JS) and measures the resulting
-        // HTML via DOM. merman is pure-Rust by default, so DOM parity is not expected for these
-        // fixtures until we have a real math backend.
-        let skip_dom_compare_for_math = check_dom && text.contains("$$");
+        // HTML via DOM. When the local Node/Puppeteer-backed math backend is unavailable, keep
+        // these fixtures renderable but skip strict DOM assertions.
+        let skip_dom_compare_for_math =
+            check_dom && text.contains("$$") && flowchart_math_renderer.is_none();
 
         let parsed = match futures::executor::block_on(
             engine.parse_diagram(&text, merman::ParseOptions::default()),
@@ -290,6 +329,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
 
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
+            math_renderer: flowchart_math_renderer.clone(),
             ..Default::default()
         };
 
@@ -361,7 +401,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             }
         } else if check_dom && skip_dom_compare_for_math {
             skipped.push(format!(
-                "skipped {stem}: contains `$$...$$` (KaTeX DOM parity not implemented)"
+                "skipped {stem}: contains `$$...$$` but no local Node/Puppeteer KaTeX backend was available"
             ));
         }
     }

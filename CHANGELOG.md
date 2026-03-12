@@ -32,6 +32,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Flowchart/KaTeX: add an opt-in Node/Puppeteer-backed `NodeKatexMathRenderer`, wire both
+  `xtask compare-flowchart-svgs` and `xtask compare-svg-xml --diagram flowchart` to use it automatically when
+  `tools/mermaid-cli` is present, switch the KaTeX probe onto the same `mermaid-cli` browser-shell environment used for
+  upstream SVG generation, preserve Mermaid's empty-edge-label DOM ordering for HTML labels, and promote the four
+  Flowchart HTML-demo math fixtures from `*_parser_only_katex` into full strict SVG DOM parity coverage (the KaTeX
+  filter is now strict-green).
 - Flowchart/Text: finish the remaining strict `html_labels` repeat offenders by pinning Mermaid-matching HTML/SVG width overrides for `Subgraph Title`, `Edge Label`, `Node Label`, `Node Label B`, `custom`, and escaped `b`, while also preventing explicit wrapped flowchart HTML measurements from accidentally reusing other diagrams' unwrapped DOM-width tables (which had been inflating `plain` inside image-label fixtures to mindmap-sized widths).
 - Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set1 strict-XML bucket by porting Mermaid's shape-specific label placement for `triangle` / `flipped-triangle` / `sloped-rectangle`, tightening `horizontal-cylinder` layout-vs-render width semantics (including Chromium-style bbox shrink), mirroring Mermaid's buggy `hourglass/collate` edge intersection semantics, and recomputing flowchart edge bbox/viewBox bounds from the final emitted `d` string. This drops `upstream_cypress_newshapes_spec_*` strict mismatches from `81` to `65`, and the set1 bucket from `16` to `0`.
 - Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set2 strict-XML bucket by porting render-side edge intersections for `tagged-rectangle` / `documents` / `lightning-bolt` / `window-pane` / `filled-circle`, restoring Mermaid-style label-metric-driven render geometry for `tagged-rectangle` and `documents`, matching `documents`' asymmetric root bbox/viewBox semantics, and pinning the last SVG/HTML text repeat offenders for `styles` / `classDef` / `md_html_false`. This drops the set2 bucket from `11` mismatches to `0`.
@@ -178,8 +184,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture: geometry-level parity (placements, viewport, and routing coordinates) is still being aligned to upstream
   Cytoscape/FCoSE. SVG DOM parity is compared in `dom-mode parity`, so expect occasional layout snapshot churn while we
   tighten numeric fidelity.
-- Flowchart/Sequence: `$$...$$` (KaTeX) label DOM parity remains deferred; compare tooling skips these fixtures when
-  `--check-dom` is enabled until a real `MathRenderer` backend exists.
+- Flowchart: HTML-label `$$...$$` (KaTeX) fixtures now participate in strict DOM parity via the opt-in
+  `NodeKatexMathRenderer`; only environments without the local `tools/mermaid-cli` toolchain still fall back to
+  non-math comparisons.
 - Flowchart: `flowchart-elk` layout is not implemented yet; compare tooling skips those fixtures (still kept in the
   corpus for parser coverage).
 - `merman-core`: dropped support for legacy Architecture edge shorthand (e.g. `a L--R b`, `a (L--R) b`) to align with
@@ -224,7 +231,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - CI: run `parity-root` SVG DOM comparisons as a non-blocking check on Ubuntu (keeps `parity` as the gate).
 - Documented that the root viewport override baselines track Mermaid 11.12.3 (override module filenames still use the historical `*_11_12_2.rs` suffix).
 - Updated upstream Mermaid baselines to 11.12.3 and refreshed `fixtures/upstream-svgs/**`.
-- `import-upstream-html`: flowchart fixtures containing `$$...$$` math labels are imported as `*_parser_only_katex` (kept for parser/layout coverage, excluded from SVG DOM parity gates until KaTeX HTML label parity is implemented).
+- `import-upstream-html`: flowchart fixtures containing `$$...$$` math labels now use the stable `*_katex` suffix and
+  participate in full SVG DOM parity when the local KaTeX backend is available.
 - Deferred upstream HTML treemap demos that render as upstream error output under `fixtures/_deferred/` (avoid permanently failing parity gates).
 
 ### Removed
