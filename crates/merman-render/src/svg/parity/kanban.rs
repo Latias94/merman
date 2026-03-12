@@ -75,13 +75,15 @@ pub(super) fn render_kanban_diagram_svg(
     out.push_str(r#"<g/>"#);
 
     out.push_str(r#"<g class="sections">"#);
+    let single_line_fo_h =
+        crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px();
     for s in &layout.sections {
         let left = s.center_x - s.width / 2.0;
         let label_x = left + (s.width - s.label_width.max(0.0)) / 2.0;
 
         let _ = write!(
             &mut out,
-            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="classic"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
+            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="classic"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
             idx = s.index,
             id = escape_attr(&s.id),
             rx = fmt(s.rx),
@@ -93,6 +95,7 @@ pub(super) fn render_kanban_diagram_svg(
             lx = fmt(label_x),
             ly = fmt(s.rect_y),
             lw = fmt(s.label_width.max(0.0)),
+            fo_h = fmt(single_line_fo_h),
             label = escape_xml(&s.label),
         );
     }
@@ -218,7 +221,7 @@ pub(super) fn render_kanban_diagram_svg(
                         } else {
                             (
                                 raw.width,
-                                24.0,
+                                crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px(),
                                 Some(format!(
                                     "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                     mw = fmt(max_w),
@@ -229,7 +232,7 @@ pub(super) fn render_kanban_diagram_svg(
                         let raw = measure_text_metrics_html(t, None);
                         (
                             raw.width,
-                            24.0,
+                            crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px(),
                             Some(format!(
                                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                 mw = fmt(max_w),
