@@ -61,6 +61,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - ER/Text: move the remaining `drawRect` min-width clamp repeat offender (`DRIVER`) into
   `er_text_overrides_11_12_2`, so ER layout parity no longer keeps that fixture-derived clamp
   literal inline in `er.rs`.
+- C4/Text: move the C4 SVG bbox per-line height constants (`12→14`, `14→16`, `16→17`) into
+  `c4_text_overrides_11_12_2`, so C4 layout parity no longer keeps that diagram-specific line-height
+  table inline in `c4.rs`.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

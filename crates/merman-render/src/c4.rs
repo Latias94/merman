@@ -280,16 +280,9 @@ fn measure_c4_text(
         //
         // These do not match our generic deterministic SVG line-height approximation (`1.1em`),
         // so we treat them as C4-specific constants to keep layout bounds and root viewBox parity.
-        let fs = js_round_pos(style.font_size.max(1.0));
-        if (fs - 12.0).abs() < 0.01 {
-            14.0
-        } else if (fs - 14.0).abs() < 0.01 {
-            16.0
-        } else if (fs - 16.0).abs() < 0.01 {
-            17.0
-        } else {
-            js_round_pos(style.font_size.max(1.0) * 1.1)
-        }
+        let fs = js_round_pos(style.font_size.max(1.0)) as i64;
+        crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(fs)
+            .unwrap_or_else(|| js_round_pos(style.font_size.max(1.0) * 1.1))
     }
 
     if wrap {
@@ -1151,4 +1144,27 @@ pub(crate) fn layout_c4_diagram(
         shapes: shapes_out,
         rels: rels_out,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn c4_svg_bbox_line_height_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(12),
+            Some(14.0)
+        );
+        assert_eq!(
+            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(14),
+            Some(16.0)
+        );
+        assert_eq!(
+            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(16),
+            Some(17.0)
+        );
+        assert_eq!(
+            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(15),
+            None
+        );
+    }
 }
