@@ -505,7 +505,12 @@ fn entity_box_dimensions(
     (m.width, m.height)
 }
 
-fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> (f64, f64) {
+fn edge_label_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    html_labels: bool,
+) -> (f64, f64) {
     let text = text.trim();
     if text.is_empty() {
         return (0.0, 0.0);
@@ -515,26 +520,30 @@ fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle
     let has_inline_html =
         lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
     let has_markdown = text.contains('*') || text.contains('_');
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
 
-    // Mermaid ER relationship labels go through the shared HTML edge-label pipeline when
-    // `htmlLabels=true`, so Markdown emphasis affects both the emitted `<foreignObject>` DOM and
-    // the measured bbox used by dagre spacing.
+    // Mermaid ER relationship labels follow the root `htmlLabels` switch:
+    // - HTML mode uses the generic HTML edge-label path (`foreignObject`, line-height 1.5)
+    // - SVG mode uses `createFormattedText(...)` (`<text>/<tspan>`, line-height 1.1)
+    // Markdown emphasis is tokenized in both branches before the final DOM shape is emitted.
     if has_markdown || has_inline_html {
         let m = crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer,
-            text,
-            style,
-            None,
-            WrapMode::HtmlLike,
+            measurer, text, style, None, wrap_mode,
         );
         return (m.width.max(0.0), m.height.max(0.0));
     }
 
-    // Mermaid ER uses HTML labels by default (foreignObject) and uses line-height: 1.5.
-    let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    let w =
+    let m = measurer.measure_wrapped(text, style, None, wrap_mode);
+    let w = if html_labels {
         crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
-            .unwrap_or(m.width);
+            .unwrap_or(m.width)
+    } else {
+        m.width
+    };
     (w.max(0.0), m.height.max(0.0))
 }
 
@@ -564,6 +573,14 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
         cur = cur.get(*key)?;
     }
     cur.as_bool()
+}
+
+pub(crate) fn er_relationship_html_labels(effective_config: &Value) -> bool {
+    // Mermaid ER relationship labels call `createText(..., { useHtmlLabels: config.htmlLabels })`.
+    // In `createText.ts`, `useHtmlLabels` defaults to `true`, so an unset root `htmlLabels`
+    // still produces HTML `<foreignObject>` labels. This intentionally differs from the entity
+    // padding quirk, which keys off raw `!config.htmlLabels`.
+    config_bool(effective_config, &["htmlLabels"]).unwrap_or(true)
 }
 
 #[derive(Debug, Clone)]
@@ -717,6 +734,7 @@ pub fn layout_er_diagram(
         font_size: 14.0,
         font_weight: None,
     };
+    let rel_html_labels = er_relationship_html_labels(effective_config);
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -806,7 +824,7 @@ pub fn layout_er_diagram(
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
                 (0.0, 0.0)
             } else {
-                edge_label_metrics(&r.role_a, measurer, &rel_label_style)
+                edge_label_metrics(&r.role_a, measurer, &rel_label_style, rel_html_labels)
             };
 
             // First segment: keep start marker, no label.
@@ -864,7 +882,7 @@ pub fn layout_er_diagram(
         let (label_w, label_h) = if r.role_a.trim().is_empty() {
             (0.0, 0.0)
         } else {
-            edge_label_metrics(&r.role_a, measurer, &rel_label_style)
+            edge_label_metrics(&r.role_a, measurer, &rel_label_style, rel_html_labels)
         };
         g.set_edge_named(
             r.entity_a.clone(),
@@ -984,7 +1002,7 @@ pub fn layout_er_diagram(
             if role.trim().is_empty() || id.ends_with("-cyclic-0") || id.ends_with("-cyclic-2") {
                 None
             } else {
-                let (w, h) = edge_label_metrics(&role, measurer, &rel_label_style);
+                let (w, h) = edge_label_metrics(&role, measurer, &rel_label_style, rel_html_labels);
                 // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
                 // polyline midpoint. Prefer those coordinates when present.
                 let (x, y) =
@@ -1063,6 +1081,8 @@ pub fn layout_er_diagram(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     #[test]
     fn er_drawrect_clamp_overrides_are_generated() {
         assert_eq!(
@@ -1075,5 +1095,17 @@ mod tests {
                 lookup_entity_drawrect_clamp_to_min_entity_width("UNKNOWN"),
             None
         );
+    }
+
+    #[test]
+    fn er_relationship_htmllabels_follow_root_config_only() {
+        assert!(super::er_relationship_html_labels(&json!({})));
+        assert!(super::er_relationship_html_labels(&json!({
+            "flowchart": { "htmlLabels": false }
+        })));
+        assert!(!super::er_relationship_html_labels(&json!({
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": true }
+        })));
     }
 }

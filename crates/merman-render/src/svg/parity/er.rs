@@ -837,11 +837,10 @@ pub(super) fn render_er_diagram_svg(
             }
 
             if has_label_text && w > 0.0 && h > 0.0 {
-                // Mermaid's ER edge label rendering follows the `htmlLabels` switch (sourced from
-                // `flowchart.htmlLabels` in config). When disabled, Mermaid falls back to SVG
-                // `<text>/<tspan>` output; otherwise it uses HTML `<foreignObject>` labels.
-                let edge_html_labels =
-                    config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
+                // Mermaid ER relationship labels follow the root `htmlLabels` switch from
+                // `erBox.ts`, not `flowchart.htmlLabels`. When the root option is unset, upstream
+                // still defaults to HTML `<foreignObject>` labels through `createText(...)`.
+                let edge_html_labels = crate::er::er_relationship_html_labels(effective_config);
 
                 let _ = write!(
                     &mut out,
@@ -885,8 +884,7 @@ pub(super) fn render_er_diagram_svg(
                     out.push_str("</g></g></g>");
                 }
             } else {
-                let edge_html_labels =
-                    config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
+                let edge_html_labels = crate::er::er_relationship_html_labels(effective_config);
                 if edge_html_labels {
                     // Mermaid emits a `translate(undefined,NaN)` transform for relationship labels
                     // that are whitespace-only (but not for fully empty strings). Preserve that

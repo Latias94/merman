@@ -6,247 +6,45 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-12
+
 ### Added
 
-- `xtask`: extended `gen-upstream-svgs` and `compare-svg-xml` to support generating/comparing SVG baselines from custom
-  fixture roots (useful for strict XML diffs when iterating on layout parity).
-- `xtask measure-text`: added `--markdown` to measure Mermaid Markdown label metrics (same tokenizer/delta model as rendering).
-- Docs: expanded `docs/workstreams/*` guidance for text-measurement parity work (including `parity-root` root viewport checks).
-- Flowchart: added the upstream Cypress fixture `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` (trail spaces + edge/link), including upstream SVG baselines.
-- Flowchart: added a stress fixture for HTML label wrapping with a URL-heavy token under `wrappingWidth=200`.
-- Flowchart: added a stress fixture for HTML label whitespace handling (`&nbsp;`, multiple spaces, trailing spaces).
-- Flowchart: added a stress fixture for `htmlLabels: true` default-class/default-node styling semantics (`classDef default` + `style default`).
-- Flowchart: added a stress fixture for `htmlLabels: true` Markdown labels that mix paragraphs with raw/list-style lines.
-- State/Requirement: added stress fixtures for HTML-label Markdown that keeps `<br/>- ...` list-like continuations inside the same paragraph.
-- Class: added a stress fixture for HTML-label edge Markdown that keeps `<br/>- ...` list-like continuations inside the same paragraph.
-- Class/Mindmap: added stress fixtures for HTML-label font-size inheritance quirks (Mermaid CLI / Puppeteer), including upstream SVG baselines.
-- Class: added a stress fixture for SVG-label wrapping when `fontSize` differs from `themeVariables.fontSize` (including upstream SVG baseline).
-- State/Sequence/Gantt/Journey/ER/Requirement/Block/Radar/Kanban/GitGraph/Treemap: added stress fixtures for font-size precedence (`themeVariables.fontSize: "NNpx"` vs `fontSize: N`),
-  including upstream SVG baselines + local layout goldens.
-- Timeline: added a stress fixture for unknown XML entity escaping (including upstream SVG baseline).
-- Timeline: added a stress fixture for `themeVariables.fontSize` precedence over top-level `fontSize` (including upstream SVG baseline + local layout goldens).
-- Flowchart/State: added stress fixtures for `classDef`/`style` text overrides (font-family/font-size/opacity),
-  including upstream SVG baselines.
-- Architecture: added a stress fixture for `iconText` HTML that wraps inline code in a root-level anchor inside `foreignObject`,
-  including upstream SVG baseline + local model/layout goldens.
+- `xtask`: support custom fixture roots in SVG baseline generation/comparison, add Markdown-aware text measurement, and
+  integrate an opt-in Node/Puppeteer KaTeX path when `tools/mermaid-cli` is available.
+- Docs: add and expand `docs/workstreams/*` parity planning material, including root viewport (`parity-root`) checks and
+  text-measurement alignment notes.
+- Tests/Fixtures: add a broad parity corpus covering font-size precedence, HTML label wrapping, Markdown `<br/>`
+  continuations, unknown XML entities, KaTeX flowcharts, text-style overrides, and root viewport probes across multiple
+  diagram types.
+
+### Changed
+
+- Text parity work now consolidates large amounts of fixture-derived width/height/padding data into generated
+  `*_text_overrides_11_12_2` tables instead of leaving diagram-specific literal branches inline across layout/render code.
+- SVG/style precedence now follows Mermaid more consistently: `themeVariables.fontSize` and `themeVariables.fontFamily`
+  win where upstream uses them, and parity tooling captures more text-style drift during SVG comparison.
 
 ### Fixed
 
-- Text/SVG: unify Courier-like font detection (`courier`, `"Courier New", courier, monospace`, and generic monospace stacks)
-  across wrapped SVG first-line bbox height, edge-label background offset, flowchart title viewport bbox, state title bbox,
-  and vendored flowchart font-table aliasing so the same stack no longer follows conflicting text-metric branches.
-- Text/SVG: collapse the remaining default-font fixture SVG bbox literals (`Item A1`, `Supercalifragilistic…`, and related
-  flowchart repeat offenders) into shared override tables so treemap/timeline/flowchart fallback paths stop duplicating the
-  same string-specific branches.
-- Text/HTML: move the remaining default-font fixture HTML width literals into a shared lookup table (`special characters`,
-  block labels, markdown raw-block probes, etc.) so wrapped/unwrapped HTML measurement paths stop duplicating the same
-  fallback strings.
-- Text/HTML: trim the shared fallback table back to true leftovers only, letting generated block/flowchart lookup tables
-  serve `Block 1`, `Circle shape`, and similar literals directly instead of re-declaring them in the generic path.
-- Text/SVG: trim the shared default-font SVG bbox fallback table back to the treemap-specific leftover (`Item A1`) and move
-  the flowchart literals (`End`, `Start`, `edge label`, `1o`, `Line 2`, etc.) into `flowchart_text_overrides_11_12_2`.
-- Text/SVG: move the remaining timeline single-run long-word bbox literal into
-  `timeline_text_overrides_11_12_2` and remove the last shared default-font SVG bbox fallback table entirely, so
-  timeline/treemap strict parity no longer depends on generic string-specific SVG hacks.
-- Text/Markdown: move the remaining flowchart markdown token delta repeat offenders (`Two`, `Markdown`, `Child`, `edge`,
-  `label`, `dog`, `ipa`, `a`) into `flowchart_text_overrides_11_12_2`, so the shared markdown measurer no longer
-  carries flowchart-only literal branches.
-- Requirement/Text: move the requirement HTML label width and `calculateTextWidth(...)+50` repeat-offender tables into
-  `requirement_text_overrides_11_12_2`, so requirement layout/render parity no longer keeps those upstream literal maps
-  inside `requirement.rs`.
-- GitGraph/Text: move the commit-label bbox correction tables into `gitgraph_text_overrides_11_12_2`, so rotated label
-  parity no longer keeps those fixture-derived literal maps inline in `svg/parity/gitgraph.rs`.
-- GitGraph/Text: move the branch-label bbox correction table into `gitgraph_text_overrides_11_12_2`, so gitGraph layout
-  parity no longer keeps those fixture-derived branch-name literals inline in `gitgraph.rs`.
-- ER/Text: move the remaining `drawRect` min-width clamp repeat offender (`DRIVER`) into
-  `er_text_overrides_11_12_2`, so ER layout parity no longer keeps that fixture-derived clamp
-  literal inline in `er.rs`.
-- C4/Text: move the C4 SVG bbox per-line height constants (`12→14`, `14→16`, `16→17`) into
-  `c4_text_overrides_11_12_2`, so C4 layout parity no longer keeps that diagram-specific line-height
-  table inline in `c4.rs`.
-- Kanban/Text: move the shared Kanban HTML-label height constants (section label baseline/FO height
-  plus item row/label heights) into `kanban_text_overrides_11_12_2`, so layout and SVG parity stop
-  duplicating the same diagram-specific text box numbers inline.
-- Sequence/Text: move the remaining Sequence note-wrap slack / text-height / line-step constants
-  into `sequence_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same
-  diagram-specific text measurement numbers inline.
-- Architecture/Text: move the shared Architecture icon-text / `createText()` bbox height and
-  bottom-extension constants into `architecture_text_overrides_11_12_2`, so layout and SVG parity
-  stop duplicating the same diagram-specific text measurements inline.
-- State/Text: move the `rectWithTitle` HTML-span effective width/height fallback rules into
-  `state_text_overrides_11_12_2`, so layout and SVG parity share the same Mermaid-specific span
-  sizing behavior instead of duplicating it inline.
-- Treemap/Text: move the Treemap section-header text/layout constants into
-  `treemap_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
-  header geometry literals inline.
-- Gantt/Text: move the default task-label font-family gate for bbox width overrides into
-  `gantt_text_overrides_11_12_2`, so Gantt layout no longer keeps diagram-specific font-key
-  normalization and override applicability inline.
-- Journey/Text: move Journey legend/title/face geometry constants into
-  `journey_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
-  fixed-position text/face literals inline.
-- Pie/Text: move Pie fixed legend/title geometry constants into
-  `pie_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
-  center/radius/legend text literals inline.
-- Radar/Text: move Radar legend line-step / box / label geometry constants into
-  `radar_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
-  legend-position literals inline.
-- XYChart/Text: move XYChart bar data-label width/inset/font heuristics into
-  `xychart_text_overrides_11_12_2`, so SVG parity no longer keeps those Mermaid-specific bar-label
-  literals inline.
-- Kanban/Text: move Kanban section/item padding and item label x-inset constants into
-  `kanban_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
-  Mermaid `padding = 10` / label inset literals inline.
-- Sankey/Text: move Sankey node width/padding and label font/gap constants into
-  `sankey_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
-  Mermaid node/label geometry literals inline.
-- Architecture/Text: move the remaining Cytoscape label width-scale and 18px service-label
-  extension constants into `architecture_text_overrides_11_12_2`, so layout and SVG parity no
-  longer duplicate those Architecture-specific text geometry calibrations inline.
-- Sequence/Text: move the remaining self-message/frame pad constants into
-  `sequence_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
-  Mermaid self-loop/frame geometry literals inline.
-- State/Text: move the remaining `rectWithTitle` padding/gap and edge-label max-width constants
-  into `state_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
-  Mermaid HTML span / edge-label geometry literals inline.
-- State/Text: thread `flowchart.wrappingWidth` through state HTML note/node label render paths,
-  so SVG `foreignObject` `max-width` now matches the layout pass instead of staying hard-coded at
-  `200px`.
-- Class/Text: move the remaining class HTML edge/namespace/interface label `200px` max-width and
-  `padding-right: 1px` constants into `class_text_overrides_11_12_2`, so SVG parity no longer
-  duplicates those Mermaid HTML label literals inline.
-- State/Text: finish threading shared HTML span padding and `flowchart.wrappingWidth` through the
-  remaining state cluster/note/generic-node render paths, so SVG measurement and emitted
-  `foreignObject` styling stay aligned with layout instead of keeping leftover `1px` / `200px`
-  literals inline.
-- Mindmap/Text: share `mindmap.maxNodeWidth` parsing between layout and SVG render, including
-  numeric strings and `px` strings, so mindmap HTML wrapping no longer diverges between the two
-  passes on non-numeric config forms.
-- Kanban/Text: make section labels wrap against the configured `kanban.sectionWidth` in both
-  layout and SVG render, and keep the section-label `foreignObject` height from the wrapped label
-  metrics instead of a leftover fixed single-line height.
-- Architecture/Text: move the remaining `createText()` default wrap fallback width into
-  `architecture_text_overrides_11_12_2`, so architecture SVG parity no longer repeats the same
-  200px fallback inline across helper and XY edge-label paths.
-- GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
-  `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
-  logic inline around the generated correction table.
-- Class/Text: move the namespace title and note HTML-width repeat-offender tables into
-  `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
-  inline in `class.rs`.
-- Class/Text: move the class HTML `calculateTextWidth(...)+50` repeat-offender table into
-  `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps that large fixture-derived literal map
-  inline in `class.rs`.
-- Class/Text: move the class HTML rendered-width repeat-offender table into `class_text_overrides_11_12_2`, so class
-  layout/render parity no longer keeps the remaining bold/non-bold HTML width literals inline in `class.rs`.
-- Class/Text+SVG: move the last class-specific single-line SVG plain-label width override (`uses`) into
-  `class_text_overrides_11_12_2`, so `class.rs` no longer keeps any string-specific width literals inline.
-- Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
-  `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
-  branch entirely.
-- Flowchart/KaTeX: add an opt-in Node/Puppeteer-backed `NodeKatexMathRenderer`, wire both
-  `xtask compare-flowchart-svgs` and `xtask compare-svg-xml --diagram flowchart` to use it automatically when
-  `tools/mermaid-cli` is present, switch the KaTeX probe onto the same `mermaid-cli` browser-shell environment used for
-  upstream SVG generation, preserve Mermaid's empty-edge-label DOM ordering for HTML labels, and promote the four
-  Flowchart HTML-demo math fixtures from `*_parser_only_katex` into full strict SVG DOM parity coverage (the KaTeX
-  filter is now strict-green).
-- Flowchart/Text: finish the remaining strict `html_labels` repeat offenders by pinning Mermaid-matching HTML/SVG width overrides for `Subgraph Title`, `Edge Label`, `Node Label`, `Node Label B`, `custom`, and escaped `b`, while also preventing explicit wrapped flowchart HTML measurements from accidentally reusing other diagrams' unwrapped DOM-width tables (which had been inflating `plain` inside image-label fixtures to mindmap-sized widths).
-- Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set1 strict-XML bucket by porting Mermaid's shape-specific label placement for `triangle` / `flipped-triangle` / `sloped-rectangle`, tightening `horizontal-cylinder` layout-vs-render width semantics (including Chromium-style bbox shrink), mirroring Mermaid's buggy `hourglass/collate` edge intersection semantics, and recomputing flowchart edge bbox/viewBox bounds from the final emitted `d` string. This drops `upstream_cypress_newshapes_spec_*` strict mismatches from `81` to `65`, and the set1 bucket from `16` to `0`.
-- Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set2 strict-XML bucket by porting render-side edge intersections for `tagged-rectangle` / `documents` / `lightning-bolt` / `window-pane` / `filled-circle`, restoring Mermaid-style label-metric-driven render geometry for `tagged-rectangle` and `documents`, matching `documents`' asymmetric root bbox/viewBox semantics, and pinning the last SVG/HTML text repeat offenders for `styles` / `classDef` / `md_html_false`. This drops the set2 bucket from `11` mismatches to `0`.
-- Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set3 strict-XML bucket by extending root-bbox/viewBox parity to rendered `curved-trapezoid` aliases (`display` / `curv-trap`) and mirroring Mermaid's asymmetric `tagged-document` wave geometry during root viewport estimation. This drops the set3 bucket from `1` mismatch to `0`.
-- Flowchart/New-shapes parity: finish the upstream Cypress new-shapes set4 strict-XML bucket by restoring Mermaid's `lined-cylinder` render/layout f32 lattice, pinning the remaining SVG markdown bbox/label-offset repeat offenders (`document`, `lined-cylinder`, `stacked-document`, `half-rounded-rectangle`), and matching Mermaid's hidden y-lattice on shallow 3-point LR `basis` edges before marker shortening. This drops the set4 bucket from `1` mismatch to `0`.
-- Dugong/Class: stabilize Dagre ordering tie-breakers by sorting sweep “movable” nodes by the current `order` attribute (rather than layer-graph insertion order), fixing same-rank note vs namespace-facade swaps; also pin the remaining HTML rendered-width override for `Core.Alpha` so the class unicode strict-XML bucket (`--filter unicode`) is now green (notably `stress_class_unicode_and_entities_012` and `stress_class_unicode_namespace_mix_017`).
-- Class/Text+SVG: align SVG-label class title widths under `font-weight: bolder` by using a font-size-dependent delta scale (interpolating between the observed 16px and 24px baselines), and pin the remaining 1/64px Markdown styling drift for `+attribute *italic*`. This restores strict-XML parity for `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_witho_050` while keeping the SVG font-size precedence probes (`stress_class_svg_font_size_precedence_025`, `stress_class_svg_font_size_px_string_precedence_026`) strict-green.
-- Class/HTML+ELK: pin the remaining calc/rendered-width overrides for short HTML labels (for example `Class01`, `C3`, `equals()`, `-int privateChimp`, `Object[] elementData`) to restore strict-XML parity for `upstream_cypress_classdiagram_elk_v3_spec_elk_1_1_should_render_a_simple_class_diagram_without_htmllabels_003`.
-- Class/Layout+Render: make class HTML-label measurement propagate known rendered-width overrides back into layout metrics instead of only using them for line-height collapse decisions, then pin the remaining enum/interface mix caps for `Status`, `UNKNOWN`, and `+run() : Status`. This re-syncs annotation-driven node bounds with the HTML `foreignObject` widths already emitted at render time, turns `upstream_annotations_in_brackets_spec`, `stress_class_interfaces_and_abstracts_007`, `stress_class_member_separators_and_annotations_009`, and `stress_class_enums_and_interfaces_mix_023`, `stress_class_styles_classdef_and_inline_010`, and `stress_class_styles_multiple_classdef_016` strict-green, adds regression coverage for annotation-driven node geometry / HTML caps, and lowers full `class` strict mismatches from `136` to `128`.
-- Class/xtask: align the remaining strict XML `htmlLabels=false` class probes by sizing single-line plain SVG note/relation labels from Mermaid-like computed text length (with 1/64px upward quantization), applying the Mermaid `createText()` note `bbox.y` offset in SVG mode, and passing `aria-roledescription="classDiagram"` for `classDiagram-v2` fixtures during `compare-svg-xml` comparisons.
-- Class/Text+Render: tighten class HTML-label `max-width` parity for Mermaid `calculateTextWidth(...)+50` repeat offenders by using browser-like hybrid width probes (Arial + configured family), preserving single-character title fallback widths, and keeping short member/method rows on the legacy width-based cap where that matches upstream. This restores strict-XML equality for `probe_class_direction_lr_991`, `probe_class_flowchart_htmllabels_false_982`, and `probe_class_direction_lr_members_994` without changing the overall class strict mismatch set.
-- Class/Render: propagate Mermaid `classNode.styles.join(';')` styling onto class box paths, divider groups/paths, and HTML `span.nodeLabel` content. This restores strict-XML parity for `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_style_definition_witho_045` and lowers the class strict mismatch count from `232` to `231` without adding new regressions.
-- Class/Text+Render: add targeted HTML-label calc/rendered width overrides for recurring Mermaid class repeat offenders (titles like `Duck` / `Fish` / `Zebra` / `C1`, plus member/method rows such as `+String beakColor`, `+String gender`, malformed Markdown/classifier rows like `+inline: **bold*`, `+attribute *italic*`, `_italicmethod_()`, `__boldmethod__()`, `_+_swim_() : a_`, and `__+quack() : test__`). Class HTML member/method rows now also honor Mermaid classifier-derived inline styles (for example `font-style:italic;`) during HTML rendering/measurement. This makes `class/basic`, `upstream_examples_class_basic_class_inheritance_001`, `stress_class_markdown_inline_code_022`, `stress_class_markdown_member_strong_023`, both Markdown styling Cypress fixtures, and a wider classDef/style/no-members cluster strict-green, reducing full class strict mismatches from `232` to `200` with no added regressions.
-- Class/Text+Render: route class HTML note labels through the same sanitized XHTML fragment used for `foreignObject` output, reuse layout-captured note label metrics during SVG emission, mirror Mermaid note `<div>` style ordering, and add a few extra class/title width overrides (`Foo1`, `int id`, `size()`). This makes the four upstream simple-note fixtures plus `upstream_separators_labels_notes` strict-green, reduces note-filter mismatches from `7` to `2`, and lowers full class strict mismatches from `200` to `196` without regressions.
-- Class/Layout+Render: canonicalize Mermaid's note-heavy TB class layout orientation by mirroring the narrow note-heavy/right-leaning Dagre tie case, render note edges before relation edges like upstream, and add the remaining note/relation width overrides (`This note mentions: class and namespace.`, `Multiline note<br/>with unicode αβγ.`, `Multiline note<br/>line 2<br/>line 3`, `uses`). This turns the `notes_` strict XML filter fully green and lowers full class strict mismatches from `196` to `194`.
-- Class/Core+Render: preserve generic type params when class nodes are introduced via relations or namespace membership, and add the remaining Mermaid-matching HTML rendered-width overrides for recurring generic repeat offenders (`AveryLongClass`, `Cool`, `Static ($) and abstract (*) markers should render.`). This restores strict-XML parity for `upstream_cypress_classdiagram_v3_spec_7_should_render_a_simple_class_diagram_with_generic_class_014`, `upstream_cypress_classdiagram_v3_spec_8_should_render_a_simple_class_diagram_with_generic_class_and_re_016`, `upstream_cypress_classdiagram_v3_spec_12_should_render_a_simple_class_diagram_with_generic_types_021`, and `stress_class_nested_generics_static_013`, lowering the remaining `class` strict mismatches from `194` to `171` and the `generic` strict filter to `5` mismatches.
-- Class/Core+Render: align the last strict generic/namespace repeat offenders by keeping namespace clusters in declaration order, collapsing spurious HTML-label row wraps when Mermaid keeps them single-line, and pinning the remaining dense-namespace/relation-label width overrides (`manages`, `may-fail`, `builds`, `parses`, `returns`, `wraps`, plus `CoreResult<T>` / `CoreError` / `ApiClient` / `ApiRequest` / `ApiResponse` and their recurring member/method rows). This turns `upstream_namespaces_and_generics`, `stress_class_interfaces_generics_dependencies_018`, and `stress_class_dense_namespaces_generics_001` strict-green, lowers full `class` strict mismatches from `171` to `163`, and clears the `generic` strict filter to `0` mismatches.
-- Class/Layout+Render: mirror Mermaid's recursive namespace-cluster sizing more faithfully by injecting extracted cluster roots back into child Dagre layouts before measuring placeholder bounds, localizing multi-namespace subgraph wrappers the way Mermaid nests `<g class="root">` groups, and pinning the remaining HTML-label width overrides for `Root.A` and `+String id`. This turns `stress_class_nested_namespaces_many_levels_021` and `stress_class_comments_inside_namespaces_024` strict-green, adds multi-root namespace wrapper regression coverage, and lowers full `class` strict mismatches from `163` to `151`.
-- Class/Layout+Render: align the next relation/cardinality parity bucket by decoding class relation titles exactly once during SVG emission, sizing terminal `foreignObject`s from Mermaid's `value.length * 9` rule (so labels like `many` no longer collapse to `9px`), matching Mermaid's effective 10px terminal marker gap even on plain association ends, and emitting `edgeLabels` children in the same `edgeLabel*`-then-`edgeTerminals*` order as upstream. This adds regression coverage for cardinality terminal sizing/entity decoding/DOM ordering, materially shrinks the remaining relation/cardinality XML deltas, and keeps the full `class` strict mismatch count at `151` while the remaining offenders are mostly sub-pixel measurement drift.
-- Class/Layout+Render: continue the relation/cardinality cleanup by pinning Mermaid-matching HTML width overrides for remaining class title/member/relation-label repeat offenders (`Class02..24`, `Order`, `Payment`, `Person`, `references`, `reads`, `feedback`, etc.) and by moving class edge-label placement onto Mermaid's `positionEdgeLabel(updatedPath ? calcLabelPosition(path) : edge.x/y)` behavior whenever the rendered `curveBasis` path no longer passes through the raw midpoint. This lowers full `class` strict mismatches from `151` to `142`; the surviving relation/cardinality offenders are now compressed to 0.001-level path / rough-box drift in `stress_class_parallel_edges_and_cardinality_004`, `upstream_relation_types_and_cardinalities_spec`, `stress_class_association_aggregation_composition_019`, `stress_class_many_relations_labels_020`, and `upstream_cross_namespace_relations_spec`.
-- Class/Layout+Render: finish the remaining relation/cardinality repeat offenders by upgrading the last HTML rendered-width overrides to raw-SVG precision (`Order`, `Payment`, `Driver`, `Wheel`, `owns`, `references`, `emits`, `feedback`, `+bar : int`, `+foo : bool`), restoring Mermaid's mixed-cardinality terminal DOM order when end-only labels race ahead of two-sided edges, and letting known single-character title overrides cap HTML `max-width` (`E`) before the generic bold fallback expands them. This turns `stress_class_parallel_edges_and_cardinality_004`, `stress_class_association_aggregation_composition_019`, `stress_class_many_relations_labels_020`, `upstream_cross_namespace_relations_spec`, and `upstream_relation_types_and_cardinalities_spec` strict-green, adds regression coverage for mixed terminal order / single-character title caps, and lowers full `class` strict mismatches from `142` to `136`.
-- Block: complete strict XML parity for the Mermaid block corpus (`cargo run -p xtask -- compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` now reports `0` mismatches).
-- Block/Text+SVG: align the remaining strict block gaps around marker-aware edge terminal insets, `space:N` width handling, upstream HTML-label width/height overrides, direct and nested `style` / `class` application, malformed style passthrough, plain-space vs `&nbsp;` block-arrow labels, and font-size precedence probes.
-
-- Flowchart: decode Mermaid entity placeholders in subgraph titles (contributed by @aydiler in PR #1:
-  https://github.com/Latias94/merman/pull/1).
-- Render: decode Mermaid `encodeEntities(...)` placeholders in SVG label text across diagrams (prevents raw `ﬂ°…¶ß`
-  sequences from leaking into output).
-- Flowchart: treat `@{...}` node declarations as subgraph members even when the subgraph contains no internal edges
-  (restores upstream-style cluster membership / SVG DOM structure).
-- Mindmap: decode Mermaid entity placeholders after Markdown sanitization while preserving valid XML entities (prevents malformed `&...;` sequences in SVG output).
-- Sequence: prefer the global `fontSize` over `sequence.messageFontSize` when emitting SVG text styles (aligns with Mermaid CLI baselines).
-- Treemap: align the leaf label font sizing for `Item A1` with upstream Mermaid CLI baselines (prevents a 1px shrink
-  due to text measurement differences).
-- Class/Mindmap: match Mermaid CLI baselines by measuring HTML `<foreignObject>` labels at the browser default (16px)
-  instead of relying on SVG-root `font-size` inheritance when `themeVariables.fontSize` is overridden.
-- Class: match upstream Mermaid SVG-label wrapping when `fontSize` (used by `calculateTextWidth`) differs from the root
-  `font-size` inherited by `<text>` (often from `themeVariables.fontSize`).
-- Text: treat backtick-delimited spans as literal during Mermaid Markdown tokenization so emphasis/strong delimiters
-  inside them are not interpreted (aligns with upstream Mermaid CLI baselines for inline-code-like labels).
-- `xtask` SVG DOM compares: include inline `style` `font-size` for `<text>/<tspan>` nodes in `dom-mode parity` (catch
-  text sizing drift without comparing full style strings).
-- Flowchart: honor implicit `classDef default` styling for unlabeled/default-class nodes under `htmlLabels: true`, while still layering node-id `style default ...` overrides for a node literally named `default`.
-- Flowchart/Text: keep Mermaid HTML-label Markdown block semantics when a label mixes a normal paragraph with raw/list-style lines (emit `<p>...</p>` plus collapsed literal block text instead of turning everything into `<br/>`-separated paragraphs).
-- Flowchart/Core+Render: keep bare-backtick pipe edge labels literal instead of upgrading them to Markdown, and mirror Mermaid SVG-label behavior where backtick-wrapped `text` edge labels collapse to the empty placeholder while HTML-label mode still preserves the literal backticks/raw tags.
-- Flowchart/Text: align strict-XML metrics for literal-backtick pipe edge probes across both `htmlLabels` paths, including the common SVG `Start`/`End` bbox lattice used by those fixtures.
-- Flowchart/Text+Render: align quoted Markdown edge labels that mix closing `</br>` and raw inline HTML (`<strong>...</strong>`) with Mermaid across both `htmlLabels` paths: HTML-label mode now measures/renderers the generated XHTML fragment like browser DOM, while SVG-label mode keeps raw tags literal but wraps them onto Mermaid-matching `<tspan>` lines.
-- Flowchart/Text+SVG: tighten strict-XML parity for quoted Markdown edge probes by matching Mermaid's HTML-label width lattice and SVG edge-label root bbox inclusion.
-- State/Requirement/Text: preserve Mermaid HTML-label paragraph semantics for `<br/>- ...` continuation lines, and measure requirement multiline field rows with the same height/max-width behavior as upstream.
-- Class/Text: route class HTML-label Markdown rendering through the shared XHTML helper so inline `<br/>` continuations render as Mermaid paragraphs instead of escaped literal tags.
-- Text/Class: reinterpret malformed partial `**...*` HTML-label star runs the same way Mermaid/CommonMark does, so class members like `+inline: **bold**` (after classifier stripping) emit literal `*` + `<em>bold</em>` instead of fully literal text.
-- Class/Text: size single-glyph SVG class titles from Mermaid-style bold computed text length (instead of the generic SVG bbox path), removing the remaining `htmlLabels=false` simple-node/root-viewport drift on `probe_class_htmllabels_false_981`.
-- ER/Text: route ER relationship HTML labels through Mermaid-style Markdown rendering and markdown-aware measurement, so edge labels honor emphasis (`**...**`, `_..._`) and existing `<br/>` line-break fixtures keep upstream spacing.
-- ER/Text: preserve inline-code backticks in ER HTML labels so entity/attribute labels keep literal `` `**...**` `` text instead of emitting synthetic `<code>` / `<strong>` DOM.
-- Mindmap/Text: route complex markdown HTML labels through Mermaid-style XHTML fragments for DOM output and measurement, so mixed paragraph + list/raw-block labels collapse like upstream instead of emitting synthetic `<ul><li>...` DOM.
-- Architecture/Text: normalize `iconText` HTML fragments with Mermaid/Chromium's SVG-namespace `foreignObject` parsing semantics, so root-level `<a>` wrappers no longer retain inline HTML descendants that upstream breaks into sibling nodes.
-- Architecture: align singleton top-level `iconText` service Y offset and root `viewBox` with Mermaid, removing the remaining strict-XML drift on anchor/html probe fixtures.
-- Flowchart: align HTML label wrapping and Markdown handling with upstream Mermaid:
-  - node HTML label `max-width` respects `flowchart.wrappingWidth` (edge labels remain capped at 200px),
-  - blank-line (`\\n\\n`) breaks are emitted as paragraph splits (`</p><p>`) instead of `<br /><br />`,
-  - underscore-heavy identifiers (e.g. `a__node`) no longer get misparsed as emphasis.
-- Flowchart: align SVG edge label background rectangle offset (`y=-1`) with upstream Mermaid.
-- Flowchart: match Mermaid's flowchart font sizing rules by reading `themeVariables.fontSize` only (top-level `fontSize`
-  no longer affects flowchart layout/label measurement).
-- State: align state label font sizing by preferring `themeVariables.fontSize` (including `"NNpx"` strings) over the
-  legacy top-level `fontSize` when computing text layout/measurement.
-- ER: align entity/root font sizing with `themeVariables.fontSize` (including `"NNpx"` strings) while keeping
-  relationship-label measurement at Mermaid's fixed 14px.
-- Kanban: align card/section layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
-  and pin the new smoke fixture's `parity-root` viewport to upstream.
-- GitGraph: align branch-label layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
-  and pin the new smoke fixture's `parity-root` viewport to upstream.
-- Block: align block node/edge layout font sizing with `themeVariables.fontSize` (including `"NNpx"` strings)
-  and pin the new smoke fixture's `parity-root` viewport to upstream.
-- Block: carry measured label-helper dimensions into node `foreignObject` output and restore Mermaid
-  marker/style attrs, and make empty-title composites emit Mermaid-matching `0x0` label placeholders;
-  `compare-svg-xml --diagram block` also now normalizes block's randomized auto-generated ids in strict mode so the report focuses on semantic/geometry deltas, reducing full-diagram block strict mismatches from 119 to 59.
-- Block: align Mermaid's shape-specific block sizing/parity rules for `circle`, `doublecircle`, `round`, `stadium`, `cylinder`, `diamond`, `hexagon`, `subroutine`, `rect_left_inv_arrow`, `lean_*`, and trapezoid variants, and size `block_arrow` nodes from their real polygon bbox; this cuts strict block mismatches further from 59 to 48.
-- Block: align strict block edge rendering with Mermaid's marker-aware terminal insets, fix `space:N` width handling so expanded `space` placeholders only consume one layout slot per clone, and add a block HTML-label width override for `BL`; this cuts strict block mismatches further from 48 to 34.
-- Requirement: align diagram/root font sizing with `themeVariables.fontSize` (including `"NNpx"` strings),
-  accept CSS-style `fontSize` values during layout/parity measurement, and pin the new smoke fixture's `parity-root` viewport to upstream.
-- Flowchart/Class/GitGraph: pin the remaining `parity-root` root viewport overrides for text-style/font-size smoke fixtures
-  and `upstream_merges_spec`, keeping the full `--dom-mode parity-root --dom-decimals 6` gate green.
-- Text: model browser-like line-breaking inside punctuation-heavy tokens (URLs) for HTML label wrapping at max width.
-- Text: align HTML label measured widths with upstream min-content expansion for long, hyphenated tokens (affects `foreignObject width="..."`).
-- Text: avoid inflating flowchart HTML label height for quoted-string trailing-only whitespace (improves `parity-root` root viewport alignment).
-- Text: align wrapped HTML label widths for inline-styled flowchart labels by basing width on wrapped layout (fixes large `parity-root` `max-width/viewBox` deltas in shape stress fixtures).
-- Text: treat failed `__` delimiter runs as literal in Mermaid Markdown tokenization (fixes `a__b` being misparsed into emphasis spans).
-- Theme: avoid implicitly applying `base` theme defaults when `theme=default` (fixes downstream color/style drift,
-  notably in xychart).
-- Theme: seed Mermaid `theme-base` / `theme-neutral` xychart defaults (background + plot palette) so `theme: base`
-  renders match upstream Mermaid CLI SVG baselines.
-- CSS: prefer `themeVariables.fontFamily` over legacy top-level `fontFamily` when emitting root SVG styles (aligns with Mermaid initialization semantics and upstream baselines).
-- Timeline: align wrapping/height calculations and font-size parsing with upstream Mermaid CLI baselines:
-  - support `themeVariables.fontSize` as a `"NNpx"` string where applicable,
-  - replicate upstream `maxTaskHeight` quirk (`"[object Object]"` virtual label),
-  - improve wrap stability for custom fonts without explicit generic fallbacks.
+- Text/Markdown: align shared HTML/SVG text handling with Mermaid for inline code, failed `__` delimiter runs,
+  paragraph-vs-raw-block HTML labels, punctuation-heavy URL wrapping, hyphenated-token min-content width, and trailing
+  whitespace height edge cases.
+- Flowchart: align HTML/SVG label wrapping, class/style text application, entity decoding, edge-label DOM/background/root
+  bbox behavior, and complete the upstream Cypress new-shapes strict-XML buckets.
+- Class: reduce strict-XML drift across note labels, namespaces, generics, relations/cardinality terminals, style
+  propagation, annotation-driven sizing, and SVG/HTML title/member width measurement.
+- ER: align relationship-label Markdown/backtick handling, root `htmlLabels` semantics, and entity/root font-size
+  precedence with Mermaid baselines.
+- State/Class/Mindmap/Kanban/Architecture: align remaining HTML label widths, wrapping-width handling, shared text
+  constants, width parsing, and icon/service label fallback geometry between layout and SVG render.
+- Block: complete strict XML parity for the Mermaid block corpus and align remaining marker-aware terminals, `space:N`
+  handling, HTML label sizing, and shape-specific geometry.
+- Requirement/GitGraph/Timeline/Treemap/Sequence/Sankey/C4/Journey/Pie/Radar/XYChart/Gantt: move repeated text constants
+  into generated overrides and close the remaining text-geometry, viewport, and font-size precedence gaps that affected
+  parity fixtures.
+- Theme/CSS: stop implicitly applying `base` defaults under `theme=default`, seed Mermaid-like base/neutral xychart
+  defaults, and prefer `themeVariables.fontFamily` in emitted root SVG styles.
 
 ## [0.3.0] - 2026-03-02
 

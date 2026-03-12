@@ -119,3 +119,37 @@ erDiagram
     assert!(svg.contains(">Diagram Title<"));
     assert!(svg.contains("viewBox="));
 }
+
+#[test]
+fn er_svg_relationship_labels_follow_root_htmllabels_not_flowchart_htmllabels() {
+    let text = r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
+erDiagram
+  A ||--|| B : owns
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
+        panic!("expected ErDiagram layout");
+    };
+
+    let svg = render_er_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"class="labelBkg""#) && svg.contains(r#"<foreignObject width=""#),
+        "expected ER relationship labels to keep HTML foreignObject output when root htmlLabels=true"
+    );
+}
