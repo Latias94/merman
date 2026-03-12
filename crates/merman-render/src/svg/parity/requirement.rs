@@ -395,14 +395,19 @@ pub(super) fn render_requirement_diagram_svg(
         };
         let height = measured.height.max(1.0);
         let width = if let Some(em) =
-            crate::requirement::requirement_upstream_html_label_override_em(display_text, bold)
+            crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_html_label_width_em(
+                display_text,
+                bold,
+            )
         {
             (em * font_size).max(1.0)
         } else {
             measured.width.max(1.0)
         };
         let max_w = if let Some(px) =
-            crate::requirement::requirement_upstream_calc_max_width_override_px(calc_text)
+            crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_calc_max_width_px(
+                calc_text,
+            )
         {
             px
         } else {
@@ -1055,7 +1060,11 @@ pub(super) fn render_requirement_diagram_svg(
                 if line.bold {
                     p.push_str("font-weight: bold; ");
                 }
-                if p.is_empty() { None } else { Some(p) }
+                if p.is_empty() {
+                    None
+                } else {
+                    Some(p)
+                }
             };
             let div_style_prefix = div_style_prefix.as_deref();
             let _ = write!(

@@ -51,6 +51,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text/Markdown: move the remaining flowchart markdown token delta repeat offenders (`Two`, `Markdown`, `Child`, `edge`,
   `label`, `dog`, `ipa`, `a`) into `flowchart_text_overrides_11_12_2`, so the shared markdown measurer no longer
   carries flowchart-only literal branches.
+- Requirement/Text: move the requirement HTML label width and `calculateTextWidth(...)+50` repeat-offender tables into
+  `requirement_text_overrides_11_12_2`, so requirement layout/render parity no longer keeps those upstream literal maps
+  inside `requirement.rs`.
 - Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
   `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
   branch entirely.

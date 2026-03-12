@@ -22,6 +22,7 @@ pub mod mindmap_root_overrides_11_12_2;
 pub mod mindmap_text_overrides_11_12_2;
 pub mod pie_root_overrides_11_12_2;
 pub mod requirement_root_overrides_11_12_2;
+pub mod requirement_text_overrides_11_12_2;
 pub mod sankey_root_overrides_11_12_2;
 pub mod sequence_root_overrides_11_12_2;
 pub mod state_root_overrides_11_12_2;
