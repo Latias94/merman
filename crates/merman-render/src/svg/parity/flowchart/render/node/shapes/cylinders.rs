@@ -8,19 +8,18 @@ use crate::svg::parity::{escape_attr, fmt};
 pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    layout_node: &crate::model::LayoutNode,
-    style: &str,
-    label_dy: &mut f64,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
 ) {
     // Mermaid `cylinder.ts` (non-handDrawn): a single `<path>` with arc commands and a
     // `label-offset-y` attribute.
-    let w = layout_node.width.max(1.0);
+    let w = common.layout_node.width.max(1.0);
     let rx = w / 2.0;
     let ry = rx / (2.5 + w / 50.0);
-    let total_h = layout_node.height.max(1.0);
+    let total_h = common.layout_node.height.max(1.0);
     let h = (total_h - 2.0 * ry).max(1.0);
     // Mermaid applies an extra downward label shift of `node.padding / 1.5`.
-    *label_dy = ctx.node_padding / 1.5;
+    label.dy = ctx.node_padding / 1.5;
 
     let path_data = format!(
         "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 {mw},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,{mh}",
@@ -36,7 +35,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
         out,
         r#"<path d="{}" class="basic label-container" style="{}" transform="translate({},{})"/>"#,
         escape_attr(&path_data),
-        escape_attr(style),
+        escape_attr(common.style),
         fmt(-w / 2.0),
         fmt(-(h / 2.0 + ry))
     );
@@ -45,14 +44,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
 pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinder(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    _layout_node: &crate::model::LayoutNode,
-    label_text: &str,
-    label_type: &str,
-    node_classes: &[String],
-    node_styles: &[String],
-    style: &str,
-    label_dx: &mut f64,
-    label_dy: &mut f64,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
 ) {
     // Mermaid `tiltedCylinder.ts` (non-handDrawn): a single `<path>` with arc commands.
     //
@@ -61,10 +54,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
     // slightly, so rebuild the path from label metrics instead of `layout_node.width`.
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
-        label_text,
-        label_type,
-        node_classes,
-        node_styles,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
     );
     let label_padding = ctx.node_padding / 2.0;
     let h = (metrics.height + label_padding).max(1.0);
@@ -77,15 +71,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
     let w = (metrics.width + rx + label_padding).max(1.0);
 
     // Mermaid offsets the label left by `rx` for tilted cylinders.
-    *label_dx = -rx;
+    label.dx = -rx;
     if !ctx.node_html_labels {
         let node_text_style = flowchart_effective_text_style_for_node_classes(
             &ctx.text_style,
             ctx.class_defs,
-            node_classes,
-            node_styles,
+            common.node_classes,
+            common.node_styles,
         );
-        *label_dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
+        label.dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
     }
 
     let path_data = format!(
@@ -102,7 +96,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
         out,
         r#"<path d="{}" class="basic label-container" style="{}" transform="translate({},{})"/>"#,
         escape_attr(&path_data),
-        escape_attr(style),
+        escape_attr(common.style),
         fmt(-w / 2.0),
         fmt(h / 2.0),
     );

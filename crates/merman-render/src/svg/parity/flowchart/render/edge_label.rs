@@ -14,6 +14,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
+    edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
 ) {
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
@@ -142,14 +143,17 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     } else {
                         (0.0, 0.0)
                     };
+                    let background_y =
+                        crate::text::flowchart_svg_edge_label_background_y_px(&ctx.text_style);
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="0" width="{}" height="{}"/>"#,
+                        r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
                         fmt_display(x),
                         fmt_display(y),
                         escape_xml_display(&edge.id),
                         fmt_display(dx),
                         fmt_display(dy),
+                        fmt_display(background_y),
                         fmt_display(w),
                         fmt_display(h)
                     );
@@ -188,14 +192,17 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 );
                 let w = (metrics.width + 4.0).max(1.0);
                 let h = (metrics.height + 4.0).max(1.0);
+                let background_y =
+                    crate::text::flowchart_svg_edge_label_background_y_px(&ctx.text_style);
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="0" width="{}" height="{}"/>"#,
+                    r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><g><rect class="background" style="" x="-2" y="{}" width="{}" height="{}"/>"#,
                     fmt_display(x),
                     fmt_display(y),
                     escape_xml_display(&edge.id),
                     fmt_display(-w / 2.0),
                     fmt_display(-h / 2.0),
+                    fmt_display(background_y),
                     fmt_display(w),
                     fmt_display(h)
                 );
@@ -245,9 +252,19 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let mut x = lbl.x + ctx.tx - origin_x;
             let mut y = lbl.y + ctx.ty - origin_y;
 
-            // Mermaid cuts cluster edges at the cluster boundary during path generation, then
-            // repositions the label along the cut polyline (see `insertEdge` + `positionEdgeLabel`).
-            if le.to_cluster.is_some() || le.from_cluster.is_some() {
+            let cached_geom = edge_cache
+                .and_then(|m| m.get(edge.id.as_str()))
+                .filter(|entry| {
+                    (entry.origin_x - origin_x).abs() <= 1e-9
+                        && (entry.origin_y - origin_y).abs() <= 1e-9
+                })
+                .map(|entry| &entry.geom);
+            if let Some(pos) = cached_geom.and_then(|geom| geom.label_position.as_ref()) {
+                x = pos.x;
+                y = pos.y;
+            } else if le.to_cluster.is_some() || le.from_cluster.is_some() {
+                // Fallback for callers that do not provide edge path cache: approximate Mermaid's
+                // `updatedPath` cluster behavior from the clipped polyline.
                 fn dedup_consecutive_points(
                     input: &[crate::model::LayoutPoint],
                 ) -> Vec<crate::model::LayoutPoint> {

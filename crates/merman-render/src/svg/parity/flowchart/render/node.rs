@@ -8,6 +8,34 @@ mod label;
 pub(in crate::svg::parity) mod roughjs;
 mod shapes;
 
+pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
+    pub shape: &'a str,
+    pub layout_node: &'a crate::model::LayoutNode,
+    pub node_classes: &'a [String],
+    pub node_styles: &'a [String],
+    pub node_icon: Option<&'a str>,
+    pub node_img: Option<&'a str>,
+    pub node_pos: Option<&'a str>,
+    pub node_constraint: Option<&'a str>,
+    pub node_asset_width: Option<f64>,
+    pub node_asset_height: Option<f64>,
+    pub style: &'a str,
+    pub fill_color: &'a str,
+    pub stroke_color: &'a str,
+    pub stroke_width: f32,
+    pub stroke_dasharray: &'a str,
+    pub hand_drawn_seed: u64,
+    pub wrapped_in_a: bool,
+    pub timing_enabled: bool,
+}
+
+pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a> {
+    pub text: &'a str,
+    pub label_type: &'a str,
+    pub dx: f64,
+    pub dy: f64,
+}
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -39,12 +67,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     let class_attr_base = resolved.class_attr_base;
     let wrapped_in_a = resolved.wrapped_in_a;
     let href = resolved.href;
-    let mut label_text: &str = if resolved.label_text_is_node_id {
-        node_id
-    } else {
-        resolved.label_text
-    };
-    let mut label_type: &str = resolved.label_type;
     let shape: &str = resolved.shape;
     let node_icon = resolved.node_icon;
     let node_img = resolved.node_img;
@@ -86,9 +108,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         details.node_style_compile += s.elapsed();
     }
     let style = std::mem::take(&mut compiled_styles.node_style);
-    let mut label_dx: f64 = 0.0;
-    let mut label_dy: f64 = 0.0;
-    let mut compact_label_translate: bool = false;
     let fill_color = compiled_styles
         .fill
         .as_deref()
@@ -115,34 +134,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    if shapes::try_render_flowchart_v2_no_label(
-        out,
-        ctx,
+    let common = FlowchartNodeRenderCommon {
         shape,
         layout_node,
-        &style,
-        fill_color,
-        stroke_color,
-        stroke_width,
-        stroke_dasharray,
-        hand_drawn_seed,
-        timing_enabled,
-        details,
-    ) {
-        out.push_str("</g>");
-        if wrapped_in_a {
-            out.push_str("</a>");
-        }
-        return;
-    }
-
-    if shapes::render_flowchart_v2_shape(
-        out,
-        ctx,
-        shape,
-        layout_node,
-        &mut label_text,
-        &mut label_type,
         node_classes,
         node_styles,
         node_icon,
@@ -151,7 +145,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         node_constraint,
         node_asset_width,
         node_asset_height,
-        &style,
+        style: &style,
         fill_color,
         stroke_color,
         stroke_width,
@@ -159,28 +153,29 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         hand_drawn_seed,
         wrapped_in_a,
         timing_enabled,
-        details,
-        &mut label_dx,
-        &mut label_dy,
-        &mut compact_label_translate,
-    ) {
+    };
+    let mut label = FlowchartNodeLabelState {
+        text: if resolved.label_text_is_node_id {
+            node_id
+        } else {
+            resolved.label_text
+        },
+        label_type: resolved.label_type,
+        dx: 0.0,
+        dy: 0.0,
+    };
+
+    if shapes::try_render_flowchart_v2_no_label(out, ctx, &common, details) {
+        out.push_str("</g>");
+        if common.wrapped_in_a {
+            out.push_str("</a>");
+        }
         return;
     }
 
-    label::render_flowchart_node_label(
-        out,
-        ctx,
-        layout_node,
-        label_text,
-        label_type,
-        node_classes,
-        node_styles,
-        &compiled_styles,
-        label_dx,
-        label_dy,
-        compact_label_translate,
-        wrapped_in_a,
-        timing_enabled,
-        details,
-    );
+    if shapes::render_flowchart_v2_shape(out, ctx, &common, &mut label, details) {
+        return;
+    }
+
+    label::render_flowchart_node_label(out, ctx, &common, &label, &compiled_styles, details);
 }

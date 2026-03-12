@@ -12,44 +12,25 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    layout_node: &crate::model::LayoutNode,
-    label_text: &str,
-    label_type: &str,
-    node_classes: &[String],
-    node_styles: &[String],
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-    label_dx: &mut f64,
-    label_dy: &mut f64,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    let metrics =
-        helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
 
     let p = ctx.node_padding;
-    let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
-    let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+    // Mermaid creates this shape once during the DOM-backed measurement pass, then Dagre uses the
+    // resulting `getBBox()` as `node.width/height`. Re-feeding those bbox dimensions into our
+    // separate render pass would inflate the wave geometry a second time.
+    let w = (metrics.width + 2.0 * p).max(0.0);
+    let h = (metrics.height + 2.0 * p).max(0.0);
     let wave_amplitude = h / 8.0;
     let final_h = h + wave_amplitude;
 
@@ -71,32 +52,33 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     points.push((-w / 2.0 - extra_w, -final_h / 2.0));
 
     let path_data = path_from_points(&points);
-    let (fill_d, stroke_d) = rough_timed(timing_enabled, details, || {
-        roughjs_paths_for_svg_path(
-            &path_data,
-            fill_color,
-            stroke_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        )
-    })
-    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+    let (fill_d, stroke_d) =
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            roughjs_paths_for_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+        .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
         r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(-wave_amplitude / 2.0),
         escape_attr(&fill_d),
-        escape_attr(fill_color),
-        escape_attr(style),
+        escape_attr(common.fill_color),
+        escape_attr(common.style),
         escape_attr(&stroke_d),
-        escape_attr(stroke_color),
-        util::fmt_display(stroke_width as f64),
-        escape_attr(stroke_dasharray),
-        escape_attr(style),
+        escape_attr(common.stroke_color),
+        util::fmt_display(common.stroke_width as f64),
+        escape_attr(common.stroke_dasharray),
+        escape_attr(common.style),
     );
 
     // Mirror Mermaid `waveEdgedRectangle.ts` label placement.
-    *label_dx = -w / 2.0 + p + metrics.width / 2.0;
-    *label_dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
+    label.dx = -w / 2.0 + p + metrics.width / 2.0;
+    label.dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
 }

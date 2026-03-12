@@ -2,52 +2,49 @@
 
 use std::fmt::Write as _;
 
+use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::{escape_xml_display, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     out: &mut String,
-    layout_node: &crate::model::LayoutNode,
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    let h = layout_node.height.max(1.0);
-    let pts = vec![(0.0, -h), (h, -h), (h / 2.0, 0.0)];
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding;
+    let w = metrics.width + p;
+    let h = (w + metrics.height).max(1.0);
+    let pts = vec![
+        (0.0, -h),
+        (w + metrics.height, -h),
+        ((w + metrics.height) / 2.0, 0.0),
+    ];
     let path_data = path_from_points(&pts);
-    if let Some((fill_d, stroke_d)) = rough_timed(timing_enabled, details, || {
-        roughjs_paths_for_svg_path(
-            &path_data,
-            fill_color,
-            stroke_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        )
-    }) {
+    if let Some((fill_d, stroke_d)) =
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            roughjs_paths_for_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+    {
         let _ = write!(
             out,
             r#"<g transform="translate({},{})">"#,
@@ -58,66 +55,69 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
             escape_xml_display(&fill_d),
-            escape_xml_display(fill_color),
-            escape_xml_display(style)
+            escape_xml_display(common.fill_color),
+            escape_xml_display(common.style)
         );
         let _ = write!(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
             escape_xml_display(&stroke_d),
-            escape_xml_display(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_xml_display(stroke_dasharray),
-            escape_xml_display(style)
+            escape_xml_display(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_xml_display(common.stroke_dasharray),
+            escape_xml_display(common.style)
         );
         out.push_str("</g>");
     }
+
+    let node_text_style = flowchart_effective_text_style_for_node_classes(
+        &ctx.text_style,
+        ctx.class_defs,
+        common.node_classes,
+        common.node_styles,
+    );
+    let bbox_y_offset = if ctx.node_html_labels {
+        0.0
+    } else {
+        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+    };
+    label.dy = metrics.height / 2.0 - h / 2.0 + p / 2.0 + bbox_y_offset;
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     out: &mut String,
-    layout_node: &crate::model::LayoutNode,
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    let w = layout_node.width.max(1.0);
-    let h = layout_node.height.max(1.0);
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
+    let p = ctx.node_padding;
+    let w = (metrics.width + 2.0 * p).max(1.0);
+    let h = (metrics.height + 2.0 * p).max(1.0);
     let x = -w / 2.0;
     let y = -h / 2.0;
     let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
     let path_data = path_from_points(&points);
-    if let Some((fill_d, stroke_d)) = rough_timed(timing_enabled, details, || {
-        roughjs_paths_for_svg_path(
-            &path_data,
-            fill_color,
-            stroke_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        )
-    }) {
+    if let Some((fill_d, stroke_d)) =
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            roughjs_paths_for_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+    {
         let _ = write!(
             out,
             r#"<g class="basic label-container" transform="translate(0,{})">"#,
@@ -127,18 +127,31 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
             escape_xml_display(&fill_d),
-            escape_xml_display(fill_color),
-            escape_xml_display(style)
+            escape_xml_display(common.fill_color),
+            escape_xml_display(common.style)
         );
         let _ = write!(
             out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
             escape_xml_display(&stroke_d),
-            escape_xml_display(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_xml_display(stroke_dasharray),
-            escape_xml_display(style)
+            escape_xml_display(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_xml_display(common.stroke_dasharray),
+            escape_xml_display(common.style)
         );
         out.push_str("</g>");
     }
+
+    let node_text_style = flowchart_effective_text_style_for_node_classes(
+        &ctx.text_style,
+        ctx.class_defs,
+        common.node_classes,
+        common.node_styles,
+    );
+    let bbox_y_offset = if ctx.node_html_labels {
+        0.0
+    } else {
+        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+    };
+    label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
 }

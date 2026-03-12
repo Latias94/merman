@@ -2,6 +2,7 @@
 
 use std::fmt::Write as _;
 
+use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 
@@ -12,38 +13,18 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    label_text: &str,
-    label_type: &str,
-    node_classes: &[String],
-    node_styles: &[String],
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-    label_dy: &mut f64,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    let metrics =
-        helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
 
     let p = ctx.node_padding;
     let w = metrics.width + p;
@@ -51,17 +32,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     let tw = w + metrics.height;
     let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
     let path_data = path_from_points(&pts);
-    let (fill_d, stroke_d) = rough_timed(timing_enabled, details, || {
-        roughjs_paths_for_svg_path(
-            &path_data,
-            fill_color,
-            stroke_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        )
-    })
-    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+    let (fill_d, stroke_d) =
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            roughjs_paths_for_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+        .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
     let _ = write!(
         out,
@@ -69,15 +51,26 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
         util::fmt(-h / 2.0),
         util::fmt(h / 2.0),
         escape_attr(&fill_d),
-        escape_attr(fill_color),
-        escape_attr(style),
+        escape_attr(common.fill_color),
+        escape_attr(common.style),
         escape_attr(&stroke_d),
-        escape_attr(stroke_color),
-        util::fmt(stroke_width as f64),
-        escape_attr(stroke_dasharray),
-        escape_attr(style),
+        escape_attr(common.stroke_color),
+        util::fmt(common.stroke_width as f64),
+        escape_attr(common.stroke_dasharray),
+        escape_attr(common.style),
     );
 
-    // Mermaid places the label near the base; in htmlLabels mode the padding term is /2.
-    *label_dy = h / 2.0 - metrics.height / 2.0 - p / 2.0;
+    let node_text_style = flowchart_effective_text_style_for_node_classes(
+        &ctx.text_style,
+        ctx.class_defs,
+        common.node_classes,
+        common.node_styles,
+    );
+    let bbox_y_offset = if ctx.node_html_labels {
+        0.0
+    } else {
+        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+    };
+    let padding_term = if ctx.node_html_labels { p / 2.0 } else { p };
+    label.dy = h / 2.0 - metrics.height / 2.0 - padding_term + bbox_y_offset;
 }

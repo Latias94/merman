@@ -11,67 +11,21 @@ use super::super::roughjs::roughjs_stroke_path_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
-    layout_node: &crate::model::LayoutNode,
-    label_text: &str,
-    label_type: &str,
-    node_pos: Option<&str>,
-    node_img: Option<&str>,
-    node_asset_height: Option<f64>,
-    node_asset_width: Option<f64>,
-    node_constraint: Option<&str>,
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    wrapped_in_a: bool,
-    timing_enabled: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
 ) -> bool {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    fn label_html_timed<T>(
-        timing_enabled: bool,
-        details: &mut FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_label_html_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_label_html += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
     // Port of Mermaid `imageSquare.ts` (`image-shape default`).
-    if let Some(img_href) = node_img.filter(|s| !s.trim().is_empty()) {
+    if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
         let label_text_plain =
-            flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
+            flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
         let has_label = !label_text_plain.trim().is_empty();
         let label_padding = if has_label { 8.0 } else { 0.0 };
-        let top_label = node_pos == Some("t");
+        let top_label = common.node_pos == Some("t");
 
         let assumed_aspect_ratio = 1.0f64;
-        let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
-        let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
+        let asset_h = common.node_asset_height.unwrap_or(60.0).max(1.0);
+        let asset_w = common.node_asset_width.unwrap_or(asset_h).max(1.0);
         let aspect_ratio = if asset_h > 0.0 {
             asset_w / asset_h
         } else {
@@ -81,8 +35,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         let default_width = ctx.wrapping_width.max(0.0);
         let image_raw_width = asset_w.max(if has_label { default_width } else { 0.0 });
 
-        let constraint_on = node_constraint == Some("on");
-        let image_width = if constraint_on && node_asset_height.is_some() {
+        let constraint_on = common.node_constraint == Some("on");
+        let image_width = if constraint_on && common.node_asset_height.is_some() {
             asset_h * aspect_ratio
         } else {
             image_raw_width
@@ -99,8 +53,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             ctx.measurer,
-            label_text,
-            label_type,
+            label.text,
+            label.label_type,
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
@@ -158,32 +112,35 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
             escape_xml_display(&rect_fill_path),
-            escape_xml_display(fill_color)
+            escape_xml_display(common.fill_color)
         );
-        if let Some(stroke_d) = rough_timed(timing_enabled, details, || {
-            roughjs_stroke_path_for_svg_path(
-                &rect_stroke_path,
-                stroke_color,
-                stroke_width,
-                stroke_dasharray,
-                hand_drawn_seed,
-            )
-        }) {
+        if let Some(stroke_d) =
+            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                roughjs_stroke_path_for_svg_path(
+                    &rect_stroke_path,
+                    common.stroke_color,
+                    common.stroke_width,
+                    common.stroke_dasharray,
+                    common.hand_drawn_seed,
+                )
+            })
+        {
             let _ = write!(
                 out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
                 escape_xml_display(&stroke_d),
-                escape_xml_display(stroke_color),
-                fmt_display(stroke_width as f64),
-                escape_xml_display(stroke_dasharray)
+                escape_xml_display(common.stroke_color),
+                fmt_display(common.stroke_width as f64),
+                escape_xml_display(common.stroke_dasharray)
             );
         }
         out.push_str("</g>");
 
         // Label group uses a background class in Mermaid's image/icon helpers.
-        let label_html = label_html_timed(timing_enabled, details, || {
-            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer)
-        });
+        let label_html =
+            super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
+                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+            });
         let label_dy = if top_label {
             -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
         } else {
@@ -243,18 +200,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         );
 
         out.push_str("</g>");
-        if wrapped_in_a {
+        if common.wrapped_in_a {
             out.push_str("</a>");
         }
         return true;
     } else {
         // Fall back to a normal node if the image URL is missing.
-        let w = layout_node.width.max(1.0);
-        let h = layout_node.height.max(1.0);
+        let w = common.layout_node.width.max(1.0);
+        let h = common.layout_node.height.max(1.0);
         let _ = write!(
             out,
             r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-            escape_xml_display(style),
+            escape_xml_display(common.style),
             fmt_display(-w / 2.0),
             fmt_display(-h / 2.0),
             fmt_display(w),

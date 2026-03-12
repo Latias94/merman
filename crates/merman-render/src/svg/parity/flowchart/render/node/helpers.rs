@@ -1,6 +1,6 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
-use crate::svg::parity::flowchart::types::FlowchartRenderCtx;
+use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use std::fmt::Write as _;
@@ -148,6 +148,38 @@ pub(super) fn open_node_wrapper(
     out.push('>');
 }
 
+pub(super) fn timed_node_roughjs<T>(
+    timing_enabled: bool,
+    details: &mut FlowchartRenderDetails,
+    f: impl FnOnce() -> T,
+) -> T {
+    if timing_enabled {
+        details.node_roughjs_calls += 1;
+        let start = std::time::Instant::now();
+        let out = f();
+        details.node_roughjs += start.elapsed();
+        out
+    } else {
+        f()
+    }
+}
+
+pub(super) fn timed_node_label_html<T>(
+    timing_enabled: bool,
+    details: &mut FlowchartRenderDetails,
+    f: impl FnOnce() -> T,
+) -> T {
+    if timing_enabled {
+        details.node_label_html_calls += 1;
+        let start = std::time::Instant::now();
+        let out = f();
+        details.node_label_html += start.elapsed();
+        out
+    } else {
+        f()
+    }
+}
+
 pub(super) struct ResolvedNodeRenderInfo<'a> {
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'static str,
@@ -254,6 +286,7 @@ pub(super) fn resolve_node_render_info<'a>(
 
 pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metrics(
     ctx: &FlowchartRenderCtx<'_>,
+    layout_node: Option<&crate::model::LayoutNode>,
     label_text: &str,
     label_type: &str,
     node_classes: &[String],
@@ -273,25 +306,62 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        ctx.measurer,
-        label_text,
-        label_type,
-        &node_text_style,
-        Some(ctx.wrapping_width),
-        ctx.node_wrap_mode,
-        ctx.config,
-        ctx.math_renderer,
-    );
+    let mut metrics = if let Some(layout_node) = layout_node {
+        if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
+            crate::text::TextMetrics {
+                width,
+                height,
+                line_count: 0,
+            }
+        } else {
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                label_text,
+                label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+                ctx.config,
+                ctx.math_renderer,
+            );
 
-    let span_css_height_parity =
-        crate::flowchart::flowchart_node_has_span_css_height_parity(ctx.class_defs, node_classes);
-    if span_css_height_parity {
-        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-            &mut metrics,
+            let span_css_height_parity =
+                crate::flowchart::flowchart_node_has_span_css_height_parity(
+                    ctx.class_defs,
+                    node_classes,
+                );
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            metrics
+        }
+    } else {
+        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+            ctx.measurer,
+            label_text,
+            label_type,
             &node_text_style,
+            Some(ctx.wrapping_width),
+            ctx.node_wrap_mode,
+            ctx.config,
+            ctx.math_renderer,
         );
-    }
+
+        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
+            ctx.class_defs,
+            node_classes,
+        );
+        if span_css_height_parity {
+            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                &mut metrics,
+                &node_text_style,
+            );
+        }
+        metrics
+    };
 
     let label_has_visual_content =
         super::super::super::util::flowchart_html_contains_img_tag(label_text)

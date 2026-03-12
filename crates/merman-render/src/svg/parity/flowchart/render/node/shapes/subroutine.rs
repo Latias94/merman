@@ -7,12 +7,11 @@ use crate::svg::parity::fmt_display;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
     out: &mut String,
-    layout_node: &crate::model::LayoutNode,
-    style: &str,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
-    let total_w = layout_node.width.max(1.0);
-    let h = layout_node.height.max(1.0);
+    let total_w = common.layout_node.width.max(1.0);
+    let h = common.layout_node.height.max(1.0);
     let w = (total_w - 16.0).max(1.0);
 
     let pts: Vec<(f64, f64)> = vec![
@@ -40,6 +39,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
         points_attr,
         fmt_display(-w / 2.0),
         fmt_display(h / 2.0),
-        OptionalStyleAttr(style)
+        OptionalStyleAttr(common.style)
     );
 }

@@ -12,37 +12,18 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    label_text: &str,
-    label_type: &str,
-    node_classes: &[String],
-    node_styles: &[String],
-    style: &str,
-    fill_color: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
-    let metrics =
-        helpers::compute_node_label_metrics(ctx, label_text, label_type, node_classes, node_styles);
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        None,
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
 
     let p = ctx.node_padding;
     let w = metrics.width + p + 20.0;
@@ -74,29 +55,30 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
     ));
 
     let path_data = path_from_points(&points);
-    let (fill_d, stroke_d) = rough_timed(timing_enabled, details, || {
-        roughjs_paths_for_svg_path(
-            &path_data,
-            fill_color,
-            stroke_color,
-            stroke_width,
-            stroke_dasharray,
-            hand_drawn_seed,
-        )
-    })
-    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+    let (fill_d, stroke_d) =
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            roughjs_paths_for_svg_path(
+                &path_data,
+                common.fill_color,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
+            )
+        })
+        .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
     let _ = write!(
         out,
         r##"<g class="basic label-container" transform="translate({},0)"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(rx / 2.0),
         escape_attr(&fill_d),
-        escape_attr(fill_color),
-        escape_attr(style),
+        escape_attr(common.fill_color),
+        escape_attr(common.style),
         escape_attr(&stroke_d),
-        escape_attr(stroke_color),
-        util::fmt_display(stroke_width as f64),
-        escape_attr(stroke_dasharray),
-        escape_attr(style),
+        escape_attr(common.stroke_color),
+        util::fmt_display(common.stroke_width as f64),
+        escape_attr(common.stroke_dasharray),
+        escape_attr(common.style),
     );
 }

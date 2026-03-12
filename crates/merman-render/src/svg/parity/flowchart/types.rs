@@ -108,11 +108,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) d: String,
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
     pub(in crate::svg::parity::flowchart) data_points_b64: String,
+    pub(in crate::svg::parity::flowchart) label_position: Option<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathCacheEntry {
+pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
     pub(in crate::svg::parity::flowchart) origin_x: f64,
     pub(in crate::svg::parity::flowchart) origin_y: f64,
     pub(in crate::svg::parity::flowchart) abs_top_transform: f64,

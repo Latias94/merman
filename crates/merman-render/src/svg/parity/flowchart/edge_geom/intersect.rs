@@ -78,6 +78,9 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "cyl"
                 | "db"
                 | "database"
+                | "lin-cyl"
+                | "disk"
+                | "lined-cylinder"
                 | "h-cyl"
                 | "das"
                 | "horizontal-cylinder"
@@ -91,6 +94,13 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "tagged-rectangle"
                 | "tag-proc"
                 | "tagged-process"
+                | "doc"
+                | "document"
+                | "delay"
+                | "half-rounded-rectangle"
+                | "notch-pent"
+                | "loop-limit"
+                | "notched-pentagon"
                 | "docs"
                 | "documents"
                 | "st-doc"
@@ -1263,6 +1273,135 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         intersect_polygon(node, &points, point)
     }
 
+    fn intersect_wave_document(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = (metrics.width + 2.0 * p).max(0.0);
+        let h = (metrics.height + 2.0 * p).max(0.0);
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let extra_w = ((70.0 - w).max(0.0)) / 2.0;
+
+        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0 - extra_w,
+            y: final_h / 2.0,
+        });
+        points.extend(generate_full_sine_wave_points(
+            -w / 2.0 - extra_w,
+            final_h / 2.0,
+            w / 2.0 + extra_w,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push(crate::model::LayoutPoint {
+            x: w / 2.0 + extra_w,
+            y: -final_h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0 - extra_w,
+            y: -final_h / 2.0,
+        });
+
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_delay(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = (metrics.width + 2.0 * p).max(80.0);
+        let h = (metrics.height + 2.0 * p).max(50.0);
+        let radius = h / 2.0;
+
+        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0,
+            y: -h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: w / 2.0 - radius,
+            y: -h / 2.0,
+        });
+        points.extend(generate_circle_points(
+            -w / 2.0 + radius,
+            0.0,
+            radius,
+            50,
+            90.0,
+            270.0,
+        ));
+        points.push(crate::model::LayoutPoint {
+            x: w / 2.0 - radius,
+            y: h / 2.0,
+        });
+        points.push(crate::model::LayoutPoint {
+            x: -w / 2.0,
+            y: h / 2.0,
+        });
+
+        intersect_polygon(node, &points, point)
+    }
+
+    fn intersect_notched_pentagon(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let Some(metrics) = compute_node_label_metrics_for_intersection(ctx, node_id) else {
+            return intersect_rect(node, point);
+        };
+
+        let p = ctx.node_padding;
+        let w = (metrics.width + 2.0 * p).max(60.0);
+        let h = (metrics.height + 2.0 * p).max(20.0);
+        let points = vec![
+            crate::model::LayoutPoint {
+                x: (-w / 2.0) * 0.8,
+                y: -h / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: (w / 2.0) * 0.8,
+                y: -h / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: w / 2.0,
+                y: (-h / 2.0) * 0.6,
+            },
+            crate::model::LayoutPoint {
+                x: w / 2.0,
+                y: h / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: -w / 2.0,
+                y: h / 2.0,
+            },
+            crate::model::LayoutPoint {
+                x: -w / 2.0,
+                y: (-h / 2.0) * 0.6,
+            },
+        ];
+
+        intersect_polygon(node, &points, point)
+    }
+
     fn intersect_multi_wave_edged_rect(
         ctx: &FlowchartRenderCtx<'_>,
         node_id: &str,
@@ -1416,6 +1555,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),
+        Some("lin-cyl" | "disk" | "lined-cylinder") => intersect_cylinder(node, point),
         Some("h-cyl" | "das" | "horizontal-cylinder") => intersect_tilted_cylinder(node, point),
         Some("hourglass" | "collate") => intersect_polygon_hourglass(node, point),
         Some("diamond" | "diam" | "question" | "decision") => intersect_diamond(node, point),
@@ -1429,6 +1569,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         }
         Some("tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process") => {
             intersect_tagged_rect(ctx, node_id, node, point)
+        }
+        Some("doc" | "document") => intersect_wave_document(ctx, node_id, node, point),
+        Some("delay" | "half-rounded-rectangle") => intersect_delay(ctx, node_id, node, point),
+        Some("notch-pent" | "loop-limit" | "notched-pentagon") => {
+            intersect_notched_pentagon(ctx, node_id, node, point)
         }
         Some("docs" | "documents" | "st-doc" | "stacked-document") => {
             intersect_multi_wave_edged_rect(ctx, node_id, node, point)

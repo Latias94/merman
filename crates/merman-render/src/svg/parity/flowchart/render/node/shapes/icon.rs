@@ -10,25 +10,20 @@ use crate::svg::parity::fmt;
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
-    label_text: &str,
-    label_type: &str,
-    node_icon: Option<&str>,
-    node_pos: Option<&str>,
-    node_asset_width: Option<f64>,
-    node_asset_height: Option<f64>,
-    stroke_color: &str,
-    wrapped_in_a: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> bool {
     // Port of Mermaid `icon.ts` (`icon-shape default`).
-    if let Some(_icon_name) = node_icon.filter(|s| !s.trim().is_empty()) {
+    if let Some(_icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
         let label_text_plain =
-            flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
+            flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
         let has_label = !label_text_plain.trim().is_empty();
         let label_padding = if has_label { 8.0 } else { 0.0 };
-        let top_label = node_pos == Some("t");
+        let top_label = common.node_pos == Some("t");
 
-        let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
-        let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
+        let asset_h = common.node_asset_height.unwrap_or(48.0).max(1.0);
+        let asset_w = common.node_asset_width.unwrap_or(48.0).max(1.0);
         let icon_size = asset_h.max(asset_w);
 
         let height = icon_size;
@@ -38,8 +33,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
 
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             ctx.measurer,
-            label_text,
-            label_type,
+            label.text,
+            label.label_type,
             &ctx.text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
@@ -99,7 +94,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
         );
 
         let label_html =
-            flowchart_label_html(label_text, label_type, ctx.config, ctx.math_renderer);
+            super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
+                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+            });
         let label_y = if top_label {
             -outer_h / 2.0
         } else {
@@ -131,13 +128,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
             r#"<g transform="translate({},{})" style="color: {};"><g><svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg></g></g>"#,
             fmt(icon_tx),
             fmt(icon_ty),
-            escape_attr(stroke_color),
+            escape_attr(common.stroke_color),
             fmt(icon_size),
             fmt(icon_size),
         );
 
         out.push_str("</g>");
-        if wrapped_in_a {
+        if common.wrapped_in_a {
             out.push_str("</a>");
         }
         return true;

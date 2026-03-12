@@ -10,34 +10,10 @@ use super::super::roughjs::roughjs_stroke_path_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_comment(
     out: &mut String,
-    shape: &str,
-    layout_node: &crate::model::LayoutNode,
-    style: &str,
-    stroke_color: &str,
-    stroke_width: f32,
-    stroke_dasharray: &str,
-    hand_drawn_seed: u64,
-    timing_enabled: bool,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-    compact_label_translate: &mut bool,
-    label_dx: &mut f64,
 ) {
-    fn rough_timed<T>(
-        timing_enabled: bool,
-        details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-        f: impl FnOnce() -> T,
-    ) -> T {
-        if timing_enabled {
-            details.node_roughjs_calls += 1;
-            let start = std::time::Instant::now();
-            let out = f();
-            details.node_roughjs += start.elapsed();
-            out
-        } else {
-            f()
-        }
-    }
-
     fn circle_points(
         center_x: f64,
         center_y: f64,
@@ -69,12 +45,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
         out
     }
 
-    let out_w = layout_node.width.max(1.0);
-    let out_h = layout_node.height.max(1.0);
-
-    // Mermaid's `label.attr('transform', ...)` for curly brace shapes renders without a
-    // space after the comma (e.g. `translate(-34.265625,-12)`).
-    *compact_label_translate = true;
+    let out_w = common.layout_node.width.max(1.0);
+    let out_h = common.layout_node.height.max(1.0);
 
     // Radius depends on the *inner* height in Mermaid (`h = bbox.height + padding`).
     // Solve `radius = max(5, (out_h - 2*radius) * 0.1)` by a few fixed-point iterations.
@@ -89,34 +61,34 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
     }
     let h = (out_h - 2.0 * radius).max(0.0);
 
-    let w = match shape {
+    let w = match common.shape {
         "comment" | "brace" | "brace-l" => (out_w - 2.0 * radius) / 1.1,
         "brace-r" | "braces" => out_w - 3.0 * radius,
         _ => out_w - 3.0 * radius,
     };
 
-    let (group_tx, local_label_dx) = match shape {
+    let (group_tx, local_label_dx) = match common.shape {
         "comment" | "brace" | "brace-l" => (radius, -radius / 2.0),
         "brace-r" => (-radius, 0.0),
         "braces" => (radius - radius / 4.0, 0.0),
         _ => (0.0, 0.0),
     };
-    *label_dx = local_label_dx;
+    label.dx = local_label_dx;
 
     let mut stroke_d = |d: &str| {
-        rough_timed(timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_stroke_path_for_svg_path(
                 d,
-                stroke_color,
-                stroke_width,
-                stroke_dasharray,
-                hand_drawn_seed,
+                common.stroke_color,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.hand_drawn_seed,
             )
         })
         .unwrap_or_else(|| "M0,0".to_string())
     };
 
-    if shape == "braces" {
+    if common.shape == "braces" {
         // Mermaid `curlyBraces.ts`: two visible brace paths + one invisible rect path.
         let left_points: Vec<(f64, f64)> = [
             circle_points(w / 2.0, -h / 2.0, radius, 30, -90.0, 0.0, true),
@@ -284,24 +256,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
             ),
             fmt(group_tx),
             escape_attr(&left_d),
-            escape_attr(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_attr(stroke_dasharray),
-            escape_attr(style),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
             escape_attr(&right_d),
-            escape_attr(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_attr(stroke_dasharray),
-            escape_attr(style),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
             escape_attr(&rect_d),
-            escape_attr(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_attr(stroke_dasharray),
-            escape_attr(style),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
         );
     } else {
         // Mermaid `curlyBraceLeft.ts` / `curlyBraceRight.ts`.
-        let (negate, points, rect_points) = if shape == "brace-r" {
+        let (negate, points, rect_points) = if common.shape == "brace-r" {
             let points: Vec<(f64, f64)> = [
                 circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, false),
                 vec![(w / 2.0 + radius, -radius)],
@@ -419,15 +391,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
             ),
             fmt(group_tx),
             escape_attr(&brace_d),
-            escape_attr(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_attr(stroke_dasharray),
-            escape_attr(style),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
             escape_attr(&rect_d),
-            escape_attr(stroke_color),
-            fmt_display(stroke_width as f64),
-            escape_attr(stroke_dasharray),
-            escape_attr(style),
+            escape_attr(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+            escape_attr(common.style),
         );
     }
 }
