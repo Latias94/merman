@@ -2213,6 +2213,11 @@ mod tests {
             18.0
         );
         assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_html_inline_span_padding_right_px(
+            ),
+            1.0
+        );
+        assert_eq!(
             crate::generated::state_text_overrides_11_12_2::state_rect_with_title_span_padding_right_px(),
             1.0
         );

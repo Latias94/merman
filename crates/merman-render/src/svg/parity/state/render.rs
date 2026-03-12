@@ -1086,7 +1086,7 @@ fn render_state_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
         escape_attr(class),
         escape_attr(cluster_id),
         escape_attr(cluster_id),
@@ -1100,6 +1100,7 @@ fn render_state_cluster(
         fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
         fmt(y + 1.0),
         fmt(cluster.title_label.width.max(0.0)),
+        fmt_display(state_text_overrides::state_html_inline_span_padding_right_px()),
         escape_xml(&title),
         link_close,
         fmt(x),
@@ -2035,7 +2036,7 @@ fn render_state_node_svg(
             let metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &ctx.text_style,
-                Some(200.0),
+                Some(ctx.html_label_wrapping_width),
                 WrapMode::HtmlLike,
             );
             if let Some(s) = measure_start {
@@ -2243,7 +2244,7 @@ fn render_state_node_svg(
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &measure_style,
-                Some(200.0),
+                Some(ctx.html_label_wrapping_width),
                 WrapMode::HtmlLike,
             );
             if let Some(s) = measure_start {
@@ -2258,11 +2259,11 @@ fn render_state_node_svg(
                 crate::text::mermaid_default_bold_width_delta_px(&label, &measure_style);
 
             if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(200.0);
+                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
             }
             metrics.width = crate::text::round_to_1_64_px(metrics.width);
             if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(200.0);
+                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
             }
 
             if !has_metrics_style {

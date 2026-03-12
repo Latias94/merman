@@ -45,7 +45,7 @@ pub fn rect_with_title_span_effective_width_px(
     svg_like_width_px: f64,
 ) -> f64 {
     lookup_rect_with_title_span_width_px(font_size_px, text).unwrap_or_else(|| {
-        (svg_like_width_px.max(0.0) + state_rect_with_title_span_padding_right_px()).max(0.0)
+        (svg_like_width_px.max(0.0) + state_html_inline_span_padding_right_px()).max(0.0)
     })
 }
 
@@ -58,8 +58,12 @@ pub fn rect_with_title_span_effective_height_px(
         .unwrap_or_else(|| svg_like_height_px.max(0.0))
 }
 
-pub fn state_rect_with_title_span_padding_right_px() -> f64 {
+pub fn state_html_inline_span_padding_right_px() -> f64 {
     1.0
+}
+
+pub fn state_rect_with_title_span_padding_right_px() -> f64 {
+    state_html_inline_span_padding_right_px()
 }
 
 pub fn state_rect_with_title_top_pad_px(padding_px: f64) -> f64 {
