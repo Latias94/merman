@@ -100,6 +100,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sankey/Text: move Sankey node width/padding and label font/gap constants into
   `sankey_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
   Mermaid node/label geometry literals inline.
+- Architecture/Text: move the remaining Cytoscape label width-scale and 18px service-label
+  extension constants into `architecture_text_overrides_11_12_2`, so layout and SVG parity no
+  longer duplicate those Architecture-specific text geometry calibrations inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.

@@ -1750,8 +1750,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     // Mermaid singleton top-level `iconText` services render 18px lower than the nominal
     // layout origin; keep the emitted transform and root bbox estimate in sync.
-    const SINGLETON_ICON_TEXT_SERVICE_OFFSET_Y: f64 = 18.0;
-
     let groups_len = model.groups_len();
     let edges_len = model.edges_len();
     let service_count = model.services().count();
@@ -1775,7 +1773,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         };
     let singleton_icon_text_offset_y = |service_id: &str| {
         if singleton_icon_text_service_id == Some(service_id) {
-            SINGLETON_ICON_TEXT_SERVICE_OFFSET_Y
+            architecture_text_overrides::architecture_singleton_icon_text_service_offset_y_px()
         } else {
             0.0
         }
@@ -1816,9 +1814,11 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 //
                 // Approximate Cytoscape `boundingBox()` label extents by applying a small scale
                 // factor and mirroring the observed 0.5px lattice in Chromium.
-                const CY_CANVAS_LABEL_W_SCALE: f64 = 1.055;
                 let m = text_measurer.measure(s, &compound_text_style);
-                let mut half = (m.width.max(0.0) * CY_CANVAS_LABEL_W_SCALE) / 2.0;
+                let mut half = (m.width.max(0.0)
+                    * architecture_text_overrides::architecture_cytoscape_canvas_label_width_scale(
+                    ))
+                    / 2.0;
                 half = (half * 2.0).round() / 2.0;
                 (half, half)
             };
@@ -2084,7 +2084,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     // We model this in Stage B so our headless `getBBox()` approximation can match `parity-root`
     // `viewBox`/`max-width` baselines for group-heavy fixtures.
     let group_edge_shift = padding_px + 4.0;
-    let group_edge_label_bottom_px = 18.0;
+    let group_edge_label_bottom_px =
+        architecture_text_overrides::architecture_service_label_bottom_extension_px();
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
     let layout_edge_points: Vec<(f64, f64, f64, f64, f64, f64)> = layout
@@ -2897,7 +2898,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
                     if uses_unknown_fallback && !has_icon_text {
                         vb_min_x -= 0.00390625;
-                        vb_min_y += 18.0;
+                        vb_min_y +=
+                            architecture_text_overrides::architecture_service_label_bottom_extension_px();
                         vb_w += 0.2578125;
                         vb_h += 6.1875;
                     }

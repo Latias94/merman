@@ -386,8 +386,9 @@ fn layout_architecture_diagram_model(
             // In practice, Cytoscape canvas metrics run slightly wider than our SVG-oriented
             // deterministic table, but a small scale factor keeps relocation centers stable
             // without requiring a browser.
-            const LABEL_W_SCALE: f64 = 1.055;
-            let label_half = (m.width.max(0.0) * LABEL_W_SCALE) / 2.0;
+            let label_half = (m.width.max(0.0)
+                * architecture_text_overrides::architecture_cytoscape_canvas_label_width_scale())
+                / 2.0;
             half_w = half_w.max(label_half + border);
             // Cytoscape bounding boxes land on 0.5px increments in Chromium; mirror that so
             // relocation centers match upstream baselines more closely.
@@ -1534,12 +1535,24 @@ fn layout_architecture_diagram_model(
                     (Some('T'), Some('B')) => rels.push(GroupRel::Above {
                         top: rhs_g,
                         bottom: lhs_g,
-                        gap: gap + if is_group_edge { 18.0 } else { 0.0 },
+                        gap: gap
+                            + if is_group_edge {
+                                architecture_text_overrides::
+                                    architecture_service_label_bottom_extension_px()
+                            } else {
+                                0.0
+                            },
                     }),
                     (Some('B'), Some('T')) => rels.push(GroupRel::Above {
                         top: lhs_g,
                         bottom: rhs_g,
-                        gap: gap + if is_group_edge { 18.0 } else { 0.0 },
+                        gap: gap
+                            + if is_group_edge {
+                                architecture_text_overrides::
+                                    architecture_service_label_bottom_extension_px()
+                            } else {
+                                0.0
+                            },
                     }),
                     _ => {}
                 }
@@ -2196,6 +2209,21 @@ mod tests {
             crate::generated::architecture_text_overrides_11_12_2::
                 architecture_create_text_root_label_extra_bottom_px(16.0, 1),
             24.1875
+        );
+        assert_eq!(
+            crate::generated::architecture_text_overrides_11_12_2::
+                architecture_cytoscape_canvas_label_width_scale(),
+            1.055
+        );
+        assert_eq!(
+            crate::generated::architecture_text_overrides_11_12_2::
+                architecture_service_label_bottom_extension_px(),
+            18.0
+        );
+        assert_eq!(
+            crate::generated::architecture_text_overrides_11_12_2::
+                architecture_singleton_icon_text_service_offset_y_px(),
+            18.0
         );
     }
 }
