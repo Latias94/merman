@@ -367,77 +367,6 @@ fn flowchart_default_italic_delta_em(ch: char, wrap_mode: WrapMode) -> f64 {
     }
 }
 
-fn flowchart_markdown_italic_word_override_delta_em(
-    word: &str,
-    wrap_mode: WrapMode,
-) -> Option<f64> {
-    // Mermaid flowchart markdown labels are measured via browser layout (SVG `getBBox()` or DOM
-    // `getBoundingClientRect()`). Some short emphasis tokens (notably `a_b` in stress fixtures)
-    // behave as if italic has *no* width delta, while longer tokens (e.g. `Markdown`, `Child`)
-    // exhibit a stable per-token delta on the upstream 1/1024-em lattice.
-    //
-    // Treat these as "repeat offender" overrides so strict-XML parity can converge without trying
-    // to fully model italic font metrics in headless mode.
-    match wrap_mode {
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => match word {
-            // `fixtures/flowchart/stress_flowchart_markdown_underscore_delims_074.mmd`
-            "a_b" | "a__b" => Some(0.0),
-            // `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
-            "Child" => Some(172.0 / 2048.0),
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_007.mmd`
-            "Markdown" => Some(81.0 / 1024.0),
-            _ => None,
-        },
-        WrapMode::HtmlLike => match word {
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_008.mmd`
-            "Markdown" => Some(83.0 / 1024.0),
-            _ => None,
-        },
-    }
-}
-
-fn flowchart_markdown_bold_word_override_delta_em(word: &str, wrap_mode: WrapMode) -> Option<f64> {
-    // Mirror upstream SVG baselines for known markdown `<strong>` tokens that do not fit the
-    // generic (per-char + kerning) bold delta model.
-    match wrap_mode {
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => match word {
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd`
-            //
-            // In SVG-label mode, Mermaid's `<tspan font-weight="bold">Two</tspan>` bbox width is
-            // `30.109375px` at 16px, while the regular-width token is `28.984375px` => `+1.125px`
-            // total delta (i.e. `9/128 em`).
-            "Two" => Some(9.0 / 128.0),
-            _ => None,
-        },
-        WrapMode::HtmlLike => None,
-    }
-}
-
-fn flowchart_markdown_bold_word_extra_delta_em(word: &str, wrap_mode: WrapMode) -> f64 {
-    // Small per-token adjustments for markdown `<strong>` runs when the generic delta model lands
-    // on the wrong side of a 1/64px rounding boundary in upstream SVG baselines.
-    match wrap_mode {
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => match word {
-            // `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_sub_graphs_and_markdown_strings_057.mmd`
-            "ipa" => -1.0 / 1024.0,
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd`
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd`
-            // `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
-            "edge" => 1.0 / 512.0,
-            "label" => -1.0 / 1024.0,
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd`
-            // Keep this midway between the earlier under-shoot and over-shoot adjustments so the
-            // common `The **dog** in the hog` hexagon probe lands on Mermaid's raw SVG width.
-            "dog" => -7.0 / 16384.0,
-            _ => 0.0,
-        },
-        WrapMode::HtmlLike => match word {
-            "edge" | "label" => 1.0 / 1024.0,
-            _ => 0.0,
-        },
-    }
-}
-
 pub fn mermaid_default_italic_width_delta_px(text: &str, style: &TextStyle) -> f64 {
     // Mermaid HTML labels can apply `font-style: italic` via inline styles (e.g. classDef in state
     // diagrams). Upstream measurement is DOM-backed, so the effective width differs from regular
@@ -1139,7 +1068,8 @@ fn markdown_word_line_plain_text_and_delta_px(
         let is_strong = *ty == MermaidMarkdownWordType::Strong;
         let is_em = *ty == MermaidMarkdownWordType::Em;
         let bold_override_em = if is_flowchart_default_font(style) && is_strong {
-            flowchart_markdown_bold_word_override_delta_em(word, wrap_mode)
+            crate::generated::flowchart_text_overrides_11_12_2::
+                lookup_flowchart_markdown_bold_word_delta_em(wrap_mode, word)
         } else {
             None
         };
@@ -1161,12 +1091,8 @@ fn markdown_word_line_plain_text_and_delta_px(
             }
             if is_strong && bold_override_em.is_none() {
                 let mut delta_em = flowchart_default_bold_delta_em(ch);
-                if wrap_mode != WrapMode::HtmlLike && word == "a" && ch == 'a' {
-                    // SVG-label markdown strong runs (`<tspan font-weight="bold">...`) measure
-                    // slightly wider for `a` than the DOM/canvas-derived table suggests. Bump by
-                    // one 1/1024-em step so strict-XML parity matches upstream flowchart-v2.
-                    delta_em += 1.0 / 1024.0;
-                }
+                delta_em += crate::generated::flowchart_text_overrides_11_12_2::
+                    lookup_flowchart_markdown_bold_char_extra_delta_em(wrap_mode, word, ch);
                 delta_px += delta_em * font_size * bold_delta_scale;
             }
             prev_char = Some(ch);
@@ -1185,7 +1111,8 @@ fn markdown_word_line_plain_text_and_delta_px(
                 let font_size = style.font_size.max(1.0);
                 delta_px += delta_em * font_size * bold_delta_scale;
             }
-            let extra_em = flowchart_markdown_bold_word_extra_delta_em(word, wrap_mode);
+            let extra_em = crate::generated::flowchart_text_overrides_11_12_2::
+                lookup_flowchart_markdown_bold_word_extra_delta_em(wrap_mode, word);
             if extra_em != 0.0 {
                 let font_size = style.font_size.max(1.0);
                 delta_px += extra_em * font_size * bold_delta_scale;
@@ -1195,7 +1122,8 @@ fn markdown_word_line_plain_text_and_delta_px(
         if is_flowchart_default_font(style) && is_em {
             let font_size = style.font_size.max(1.0);
             if let Some(delta_em) =
-                flowchart_markdown_italic_word_override_delta_em(word, wrap_mode)
+                crate::generated::flowchart_text_overrides_11_12_2::
+                    lookup_flowchart_markdown_italic_word_delta_em(wrap_mode, word)
             {
                 delta_px += delta_em * font_size;
             } else {

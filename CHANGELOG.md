@@ -48,6 +48,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text/SVG: move the remaining timeline single-run long-word bbox literal into
   `timeline_text_overrides_11_12_2` and remove the last shared default-font SVG bbox fallback table entirely, so
   timeline/treemap strict parity no longer depends on generic string-specific SVG hacks.
+- Text/Markdown: move the remaining flowchart markdown token delta repeat offenders (`Two`, `Markdown`, `Child`, `edge`,
+  `label`, `dog`, `ipa`, `a`) into `flowchart_text_overrides_11_12_2`, so the shared markdown measurer no longer
+  carries flowchart-only literal branches.
 - Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
   `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
   branch entirely.

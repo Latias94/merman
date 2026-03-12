@@ -4,6 +4,82 @@
 // Mermaid@11.12.3 upstream baselines reflect browser layout quirks that are difficult to model
 // purely from vendored font metrics.
 
+pub fn lookup_flowchart_markdown_italic_word_delta_em(
+    wrap_mode: crate::text::WrapMode,
+    word: &str,
+) -> Option<f64> {
+    match wrap_mode {
+        crate::text::WrapMode::SvgLike | crate::text::WrapMode::SvgLikeSingleRun => match word {
+            // `fixtures/flowchart/stress_flowchart_markdown_underscore_delims_074.mmd`
+            "a_b" | "a__b" => Some(0.0),
+            // `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
+            "Child" => Some(172.0 / 2048.0),
+            // `fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_007.mmd`
+            "Markdown" => Some(81.0 / 1024.0),
+            _ => None,
+        },
+        crate::text::WrapMode::HtmlLike => match word {
+            // `fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_008.mmd`
+            "Markdown" => Some(83.0 / 1024.0),
+            _ => None,
+        },
+    }
+}
+
+pub fn lookup_flowchart_markdown_bold_word_delta_em(
+    wrap_mode: crate::text::WrapMode,
+    word: &str,
+) -> Option<f64> {
+    match wrap_mode {
+        crate::text::WrapMode::SvgLike | crate::text::WrapMode::SvgLikeSingleRun => match word {
+            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd`
+            "Two" => Some(9.0 / 128.0),
+            _ => None,
+        },
+        crate::text::WrapMode::HtmlLike => None,
+    }
+}
+
+pub fn lookup_flowchart_markdown_bold_word_extra_delta_em(
+    wrap_mode: crate::text::WrapMode,
+    word: &str,
+) -> f64 {
+    match wrap_mode {
+        crate::text::WrapMode::SvgLike | crate::text::WrapMode::SvgLikeSingleRun => match word {
+            // `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_sub_graphs_and_markdown_strings_057.mmd`
+            "ipa" => -1.0 / 1024.0,
+            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_{200,201}.mmd`
+            // `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
+            "edge" => 1.0 / 512.0,
+            "label" => -1.0 / 1024.0,
+            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd`
+            "dog" => -7.0 / 16384.0,
+            _ => 0.0,
+        },
+        crate::text::WrapMode::HtmlLike => match word {
+            "edge" | "label" => 1.0 / 1024.0,
+            _ => 0.0,
+        },
+    }
+}
+
+pub fn lookup_flowchart_markdown_bold_char_extra_delta_em(
+    wrap_mode: crate::text::WrapMode,
+    word: &str,
+    ch: char,
+) -> f64 {
+    match wrap_mode {
+        crate::text::WrapMode::SvgLike | crate::text::WrapMode::SvgLikeSingleRun => {
+            if word == "a" && ch == 'a' {
+                1.0 / 1024.0
+            } else {
+                0.0
+            }
+        }
+        crate::text::WrapMode::HtmlLike => 0.0,
+    }
+}
+
 pub fn lookup_flowchart_html_width_px(
     font_key: &str,
     font_size_px: f64,

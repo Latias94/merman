@@ -65,6 +65,40 @@ fn markdown_strong_width_matches_flowchart_table() {
 }
 
 #[test]
+fn generated_flowchart_markdown_override_paths_cover_repeat_offenders() {
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_bold_word_delta_em(WrapMode::SvgLike, "Two"),
+        Some(9.0 / 128.0)
+    );
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_italic_word_delta_em(WrapMode::SvgLike, "Child"),
+        Some(172.0 / 2048.0)
+    );
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_italic_word_delta_em(WrapMode::HtmlLike, "Markdown"),
+        Some(83.0 / 1024.0)
+    );
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_bold_word_extra_delta_em(WrapMode::SvgLike, "dog"),
+        -7.0 / 16384.0
+    );
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_bold_char_extra_delta_em(WrapMode::SvgLike, "a", 'a'),
+        1.0 / 1024.0
+    );
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::
+            lookup_flowchart_markdown_bold_char_extra_delta_em(WrapMode::HtmlLike, "a", 'a'),
+        0.0
+    );
+}
+
+#[test]
 fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
     // Mermaid upstream fixture:
     // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_bigger_font_from_classes_spec.svg
