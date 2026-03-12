@@ -1,5 +1,13 @@
 use super::*;
 use crate::flowchart::flowchart_label_metrics_for_layout;
+use merman_core::{Engine, ParseOptions};
+use std::path::PathBuf;
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+}
 
 #[test]
 fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
@@ -394,34 +402,54 @@ fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
 }
 
 #[test]
-fn default_font_extra_svg_bbox_override_keeps_treemap_item_a1_stable() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
-    };
-
-    let (left, right) = measurer.measure_svg_text_bbox_x("Item A1", &style);
-    assert_eq!(left, 27.5234375);
-    assert_eq!(right, 27.5234375);
+fn generated_timeline_svg_override_paths_cover_long_word_bbox() {
+    assert_eq!(
+        crate::generated::timeline_text_overrides_11_12_2::
+            lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
+                "\"trebuchet ms\", verdana, arial, sans-serif",
+                16.0,
+                "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+            ),
+        Some((235.3203125, 235.84375))
+    );
+    assert_eq!(
+        crate::generated::timeline_text_overrides_11_12_2::
+            lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
+                "",
+                16.0,
+                "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+            ),
+        Some((235.3203125, 235.84375))
+    );
+    assert_eq!(
+        crate::generated::timeline_text_overrides_11_12_2::
+            lookup_timeline_svg_bbox_x_with_ascii_overhang_px("courier", 16.0, "Line 2"),
+        None
+    );
 }
 
 #[test]
-fn default_font_single_run_svg_bbox_override_keeps_timeline_long_word_stable() {
-    let measurer = VendoredFontMetricsTextMeasurer::default();
-    let style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: 16.0,
-        font_weight: None,
+fn timeline_long_word_wrap_keeps_upstream_activity_line_extent() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("timeline")
+        .join("upstream_long_word_wrap.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
+    let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
+        panic!("expected TimelineDiagram layout");
     };
 
-    let (left, right) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(
-        "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
-        &style,
+    let actual = layout.activity_line.x2;
+    assert!(
+        (actual - 920.640625).abs() < 0.0001,
+        "expected long-word timeline activity line extent to stay aligned with upstream, got {actual}"
     );
-    assert_eq!(left, 235.3203125);
-    assert_eq!(right, 235.84375);
 }
 
 #[test]
@@ -488,26 +516,6 @@ fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
 
     let flowchart = measurer.measure_wrapped("Circle shape", &style, None, WrapMode::HtmlLike);
     assert_eq!(flowchart.width, 87.8125);
-}
-
-#[test]
-fn extra_svg_bbox_override_table_is_narrowed_to_treemap_leftover() {
-    assert_eq!(
-        lookup_extra_svg_bbox_override_em(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            "Item A1",
-            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
-        ),
-        Some((1.720_214_843_75, 1.720_214_843_75))
-    );
-    assert_eq!(
-        lookup_extra_svg_bbox_override_em(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            "End",
-            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
-        ),
-        None
-    );
 }
 
 #[test]

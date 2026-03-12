@@ -1,11 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::Result;
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
+use crate::Result;
 use serde::Deserialize;
 use std::borrow::Cow;
 
@@ -372,7 +372,13 @@ fn expand_bounds_for_node_text(
             // Timeline node labels can overflow the node shape. Mermaid computes the final
             // viewport from SVG `getBBox()`, which includes glyph overhang and can be asymmetric
             // even for ASCII strings (observed in upstream fixtures).
-            let (left, right) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, &style);
+            let (left, right) = crate::generated::timeline_text_overrides_11_12_2::
+                lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
+                    style.font_family.as_deref().unwrap_or_default(),
+                    style.font_size,
+                    line,
+                )
+                .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, &style));
             *min_x = (*min_x).min(anchor_x - left);
             *max_x = (*max_x).max(anchor_x + right);
         }

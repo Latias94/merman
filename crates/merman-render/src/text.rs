@@ -129,13 +129,6 @@ const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;
 const SVG_DEFAULT_TITLE_DESCENT_EM: f64 = 0.262;
 const SVG_COURIER_TITLE_ASCENT_EM: f64 = 0.8333333333333334;
 const SVG_COURIER_TITLE_DESCENT_EM: f64 = 0.25;
-const DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES: &[(&str, f64, f64)] =
-    &[("Item A1", 1.720_214_843_75_f64, 1.720_214_843_75_f64)];
-const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64, f64)] = &[(
-    "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
-    14.707_519_531_25_f64,
-    14.740_234_375_f64,
-)];
 
 pub(crate) fn font_key_uses_courier_metrics(font_key: &str) -> bool {
     font_key
@@ -149,20 +142,6 @@ pub(crate) fn style_uses_courier_metrics(style: &TextStyle) -> bool {
         .as_deref()
         .map(normalize_font_key)
         .is_some_and(|font_key| font_key_uses_courier_metrics(&font_key))
-}
-
-fn lookup_extra_svg_bbox_override_em(
-    font_key: &str,
-    text: &str,
-    overrides: &[(&str, f64, f64)],
-) -> Option<(f64, f64)> {
-    if font_key != FLOWCHART_DEFAULT_FONT_KEY {
-        return None;
-    }
-    overrides
-        .iter()
-        .find(|(candidate, _, _)| *candidate == text)
-        .map(|(_, left, right)| (*left, *right))
 }
 
 pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
@@ -2891,7 +2870,11 @@ impl VendoredFontMetricsTextMeasurer {
             f + 1.0
         } else {
             let fi = f as i64;
-            if fi % 2 == 0 { f } else { f + 1.0 }
+            if fi % 2 == 0 {
+                f
+            } else {
+                f + 1.0
+            }
         };
         i / 256.0
     }
@@ -2912,7 +2895,11 @@ impl VendoredFontMetricsTextMeasurer {
             f + 1.0
         } else {
             let fi = f as i64;
-            if fi % 2 == 0 { f } else { f + 1.0 }
+            if fi % 2 == 0 {
+                f
+            } else {
+                f + 1.0
+            }
         };
         i / 1024.0
     }
@@ -3139,16 +3126,6 @@ impl VendoredFontMetricsTextMeasurer {
             return (left, right);
         }
 
-        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
-            table.font_key,
-            t,
-            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
-        ) {
-            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-            return (left, right);
-        }
-
         if let Some((left, right)) =
             crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_svg_bbox_x_px(
                 table.font_key,
@@ -3262,16 +3239,6 @@ impl VendoredFontMetricsTextMeasurer {
             return (left, right);
         }
 
-        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
-            table.font_key,
-            t,
-            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
-        ) {
-            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-            return (left, right);
-        }
-
         let first = t.chars().next().unwrap_or(' ');
         let last = t.chars().last().unwrap_or(' ');
 
@@ -3323,20 +3290,6 @@ impl VendoredFontMetricsTextMeasurer {
         let t = text.trim_end();
         if t.is_empty() {
             return (0.0, 0.0);
-        }
-
-        // Mermaid timeline fixture `upstream_long_word_wrap` relies on SVG `getBBox()` of an
-        // overflowing long token. Chromium's bbox is measurably asymmetric for this string under
-        // Mermaid's default font stack, and small errors bubble into the timeline viewBox/line
-        // lengths. Keep a dedicated override so strict SVG parity remains stable.
-        if let Some((left_em, right_em)) = lookup_extra_svg_bbox_override_em(
-            table.font_key,
-            t,
-            DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES,
-        ) {
-            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
-            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
-            return (left, right);
         }
 
         if let Some((left_em, right_em)) = Self::lookup_svg_override_em(table.svg_overrides, t) {
