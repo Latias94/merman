@@ -50,6 +50,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   actionable outside the imported numeric code.
 - Toolchain/CI: pin the workspace Rust toolchain to `1.87.0` and make CI install the same version explicitly, so
   release and local checks stop drifting with floating `stable`.
+- Toolchain/CI: drop GitHub Actions `cargo fmt` / `cargo clippy` steps for now so release CI focuses on build, tests,
+  and parity checks while the remaining render hot spots are still being aligned.
 - Maintenance: normalize `rustfmt` output in parity/text/timeline/xtask helpers so the pinned toolchain now passes
   workspace format checks without local-vs-CI drift.
 

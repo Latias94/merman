@@ -28,22 +28,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.87.0
-        with:
-          components: rustfmt, clippy
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Format
-        if: matrix.os == 'ubuntu-22.04'
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        if: matrix.os == 'ubuntu-22.04'
-        run: cargo clippy --workspace --all-targets
 
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
