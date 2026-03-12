@@ -122,6 +122,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Mindmap/Text: share `mindmap.maxNodeWidth` parsing between layout and SVG render, including
   numeric strings and `px` strings, so mindmap HTML wrapping no longer diverges between the two
   passes on non-numeric config forms.
+- Kanban/Text: make section labels wrap against the configured `kanban.sectionWidth` in both
+  layout and SVG render, and keep the section-label `foreignObject` height from the wrapped label
+  metrics instead of a leftover fixed single-line height.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.

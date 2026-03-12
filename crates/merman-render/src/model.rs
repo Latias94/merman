@@ -734,6 +734,8 @@ pub struct KanbanSectionLayout {
     pub rx: f64,
     pub ry: f64,
     pub label_width: f64,
+    #[serde(skip)]
+    pub label_height: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

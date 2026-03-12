@@ -123,8 +123,14 @@ pub fn layout_kanban_diagram(
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
         let center_y = 0.0;
 
-        let label_metrics = measurer.measure(&section.label, &legend_style);
-        max_label_height = max_label_height.max(label_metrics.height.max(section_label_fo_height));
+        let label_metrics = measurer.measure_wrapped(
+            &section.label,
+            &legend_style,
+            Some(section_width),
+            WrapMode::HtmlLike,
+        );
+        let label_height = label_metrics.height.max(section_label_fo_height);
+        max_label_height = max_label_height.max(label_height);
 
         sections.push(KanbanSectionLayout {
             id: section.id.clone(),
@@ -138,6 +144,7 @@ pub fn layout_kanban_diagram(
             rx: 5.0,
             ry: 5.0,
             label_width: label_metrics.width.max(0.0),
+            label_height,
         });
     }
 
