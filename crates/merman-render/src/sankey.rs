@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
@@ -129,8 +130,8 @@ pub fn layout_sankey_diagram(
     };
     let align = parse_align(effective_config);
 
-    let dx = 10.0;
-    let dy: f64 = 10.0 + if show_values { 15.0 } else { 0.0 };
+    let dx = sankey_text_overrides::sankey_node_width_px();
+    let dy = sankey_text_overrides::sankey_node_padding_px(show_values);
     let iterations = 6usize;
 
     let mut nodes: Vec<Node> = model
@@ -661,4 +662,65 @@ pub fn layout_sankey_diagram(
         nodes: layout_nodes,
         links: layout_links,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_sankey_diagram;
+    use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
+    use crate::text::DeterministicTextMeasurer;
+    use serde_json::json;
+
+    #[test]
+    fn sankey_text_constants_are_generated() {
+        assert_eq!(sankey_text_overrides::sankey_node_width_px(), 10.0);
+        assert_eq!(sankey_text_overrides::sankey_node_padding_base_px(), 10.0);
+        assert_eq!(
+            sankey_text_overrides::sankey_node_padding_show_values_extra_px(),
+            15.0
+        );
+        assert_eq!(sankey_text_overrides::sankey_node_padding_px(true), 25.0);
+        assert_eq!(sankey_text_overrides::sankey_node_padding_px(false), 10.0);
+        assert_eq!(sankey_text_overrides::sankey_label_font_size_px(), 14.0);
+        assert_eq!(sankey_text_overrides::sankey_label_gap_x_px(), 6.0);
+        assert_eq!(
+            sankey_text_overrides::sankey_label_hide_values_dy_em(),
+            0.35
+        );
+    }
+
+    #[test]
+    fn sankey_layout_uses_generated_node_geometry() {
+        let semantic = json!({
+            "graph": {
+                "nodes": [{"id": "A"}, {"id": "B"}],
+                "links": [{"source": "A", "target": "B", "value": 1.0}]
+            }
+        });
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let default_layout = layout_sankey_diagram(&semantic, &json!({}), &measurer).unwrap();
+        assert_eq!(
+            default_layout.node_width,
+            sankey_text_overrides::sankey_node_width_px()
+        );
+        assert_eq!(
+            default_layout.node_padding,
+            sankey_text_overrides::sankey_node_padding_px(true)
+        );
+
+        let hidden_values_layout = layout_sankey_diagram(
+            &semantic,
+            &json!({"sankey": {"showValues": false}}),
+            &measurer,
+        )
+        .unwrap();
+        assert_eq!(
+            hidden_values_layout.node_padding,
+            sankey_text_overrides::sankey_node_padding_px(false)
+        );
+    }
 }

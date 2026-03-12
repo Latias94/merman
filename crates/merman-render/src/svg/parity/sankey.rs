@@ -1,4 +1,5 @@
 use super::*;
+use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
 
 pub(super) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
@@ -56,9 +57,9 @@ pub(super) fn render_sankey_diagram_svg(
     let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
 
-    const LABEL_FONT_SIZE_PX: f64 = 14.0;
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
+    let label_font_size = sankey_text_overrides::sankey_label_font_size_px();
 
     let mut min_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -71,10 +72,14 @@ pub(super) fn render_sankey_diagram_svg(
         max_x = max_x.max(n.x1);
         max_y = max_y.max(n.y1);
 
-        let dy_em = if show_values { 0.0 } else { 0.35 };
-        let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * LABEL_FONT_SIZE_PX;
-        let ascent = LABEL_FONT_SIZE_PX * DEFAULT_ASCENT_EM;
-        let descent = LABEL_FONT_SIZE_PX * DEFAULT_DESCENT_EM;
+        let dy_em = if show_values {
+            0.0
+        } else {
+            sankey_text_overrides::sankey_label_hide_values_dy_em()
+        };
+        let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * label_font_size;
+        let ascent = label_font_size * DEFAULT_ASCENT_EM;
+        let descent = label_font_size * DEFAULT_DESCENT_EM;
         min_y = min_y.min(baseline_y - ascent);
         max_y = max_y.max(baseline_y + descent);
     }
@@ -198,15 +203,29 @@ pub(super) fn render_sankey_diagram_svg(
     }
     out.push_str("</g>");
 
-    out.push_str(r#"<g class="node-labels" font-size="14">"#);
+    let _ = write!(
+        &mut out,
+        r#"<g class="node-labels" font-size="{font_size}">"#,
+        font_size = fmt(label_font_size)
+    );
     for n in &layout.nodes {
         let y = (n.y0 + n.y1) / 2.0;
         let (x, anchor) = if n.x0 < layout_width / 2.0 {
-            (n.x1 + 6.0, "start")
+            (
+                n.x1 + sankey_text_overrides::sankey_label_gap_x_px(),
+                "start",
+            )
         } else {
-            (n.x0 - 6.0, "end")
+            (n.x0 - sankey_text_overrides::sankey_label_gap_x_px(), "end")
         };
-        let dy = if show_values { "0em" } else { "0.35em" };
+        let dy = if show_values {
+            "0em".to_string()
+        } else {
+            format!(
+                "{}em",
+                fmt(sankey_text_overrides::sankey_label_hide_values_dy_em())
+            )
+        };
         let v = (n.value * 100.0).round() / 100.0;
         let text = if show_values {
             format!("{}\n{}{}{}", n.id, prefix, v, suffix)

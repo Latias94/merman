@@ -97,6 +97,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kanban/Text: move Kanban section/item padding and item label x-inset constants into
   `kanban_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
   Mermaid `padding = 10` / label inset literals inline.
+- Sankey/Text: move Sankey node width/padding and label font/gap constants into
+  `sankey_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
+  Mermaid node/label geometry literals inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.
