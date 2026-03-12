@@ -1,4 +1,5 @@
 use super::*;
+use crate::generated::xychart_text_overrides_11_12_2 as xychart_text_overrides;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
@@ -176,7 +177,8 @@ pub(super) fn render_xychart_diagram_svg(
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
                 if layout.show_data_label {
-                    let char_width_factor = 0.7;
+                    let char_width_factor =
+                        xychart_text_overrides::xychart_bar_data_label_char_width_factor();
 
                     #[derive(Clone)]
                     struct BarItem<'a> {
@@ -204,12 +206,17 @@ pub(super) fn render_xychart_diagram_svg(
                                 let text_w = font_size
                                     * (item.label.chars().count() as f64)
                                     * char_width_factor;
-                                text_w <= item.rect.width - 10.0
+                                text_w
+                                    <= item.rect.width
+                                        - xychart_text_overrides::
+                                            xychart_horizontal_bar_data_label_right_inset_px()
                             }
 
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
-                                let mut fs = item.rect.height * 0.7;
+                                let mut fs = item.rect.height
+                                    * xychart_text_overrides::
+                                        xychart_horizontal_bar_data_label_font_height_factor();
                                 while !fits(item, fs, char_width_factor) && fs > 0.0 {
                                     fs -= 1.0;
                                 }
@@ -220,7 +227,11 @@ pub(super) fn render_xychart_diagram_svg(
                                 let mut t = node("text");
                                 t.attrs.insert(
                                     "x".to_string(),
-                                    fmt_xy(item.rect.x + item.rect.width - 10.0),
+                                    fmt_xy(
+                                        item.rect.x + item.rect.width
+                                            - xychart_text_overrides::
+                                                xychart_horizontal_bar_data_label_right_inset_px(),
+                                    ),
                                 );
                                 t.attrs.insert(
                                     "y".to_string(),
@@ -238,7 +249,8 @@ pub(super) fn render_xychart_diagram_svg(
                                 push_child(&mut arena, parent, t);
                             }
                         } else {
-                            let y_offset = 10.0;
+                            let y_offset =
+                                xychart_text_overrides::xychart_vertical_bar_data_label_top_inset_px();
                             fn fits(
                                 item: &BarItem<'_>,
                                 font_size: f64,
@@ -398,4 +410,29 @@ pub(super) fn render_xychart_diagram_svg(
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::generated::xychart_text_overrides_11_12_2 as xychart_text_overrides;
+
+    #[test]
+    fn xychart_bar_data_label_constants_are_generated() {
+        assert_eq!(
+            xychart_text_overrides::xychart_bar_data_label_char_width_factor(),
+            0.7
+        );
+        assert_eq!(
+            xychart_text_overrides::xychart_horizontal_bar_data_label_font_height_factor(),
+            0.7
+        );
+        assert_eq!(
+            xychart_text_overrides::xychart_horizontal_bar_data_label_right_inset_px(),
+            10.0
+        );
+        assert_eq!(
+            xychart_text_overrides::xychart_vertical_bar_data_label_top_inset_px(),
+            10.0
+        );
+    }
 }

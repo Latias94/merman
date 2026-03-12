@@ -40,3 +40,4 @@ pub mod svg_overrides_sequence_11_12_2;
 pub mod timeline_root_overrides_11_12_2;
 pub mod timeline_text_overrides_11_12_2;
 pub mod treemap_text_overrides_11_12_2;
+pub mod xychart_text_overrides_11_12_2;
