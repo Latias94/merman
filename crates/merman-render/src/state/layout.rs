@@ -1076,26 +1076,30 @@ fn layout_state_diagram_v2_inner(
                     title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
 
                 // Mirror `padding-right: 1px` in upstream HTML.
-                let title_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                )
-                .unwrap_or_else(|| (title_w + 1.0).max(0.0));
-                let desc_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                    text_style.font_size,
-                    desc.trim(),
-                )
-                .unwrap_or_else(|| (desc_w + 1.0).max(0.0));
-                let title_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                )
-                .unwrap_or_else(|| title_h.max(0.0));
-                let desc_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
-                    text_style.font_size,
-                    desc.trim(),
-                )
-                .unwrap_or_else(|| desc_h.max(0.0));
+                let title_w = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_width_px(
+                        text_style.font_size,
+                        label_text.trim(),
+                        title_w,
+                    );
+                let desc_w = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_width_px(
+                        text_style.font_size,
+                        desc.trim(),
+                        desc_w,
+                    );
+                let title_h = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_height_px(
+                        text_style.font_size,
+                        label_text.trim(),
+                        title_h,
+                    );
+                let desc_h = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_height_px(
+                        text_style.font_size,
+                        desc.trim(),
+                        desc_h,
+                    );
 
                 let inner_w = title_w.max(desc_w);
                 let half_pad = (padding / 2.0).max(0.0);
@@ -1988,26 +1992,30 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                 let (desc_w, desc_h) =
                     title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
 
-                let title_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                )
-                .unwrap_or_else(|| (title_w + 1.0).max(0.0));
-                let desc_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                    text_style.font_size,
-                    desc.trim(),
-                )
-                .unwrap_or_else(|| (desc_w + 1.0).max(0.0));
-                let title_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                )
-                .unwrap_or_else(|| title_h.max(0.0));
-                let desc_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
-                    text_style.font_size,
-                    desc.trim(),
-                )
-                .unwrap_or_else(|| desc_h.max(0.0));
+                let title_w = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_width_px(
+                        text_style.font_size,
+                        label_text.trim(),
+                        title_w,
+                    );
+                let desc_w = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_width_px(
+                        text_style.font_size,
+                        desc.trim(),
+                        desc_w,
+                    );
+                let title_h = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_height_px(
+                        text_style.font_size,
+                        label_text.trim(),
+                        title_h,
+                    );
+                let desc_h = crate::generated::state_text_overrides_11_12_2::
+                    rect_with_title_span_effective_height_px(
+                        text_style.font_size,
+                        desc.trim(),
+                        desc_h,
+                    );
 
                 let inner_w = title_w.max(desc_w);
                 let half_pad = (padding / 2.0).max(0.0);
@@ -2182,4 +2190,41 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
     let _ = cluster_dir;
 
     Ok(g)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn state_rect_with_title_span_effective_metrics_are_generated() {
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::rect_with_title_span_effective_width_px(
+                16.0,
+                "Just a test",
+                75.0,
+            ),
+            76.125
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::rect_with_title_span_effective_width_px(
+                16.0, "unknown", 75.0,
+            ),
+            76.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::rect_with_title_span_effective_height_px(
+                16.0,
+                "Just a test",
+                18.0,
+            ),
+            19.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::rect_with_title_span_effective_height_px(
+                16.0,
+                "unknown",
+                18.0,
+            ),
+            18.0
+        );
+    }
 }

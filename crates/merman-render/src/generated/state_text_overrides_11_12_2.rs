@@ -39,6 +39,24 @@ pub fn lookup_rect_with_title_span_height_px(font_size_px: f64, text: &str) -> O
     }
 }
 
+pub fn rect_with_title_span_effective_width_px(
+    font_size_px: f64,
+    text: &str,
+    svg_like_width_px: f64,
+) -> f64 {
+    lookup_rect_with_title_span_width_px(font_size_px, text)
+        .unwrap_or_else(|| (svg_like_width_px.max(0.0) + 1.0).max(0.0))
+}
+
+pub fn rect_with_title_span_effective_height_px(
+    font_size_px: f64,
+    text: &str,
+    svg_like_height_px: f64,
+) -> f64 {
+    lookup_rect_with_title_span_height_px(font_size_px, text)
+        .unwrap_or_else(|| svg_like_height_px.max(0.0))
+}
+
 pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option<f64> {
     if (font_size_px - 16.0).abs() > 0.01 {
         return None;

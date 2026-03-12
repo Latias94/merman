@@ -2110,18 +2110,30 @@ fn render_state_node_svg(
             let gap = half_pad + 5.0;
 
             // Mirror `padding-right: 1px` in upstream HTML.
-            let title_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                ctx.text_style.font_size,
-                title.trim(),
-            )
-            .unwrap_or_else(|| title_metrics.width.max(0.0) + 1.0);
-            let title_h = title_metrics.height.max(0.0);
-            let desc_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
-                ctx.text_style.font_size,
-                desc.trim(),
-            )
-            .unwrap_or_else(|| desc_metrics.width.max(0.0) + 1.0);
-            let desc_h = desc_metrics.height.max(0.0);
+            let title_w = crate::generated::state_text_overrides_11_12_2::
+                rect_with_title_span_effective_width_px(
+                    ctx.text_style.font_size,
+                    title.trim(),
+                    title_metrics.width,
+                );
+            let title_h = crate::generated::state_text_overrides_11_12_2::
+                rect_with_title_span_effective_height_px(
+                    ctx.text_style.font_size,
+                    title.trim(),
+                    title_metrics.height,
+                );
+            let desc_w = crate::generated::state_text_overrides_11_12_2::
+                rect_with_title_span_effective_width_px(
+                    ctx.text_style.font_size,
+                    desc.trim(),
+                    desc_metrics.width,
+                );
+            let desc_h = crate::generated::state_text_overrides_11_12_2::
+                rect_with_title_span_effective_height_px(
+                    ctx.text_style.font_size,
+                    desc.trim(),
+                    desc_metrics.height,
+                );
             let inner_w = (w - padding).max(0.0);
             let title_x = ((inner_w - title_w) / 2.0).max(0.0);
             let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
