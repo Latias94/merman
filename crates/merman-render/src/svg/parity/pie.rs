@@ -1,4 +1,5 @@
 use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
+use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
 use std::fmt::Write as _;
 
 fn pie_legend_rect_style(fill: &str) -> String {
@@ -180,12 +181,17 @@ pub(super) fn render_pie_diagram_svg(
         Some(t) => {
             let _ = write!(
                 &mut out,
-                r#"<text x="0" y="-200" class="pieTitleText">{text}</text>"#,
+                r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
+                y = super::fmt(pie_text_overrides::pie_title_y_px()),
                 text = super::escape_xml(t)
             );
         }
         None => {
-            out.push_str(r#"<text x="0" y="-200" class="pieTitleText"/>"#);
+            let _ = write!(
+                &mut out,
+                r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
+                y = super::fmt(pie_text_overrides::pie_title_y_px())
+            );
         }
     }
 
@@ -199,7 +205,8 @@ pub(super) fn render_pie_diagram_svg(
         let style = pie_legend_rect_style(&item.fill);
         let _ = write!(
             &mut out,
-            r#"<rect width="18" height="18" style="{style}"/>"#,
+            r#"<rect width="{size}" height="{size}" style="{style}"/>"#,
+            size = super::fmt(pie_text_overrides::pie_legend_rect_size_px()),
             style = super::escape_xml(&style)
         );
         let text = if model.show_data {
@@ -209,7 +216,9 @@ pub(super) fn render_pie_diagram_svg(
         };
         let _ = write!(
             &mut out,
-            r#"<text x="22" y="14">{text}</text>"#,
+            r#"<text x="{x}" y="{y}">{text}</text>"#,
+            x = super::fmt(pie_text_overrides::pie_legend_text_x_px()),
+            y = super::fmt(pie_text_overrides::pie_legend_text_y_px()),
             text = super::escape_xml(&text)
         );
         out.push_str("</g>");

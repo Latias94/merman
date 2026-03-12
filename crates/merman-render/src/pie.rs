@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use ryu_js::Buffer;
@@ -307,16 +308,16 @@ pub fn layout_pie_diagram(
     );
 
     // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
-    let margin: f64 = 40.0;
-    let legend_rect_size: f64 = 18.0;
-    let legend_spacing: f64 = 4.0;
+    let margin = pie_text_overrides::pie_margin_px();
+    let legend_rect_size = pie_text_overrides::pie_legend_rect_size_px();
+    let legend_spacing = pie_text_overrides::pie_legend_spacing_px();
 
-    let center_x: f64 = 225.0;
-    let center_y: f64 = 225.0;
-    let radius: f64 = 185.0;
-    let outer_radius: f64 = 186.0;
-    let label_radius: f64 = radius * 0.75;
-    let legend_x: f64 = 12.0 * legend_rect_size;
+    let center_x = pie_text_overrides::pie_center_x_px();
+    let center_y = pie_text_overrides::pie_center_y_px();
+    let radius = pie_text_overrides::pie_radius_px();
+    let outer_radius = pie_text_overrides::pie_outer_radius_px();
+    let label_radius = pie_text_overrides::pie_label_radius_px(radius);
+    let legend_x = pie_text_overrides::pie_legend_x_px();
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
 
@@ -408,7 +409,7 @@ pub fn layout_pie_diagram(
 
     let legend_style = TextStyle {
         font_family: None,
-        font_size: 17.0,
+        font_size: pie_text_overrides::pie_legend_label_font_size_px(),
         font_weight: None,
     };
     let mut max_legend_width: f64 = 0.0;
@@ -460,4 +461,31 @@ pub fn layout_pie_diagram(
         slices,
         legend_items,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn pie_text_constants_are_generated() {
+        assert_eq!(
+            crate::generated::pie_text_overrides_11_12_2::pie_margin_px(),
+            40.0
+        );
+        assert_eq!(
+            crate::generated::pie_text_overrides_11_12_2::pie_legend_rect_size_px(),
+            18.0
+        );
+        assert_eq!(
+            crate::generated::pie_text_overrides_11_12_2::pie_center_x_px(),
+            225.0
+        );
+        assert_eq!(
+            crate::generated::pie_text_overrides_11_12_2::pie_label_radius_px(185.0),
+            138.75
+        );
+        assert_eq!(
+            crate::generated::pie_text_overrides_11_12_2::pie_title_y_px(),
+            -200.0
+        );
+    }
 }

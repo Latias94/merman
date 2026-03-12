@@ -85,6 +85,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Journey/Text: move Journey legend/title/face geometry constants into
   `journey_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
   fixed-position text/face literals inline.
+- Pie/Text: move Pie fixed legend/title geometry constants into
+  `pie_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
+  center/radius/legend text literals inline.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

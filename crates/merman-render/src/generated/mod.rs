@@ -27,6 +27,7 @@ pub mod kanban_text_overrides_11_12_2;
 pub mod mindmap_root_overrides_11_12_2;
 pub mod mindmap_text_overrides_11_12_2;
 pub mod pie_root_overrides_11_12_2;
+pub mod pie_text_overrides_11_12_2;
 pub mod requirement_root_overrides_11_12_2;
 pub mod requirement_text_overrides_11_12_2;
 pub mod sankey_root_overrides_11_12_2;
