@@ -88,6 +88,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Pie/Text: move Pie fixed legend/title geometry constants into
   `pie_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
   center/radius/legend text literals inline.
+- Radar/Text: move Radar legend line-step / box / label geometry constants into
+  `radar_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
+  legend-position literals inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.

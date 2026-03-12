@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
@@ -255,7 +256,7 @@ pub fn layout_radar_diagram(
     if model.options.show_legend && !curves.is_empty() {
         let base_x = ((width / 2.0 + margin_right) * 3.0) / 4.0;
         let base_y = (-(height / 2.0 + margin_top) * 3.0) / 4.0;
-        let step_y = 20.0;
+        let step_y = radar_text_overrides::radar_legend_line_step_y_px();
         for (i, c) in model.curves.iter().enumerate() {
             legend_items.push(RadarLegendItemLayout {
                 label: c.label.clone(),
@@ -285,4 +286,58 @@ pub fn layout_radar_diagram(
         curves,
         legend_items,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_radar_diagram;
+    use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
+    use crate::text::DeterministicTextMeasurer;
+    use serde_json::json;
+
+    #[test]
+    fn radar_text_constants_are_generated() {
+        assert_eq!(radar_text_overrides::radar_legend_line_step_y_px(), 20.0);
+        assert_eq!(radar_text_overrides::radar_legend_box_size_px(), 12.0);
+        assert_eq!(radar_text_overrides::radar_legend_label_x_px(), 16.0);
+        assert_eq!(
+            radar_text_overrides::radar_legend_label_baseline_y_px(),
+            0.0
+        );
+    }
+
+    #[test]
+    fn radar_legend_layout_uses_generated_step_y() {
+        let semantic = json!({
+            "title": "Radar",
+            "axes": [
+                {"name": "a", "label": "A"},
+                {"name": "b", "label": "B"},
+                {"name": "c", "label": "C"}
+            ],
+            "curves": [
+                {"name": "one", "label": "One", "entries": [1.0, 2.0, 3.0]},
+                {"name": "two", "label": "Two", "entries": [3.0, 2.0, 1.0]}
+            ],
+            "options": {
+                "showLegend": true,
+                "ticks": 3,
+                "min": 0.0,
+                "max": 3.0,
+                "graticule": "circle"
+            }
+        });
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let layout = layout_radar_diagram(&semantic, &json!({}), &measurer).unwrap();
+
+        assert_eq!(layout.legend_items.len(), 2);
+        assert_eq!(
+            layout.legend_items[1].y - layout.legend_items[0].y,
+            radar_text_overrides::radar_legend_line_step_y_px()
+        );
+    }
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
@@ -405,7 +406,8 @@ pub(super) fn render_radar_diagram_svg(
         );
         let _ = write!(
             &mut out,
-            r#"<rect width="12" height="12" class="radarLegendBox-{idx}"/>"#,
+            r#"<rect width="{size}" height="{size}" class="radarLegendBox-{idx}"/>"#,
+            size = fmt_display(radar_text_overrides::radar_legend_box_size_px()),
             idx = item.class_index
         );
         let label = model
@@ -415,7 +417,9 @@ pub(super) fn render_radar_diagram_svg(
             .unwrap_or("");
         let _ = write!(
             &mut out,
-            r#"<text x="16" y="0" class="radarLegendText">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
+            x = fmt_display(radar_text_overrides::radar_legend_label_x_px()),
+            y = fmt_display(radar_text_overrides::radar_legend_label_baseline_y_px()),
             text = escape_xml(label)
         );
         out.push_str("</g>");
