@@ -87,20 +87,20 @@ pub(super) fn parse_class_fast_db<'a>(
 
         fn parse_relation_type(rest: &str) -> (i32, &str) {
             let rest = rest.trim_start();
-            if rest.starts_with("<|") {
-                return (REL_EXTENSION, &rest[2..]);
+            if let Some(stripped) = rest.strip_prefix("<|") {
+                return (REL_EXTENSION, stripped);
             }
-            if rest.starts_with("|>") {
-                return (REL_EXTENSION, &rest[2..]);
+            if let Some(stripped) = rest.strip_prefix("|>") {
+                return (REL_EXTENSION, stripped);
             }
-            if rest.starts_with("()") {
-                return (REL_LOLLIPOP, &rest[2..]);
+            if let Some(stripped) = rest.strip_prefix("()") {
+                return (REL_LOLLIPOP, stripped);
             }
-            if rest.starts_with('*') {
-                return (REL_COMPOSITION, &rest[1..]);
+            if let Some(stripped) = rest.strip_prefix('*') {
+                return (REL_COMPOSITION, stripped);
             }
-            if rest.starts_with('o') {
-                return (REL_AGGREGATION, &rest[1..]);
+            if let Some(stripped) = rest.strip_prefix('o') {
+                return (REL_AGGREGATION, stripped);
             }
             if rest.starts_with('<') || rest.starts_with('>') {
                 return (REL_DEPENDENCY, &rest[1..]);
@@ -111,10 +111,10 @@ pub(super) fn parse_class_fast_db<'a>(
         let (type1, after_t1) = parse_relation_type(rest);
         let after_t1 = after_t1.trim_start();
 
-        let (line_type, after_line) = if after_t1.starts_with("--") {
-            (LINE_SOLID, &after_t1[2..])
-        } else if after_t1.starts_with("..") {
-            (LINE_DOTTED, &after_t1[2..])
+        let (line_type, after_line) = if let Some(stripped) = after_t1.strip_prefix("--") {
+            (LINE_SOLID, stripped)
+        } else if let Some(stripped) = after_t1.strip_prefix("..") {
+            (LINE_DOTTED, stripped)
         } else {
             return None;
         };
@@ -160,8 +160,8 @@ pub(super) fn parse_class_fast_db<'a>(
             continue;
         }
 
-        if line.starts_with("direction") {
-            let rest = line["direction".len()..].trim_start();
+        if let Some(stripped) = line.strip_prefix("direction") {
+            let rest = stripped.trim_start();
             let dir = rest.split_whitespace().next().unwrap_or_default().trim();
             if matches!(dir, "TB" | "BT" | "LR" | "RL") {
                 db.set_direction(dir);

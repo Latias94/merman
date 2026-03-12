@@ -289,12 +289,11 @@ fn find_type2_conflicts_ref<'a>(
         canon: &HashMap<&'a str, &'a str>,
         conflicts: &mut ConflictsRef<'a>,
         south: &[&'a str],
-        south_pos: usize,
-        south_end: usize,
+        south_range: std::ops::Range<usize>,
         prev_north_border: isize,
         next_north_border: isize,
     ) {
-        for &v in south.iter().take(south_end).skip(south_pos) {
+        for &v in south.iter().take(south_range.end).skip(south_range.start) {
             let v_dummy = g.node(v).and_then(|n| n.dummy.as_deref());
             if v_dummy.is_some() {
                 g.for_each_predecessor(v, |u| {
@@ -342,8 +341,7 @@ fn find_type2_conflicts_ref<'a>(
                         canon,
                         &mut conflicts,
                         south,
-                        south_pos,
-                        south_lookahead,
+                        south_pos..south_lookahead,
                         prev_north_pos,
                         next_north_pos.unwrap_or(-1),
                     );
@@ -357,8 +355,7 @@ fn find_type2_conflicts_ref<'a>(
                 canon,
                 &mut conflicts,
                 south,
-                south_pos,
-                south.len(),
+                south_pos..south.len(),
                 next_north_pos.unwrap_or(-1),
                 north.len() as isize,
             );

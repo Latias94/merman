@@ -139,12 +139,14 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
             }
         };
         db.add_node(
-            indent as i32,
-            &id_raw,
-            &descr_raw,
-            descr_is_markdown,
-            ty,
-            &meta.diagram_type,
+            super::db::MindmapNodeInput {
+                indent_level: indent as i32,
+                id_raw: &id_raw,
+                descr_raw: &descr_raw,
+                descr_is_markdown,
+                ty,
+                diagram_type: &meta.diagram_type,
+            },
             &meta.effective_config,
         )?;
         Ok(HandleOutcome::Done)

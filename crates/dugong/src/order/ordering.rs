@@ -316,7 +316,7 @@ fn sweep<N, E, G>(
         }
 
         let constraints_start = timing_enabled.then(std::time::Instant::now);
-        add_subgraph_constraints_ix(&lg, &mut cg, &sorted.vs);
+        add_subgraph_constraints_ix(lg, &mut cg, &sorted.vs);
         if let Some(s) = constraints_start {
             timings.sweep_add_constraints += s.elapsed();
         }

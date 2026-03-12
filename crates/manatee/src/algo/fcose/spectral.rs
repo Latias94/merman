@@ -1,3 +1,8 @@
+#![allow(clippy::assign_op_pattern)]
+#![allow(clippy::manual_contains)]
+#![allow(clippy::manual_swap)]
+#![allow(clippy::needless_range_loop)]
+
 use rustc_hash::FxHashMap;
 
 use super::{SimEdge, SimNode, XorShift64Star};

@@ -37,11 +37,7 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     fn strip_trailing_open_brace(line: &str) -> Option<&str> {
         let trimmed = line.trim_end();
-        if trimmed.ends_with('{') {
-            Some(trimmed[..trimmed.len() - 1].trim_end())
-        } else {
-            None
-        }
+        trimmed.strip_suffix('{').map(str::trim_end)
     }
 
     fn translate_participant_decl(line: &str) -> Option<String> {
@@ -452,9 +448,9 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
             }
 
             // Extract a stable id for Mermaid sequence: the leading identifier token.
-            let mut chars = rest.chars();
+            let chars = rest.chars();
             let mut id = String::new();
-            while let Some(ch) = chars.next() {
+            for ch in chars {
                 if ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' {
                     id.push(ch);
                 } else {

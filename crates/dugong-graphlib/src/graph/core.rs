@@ -192,7 +192,7 @@ where
                     *slot = Some(new_parent);
                 }
                 if let Some(ch) = self.children_ix.get_mut(new_parent) {
-                    if !ch.iter().any(|&c| c == new_child) {
+                    if !ch.contains(&new_child) {
                         ch.push(new_child);
                     }
                 }
@@ -1382,7 +1382,7 @@ where
             *slot = Some(parent_ix);
         }
         if let Some(ch) = self.children_ix.get_mut(parent_ix) {
-            if !ch.iter().any(|&c| c == child_ix) {
+            if !ch.contains(&child_ix) {
                 ch.push(child_ix);
             }
         }

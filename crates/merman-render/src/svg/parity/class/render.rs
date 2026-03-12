@@ -2891,7 +2891,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             {
                 let mut y_offset = 0.0;
                 for m in &node.methods {
-                    let mut raw = decode_entities_minimal(m.display_text.trim());
+                    let raw = decode_entities_minimal(m.display_text.trim());
                     let raw_trimmed = raw.trim().to_string();
                     let mut t = raw;
                     if t.starts_with('\\') {
@@ -2968,7 +2968,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     y_offset += metrics.height.max(0.0) + text_padding;
                 }
             }
-            let methods_group_height = methods_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
+            let _methods_group_height = methods_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
 
             // textHelper(...) pre-adjust group transforms.
             let ann_tx = -annotation_group_width / 2.0;

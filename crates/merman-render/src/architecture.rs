@@ -522,7 +522,7 @@ fn layout_architecture_diagram_model(
                 }
             }
             if let Some(bb) = bb {
-                let mut bb = bb.inflate(base_pad);
+                let bb = bb.inflate(base_pad);
 
                 // Group titles are rendered inside the compound bounds in Mermaid/Cytoscape and
                 // do not affect the pre-layout `eles.boundingBox()` center used for relocation.

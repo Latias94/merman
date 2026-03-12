@@ -123,8 +123,7 @@ where
     // conflict resolution loop consumes this list via `pop()` (LIFO), so the push order is a
     // load-bearing tie-breaker for symmetric graphs. Prefer the input slice order here to
     // match upstream and avoid mirrored / drifted layouts.
-    let mut source_set: Vec<usize> = Vec::new();
-    source_set.reserve(entries.len());
+    let mut source_set: Vec<usize> = Vec::with_capacity(entries.len());
     for (ix, _entry) in entries.iter().enumerate() {
         if conflicts[ix].indegree == 0 {
             source_set.push(ix);
@@ -470,19 +469,6 @@ where
         movable.retain(|w| w != bl && w != br);
     }
 
-    // `children_iter(...)` reflects insertion order in the layer graph, but Dagre's sweep logic
-    // expects the "current" order (updated between sweeps) to be the baseline tie-breaker for
-    // ambiguous barycenter sorts. Prefer the node's `order` attribute here, falling back to a
-    // stable insertion-derived index.
-    movable.sort_by_key(|id| {
-        let order = g
-            .node(id.as_str())
-            .and_then(|n| n.order())
-            .unwrap_or(usize::MAX);
-        let ix = g.node_ix(id.as_str()).unwrap_or(usize::MAX);
-        (order, ix)
-    });
-
     let mut subgraphs: HashMap<String, SortResult> = HashMap::default();
 
     let mut barycenters = barycenter(g, &movable);
@@ -554,14 +540,6 @@ where
     if border_left_ix.is_some() && border_right_ix.is_some() {
         movable.retain(|&w_ix| Some(w_ix) != border_left_ix && Some(w_ix) != border_right_ix);
     }
-
-    movable.sort_by_key(|&w_ix| {
-        let order = g
-            .node_label_by_ix(w_ix)
-            .and_then(|n| n.order())
-            .unwrap_or(usize::MAX);
-        (order, w_ix)
-    });
 
     let mut subgraphs: HashMap<usize, SortResultIx> = HashMap::default();
 
@@ -935,8 +913,8 @@ where
     });
 
     let mut source_set: Vec<usize> = Vec::new();
-    for ix in 0..conflicts.len() {
-        if conflicts[ix].indegree == 0 {
+    for (ix, conflict) in conflicts.iter().enumerate() {
+        if conflict.indegree == 0 {
             source_set.push(ix);
         }
     }

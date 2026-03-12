@@ -1,3 +1,10 @@
+#![allow(dead_code)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::manual_div_ceil)]
+#![allow(clippy::needless_option_as_deref)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::nonminimal_bool)]
+
 use crate::algo::FcoseOptions;
 use crate::error::Result;
 use crate::graph::{Anchor, BoundsExtras, Graph, LayoutResult, Point};

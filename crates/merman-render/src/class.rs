@@ -2093,7 +2093,7 @@ pub fn layout_class_diagram_v2_typed(
         let Some(meta) = terminal_meta.clone() else {
             continue;
         };
-        let (from_rect, to_rect, points) = if let (Some(from), Some(to)) = (
+        let (_from_rect, _to_rect, points) = if let (Some(from), Some(to)) = (
             node_rect_by_id.get(edge.from.as_str()).copied(),
             node_rect_by_id.get(edge.to.as_str()).copied(),
         ) {

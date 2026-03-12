@@ -190,7 +190,7 @@ fn line_ops(
         }
     }
 
-    let (rand_a, rand_b) = if overlay {
+    let (rand_a, _rand_b) = if overlay {
         (half_off, half_off)
     } else {
         (off, off)

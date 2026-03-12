@@ -1352,7 +1352,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let bbox_h = label_h.unwrap_or_else(|| (h - 8.0 * half_padding).max(1.0));
 
                 let w_base = bbox_w + 10.0 * half_padding;
-                let h_base = bbox_h + 8.0 * half_padding;
+                let _h_base = bbox_h + 8.0 * half_padding;
                 let effective_w = w.max(1.0);
                 let effective_h = h.max(1.0);
                 let r = 0.15 * w_base;

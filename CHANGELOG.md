@@ -45,6 +45,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   parity fixtures.
 - Theme/CSS: stop implicitly applying `base` defaults under `theme=default`, seed Mermaid-like base/neutral xychart
   defaults, and prefer `themeVariables.fontFamily` in emitted root SVG styles.
+- Core/Layout internals: clean the remaining strict Clippy offenders in `dugong-graphlib`, `dugong`, and parser helper
+  code, and scope vendored `manatee` FCoSE lint exceptions to the algorithm module so current stable Clippy stays
+  actionable outside the imported numeric code.
 
 ## [0.3.0] - 2026-03-02
 

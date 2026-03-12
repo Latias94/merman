@@ -67,12 +67,8 @@ impl ClassMember {
             _ => ("", s),
         };
 
-        let Some(paren_open_rel) = rest.find('(') else {
-            return None;
-        };
-        let Some(paren_close_rel) = rest.rfind(')') else {
-            return None;
-        };
+        let paren_open_rel = rest.find('(')?;
+        let paren_close_rel = rest.rfind(')')?;
         if paren_close_rel < paren_open_rel {
             return None;
         }

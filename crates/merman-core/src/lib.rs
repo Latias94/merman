@@ -94,9 +94,11 @@ impl Default for Engine {
 impl Engine {
     fn parse_timing_enabled() -> bool {
         static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *ENABLED.get_or_init(|| match std::env::var("MERMAN_PARSE_TIMING").as_deref() {
-            Ok("1") | Ok("true") => true,
-            _ => false,
+        *ENABLED.get_or_init(|| {
+            matches!(
+                std::env::var("MERMAN_PARSE_TIMING").as_deref(),
+                Ok("1") | Ok("true")
+            )
         })
     }
 

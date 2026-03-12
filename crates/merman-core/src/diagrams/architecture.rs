@@ -807,9 +807,7 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     let (lhs_id, lhs_group, tail) = parse_id_with_optional_group_modifier(rest)?;
     rest = tail.trim_start();
 
-    let lhs_dir: char;
     let mut lhs_into = None;
-    let rhs_dir: char;
     let mut rhs_into = None;
     let mut title = None;
 
@@ -818,7 +816,7 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
         message: "expected ':' for lhs port".to_string(),
     })?;
     rest = rest.trim_start();
-    lhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
+    let lhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
         diagram_type: "architecture".to_string(),
         message: "expected lhs direction".to_string(),
     })?;
@@ -867,7 +865,7 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
     }
 
     rest = rest.trim_start();
-    rhs_dir = rest.chars().next().ok_or_else(|| Error::DiagramParse {
+    let rhs_dir: char = rest.chars().next().ok_or_else(|| Error::DiagramParse {
         diagram_type: "architecture".to_string(),
         message: "expected rhs direction".to_string(),
     })?;

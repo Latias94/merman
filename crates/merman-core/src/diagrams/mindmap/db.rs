@@ -35,6 +35,15 @@ pub(super) struct MindmapDb {
     base_level: Option<i32>,
 }
 
+pub(super) struct MindmapNodeInput<'a> {
+    pub(super) indent_level: i32,
+    pub(super) id_raw: &'a str,
+    pub(super) descr_raw: &'a str,
+    pub(super) descr_is_markdown: bool,
+    pub(super) ty: i32,
+    pub(super) diagram_type: &'a str,
+}
+
 impl MindmapDb {
     pub(super) fn clear(&mut self) {
         self.nodes.clear();
@@ -51,15 +60,10 @@ impl MindmapDb {
 
     pub(super) fn add_node(
         &mut self,
-        indent_level: i32,
-        id_raw: &str,
-        descr_raw: &str,
-        descr_is_markdown: bool,
-        ty: i32,
-        diagram_type: &str,
+        input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
     ) -> Result<()> {
-        let mut level = indent_level;
+        let mut level = input.indent_level;
         let is_root;
         if self.nodes.is_empty() {
             self.base_level = Some(level);
@@ -75,7 +79,7 @@ impl MindmapDb {
         let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
         let width = get_i64(config, "mindmap.maxNodeWidth").unwrap_or(200);
 
-        match ty {
+        match input.ty {
             NODE_TYPE_ROUNDED_RECT | NODE_TYPE_RECT | NODE_TYPE_HEXAGON => {
                 padding *= 2;
             }
@@ -85,15 +89,15 @@ impl MindmapDb {
         let id = self.nodes.len() as i32;
         let node = MindmapNode {
             id,
-            node_id: sanitize_text(id_raw, config),
+            node_id: sanitize_text(input.id_raw, config),
             level,
-            descr: if descr_is_markdown {
-                descr_raw.to_string()
+            descr: if input.descr_is_markdown {
+                input.descr_raw.to_string()
             } else {
-                sanitize_text(descr_raw, config)
+                sanitize_text(input.descr_raw, config)
             },
-            is_markdown: descr_is_markdown,
-            ty,
+            is_markdown: input.descr_is_markdown,
+            ty: input.ty,
             children: Vec::new(),
             width,
             padding,
@@ -118,7 +122,7 @@ impl MindmapDb {
         }
 
         Err(Error::DiagramParse {
-            diagram_type: diagram_type.to_string(),
+            diagram_type: input.diagram_type.to_string(),
             message: format!(
                 "There can be only one root. No parent could be found for (\"{}\")",
                 node.descr

@@ -156,7 +156,7 @@ fn cleanup_comments(input: &str) -> Cow<'_, str> {
     Cow::Owned(out.trim_start().to_string())
 }
 
-fn process_frontmatter<'a>(input: &'a str) -> Result<(&'a str, Option<String>, MermaidConfig)> {
+fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {
     if !input.trim_start().starts_with("---") {
         return Ok((input, None, MermaidConfig::empty_object()));
     }

@@ -50,7 +50,7 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                             backslashes += 1;
                             j -= 1;
                         }
-                        if backslashes % 2 == 0 {
+                        if backslashes.is_multiple_of(2) {
                             has_unescaped = true;
                             break;
                         }
