@@ -3,6 +3,7 @@
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
 use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
+use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{LayoutEdge, LayoutLabel};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -436,14 +437,20 @@ fn render_class_edge_label_group(
     let decoded = decode_entities_minimal_cow(label_text);
     let trimmed = decoded.trim();
     if use_html_labels {
+        let empty_div_style =
+            class_html_div_style(0.0, class_text_overrides::class_html_label_max_width_px());
         if trimmed.is_empty() {
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr_display(dom_id)
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr_display(dom_id),
+                escape_attr_display(empty_div_style.as_str())
             );
         } else if let Some(lbl) = label {
-            let div_style = class_html_div_style(lbl.width.max(0.0), 200);
+            let div_style = class_html_div_style(
+                lbl.width.max(0.0),
+                class_text_overrides::class_html_label_max_width_px(),
+            );
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}">"#,
@@ -461,8 +468,9 @@ fn render_class_edge_label_group(
         } else {
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr_display(dom_id)
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr_display(dom_id),
+                escape_attr_display(empty_div_style.as_str())
             );
         }
         return;
@@ -528,22 +536,24 @@ fn render_class_edge_terminal_group(
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
             fmt(width),
             fmt(height),
+            class_text_overrides::class_html_span_padding_right_px(),
         );
         escape_xml_into(out, trimmed);
         out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
             fmt(x),
             fmt(y),
             fmt(width),
             fmt(height),
+            class_text_overrides::class_html_span_padding_right_px(),
         );
         escape_xml_into(out, trimmed);
         out.push_str("</span></div></foreignObject></g>");
@@ -967,7 +977,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
                 let _ = write!(
                     out,
-                    r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                    r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
                     escape_attr_display(&c.id),
                     fmt(left),
                     fmt(top),
@@ -976,6 +986,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     fmt(label_x),
                     fmt(label_y),
                     fmt(label_w),
+                    class_text_overrides::class_html_label_max_width_px(),
                     escape_xml_display(&c.title)
                 );
             }
@@ -1644,7 +1655,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
                         let _ = write!(
                             &mut out,
-                            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
                             escape_attr(&c.id),
                             fmt(local_left),
                             fmt(local_top),
@@ -1653,6 +1664,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                             fmt(local_label_x),
                             fmt(local_label_y),
                             fmt(label_w),
+                            class_text_overrides::class_html_label_max_width_px(),
                             escape_xml(&c.title)
                         );
                     } else {
@@ -1880,7 +1892,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
             let _ = write!(
                 &mut out,
-                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>"#,
+                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>"#,
                 escape_attr_display(&iface.id),
                 fmt(node_tx),
                 fmt(node_ty),
@@ -1892,6 +1904,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 fmt(top),
                 fmt(fo_w),
                 fmt(fo_h),
+                class_text_overrides::class_html_label_max_width_px(),
             );
             for (idx, line) in label_text.split('\n').enumerate() {
                 if idx > 0 {

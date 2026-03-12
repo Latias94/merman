@@ -2479,6 +2479,14 @@ mod tests {
             ),
             None
         );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::class_html_label_max_width_px(),
+            200
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::class_html_span_padding_right_px(),
+            1
+        );
     }
 
     #[test]

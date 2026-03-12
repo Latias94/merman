@@ -387,3 +387,11 @@ pub fn lookup_class_note_width_px(font_size_px: i64, note_src: &str) -> Option<f
         _ => None,
     }
 }
+
+pub fn class_html_label_max_width_px() -> i64 {
+    200
+}
+
+pub fn class_html_span_padding_right_px() -> i64 {
+    1
+}

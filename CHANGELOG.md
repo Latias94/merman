@@ -112,6 +112,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - State/Text: thread `flowchart.wrappingWidth` through state HTML note/node label render paths,
   so SVG `foreignObject` `max-width` now matches the layout pass instead of staying hard-coded at
   `200px`.
+- Class/Text: move the remaining class HTML edge/namespace/interface label `200px` max-width and
+  `padding-right: 1px` constants into `class_text_overrides_11_12_2`, so SVG parity no longer
+  duplicates those Mermaid HTML label literals inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.
