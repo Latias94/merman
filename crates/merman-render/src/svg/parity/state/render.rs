@@ -132,6 +132,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
             .get("handDrawnSeed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0),
+        html_label_wrapping_width: crate::state::state_html_label_wrapping_width(effective_config),
         state_padding: config_f64(effective_config, &["state", "padding"])
             .unwrap_or(8.0)
             .max(0.0),
@@ -2077,7 +2078,7 @@ fn render_state_node_svg(
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g></g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
@@ -2088,6 +2089,7 @@ fn render_state_node_svg(
                 fmt_display(-lh / 2.0),
                 fmt_display(lw),
                 fmt_display(lh),
+                fmt_display(ctx.html_label_wrapping_width),
                 label_html
             );
             drop(_g_emit);
@@ -2390,14 +2392,16 @@ fn render_state_node_svg(
 
             let div_style = if metrics.line_count > 1 {
                 format!(
-                    r#"{}display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;"#,
+                    r#"{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
                     div_style_prefix,
+                    fmt(ctx.html_label_wrapping_width),
                     fmt(lw),
                 )
             } else {
                 format!(
-                    r#"{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#,
-                    div_style_prefix
+                    r#"{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"#,
+                    div_style_prefix,
+                    fmt(ctx.html_label_wrapping_width)
                 )
             };
 

@@ -48,6 +48,7 @@ struct StateRenderCtx<'a> {
     diagram_title: Option<String>,
     diagram_look: String,
     hand_drawn_seed: u64,
+    html_label_wrapping_width: f64,
     state_padding: f64,
     node_order: Vec<&'a str>,
     nodes_by_id: FxHashMap<&'a str, &'a StateSvgNode>,

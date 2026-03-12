@@ -979,8 +979,7 @@ fn layout_state_diagram_v2_inner(
     } else {
         WrapMode::SvgLike
     };
-    let wrapping_width =
-        config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+    let wrapping_width = crate::state::state_html_label_wrapping_width(effective_config);
     let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
     let text_style = state_text_style(effective_config);
 
@@ -1901,8 +1900,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
     } else {
         WrapMode::SvgLike
     };
-    let wrapping_width =
-        config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+    let wrapping_width = crate::state::state_html_label_wrapping_width(effective_config);
     let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
     let text_style = state_text_style(effective_config);
 

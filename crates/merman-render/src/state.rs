@@ -10,7 +10,7 @@ type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 mod config;
 mod layout;
 
-pub(crate) use config::state_text_style;
+pub(crate) use config::{state_html_label_wrapping_width, state_text_style};
 
 pub use layout::{
     debug_build_state_diagram_v2_dagre_graph, debug_extract_state_diagram_v2_cluster_graph,

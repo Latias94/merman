@@ -98,6 +98,12 @@ pub(super) fn value_to_label_text(v: &Value) -> String {
     }
 }
 
+pub(crate) fn state_html_label_wrapping_width(cfg: &Value) -> f64 {
+    config_f64_css_px(cfg, &["flowchart", "wrappingWidth"])
+        .unwrap_or(200.0)
+        .max(0.0)
+}
+
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
@@ -150,6 +156,29 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
     }
     out.push_str(&text[i..]);
     std::borrow::Cow::Owned(out)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn state_html_label_wrapping_width_honors_number_and_px_string() {
+        let numeric = serde_json::json!({
+            "flowchart": {
+                "wrappingWidth": 320
+            }
+        });
+        assert_eq!(super::state_html_label_wrapping_width(&numeric), 320.0);
+
+        let px_string = serde_json::json!({
+            "flowchart": {
+                "wrappingWidth": "280px"
+            }
+        });
+        assert_eq!(super::state_html_label_wrapping_width(&px_string), 280.0);
+
+        let fallback = serde_json::json!({});
+        assert_eq!(super::state_html_label_wrapping_width(&fallback), 200.0);
+    }
 }
 
 pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
