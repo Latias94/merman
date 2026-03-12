@@ -655,37 +655,14 @@ pub fn layout_gitgraph_diagram(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
     let font_size = cfg_font_size(effective_config);
-    let apply_bbox_corrections = normalize_css_font_family(&font_family)
-        == r#""trebuchet ms",verdana,arial,sans-serif"#
-        && (font_size - 16.0).abs() <= 1e-9;
+    let apply_bbox_corrections = crate::generated::gitgraph_text_overrides_11_12_2::
+        gitgraph_branch_label_bbox_corrections_enabled(&font_family, font_size);
 
     let label_style = TextStyle {
         font_family: Some(font_family),
         font_size,
         font_weight: None,
     };
-
-    fn gitgraph_branch_label_bbox_width_px(
-        measurer: &dyn TextMeasurer,
-        text: &str,
-        style: &TextStyle,
-        apply_corrections: bool,
-    ) -> f64 {
-        // Keep a stable baseline on Mermaid's typical 1/64px lattice, then apply tiny fixture-
-        // derived corrections to hit upstream `getBBox()` values for known edge-case labels.
-        let base = crate::text::round_to_1_64_px(
-            measurer
-                .measure_svg_simple_text_bbox_width_px(text, style)
-                .max(0.0),
-        );
-        let extra = if apply_corrections {
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_branch_label_bbox_width_extra_px(text)
-        } else {
-            0.0
-        };
-        (base + extra).max(0.0)
-    }
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
     let mut branch_pos: HashMap<String, f64> = HashMap::new();
@@ -694,12 +671,12 @@ pub fn layout_gitgraph_diagram(
     for (i, b) in model.branches.iter().enumerate() {
         // Upstream gitGraph uses `drawText(...).getBBox().width` for branch label widths.
         let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = gitgraph_branch_label_bbox_width_px(
-            measurer,
+        let bbox_w = crate::generated::gitgraph_text_overrides_11_12_2::
+            adjust_gitgraph_branch_label_bbox_width_px(
+                measurer.measure_svg_simple_text_bbox_width_px(&b.name, &label_style),
             &b.name,
-            &label_style,
-            apply_bbox_corrections,
-        );
+                apply_bbox_corrections,
+            );
         branch_pos.insert(b.name.clone(), pos);
         branch_index.insert(b.name.clone(), i);
 
@@ -922,6 +899,18 @@ mod tests {
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_branch_label_bbox_width_extra_px("unknown"),
             0.0
+        );
+        assert!(
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                gitgraph_branch_label_bbox_corrections_enabled(
+                    "\"trebuchet ms\", verdana, arial, sans-serif;",
+                    16.0
+                )
+        );
+        assert_eq!(
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                adjust_gitgraph_branch_label_bbox_width_px(56.0, "feature", true),
+            56.0 - 48.0 / 2048.0
         );
     }
 }
