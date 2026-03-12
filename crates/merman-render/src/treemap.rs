@@ -1,10 +1,8 @@
+use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
 use serde::Deserialize;
 use serde_json::Value;
-
-const SECTION_INNER_PADDING: f64 = 10.0;
-const SECTION_HEADER_HEIGHT: f64 = 25.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct TreemapModel {
@@ -390,17 +388,18 @@ fn position_node(
 
     let has_children = true;
     let padding_top = if has_children {
-        SECTION_HEADER_HEIGHT + SECTION_INNER_PADDING
+        treemap_text_overrides::treemap_section_header_height_px()
+            + treemap_text_overrides::treemap_section_inner_padding_px()
     } else {
         0.0
     };
     let padding_lr = if has_children {
-        SECTION_INNER_PADDING
+        treemap_text_overrides::treemap_section_inner_padding_px()
     } else {
         0.0
     };
     let padding_bottom = if has_children {
-        SECTION_INNER_PADDING
+        treemap_text_overrides::treemap_section_inner_padding_px()
     } else {
         0.0
     };
@@ -436,12 +435,12 @@ pub fn layout_treemap_diagram(
     };
 
     let width = if cfg.node_width > 0.0 {
-        cfg.node_width * SECTION_INNER_PADDING
+        cfg.node_width * treemap_text_overrides::treemap_section_inner_padding_px()
     } else {
         960.0
     };
     let height = if cfg.node_height > 0.0 {
-        cfg.node_height * SECTION_INNER_PADDING
+        cfg.node_height * treemap_text_overrides::treemap_section_inner_padding_px()
     } else {
         500.0
     };
@@ -525,4 +524,36 @@ pub fn layout_treemap_diagram(
         sections,
         leaves,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn treemap_text_constants_are_generated() {
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::treemap_section_inner_padding_px(),
+            10.0
+        );
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::treemap_section_header_height_px(),
+            25.0
+        );
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::treemap_section_header_center_y_px(),
+            12.5
+        );
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::
+                treemap_section_header_label_inset_x_px(),
+            6.0
+        );
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::treemap_section_label_font_size_px(),
+            12.0
+        );
+        assert_eq!(
+            crate::generated::treemap_text_overrides_11_12_2::treemap_section_value_font_size_px(),
+            10.0
+        );
+    }
 }

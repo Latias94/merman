@@ -76,6 +76,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - State/Text: move the `rectWithTitle` HTML-span effective width/height fallback rules into
   `state_text_overrides_11_12_2`, so layout and SVG parity share the same Mermaid-specific span
   sizing behavior instead of duplicating it inline.
+- Treemap/Text: move the Treemap section-header text/layout constants into
+  `treemap_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
+  header geometry literals inline.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

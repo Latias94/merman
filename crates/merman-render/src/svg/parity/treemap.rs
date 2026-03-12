@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
@@ -520,6 +521,17 @@ pub(super) fn render_treemap_diagram_svg(
 
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
+    let section_header_height = treemap_text_overrides::treemap_section_header_height_px();
+    let section_header_center_y = treemap_text_overrides::treemap_section_header_center_y_px();
+    let section_label_inset_x = treemap_text_overrides::treemap_section_header_label_inset_x_px();
+    let section_label_font_size = treemap_text_overrides::treemap_section_label_font_size_px();
+    let section_value_font_size = treemap_text_overrides::treemap_section_value_font_size_px();
+    let section_value_right_inset = treemap_text_overrides::treemap_section_value_right_inset_px();
+    let section_label_reserved_value_width =
+        treemap_text_overrides::treemap_section_label_reserved_value_width_px();
+    let section_label_value_gap = treemap_text_overrides::treemap_section_label_value_gap_px();
+    let section_label_min_visible_width =
+        treemap_text_overrides::treemap_section_label_min_visible_width_px();
 
     for (i, section) in layout.sections.iter().enumerate() {
         let w = section.x1 - section.x0;
@@ -540,7 +552,7 @@ pub(super) fn render_treemap_diagram_svg(
             &mut out,
             r#"<rect width="{w}" height="{hh}" class="treemapSectionHeader" fill="none" fill-opacity="0.6" stroke-width="0.6" style="{style}"/>"#,
             w = fmt(w),
-            hh = fmt(25.0),
+            hh = fmt(section_header_height),
             style = header_style
         );
 
@@ -549,8 +561,8 @@ pub(super) fn render_treemap_diagram_svg(
             r#"<clipPath id="clip-section-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
             id = escape_attr(diagram_id),
             i = i,
-            w = fmt((w - 12.0).max(0.0)),
-            h = fmt(25.0)
+            w = fmt((w - 2.0 * section_label_inset_x).max(0.0)),
+            h = fmt(section_header_height)
         );
 
         let fill = color_scale.get(&section.name);
@@ -593,28 +605,31 @@ pub(super) fn render_treemap_diagram_svg(
         if label_text.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold" style="display: none;"/>"#
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" style="display: none;"/>"#,
+                x = fmt(section_label_inset_x),
+                y = fmt(section_header_center_y)
             );
         } else {
             // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
             let total_header_width = w;
-            let label_x_position = 6.0;
-            let mut space_for_text_content = total_header_width - label_x_position - 6.0;
+            let label_x_position = section_label_inset_x;
+            let mut space_for_text_content =
+                total_header_width - label_x_position - section_label_inset_x;
             if layout.show_values && section.value != 0.0 {
-                let value_ends_at_x_relative = total_header_width - 10.0;
-                let estimated_value_text_actual_width = 30.0;
-                let gap_between_label_and_value = 10.0;
+                let value_ends_at_x_relative = total_header_width - section_value_right_inset;
+                let estimated_value_text_actual_width = section_label_reserved_value_width;
+                let gap_between_label_and_value = section_label_value_gap;
                 let label_must_end_before_x = value_ends_at_x_relative
                     - estimated_value_text_actual_width
                     - gap_between_label_and_value;
                 space_for_text_content = label_must_end_before_x - label_x_position;
             }
-            let minimum_width_to_display: f64 = 15.0;
-            let actual_available_width = minimum_width_to_display.max(space_for_text_content);
+            let actual_available_width =
+                section_label_min_visible_width.max(space_for_text_content);
 
             let style = crate::text::TextStyle {
                 font_family: Some(font_family.clone()),
-                font_size: 12.0,
+                font_size: section_label_font_size,
                 font_weight: Some("bold".to_string()),
             };
 
@@ -641,13 +656,16 @@ pub(super) fn render_treemap_diagram_svg(
             }
 
             let section_label_style = format!(
-                "dominant-baseline: middle; font-size: 12px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                "dominant-baseline: middle; font-size: {}px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                fmt(section_label_font_size),
                 fill = escape_attr(&label_fill),
                 suffix = label_styles_suffix
             );
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold" style="{style}">{text}</text>"#,
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" style="{style}">{text}</text>"#,
+                x = fmt(section_label_inset_x),
+                y = fmt(section_header_center_y),
                 style = escape_attr(&section_label_style),
                 text = escape_xml(&label_text)
             );
@@ -663,7 +681,8 @@ pub(super) fn render_treemap_diagram_svg(
                 "display: none;".to_string()
             } else {
                 format!(
-                    "text-anchor: end; dominant-baseline: middle; font-size: 10px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                    "text-anchor: end; dominant-baseline: middle; font-size: {}px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                    fmt(section_value_font_size),
                     fill = escape_attr(&label_fill),
                     suffix = label_styles_suffix
                 )
@@ -671,15 +690,17 @@ pub(super) fn render_treemap_diagram_svg(
             if value_text.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}"/>"#,
-                    x = fmt(w - 10.0),
+                    r#"<text class="treemapSectionValue" x="{x}" y="{y}" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}"/>"#,
+                    x = fmt(w - section_value_right_inset),
+                    y = fmt(section_header_center_y),
                     style = escape_attr(&section_value_style)
                 );
             } else {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}">{text}</text>"#,
-                    x = fmt(w - 10.0),
+                    r#"<text class="treemapSectionValue" x="{x}" y="{y}" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}">{text}</text>"#,
+                    x = fmt(w - section_value_right_inset),
+                    y = fmt(section_header_center_y),
                     style = escape_attr(&section_value_style),
                     text = escape_xml(&value_text)
                 );
