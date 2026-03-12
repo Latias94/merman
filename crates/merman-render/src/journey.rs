@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
     JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
@@ -7,21 +8,6 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-
-const LEGEND_CIRCLE_CX: f64 = 20.0;
-const LEGEND_CIRCLE_R: f64 = 7.0;
-const LEGEND_LABEL_X: f64 = 40.0;
-const LEGEND_FIRST_Y: f64 = 60.0;
-const LEGEND_LINE_STEP_Y: f64 = 20.0;
-
-const SECTION_Y: f64 = 50.0;
-const TITLE_Y: f64 = 25.0;
-const VIEWBOX_TOP_PAD: f64 = 25.0;
-
-#[allow(dead_code)]
-const FACE_RADIUS: f64 = 15.0;
-const FACE_BASE_Y: f64 = 300.0;
-const FACE_SCORE_STEP_Y: f64 = 30.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct JourneyTaskModel {
@@ -222,7 +208,7 @@ pub fn layout_journey_diagram(
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
-    let mut y_pos = LEGEND_FIRST_Y;
+    let mut y_pos = journey_text_overrides::journey_legend_first_y_px();
     for actor in actors.iter() {
         let (pos, color) = actor_map
             .get(actor)
@@ -232,8 +218,10 @@ pub fn layout_journey_diagram(
         let lines = wrap_actor_label_lines(actor, max_label_width, measurer, &legend_style);
         let mut label_lines: Vec<JourneyActorLegendLineLayout> = Vec::new();
         for (index, line) in lines.iter().enumerate() {
-            let x = LEGEND_LABEL_X;
-            let y = y_pos + 7.0 + (index as f64) * LEGEND_LINE_STEP_Y;
+            let x = journey_text_overrides::journey_legend_label_x_px();
+            let y = y_pos
+                + journey_text_overrides::journey_legend_line_text_baseline_offset_y_px()
+                + (index as f64) * journey_text_overrides::journey_legend_line_step_y_px();
             let tspan_x = x + box_text_margin * 2.0;
             label_lines.push(JourneyActorLegendLineLayout {
                 text: line.to_string(),
@@ -253,13 +241,14 @@ pub fn layout_journey_diagram(
             actor: actor.to_string(),
             pos,
             color,
-            circle_cx: LEGEND_CIRCLE_CX,
+            circle_cx: journey_text_overrides::journey_legend_circle_cx_px(),
             circle_cy: y_pos,
-            circle_r: LEGEND_CIRCLE_R,
+            circle_r: journey_text_overrides::journey_legend_circle_r_px(),
             label_lines,
         });
 
-        y_pos += LEGEND_LINE_STEP_Y.max(lines.len() as f64 * LEGEND_LINE_STEP_Y);
+        y_pos += journey_text_overrides::journey_legend_line_step_y_px()
+            .max(lines.len() as f64 * journey_text_overrides::journey_legend_line_step_y_px());
     }
 
     let left_margin = left_margin_base + max_actor_label_width;
@@ -301,7 +290,7 @@ pub fn layout_journey_diagram(
                 section: task.section.to_string(),
                 num: current_num,
                 x,
-                y: SECTION_Y,
+                y: journey_text_overrides::journey_section_y_px(),
                 width: section_width.max(1.0),
                 height: cell_h,
                 fill: current_fill.clone(),
@@ -313,11 +302,16 @@ pub fn layout_journey_diagram(
         }
 
         let center_x = x + cell_w / 2.0;
-        let max_height = FACE_BASE_Y + 5.0 * FACE_SCORE_STEP_Y;
+        let max_height = journey_text_overrides::journey_face_base_y_px()
+            + 5.0 * journey_text_overrides::journey_face_score_step_y_px();
         let face_cy = if task.score_is_nan {
             None
         } else {
-            Some(FACE_BASE_Y + (5_i64.saturating_sub(task.score) as f64) * FACE_SCORE_STEP_Y)
+            Some(
+                journey_text_overrides::journey_face_base_y_px()
+                    + (5_i64.saturating_sub(task.score) as f64)
+                        * journey_text_overrides::journey_face_score_step_y_px(),
+            )
         };
         let mouth = if task.score_is_nan {
             JourneyMouthKind::Ambivalent
@@ -341,7 +335,7 @@ pub fn layout_journey_diagram(
                 color,
                 cx,
                 cy: task_y,
-                r: LEGEND_CIRCLE_R,
+                r: journey_text_overrides::journey_legend_circle_r_px(),
             });
             cx += 10.0;
         }
@@ -376,7 +370,8 @@ pub fn layout_journey_diagram(
     let stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
         0.0
     } else {
-        FACE_BASE_Y + 5.0 * FACE_SCORE_STEP_Y
+        journey_text_overrides::journey_face_base_y_px()
+            + 5.0 * journey_text_overrides::journey_face_score_step_y_px()
     });
 
     let height = (stopy - 0.0 + 2.0 * diagram_margin_y).max(1.0);
@@ -387,16 +382,23 @@ pub fn layout_journey_diagram(
         .as_deref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let extra_vert_for_title = if title.is_some() { 70.0 } else { 0.0 };
+    let extra_vert_for_title = if title.is_some() {
+        journey_text_overrides::journey_title_extra_height_px()
+    } else {
+        0.0
+    };
 
     let bounds = Bounds {
         min_x: 0.0,
-        min_y: -VIEWBOX_TOP_PAD,
+        min_y: -journey_text_overrides::journey_viewbox_top_pad_px(),
         max_x: width,
-        max_y: -VIEWBOX_TOP_PAD + height + extra_vert_for_title,
+        max_y: -journey_text_overrides::journey_viewbox_top_pad_px()
+            + height
+            + extra_vert_for_title,
     };
 
-    let svg_height = height + extra_vert_for_title + VIEWBOX_TOP_PAD;
+    let svg_height =
+        height + extra_vert_for_title + journey_text_overrides::journey_viewbox_top_pad_px();
 
     let activity_line = JourneyLineLayout {
         x1: left_margin,
@@ -420,10 +422,33 @@ pub fn layout_journey_diagram(
         svg_height,
         title,
         title_x: left_margin,
-        title_y: TITLE_Y,
+        title_y: journey_text_overrides::journey_title_y_px(),
         actor_legend,
         sections,
         tasks,
         activity_line,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn journey_text_constants_are_generated() {
+        assert_eq!(
+            crate::generated::journey_text_overrides_11_12_2::journey_viewbox_top_pad_px(),
+            25.0
+        );
+        assert_eq!(
+            crate::generated::journey_text_overrides_11_12_2::journey_title_extra_height_px(),
+            70.0
+        );
+        assert_eq!(
+            crate::generated::journey_text_overrides_11_12_2::journey_legend_circle_r_px(),
+            7.0
+        );
+        assert_eq!(
+            crate::generated::journey_text_overrides_11_12_2::journey_face_radius_px(),
+            15.0
+        );
+    }
 }

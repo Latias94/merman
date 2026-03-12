@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
     v.map(|x| fmt(x).to_string())
@@ -152,7 +153,7 @@ pub(super) fn render_journey_diagram_svg(
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
-        min_y: -25.0,
+        min_y: -journey_text_overrides::journey_viewbox_top_pad_px(),
         max_x: 100.0,
         max_y: 100.0,
     });
@@ -165,7 +166,7 @@ pub(super) fn render_journey_diagram_svg(
     // `layout.title` empty. Upstream still accounts for the title when sizing the root viewBox,
     // so mirror that here to keep `parity-root` stable.
     if title_from_meta {
-        vb_h += 70.0;
+        vb_h += journey_text_overrides::journey_title_extra_height_px();
     }
 
     let task_font_size = effective_config
@@ -457,12 +458,13 @@ pub(super) fn render_journey_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<circle cx="{cx}" cy="{cy}" class="face" r="15" stroke-width="2" overflow="visible"/>"#,
+            r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
             cx = fmt(task.face_cx),
             cy = fmt_task_face_y(task.face_cy),
+            r = fmt(journey_text_overrides::journey_face_radius_px()),
         );
         out.push_str("<g>");
-        let eye_dx = 15.0 / 3.0;
+        let eye_dx = journey_text_overrides::journey_face_radius_px() / 3.0;
         let eye_r = 1.5;
         let _ = write!(
             &mut out,
@@ -485,7 +487,10 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r#"<path class="mouth" d="M7.5,0A7.5,7.5,0,1,1,-7.5,0L-6.818,0A6.818,6.818,0,1,0,6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt_task_face_y(task.face_cy.map(|v| v + 2.0)),
+                    y = fmt_task_face_y(
+                        task.face_cy
+                            .map(|v| v + journey_text_overrides::journey_face_smile_offset_y_px()),
+                    ),
                 );
             }
             crate::model::JourneyMouthKind::Sad => {
@@ -493,7 +498,9 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r#"<path class="mouth" d="M-7.5,0A7.5,7.5,0,1,1,7.5,0L6.818,0A6.818,6.818,0,1,0,-6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
+                    y = fmt_task_face_y(task.face_cy.map(|v| {
+                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
+                    })),
                 );
             }
             crate::model::JourneyMouthKind::Ambivalent => {
@@ -501,9 +508,13 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r##"<line class="mouth" stroke="#666" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"##,
                     x1 = fmt(task.face_cx - 5.0),
-                    y1 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
+                    y1 = fmt_task_face_y(task.face_cy.map(|v| {
+                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
+                    })),
                     x2 = fmt(task.face_cx + 5.0),
-                    y2 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
+                    y2 = fmt_task_face_y(task.face_cy.map(|v| {
+                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
+                    })),
                 );
             }
         }
