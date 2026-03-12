@@ -145,6 +145,41 @@ const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64,
     14.707_519_531_25_f64,
     14.740_234_375_f64,
 )];
+const DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX: &[(&str, f64)] = &[
+    ("ABlock", 47.796875),
+    ("A wide one in the middle", 179.0625),
+    ("B;", 14.9375),
+    ("BBlock", 47.40625),
+    ("Block 1", 51.5625),
+    ("Block 2", 51.5625),
+    ("Block 3", 51.5625),
+    ("Compound block", 118.375),
+    ("Memcache", 75.078125),
+    ("One Slot", 60.421875),
+    ("Two slots", 65.0),
+    ("__proto__", 72.21875),
+    ("constructor", 82.109375),
+    ("A;", 15.3125),
+    (",.?!+-*ز", 51.46875),
+    ("Circle shape", 87.8125),
+    ("Circle shape Начало", 145.609375),
+    ("Link text", 63.734375),
+    ("- e1 - e2", 60.453125),
+    ("- l1 - l2", 52.4375),
+    ("`**bold*`", 65.546875),
+    ("`This is **bold**", 112.78125),
+    ("Round Rect", 80.125),
+    ("Rounded", 61.296875),
+    ("Rounded square shape", 159.6875),
+    ("Square Rect", 85.1875),
+    ("Square shape", 94.796875),
+    ("Line 2", 43.34375),
+    ("Line 3", 43.34375),
+    ("(1 / period_duration)", 153.0),
+    ("edge label", 74.703125),
+    ("edge comment", 106.109375),
+    ("special characters", 129.9375),
+];
 
 pub(crate) fn font_key_uses_courier_metrics(font_key: &str) -> bool {
     font_key
@@ -172,6 +207,16 @@ fn lookup_extra_svg_bbox_override_em(
         .iter()
         .find(|(candidate, _, _)| *candidate == text)
         .map(|(_, left, right)| (*left, *right))
+}
+
+fn lookup_extra_html_override_em(font_key: &str, line: &str) -> Option<f64> {
+    if font_key != FLOWCHART_DEFAULT_FONT_KEY {
+        return None;
+    }
+    DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX
+        .iter()
+        .find(|(candidate, _)| *candidate == line)
+        .map(|(_, width_px)| *width_px / 16.0)
 }
 
 pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
@@ -3950,68 +3995,6 @@ fn vendored_measure_wrapped_impl(
         &[]
     };
 
-    fn extra_html_override_em(font_key: &str, line: &str) -> Option<f64> {
-        // Extra fixture-derived HTML width overrides for non-flowchart diagrams.
-        //
-        // The core `html_overrides` table is generated from a subset of Mermaid fixtures (primarily
-        // flowchart-v2). Block diagrams rely on raw `labelHelper(...)` measurements and include
-        // `&nbsp;` placeholders and string cases that are not always covered by the flowchart
-        // dataset.
-        if font_key != "trebuchetms,verdana,arial,sans-serif" {
-            return None;
-        }
-
-        // Values are recorded in pixels at 16px and stored as `em` so they scale with font size.
-        // Keep this list small and only add entries justified by upstream SVG baselines.
-        let px: Option<f64> = match line {
-            // Block diagram fixtures (Mermaid 11.12.2 upstream SVG baselines).
-            "ABlock" => Some(47.796875),
-            "A wide one in the middle" => Some(179.0625),
-            "B;" => Some(14.9375),
-            "BBlock" => Some(47.40625),
-            "Block 1" => Some(51.5625),
-            "Block 2" => Some(51.5625),
-            "Block 3" => Some(51.5625),
-            "Compound block" => Some(118.375),
-            "Memcache" => Some(75.078125),
-            "One Slot" => Some(60.421875),
-            "Two slots" => Some(65.0),
-            "__proto__" => Some(72.21875),
-            "constructor" => Some(82.109375),
-            "A;" => Some(15.3125),
-            // Flowchart docs examples imported from upstream Mermaid@11.12.2 SVG baselines.
-            //
-            // These affect root `viewBox` / `max-width` parity in `parity-root` mode.
-            ",.?!+-*ز" => Some(51.46875),
-            "Circle shape" => Some(87.8125),
-            "Circle shape Начало" => Some(145.609375),
-            "Link text" => Some(63.734375),
-            // Flowchart HTML-label Markdown raw-block probes (`<p>...</p>` + collapsed list text).
-            "- e1 - e2" => Some(60.453125),
-            "- l1 - l2" => Some(52.4375),
-            // Flowchart edge pipe labels that keep raw backticks / inline HTML literal in
-            // htmlLabels mode (Mermaid 11.12.3 strict XML probes).
-            "`**bold*`" => Some(65.546875),
-            "`This is **bold**" => Some(112.78125),
-            "Round Rect" => Some(80.125),
-            "Rounded" => Some(61.296875),
-            "Rounded square shape" => Some(159.6875),
-            "Square Rect" => Some(85.1875),
-            "Square shape" => Some(94.796875),
-            // Flowchart HTML-label markdown newline probes (Mermaid 11.12.3 strict XML probes).
-            "Line 2" | "Line 3" => Some(43.34375),
-            // Flowchart HTML-label markdownAutoWrap=false probe.
-            "(1 / period_duration)" => Some(153.0),
-            // `fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd`
-            "edge label" => Some(74.703125),
-            "edge comment" => Some(106.109375),
-            "special characters" => Some(129.9375),
-            _ => None,
-        };
-
-        px.map(|w| w / 16.0)
-    }
-
     let html_override_px = |em: f64| -> f64 {
         // `html_overrides` entries are generated from upstream fixtures by dividing the measured
         // pixel width by `base_font_size_px`. When a fixture applies a non-default `font-size`
@@ -4077,7 +4060,7 @@ fn vendored_measure_wrapped_impl(
                 raw_w = raw_w.max(w);
                 continue;
             }
-            if let Some(em) = extra_html_override_em(table.font_key, &line).or_else(|| {
+            if let Some(em) = lookup_extra_html_override_em(table.font_key, &line).or_else(|| {
                 VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, &line)
             }) {
                 raw_w = raw_w.max(html_override_px(em));
@@ -4199,9 +4182,14 @@ fn vendored_measure_wrapped_impl(
                     width = width.max(w);
                     continue;
                 }
-                if let Some(em) = extra_html_override_em(table.font_key, line).or_else(|| {
-                    VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, line)
-                }) {
+                if let Some(em) =
+                    lookup_extra_html_override_em(table.font_key, line).or_else(|| {
+                        VendoredFontMetricsTextMeasurer::lookup_html_override_em(
+                            html_overrides,
+                            line,
+                        )
+                    })
+                {
                     width = width.max(html_override_px(em));
                 } else {
                     width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(

@@ -38,6 +38,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Text/SVG: collapse the remaining default-font fixture SVG bbox literals (`Item A1`, `Supercalifragilistic…`, and related
   flowchart repeat offenders) into shared override tables so treemap/timeline/flowchart fallback paths stop duplicating the
   same string-specific branches.
+- Text/HTML: move the remaining default-font fixture HTML width literals into a shared lookup table (`special characters`,
+  block labels, markdown raw-block probes, etc.) so wrapped/unwrapped HTML measurement paths stop duplicating the same
+  fallback strings.
 - Flowchart/KaTeX: add an opt-in Node/Puppeteer-backed `NodeKatexMathRenderer`, wire both
   `xtask compare-flowchart-svgs` and `xtask compare-svg-xml --diagram flowchart` to use it automatically when
   `tools/mermaid-cli` is present, switch the KaTeX probe onto the same `mermaid-cli` browser-shell environment used for

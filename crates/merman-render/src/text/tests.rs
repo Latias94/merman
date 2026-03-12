@@ -425,6 +425,32 @@ fn default_font_single_run_svg_bbox_override_keeps_timeline_long_word_stable() {
 }
 
 #[test]
+fn default_font_extra_html_override_table_keeps_special_characters_stable() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let metrics = measurer.measure_wrapped("special characters", &style, None, WrapMode::HtmlLike);
+    assert_eq!(metrics.width, 129.9375);
+    assert_eq!(metrics.height, 24.0);
+}
+
+#[test]
+fn extra_html_override_table_is_default_font_only() {
+    assert_eq!(
+        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "special characters"),
+        Some(8.12109375)
+    );
+    assert_eq!(
+        lookup_extra_html_override_em("courier", "special characters"),
+        None
+    );
+}
+
+#[test]
 fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
