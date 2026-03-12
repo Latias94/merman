@@ -1578,29 +1578,18 @@ pub(crate) fn class_note_html_fragment(
 
 fn class_namespace_known_rendered_width_override_px(text: &str, style: &TextStyle) -> Option<f64> {
     let font_size_px = style.font_size.round() as i64;
-    match (font_size_px, text.trim()) {
-        (16, "Company.Project") => Some(121.15625),
-        (16, "Company.Project.Module") => Some(178.0625),
-        (16, "Core") => Some(33.109375),
-        (16, "Root.A") => Some(47.5),
-        _ => None,
-    }
+    crate::generated::class_text_overrides_11_12_2::lookup_class_namespace_width_px(
+        font_size_px,
+        text,
+    )
 }
 
 fn class_note_known_rendered_width_override_px(note_src: &str, style: &TextStyle) -> Option<f64> {
     let font_size_px = style.font_size.round() as i64;
-    let normalized = note_src.replace("\r\n", "\n");
-    match (font_size_px, normalized.trim()) {
-        (16, "I love this diagram!\nDo you love it?") => Some(138.609375),
-        (16, "Cool class\nI said it's very cool class!") => Some(177.21875),
-        (16, "This note mentions: class and namespace.") => Some(302.453125),
-        (16, "CJK: 你好<br/>RTL: مرحبا<br/>Emoji: 😀") => Some(71.5625),
-        (16, "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀") => Some(71.5625),
-        (16, "Multiline note<br/>with unicode αβγ.") => Some(130.296875),
-        (16, "Multiline note<br/>line 2<br/>line 3") => Some(99.6875),
-        (16, "Static ($) and abstract (*) markers should render.") => Some(352.75),
-        _ => None,
-    }
+    crate::generated::class_text_overrides_11_12_2::lookup_class_note_width_px(
+        font_size_px,
+        note_src,
+    )
 }
 
 pub(crate) fn class_html_measure_note_metrics(
@@ -2770,4 +2759,54 @@ fn compute_bounds(
     }
 
     Bounds::from_points(points)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn class_namespace_width_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_namespace_width_px(
+                16,
+                "Company.Project",
+            ),
+            Some(121.15625)
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_namespace_width_px(
+                16, "Core",
+            ),
+            Some(33.109375)
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_namespace_width_px(
+                18, "Core",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn class_note_width_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_note_width_px(
+                16,
+                "I love this diagram!\nDo you love it?",
+            ),
+            Some(138.609375)
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_note_width_px(
+                16,
+                "Multiline note<br/>line 2<br/>line 3",
+            ),
+            Some(99.6875)
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_note_width_px(
+                16, "unknown",
+            ),
+            None
+        );
+    }
 }
