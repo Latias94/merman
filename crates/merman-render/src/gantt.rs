@@ -1219,18 +1219,6 @@ pub fn layout_gantt_diagram(
         });
     }
 
-    fn normalize_font_key(s: &str) -> String {
-        s.chars()
-            .filter_map(|ch| {
-                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ';' {
-                    None
-                } else {
-                    Some(ch.to_ascii_lowercase())
-                }
-            })
-            .collect()
-    }
-
     // Tasks (bars + labels).
     // Mermaid gantt task labels inherit the diagram font family (defaulting to
     // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
@@ -1242,9 +1230,8 @@ pub fn layout_gantt_diagram(
         .or_else(|| config.get("fontFamily").and_then(|v| v.as_str()))
         .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif")
         .to_string();
-    let task_font_key = normalize_font_key(&task_font_family);
     let text_style = TextStyle {
-        font_family: Some(task_font_family),
+        font_family: Some(task_font_family.clone()),
         font_size,
         font_weight: None,
     };
@@ -1331,15 +1318,14 @@ pub fn layout_gantt_diagram(
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
         let metrics = text_measurer.measure(t.task.trim_end(), &text_style);
         let mut text_width = metrics.width;
-        if task_font_key == "trebuchetms,verdana,arial,sans-serif" {
-            if let Some(w) =
-                crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_px(
-                    font_size,
-                    t.task.trim_end(),
-                )
-            {
-                text_width = w;
-            }
+        if let Some(w) =
+            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
+                &task_font_family,
+                font_size,
+                t.task.trim_end(),
+            )
+        {
+            text_width = w;
         }
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
@@ -1534,4 +1520,33 @@ pub fn layout_gantt_diagram(
         title_x: width / 2.0,
         title_y: title_top_margin,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn gantt_task_text_bbox_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
+                "\"trebuchet ms\", verdana, arial, sans-serif;",
+                11.0,
+                "Task",
+            ),
+            Some(22.24853515625)
+        );
+        assert_eq!(
+            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
+                "courier", 11.0, "Task",
+            ),
+            None
+        );
+        assert_eq!(
+            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
+                "\"trebuchet ms\", verdana, arial, sans-serif",
+                12.0,
+                "Task",
+            ),
+            None
+        );
+    }
 }

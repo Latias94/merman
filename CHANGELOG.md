@@ -79,6 +79,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Treemap/Text: move the Treemap section-header text/layout constants into
   `treemap_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same Mermaid
   header geometry literals inline.
+- Gantt/Text: move the default task-label font-family gate for bbox width overrides into
+  `gantt_text_overrides_11_12_2`, so Gantt layout no longer keeps diagram-specific font-key
+  normalization and override applicability inline.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

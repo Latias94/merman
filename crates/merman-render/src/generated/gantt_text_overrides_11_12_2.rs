@@ -3,6 +3,8 @@
 // Mermaid baseline: 11.12.2
 // Source: fixtures/upstream-svgs/gantt/*.svg
 
+const GANTT_DEFAULT_TASK_FONT_KEY: &str = "trebuchetms,verdana,arial,sans-serif";
+
 #[allow(dead_code)]
 fn font_size_key(font_size: f64) -> u16 {
     if !(font_size.is_finite() && font_size > 0.0) {
@@ -83,4 +85,27 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
         }
     }
     None
+}
+
+fn normalize_font_key(s: &str) -> String {
+    s.chars()
+        .filter_map(|ch| {
+            if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ';' {
+                None
+            } else {
+                Some(ch.to_ascii_lowercase())
+            }
+        })
+        .collect()
+}
+
+pub fn lookup_task_text_bbox_width_override_px(
+    font_family: &str,
+    font_size: f64,
+    text: &str,
+) -> Option<f64> {
+    if normalize_font_key(font_family) != GANTT_DEFAULT_TASK_FONT_KEY {
+        return None;
+    }
+    lookup_task_text_bbox_width_px(font_size, text)
 }
