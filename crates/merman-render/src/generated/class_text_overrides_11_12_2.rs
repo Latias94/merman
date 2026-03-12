@@ -356,6 +356,13 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
     }
 }
 
+pub fn lookup_class_svg_plain_label_width_px(font_size_px: i64, text: &str) -> Option<f64> {
+    match (font_size_px, text.trim()) {
+        (16, "uses") => Some(26.421875),
+        _ => None,
+    }
+}
+
 pub fn lookup_class_namespace_width_px(font_size_px: i64, text: &str) -> Option<f64> {
     match (font_size_px, text.trim()) {
         (16, "Company.Project") => Some(121.15625),

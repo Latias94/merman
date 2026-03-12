@@ -1652,10 +1652,12 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
     }
 
     let font_size_px = text_style.font_size.round() as i64;
-    if let Some(width) = match (font_size_px, trimmed) {
-        (16, "uses") => Some(26.421875),
-        _ => None,
-    } {
+    if let Some(width) =
+        crate::generated::class_text_overrides_11_12_2::lookup_class_svg_plain_label_width_px(
+            font_size_px,
+            trimmed,
+        )
+    {
         return Some(width);
     }
 
@@ -2530,6 +2532,22 @@ mod tests {
         );
         assert_eq!(
             class_html_known_rendered_width_override_px("unknown", &style, false),
+            None
+        );
+    }
+
+    #[test]
+    fn class_svg_plain_label_width_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_svg_plain_label_width_px(
+                16, "uses",
+            ),
+            Some(26.421875)
+        );
+        assert_eq!(
+            crate::generated::class_text_overrides_11_12_2::lookup_class_svg_plain_label_width_px(
+                16, "unknown",
+            ),
             None
         );
     }

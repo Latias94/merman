@@ -64,6 +64,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   inline in `class.rs`.
 - Class/Text: move the class HTML rendered-width repeat-offender table into `class_text_overrides_11_12_2`, so class
   layout/render parity no longer keeps the remaining bold/non-bold HTML width literals inline in `class.rs`.
+- Class/Text+SVG: move the last class-specific single-line SVG plain-label width override (`uses`) into
+  `class_text_overrides_11_12_2`, so `class.rs` no longer keeps any string-specific width literals inline.
 - Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
   `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
   branch entirely.
