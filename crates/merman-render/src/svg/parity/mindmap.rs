@@ -278,15 +278,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    let max_node_width_px: f64 = config
-        .as_value()
-        .get("mindmap")
-        .and_then(|v| v.get("maxNodeWidth"))
-        .and_then(|v| {
-            v.as_f64()
-                .or_else(|| v.as_str().and_then(|s| s.trim().parse::<f64>().ok()))
-        })
-        .unwrap_or(200.0);
+    let max_node_width_px = crate::mindmap::mindmap_max_node_width_px(config.as_value());
 
     fn mk_label(
         out: &mut String,

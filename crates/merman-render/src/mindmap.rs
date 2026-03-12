@@ -11,6 +11,8 @@ fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
         v = v.get(*p)?;
     }
     v.as_f64()
+        .or_else(|| v.as_i64().map(|n| n as f64))
+        .or_else(|| v.as_u64().map(|n| n as f64))
 }
 
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
@@ -19,6 +21,22 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
         v = v.get(*p)?;
     }
     v.as_str().map(|s| s.to_string())
+}
+
+fn parse_css_px_to_f64(text: &str) -> Option<f64> {
+    let trimmed = text.trim();
+    let raw = trimmed.strip_suffix("px").unwrap_or(trimmed).trim();
+    raw.parse::<f64>().ok().filter(|value| value.is_finite())
+}
+
+pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
+    config_f64(effective_config, &["mindmap", "maxNodeWidth"])
+        .or_else(|| {
+            config_string(effective_config, &["mindmap", "maxNodeWidth"])
+                .and_then(|value| parse_css_px_to_f64(&value))
+        })
+        .unwrap_or(200.0)
+        .max(1.0)
 }
 
 type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
@@ -318,9 +336,7 @@ fn layout_mindmap_diagram_model(
     let total_start = timing_enabled.then(std::time::Instant::now);
 
     let text_style = mindmap_text_style(effective_config);
-    let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])
-        .unwrap_or(200.0)
-        .max(1.0);
+    let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let measure_nodes_start = timing_enabled.then(std::time::Instant::now);
     let mut nodes_sorted: Vec<(i64, &MindmapNodeModel)> = model
@@ -473,4 +489,34 @@ fn layout_mindmap_diagram_model(
         edges,
         bounds,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn mindmap_max_node_width_accepts_number_and_px_string() {
+        let numeric = serde_json::json!({
+            "mindmap": {
+                "maxNodeWidth": 320
+            }
+        });
+        assert_eq!(super::mindmap_max_node_width_px(&numeric), 320.0);
+
+        let px_string = serde_json::json!({
+            "mindmap": {
+                "maxNodeWidth": "280px"
+            }
+        });
+        assert_eq!(super::mindmap_max_node_width_px(&px_string), 280.0);
+
+        let plain_string = serde_json::json!({
+            "mindmap": {
+                "maxNodeWidth": "240"
+            }
+        });
+        assert_eq!(super::mindmap_max_node_width_px(&plain_string), 240.0);
+
+        let fallback = serde_json::json!({});
+        assert_eq!(super::mindmap_max_node_width_px(&fallback), 200.0);
+    }
 }

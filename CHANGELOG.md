@@ -119,6 +119,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   remaining state cluster/note/generic-node render paths, so SVG measurement and emitted
   `foreignObject` styling stay aligned with layout instead of keeping leftover `1px` / `200px`
   literals inline.
+- Mindmap/Text: share `mindmap.maxNodeWidth` parsing between layout and SVG render, including
+  numeric strings and `px` strings, so mindmap HTML wrapping no longer diverges between the two
+  passes on non-numeric config forms.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.
