@@ -48,6 +48,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Core/Layout internals: clean the remaining strict Clippy offenders in `dugong-graphlib`, `dugong`, and parser helper
   code, and scope vendored `manatee` FCoSE lint exceptions to the algorithm module so current stable Clippy stays
   actionable outside the imported numeric code.
+- Toolchain/CI: pin the workspace Rust toolchain to `1.87.0` and make CI install the same version explicitly, so
+  release and local checks stop drifting with floating `stable`.
 
 ## [0.3.0] - 2026-03-02
 
