@@ -67,6 +67,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Kanban/Text: move the shared Kanban HTML-label height constants (section label baseline/FO height
   plus item row/label heights) into `kanban_text_overrides_11_12_2`, so layout and SVG parity stop
   duplicating the same diagram-specific text box numbers inline.
+- Sequence/Text: move the remaining Sequence note-wrap slack / text-height / line-step constants
+  into `sequence_text_overrides_11_12_2`, so layout and SVG parity stop duplicating the same
+  diagram-specific text measurement numbers inline.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.

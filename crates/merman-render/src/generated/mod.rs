@@ -29,6 +29,7 @@ pub mod requirement_root_overrides_11_12_2;
 pub mod requirement_text_overrides_11_12_2;
 pub mod sankey_root_overrides_11_12_2;
 pub mod sequence_root_overrides_11_12_2;
+pub mod sequence_text_overrides_11_12_2;
 pub mod state_root_overrides_11_12_2;
 pub mod state_text_overrides_11_12_2;
 pub mod svg_overrides_sequence_11_12_2;

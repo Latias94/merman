@@ -117,12 +117,6 @@ fn measure_svg_like_with_html_br(
     )
 }
 
-// Mermaid wraps Sequence notes via `utils.wrapLabel(...)`, which relies on DOM `getBBox()` probes.
-// Our vendored text metrics are deterministic but can be slightly more conservative for some
-// phrases, changing wrap breakpoints and note heights. Give note wrapping a small amount of
-// horizontal slack so greedy line breaks match the upstream Mermaid SVG baselines (11.12.3).
-const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 12.0;
-
 fn sequence_actor_visual_height(
     actor_type: &str,
     base_width: f64,
@@ -249,13 +243,11 @@ pub fn layout_sequence_diagram(
     //
     // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
     // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
-    fn mermaid_text_dimensions_height_px(font_size: f64) -> f64 {
-        // 16px -> 17px in upstream.
-        (font_size.max(1.0) * (17.0 / 16.0)).max(1.0)
-    }
-
     let max_box_title_height = if has_box_titles {
-        let line_h = mermaid_text_dimensions_height_px(message_font_size);
+        let line_h =
+            crate::generated::sequence_text_overrides_11_12_2::sequence_text_dimensions_height_px(
+                message_font_size,
+            );
         model
             .boxes
             .iter()
@@ -286,7 +278,9 @@ pub fn layout_sequence_diagram(
             let wrapped_lines =
                 wrap_label_like_mermaid_lines(&a.description, measurer, &actor_text_style, wrap_w);
             let line_count = wrapped_lines.len().max(1) as f64;
-            let text_h = mermaid_text_dimensions_height_px(actor_font_size) * line_count;
+            let text_h = crate::generated::sequence_text_overrides_11_12_2::
+                sequence_text_dimensions_height_px(actor_font_size)
+                * line_count;
             actor_base_heights.push(actor_height.max(text_h).max(1.0));
             actor_widths.push(actor_width_min.max(1.0));
         } else {
@@ -560,7 +554,9 @@ pub fn layout_sequence_diagram(
     // We model this as a base step and subtract `labelBoxHeight` for empty labels.
     let block_base_step = (2.0 * box_margin + box_text_margin + label_box_height).max(0.0);
     let block_base_step_empty = (block_base_step - label_box_height).max(0.0);
-    let line_step = message_font_size * 1.1875;
+    let line_step = crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+        message_font_size,
+    );
     let block_extra_per_line = (line_step - box_text_margin).max(0.0);
     let block_end_step = 10.0;
 
@@ -1158,7 +1154,8 @@ pub fn layout_sequence_diagram(
     let note_gap = 10.0;
     // Mermaid note boxes use 10px vertical padding on both sides (20px total), on top of the
     // SVG `getBBox().height` of the note text.
-    let note_text_pad_total = 20.0;
+    let note_text_pad_total =
+        crate::generated::sequence_text_overrides_11_12_2::sequence_note_text_pad_total_px();
     let note_top_offset = message_step - note_gap;
 
     let mut cursor_y = actor_top_offset_y + max_actor_visual_height + message_step;
@@ -1350,7 +1347,10 @@ pub fn layout_sequence_diagram(
                         text,
                         measurer,
                         &note_text_style,
-                        (note_width_single + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
+                        (note_width_single
+                            + crate::generated::sequence_text_overrides_11_12_2::
+                                sequence_note_wrap_slack_px())
+                        .max(1.0),
                     );
                     let init_wrapped = init_lines.join("<br/>");
                     let (w, _h) =
@@ -1370,7 +1370,10 @@ pub fn layout_sequence_diagram(
                     text,
                     measurer,
                     &note_text_style,
-                    (wrap_w + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
+                    (wrap_w
+                        + crate::generated::sequence_text_overrides_11_12_2::
+                            sequence_note_wrap_slack_px())
+                    .max(1.0),
                 );
                 let wrapped = lines.join("<br/>");
                 let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);
@@ -2186,4 +2189,29 @@ pub fn layout_sequence_diagram(
         clusters,
         bounds,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sequence_text_constants_are_generated() {
+        assert_eq!(
+            crate::generated::sequence_text_overrides_11_12_2::sequence_note_wrap_slack_px(),
+            12.0
+        );
+        assert_eq!(
+            crate::generated::sequence_text_overrides_11_12_2::sequence_text_dimensions_height_px(
+                16.0
+            ),
+            17.0
+        );
+        assert_eq!(
+            crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(16.0),
+            19.0
+        );
+        assert_eq!(
+            crate::generated::sequence_text_overrides_11_12_2::sequence_note_text_pad_total_px(),
+            20.0
+        );
+    }
 }

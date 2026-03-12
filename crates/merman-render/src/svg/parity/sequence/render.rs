@@ -52,11 +52,6 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    // Mermaid wraps Sequence notes via `utils.wrapLabel(...)` and DOM `getBBox()` probes.
-    // Our vendored text metrics are deterministic but can be slightly more conservative; add a
-    // small amount of horizontal slack so note line breaks match upstream SVG baselines (11.12.3).
-    const NOTE_WRAP_SLACK_PX: f64 = 12.0;
-
     let mut model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     if model.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
         if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
@@ -295,19 +290,21 @@ fn render_sequence_diagram_svg_inner(
         .boxes
         .iter()
         .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
-    let max_box_title_height = if has_box_titles {
-        // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
-        // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
-        let line_h = (actor_label_font_size * (17.0 / 16.0)).max(1.0);
-        model
-            .boxes
-            .iter()
-            .filter_map(|b| b.name.as_deref())
-            .map(|s| crate::text::split_html_br_lines(s).len().max(1) as f64 * line_h)
-            .fold(0.0, f64::max)
-    } else {
-        0.0
-    };
+    let max_box_title_height =
+        if has_box_titles {
+            // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
+            // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
+            let line_h = crate::generated::sequence_text_overrides_11_12_2::
+            sequence_text_dimensions_height_px(actor_label_font_size);
+            model
+                .boxes
+                .iter()
+                .filter_map(|b| b.name.as_deref())
+                .map(|s| crate::text::split_html_br_lines(s).len().max(1) as f64 * line_h)
+                .fold(0.0, f64::max)
+        } else {
+            0.0
+        };
 
     for b in model.boxes.iter().rev() {
         let pad_x = (box_margin * 2.0 + box_text_margin).max(0.0);
@@ -1315,7 +1312,10 @@ fn render_sequence_diagram_svg_inner(
         text: &str,
         use_tspan: bool,
     ) {
-        let line_step = style.font_size * 1.1875;
+        let line_step =
+            crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+                style.font_size,
+            );
         let lines = wrap_svg_text_lines(text, measurer, style, max_width);
         for (i, line) in lines.into_iter().enumerate() {
             let y = y0 + (i as f64) * line_step;
@@ -1843,7 +1843,10 @@ fn render_sequence_diagram_svg_inner(
                 let (x, y) = node_left_top(n);
                 let cx = x + (n.width / 2.0);
                 let text_y = y + 5.0;
-                let line_step = actor_label_font_size * 1.1875;
+                let line_step =
+                    crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+                        actor_label_font_size,
+                    );
                 out.push_str(r#"<g>"#);
                 let _ = write!(
                     &mut out,
@@ -1859,7 +1862,10 @@ fn render_sequence_diagram_svg_inner(
                     //
                     // Layout already computed the note box width (`n.width`) to match Mermaid's
                     // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
-                    let wrap_w = (n.width - 2.0 * wrap_padding + NOTE_WRAP_SLACK_PX).max(1.0);
+                    let wrap_w = (n.width - 2.0 * wrap_padding
+                        + crate::generated::sequence_text_overrides_11_12_2::
+                            sequence_note_wrap_slack_px())
+                    .max(1.0);
                     crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                         raw,
                         measurer,
@@ -1969,8 +1975,11 @@ fn render_sequence_diagram_svg_inner(
                                 Some(max_w),
                             );
                             let extra_lines = wrapped.len().saturating_sub(1) as f64;
-                            let extra_per_line =
-                                (loop_text_style.font_size * 1.1875 - box_text_margin).max(0.0);
+                            let extra_per_line = (crate::generated::
+                                sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+                                    loop_text_style.font_size,
+                                ) - box_text_margin)
+                                .max(0.0);
                             base + extra_lines * extra_per_line
                         };
                         let frame_y1 = min_y - header_offset;
@@ -2684,8 +2693,11 @@ fn render_sequence_diagram_svg_inner(
                                 Some(max_w),
                             );
                             let extra_lines = wrapped.len().saturating_sub(1) as f64;
-                            let extra_per_line =
-                                (loop_text_style.font_size * 1.1875 - box_text_margin).max(0.0);
+                            let extra_per_line = (crate::generated::
+                                sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+                                    loop_text_style.font_size,
+                                ) - box_text_margin)
+                                .max(0.0);
                             79.0 + extra_lines * extra_per_line
                         };
                         let frame_y1 = min_y - header_offset;
@@ -2882,7 +2894,10 @@ fn render_sequence_diagram_svg_inner(
 
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
-            let line_step = actor_label_font_size * 1.1875;
+            let line_step =
+                crate::generated::sequence_text_overrides_11_12_2::sequence_text_line_step_px(
+                    actor_label_font_size,
+                );
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             let raw_lines: Vec<String> = if msg.wrap && !text.is_empty() {
                 // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
