@@ -68,6 +68,19 @@ pub fn lookup_flowchart_svg_bbox_x_px(
         // fixtures/flowchart/upstream_cypress_flowchart_spec_1_should_render_a_simple_flowchart_no_htmllabels_001.mmd
         // fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_spec_1_should_render_a_simple_flowchart_no_htmllabels_001.svg
         ("courier", "Get money") => Some((43.2109375, 43.2109375)),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_007.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "Line 2")
+        | ("trebuchetms,verdana,arial,sans-serif", "Line 3") => Some((21.6796875, 21.6796875)),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "in the hat") => Some((35.1328125, 35.1328125)),
+        ("trebuchetms,verdana,arial,sans-serif", "edge label") => Some((37.359375, 37.359375)),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "edge") => Some((37.359375, 37.359375)),
+        // fixtures/upstream_cypress_flowchart_v2_spec_sub_graphs_and_markdown_strings_057.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "1o") => Some((8.4921875, 8.4921875)),
+        // fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_spec_1_should_render_a_simple_flowchart_no_htmllabels_001.svg
+        ("trebuchetms,verdana,arial,sans-serif", "End") => Some((13.1171875, 13.1171875)),
+        ("trebuchetms,verdana,arial,sans-serif", "Start") => Some((17.5078125, 17.5078125)),
         // fixtures/flowchart/stress_flowchart_html_labels_global_true_flowchart_false_070.mmd
         ("trebuchetms,verdana,arial,sans-serif", "Subgraph Title") => Some((51.59375, 51.59375)),
         ("trebuchetms,verdana,arial,sans-serif", "Edge Label") => Some((38.96875, 38.96875)),

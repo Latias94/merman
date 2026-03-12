@@ -475,6 +475,50 @@ fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
 }
 
 #[test]
+fn extra_svg_bbox_override_table_is_narrowed_to_treemap_leftover() {
+    assert_eq!(
+        lookup_extra_svg_bbox_override_em(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            "Item A1",
+            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
+        ),
+        Some((1.720_214_843_75, 1.720_214_843_75))
+    );
+    assert_eq!(
+        lookup_extra_svg_bbox_override_em(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            "End",
+            DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES,
+        ),
+        None
+    );
+}
+
+#[test]
+fn generated_flowchart_svg_override_paths_cover_pruned_literals() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    assert_eq!(
+        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_svg_bbox_x_px(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            16.0,
+            "End",
+        ),
+        Some((13.1171875, 13.1171875))
+    );
+    let end = measurer.measure_wrapped("End", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(end.width, 26.234375);
+
+    let edge_label = measurer.measure_wrapped("edge label", &style, Some(200.0), WrapMode::SvgLike);
+    assert_eq!(edge_label.width, 74.71875);
+}
+
+#[test]
 fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

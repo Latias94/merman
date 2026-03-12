@@ -129,17 +129,8 @@ const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;
 const SVG_DEFAULT_TITLE_DESCENT_EM: f64 = 0.262;
 const SVG_COURIER_TITLE_ASCENT_EM: f64 = 0.8333333333333334;
 const SVG_COURIER_TITLE_DESCENT_EM: f64 = 0.25;
-const DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES: &[(&str, f64, f64)] = &[
-    ("Item A1", 1.720_214_843_75_f64, 1.720_214_843_75_f64),
-    ("End", 0.819_824_218_75_f64, 0.819_824_218_75_f64),
-    ("Start", 1.094_238_281_25_f64, 1.094_238_281_25_f64),
-    ("in the hat", 2.195_800_781_25_f64, 2.195_800_781_25_f64),
-    ("Line 2", 1.354_980_468_75_f64, 1.354_980_468_75_f64),
-    ("Line 3", 1.354_980_468_75_f64, 1.354_980_468_75_f64),
-    ("edge", 2.334_960_937_5_f64, 2.334_960_937_5_f64),
-    ("edge label", 2.334_960_937_5_f64, 2.334_960_937_5_f64),
-    ("1o", 0.530_761_718_75_f64, 0.530_761_718_75_f64),
-];
+const DEFAULT_FONT_EXTRA_SVG_BBOX_OVERRIDES: &[(&str, f64, f64)] =
+    &[("Item A1", 1.720_214_843_75_f64, 1.720_214_843_75_f64)];
 const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64, f64)] = &[(
     "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
     14.707_519_531_25_f64,
