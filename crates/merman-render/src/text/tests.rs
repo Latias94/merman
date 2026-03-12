@@ -439,22 +439,38 @@ fn default_font_extra_html_override_table_keeps_special_characters_stable() {
 }
 
 #[test]
-fn extra_html_override_table_is_default_font_only() {
+fn generated_flowchart_html_override_paths_cover_promoted_leftovers() {
     assert_eq!(
-        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "special characters"),
-        Some(8.12109375)
+        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            16.0,
+            "special characters",
+        ),
+        Some(129.9375)
     );
     assert_eq!(
-        lookup_extra_html_override_em("courier", "special characters"),
+        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
+            "courier",
+            16.0,
+            "special characters",
+        ),
         None
     );
     assert_eq!(
-        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "Block 1"),
+        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            16.0,
+            "Block 1",
+        ),
         None
     );
     assert_eq!(
-        lookup_extra_html_override_em(FLOWCHART_DEFAULT_FONT_KEY, "Circle shape"),
-        None
+        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
+            FLOWCHART_DEFAULT_FONT_KEY,
+            16.0,
+            "Line 2",
+        ),
+        Some(43.34375)
     );
 }
 

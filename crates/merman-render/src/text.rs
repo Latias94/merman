@@ -136,20 +136,6 @@ const DEFAULT_FONT_EXTRA_SINGLE_RUN_SVG_BBOX_WITH_ASCII_OVERRIDES: &[(&str, f64,
     14.707_519_531_25_f64,
     14.740_234_375_f64,
 )];
-const DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX: &[(&str, f64)] = &[
-    (",.?!+-*ز", 51.46875),
-    ("- e1 - e2", 60.453125),
-    ("- l1 - l2", 52.4375),
-    ("`**bold*`", 65.546875),
-    ("`This is **bold**", 112.78125),
-    ("Rounded", 61.296875),
-    ("Line 2", 43.34375),
-    ("Line 3", 43.34375),
-    ("(1 / period_duration)", 153.0),
-    ("edge label", 74.703125),
-    ("edge comment", 106.109375),
-    ("special characters", 129.9375),
-];
 
 pub(crate) fn font_key_uses_courier_metrics(font_key: &str) -> bool {
     font_key
@@ -177,19 +163,6 @@ fn lookup_extra_svg_bbox_override_em(
         .iter()
         .find(|(candidate, _, _)| *candidate == text)
         .map(|(_, left, right)| (*left, *right))
-}
-
-fn lookup_extra_html_override_em(font_key: &str, line: &str) -> Option<f64> {
-    if font_key != FLOWCHART_DEFAULT_FONT_KEY {
-        return None;
-    }
-    // Keep this table limited to the leftovers that are not already covered by generated
-    // flowchart/block/ER/mindmap lookup tables. That prevents unrelated diagrams from sharing
-    // fixture-specific literals through the generic HTML fallback path.
-    DEFAULT_FONT_EXTRA_HTML_WIDTH_OVERRIDES_PX
-        .iter()
-        .find(|(candidate, _)| *candidate == line)
-        .map(|(_, width_px)| *width_px / 16.0)
 }
 
 pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
@@ -4033,9 +4006,9 @@ fn vendored_measure_wrapped_impl(
                 raw_w = raw_w.max(w);
                 continue;
             }
-            if let Some(em) = lookup_extra_html_override_em(table.font_key, &line).or_else(|| {
+            if let Some(em) =
                 VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, &line)
-            }) {
+            {
                 raw_w = raw_w.max(html_override_px(em));
             } else {
                 raw_w = raw_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
@@ -4156,12 +4129,7 @@ fn vendored_measure_wrapped_impl(
                     continue;
                 }
                 if let Some(em) =
-                    lookup_extra_html_override_em(table.font_key, line).or_else(|| {
-                        VendoredFontMetricsTextMeasurer::lookup_html_override_em(
-                            html_overrides,
-                            line,
-                        )
-                    })
+                    VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, line)
                 {
                     width = width.max(html_override_px(em));
                 } else {

@@ -20,6 +20,11 @@ pub fn lookup_flowchart_html_width_px(
         ("trebuchetms,verdana,arial,sans-serif", "A to B") => Some(42.1875),
         ("trebuchetms,verdana,arial,sans-serif", "B to C") => Some(43.203125),
         ("trebuchetms,verdana,arial,sans-serif", "A: (Edge Text)") => Some(101.046875),
+        // fixtures/flowchart/upstream_docs_flowchart_text_special_characters_spec.mmd
+        ("trebuchetms,verdana,arial,sans-serif", ",.?!+-*ز") => Some(51.46875),
+        ("trebuchetms,verdana,arial,sans-serif", "special characters") => Some(129.9375),
+        // fixtures/flowchart/upstream_docs_flowchart_shapes_nodes_spec.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "Rounded") => Some(61.296875),
         // fixtures/flowchart/stress_flowchart_subgraph_boundary_edges_008.mmd
         ("trebuchetms,verdana,arial,sans-serif", "Inner B") => Some(50.765625),
         // fixtures/flowchart/stress_flowchart_edge_label_near_cluster_title_018.mmd
@@ -41,6 +46,20 @@ pub fn lookup_flowchart_html_width_px(
         ("trebuchetms,verdana,arial,sans-serif", "Node Label B") => Some(94.0),
         // fixtures/flowchart/stress_flowchart_html_labels_default_class_077.mmd
         ("trebuchetms,verdana,arial,sans-serif", "custom") => Some(51.359375),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_007.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "Line 2")
+        | ("trebuchetms,verdana,arial,sans-serif", "Line 3") => Some(43.34375),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "edge label") => Some(74.703125),
+        ("trebuchetms,verdana,arial,sans-serif", "edge comment") => Some(106.109375),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_strings_201.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "(1 / period_duration)") => Some(153.0),
+        // fixtures/flowchart/upstream_docs_flowchart_markdown_raw_block_*.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "- e1 - e2") => Some(60.453125),
+        ("trebuchetms,verdana,arial,sans-serif", "- l1 - l2") => Some(52.4375),
+        // fixtures/flowchart/stress_flowchart_edge_pipe_label_markdown_literals_*.mmd
+        ("trebuchetms,verdana,arial,sans-serif", "`**bold*`") => Some(65.546875),
+        ("trebuchetms,verdana,arial,sans-serif", "`This is **bold**") => Some(112.78125),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_styles_071.svg
         ("trebuchetms,verdana,arial,sans-serif", "new bow-rect shape") => Some(144.78125),
         // fixtures/upstream-svgs/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset4_*_styles_*.svg

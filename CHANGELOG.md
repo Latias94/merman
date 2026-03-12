@@ -45,6 +45,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   serve `Block 1`, `Circle shape`, and similar literals directly instead of re-declaring them in the generic path.
 - Text/SVG: trim the shared default-font SVG bbox fallback table back to the treemap-specific leftover (`Item A1`) and move
   the flowchart literals (`End`, `Start`, `edge label`, `1o`, `Line 2`, etc.) into `flowchart_text_overrides_11_12_2`.
+- Text/HTML: move the last flowchart-specific HTML fallback literals (`special characters`, `Line 2`, `` `**bold*` ``,
+  `edge label`, etc.) into `flowchart_text_overrides_11_12_2` and remove the generic `lookup_extra_html_override_em(...)`
+  branch entirely.
 - Flowchart/KaTeX: add an opt-in Node/Puppeteer-backed `NodeKatexMathRenderer`, wire both
   `xtask compare-flowchart-svgs` and `xtask compare-svg-xml --diagram flowchart` to use it automatically when
   `tools/mermaid-cli` is present, switch the KaTeX probe onto the same `mermaid-cli` browser-shell environment used for
