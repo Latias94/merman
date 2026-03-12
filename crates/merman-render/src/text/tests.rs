@@ -351,9 +351,46 @@ fn flowchart_svg_edge_label_background_y_matches_upstream_fonts() {
         font_size: 16.0,
         font_weight: None,
     };
+    let courier_stack = TextStyle {
+        font_family: Some("\"Courier New\", courier, monospace;".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
 
     assert_eq!(flowchart_svg_edge_label_background_y_px(&trebuchet), -1.0);
     assert_eq!(flowchart_svg_edge_label_background_y_px(&courier), 0.0);
+    assert_eq!(
+        flowchart_svg_edge_label_background_y_px(&courier_stack),
+        0.0
+    );
+}
+
+#[test]
+fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
+    let trebuchet = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 18.0,
+        font_weight: None,
+    };
+    let courier = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 18.0,
+        font_weight: None,
+    };
+    let courier_stack = TextStyle {
+        font_family: Some("\"Courier New\", courier, monospace;".to_string()),
+        font_size: 18.0,
+        font_weight: None,
+    };
+
+    assert_eq!(
+        svg_title_bbox_vertical_extents_px(&courier_stack),
+        svg_title_bbox_vertical_extents_px(&courier)
+    );
+    assert_ne!(
+        svg_title_bbox_vertical_extents_px(&courier_stack),
+        svg_title_bbox_vertical_extents_px(&trebuchet)
+    );
 }
 
 #[test]

@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use super::*;
 
 pub(super) fn render_flowchart_v2_svg(
@@ -18,6 +20,93 @@ fn section<'a>(
     dst: &'a mut std::time::Duration,
 ) -> Option<super::super::timing::TimingGuard<'a>> {
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
+}
+
+fn closed_path_from_points(points: &[(f64, f64)]) -> String {
+    let mut out = String::new();
+    for (index, (x, y)) in points.iter().copied().enumerate() {
+        let cmd = if index == 0 { 'M' } else { 'L' };
+        let _ = write!(&mut out, "{cmd}{x},{y} ");
+    }
+    out.push('Z');
+    out
+}
+
+fn union_svg_path_bounds(paths: &[&str]) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
+    let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
+    for d in paths {
+        let Some(pb) = crate::svg::parity::path_bounds::svg_path_bounds_from_d(d) else {
+            continue;
+        };
+        bounds = Some(match bounds {
+            Some(mut acc) => {
+                acc.min_x = acc.min_x.min(pb.min_x);
+                acc.min_y = acc.min_y.min(pb.min_y);
+                acc.max_x = acc.max_x.max(pb.max_x);
+                acc.max_y = acc.max_y.max(pb.max_y);
+                acc
+            }
+            None => pb,
+        });
+    }
+    bounds
+}
+
+fn rough_svg_path_bounds(
+    path_data: &str,
+) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
+    let (fill_d, stroke_d) =
+        crate::svg::parity::flowchart::render::node::roughjs::roughjs_paths_for_svg_path(
+            path_data, "#000", "#000", 1.3, "0 0", 0,
+        )?;
+    union_svg_path_bounds(&[fill_d.as_str(), stroke_d.as_str()])
+}
+
+fn generate_circle_points(
+    center_x: f64,
+    center_y: f64,
+    radius: f64,
+    num_points: usize,
+    start_angle_deg: f64,
+    end_angle_deg: f64,
+) -> Vec<(f64, f64)> {
+    let start = start_angle_deg.to_radians();
+    let end = end_angle_deg.to_radians();
+    let angle_range = end - start;
+    let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
+    let mut points = Vec::with_capacity(num_points);
+    for index in 0..num_points {
+        let angle = start + index as f64 * step;
+        let x = center_x + radius * angle.cos();
+        let y = center_y + radius * angle.sin();
+        points.push((-x, -y));
+    }
+    points
+}
+
+fn generate_full_sine_wave_points(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    amplitude: f64,
+    num_cycles: f64,
+) -> Vec<(f64, f64)> {
+    let steps: usize = 50;
+    let delta_x = x2 - x1;
+    let delta_y = y2 - y1;
+    let cycle_length = delta_x / num_cycles;
+    let frequency = (2.0 * std::f64::consts::PI) / cycle_length;
+    let mid_y = y1 + delta_y / 2.0;
+
+    let mut points = Vec::with_capacity(steps + 1);
+    for index in 0..=steps {
+        let t = index as f64 / steps as f64;
+        let x = x1 + t * delta_x;
+        let y = mid_y + amplitude * (frequency * (x - x1)).sin();
+        points.push((x, y));
+    }
+    points
 }
 
 fn prepare_render_edges_and_extra_nodes<'a>(
@@ -712,6 +801,71 @@ fn render_flowchart_v2_svg_with_config_inner(
                             }
                         }
 
+                        // Mermaid `waveEdgedRectangle.ts` (document) stores Dagre dimensions from
+                        // `updateNodeBounds(...)`, but the final root viewport comes from the
+                        // rendered RoughJS path bbox. Rebuild that bbox directly so we do not
+                        // approximate it as a symmetric `node.width / 2`.
+                        if matches!(shape, "doc" | "document") {
+                            let (label_w, label_h) = if let (Some(w), Some(h)) =
+                                (n.label_width, n.label_height)
+                            {
+                                (w, h)
+                            } else if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                                let label = flow_node.label.as_deref().unwrap_or("");
+                                let label_type = flow_node
+                                    .label_type
+                                    .as_deref()
+                                    .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let node_text_style =
+                                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                                        &ctx.text_style,
+                                        ctx.class_defs,
+                                        &flow_node.classes,
+                                        &flow_node.styles,
+                                    );
+                                let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    ctx.measurer,
+                                    label,
+                                    label_type,
+                                    &node_text_style,
+                                    Some(ctx.wrapping_width),
+                                    ctx.node_wrap_mode,
+                                    ctx.config,
+                                    ctx.math_renderer,
+                                );
+                                (metrics.width, metrics.height)
+                            } else {
+                                (0.0, 0.0)
+                            };
+
+                            let w = (label_w + 2.0 * node_padding).max(0.0);
+                            let h = (label_h + 2.0 * node_padding).max(0.0);
+                            let wave_amplitude = h / 8.0;
+                            let final_h = h + wave_amplitude;
+                            let extra_w = ((70.0 - w).max(0.0)) / 2.0;
+                            let mut points: Vec<(f64, f64)> = Vec::new();
+                            points.push((-w / 2.0 - extra_w, final_h / 2.0));
+                            points.extend(generate_full_sine_wave_points(
+                                -w / 2.0 - extra_w,
+                                final_h / 2.0,
+                                w / 2.0 + extra_w,
+                                final_h / 2.0,
+                                wave_amplitude,
+                                0.8,
+                            ));
+                            points.push((w / 2.0 + extra_w, -final_h / 2.0));
+                            points.push((-w / 2.0 - extra_w, -final_h / 2.0));
+
+                            let path_data = closed_path_from_points(&points);
+                            if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                                let y_shift = -wave_amplitude / 2.0;
+                                left_hw = (-pb.min_x).max(0.0);
+                                right_hw = pb.max_x.max(0.0);
+                                top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                                bottom_hh = (pb.max_y + y_shift).max(0.0);
+                            }
+                        }
+
                         // Mermaid `taggedWaveEdgedRectangle.ts` (tagged-document) renders from
                         // the base label box, then `updateNodeBounds(...)` stores a slightly
                         // shorter outer bbox. The rendered wave is also vertically asymmetric
@@ -843,6 +997,57 @@ fn render_flowchart_v2_svg_with_config_inner(
                                 right_hw = left_hw;
                             }
                         }
+
+                        if matches!(shape, "delay" | "half-rounded-rectangle") {
+                            let label_w = n.label_width.unwrap_or(0.0);
+                            let label_h = n.label_height.unwrap_or(0.0);
+                            let w = (label_w + 2.0 * node_padding).max(80.0);
+                            let h = (label_h + 2.0 * node_padding).max(50.0);
+                            let radius = h / 2.0;
+                            let mut points: Vec<(f64, f64)> = Vec::new();
+                            points.push((-w / 2.0, -h / 2.0));
+                            points.push((w / 2.0 - radius, -h / 2.0));
+                            points.extend(generate_circle_points(
+                                -w / 2.0 + radius,
+                                0.0,
+                                radius,
+                                50,
+                                90.0,
+                                270.0,
+                            ));
+                            points.push((w / 2.0 - radius, h / 2.0));
+                            points.push((-w / 2.0, h / 2.0));
+
+                            let path_data = closed_path_from_points(&points);
+                            if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                                left_hw = (-pb.min_x).max(0.0);
+                                right_hw = pb.max_x.max(0.0);
+                                top_hh = (-pb.min_y).max(0.0);
+                                bottom_hh = pb.max_y.max(0.0);
+                            }
+                        }
+
+                        if matches!(shape, "notch-pent" | "loop-limit" | "notched-pentagon") {
+                            let label_w = n.label_width.unwrap_or(0.0);
+                            let label_h = n.label_height.unwrap_or(0.0);
+                            let w = (label_w + 2.0 * node_padding).max(60.0);
+                            let h = (label_h + 2.0 * node_padding).max(20.0);
+                            let points = vec![
+                                ((-w / 2.0) * 0.8, -h / 2.0),
+                                ((w / 2.0) * 0.8, -h / 2.0),
+                                (w / 2.0, (-h / 2.0) * 0.6),
+                                (w / 2.0, h / 2.0),
+                                (-w / 2.0, h / 2.0),
+                                (-w / 2.0, (-h / 2.0) * 0.6),
+                            ];
+                            let path_data = closed_path_from_points(&points);
+                            if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                                left_hw = (-pb.min_x).max(0.0);
+                                right_hw = pb.max_x.max(0.0);
+                                top_hh = (-pb.min_y).max(0.0);
+                                bottom_hh = pb.max_y.max(0.0);
+                            }
+                        }
                     }
                 }
                 include_rect(
@@ -906,9 +1111,6 @@ fn render_flowchart_v2_svg_with_config_inner(
     // - the layout bounds (shifted by `tx/ty`), and
     // - the flowchart title text bounding box (if present).
     const TITLE_FONT_SIZE_PX: f64 = 18.0;
-    const DEFAULT_ASCENT_EM: f64 = 0.9444444444;
-    const DEFAULT_DESCENT_EM: f64 = 0.262;
-
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
 
     let mut bbox_min_x = bounds.min_x + tx;
@@ -1066,17 +1268,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         };
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;
-        // Mermaid title bbox uses SVG `getBBox()`, which varies slightly across fonts.
-        // Courier in Mermaid@11.12.2 has a visibly smaller ascender than the default
-        // `"trebuchet ms", verdana, arial, sans-serif` baseline; model that so viewBox parity
-        // matches upstream fixtures.
-        let (ascent_em, descent_em) = if font_family.to_ascii_lowercase().contains("courier") {
-            (0.8333333333333334, 0.25)
-        } else {
-            (DEFAULT_ASCENT_EM, DEFAULT_DESCENT_EM)
-        };
-        let ascent = TITLE_FONT_SIZE_PX * ascent_em;
-        let descent = TITLE_FONT_SIZE_PX * descent_em;
+        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
         bbox_min_x = bbox_min_x.min(title_anchor_x - title_left);
         bbox_max_x = bbox_max_x.max(title_anchor_x + title_right);

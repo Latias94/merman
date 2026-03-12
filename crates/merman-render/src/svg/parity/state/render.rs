@@ -326,21 +326,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
                 )
                 .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
 
-            // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
-            // Approximate that with a stable ascent/descent split.
-            let (ascent_em, descent_em) = if title_style
-                .font_family
-                .as_deref()
-                .unwrap_or_default()
-                .to_ascii_lowercase()
-                .contains("courier")
-            {
-                (0.8333333333333334, 0.25)
-            } else {
-                (0.9444444444, 0.262)
-            };
-            let ascent = 18.0 * ascent_em;
-            let descent = 18.0 * descent_em;
+            let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
             content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
             content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);
@@ -620,21 +606,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
             )
             .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
 
-        // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
-        // Approximate that with a stable ascent/descent split.
-        let (ascent_em, descent_em) = if title_style
-            .font_family
-            .as_deref()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .contains("courier")
-        {
-            (0.8333333333333334, 0.25)
-        } else {
-            (0.9444444444, 0.262)
-        };
-        let ascent = 18.0 * ascent_em;
-        let descent = 18.0 * descent_em;
+        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
         content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
         content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);

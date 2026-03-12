@@ -122,6 +122,28 @@ fn normalize_font_key(s: &str) -> String {
         .collect()
 }
 
+const FLOWCHART_DEFAULT_FONT_KEY: &str = "trebuchetms,verdana,arial,sans-serif";
+const SVG_DEFAULT_FIRST_LINE_BBOX_EM: f64 = 1.1875;
+const SVG_COURIER_FIRST_LINE_BBOX_EM: f64 = 1.125;
+const SVG_DEFAULT_TITLE_ASCENT_EM: f64 = 0.9444444444;
+const SVG_DEFAULT_TITLE_DESCENT_EM: f64 = 0.262;
+const SVG_COURIER_TITLE_ASCENT_EM: f64 = 0.8333333333333334;
+const SVG_COURIER_TITLE_DESCENT_EM: f64 = 0.25;
+
+pub(crate) fn font_key_uses_courier_metrics(font_key: &str) -> bool {
+    font_key
+        .split(',')
+        .any(|token| matches!(token, "courier" | "couriernew") || token.contains("monospace"))
+}
+
+pub(crate) fn style_uses_courier_metrics(style: &TextStyle) -> bool {
+    style
+        .font_family
+        .as_deref()
+        .map(normalize_font_key)
+        .is_some_and(|font_key| font_key_uses_courier_metrics(&font_key))
+}
+
 pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
     if !v.is_finite() {
         return 0.0;
@@ -140,18 +162,28 @@ pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
 }
 
 pub(crate) fn svg_wrapped_first_line_bbox_height_px(style: &TextStyle) -> f64 {
-    let font_key = style
-        .font_family
-        .as_deref()
-        .map(normalize_font_key)
-        .unwrap_or_default();
-    let first_line_em = if font_key == "courier" { 1.125 } else { 1.1875 };
+    let first_line_em = if style_uses_courier_metrics(style) {
+        SVG_COURIER_FIRST_LINE_BBOX_EM
+    } else {
+        SVG_DEFAULT_FIRST_LINE_BBOX_EM
+    };
     svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * first_line_em)
 }
 
 pub(crate) fn flowchart_svg_edge_label_background_y_px(style: &TextStyle) -> f64 {
-    let baseline_box_h = svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * 1.125);
+    let baseline_box_h =
+        svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * SVG_COURIER_FIRST_LINE_BBOX_EM);
     baseline_box_h - svg_wrapped_first_line_bbox_height_px(style)
+}
+
+pub(crate) fn svg_title_bbox_vertical_extents_px(style: &TextStyle) -> (f64, f64) {
+    let font_size = style.font_size.max(1.0);
+    let (ascent_em, descent_em) = if style_uses_courier_metrics(style) {
+        (SVG_COURIER_TITLE_ASCENT_EM, SVG_COURIER_TITLE_DESCENT_EM)
+    } else {
+        (SVG_DEFAULT_TITLE_ASCENT_EM, SVG_DEFAULT_TITLE_DESCENT_EM)
+    };
+    (font_size * ascent_em, font_size * descent_em)
 }
 
 pub(crate) fn svg_create_text_bbox_y_offset_px(style: &TextStyle) -> f64 {
@@ -200,7 +232,7 @@ fn is_flowchart_default_font(style: &TextStyle) -> bool {
     let Some(f) = style.font_family.as_deref() else {
         return false;
     };
-    normalize_font_key(f) == "trebuchetms,verdana,arial,sans-serif"
+    normalize_font_key(f) == FLOWCHART_DEFAULT_FONT_KEY
 }
 
 fn style_requests_bold_font_weight(style: &TextStyle) -> bool {
@@ -2901,7 +2933,7 @@ impl VendoredFontMetricsTextMeasurer {
         let key = if key.is_empty() {
             // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Many headless
             // layout call sites omit `font_family` and rely on that implicit default.
-            "trebuchetms,verdana,arial,sans-serif"
+            FLOWCHART_DEFAULT_FONT_KEY
         } else {
             key.as_str()
         };
@@ -2913,7 +2945,7 @@ impl VendoredFontMetricsTextMeasurer {
         // Best-effort aliases for common stacks in upstream fixtures (Mermaid measures via DOM,
         // while our vendored tables cover a small set of representative families).
         let key_lower = key;
-        if key_lower.contains("courier") || key_lower.contains("monospace") {
+        if font_key_uses_courier_metrics(key_lower) {
             return crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(
                 "courier",
             );
