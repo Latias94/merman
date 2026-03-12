@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
 pub(super) fn render_state_diagram_v2_svg_impl(
     layout: &StateDiagramV2Layout,
@@ -1462,14 +1463,21 @@ fn render_state_edge_label(
     origin_x: f64,
     origin_y: f64,
 ) {
-    fn edge_label_div_style(label_w: f64) -> &'static str {
+    fn edge_label_div_style(label_w: f64) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
-        const MW: f64 = 200.0;
-        if label_w >= MW - 1e-3 {
-            "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"
+        let max_width = state_text_overrides::state_edge_label_max_width_px();
+        if label_w >= max_width - 1e-3 {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                fmt_display(max_width),
+                fmt_display(max_width),
+            )
         } else {
-            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                fmt_display(max_width),
+            )
         }
     }
 
@@ -1550,6 +1558,7 @@ fn render_state_edge_label(
         mermaid_calculate_point(points, remaining_distance)
     }
 
+    let empty_edge_label_style = edge_label_div_style(0.0);
     let label_text = edge.label.trim();
     if edge.start == edge.end {
         let start = edge.start.as_str();
@@ -1561,8 +1570,9 @@ fn render_state_edge_label(
         // `*-cyclic-special-1`, `*-cyclic-special-mid` (visible label), `*-cyclic-special-2`.
         let _ = write!(
             out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(&id1)
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(&id1),
+            empty_edge_label_style.as_str()
         );
 
         // Mermaid ties the visible self-loop label to the `*-mid` segment.
@@ -1591,15 +1601,17 @@ fn render_state_edge_label(
         } else {
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_xml_display(&idm)
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_xml_display(&idm),
+                empty_edge_label_style.as_str()
             );
         }
 
         let _ = write!(
             out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(&id2)
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(&id2),
+            empty_edge_label_style.as_str()
         );
         return;
     }
@@ -1607,8 +1619,9 @@ fn render_state_edge_label(
     if label_text.is_empty() {
         let _ = write!(
             out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_xml_display(&edge.id)
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_xml_display(&edge.id),
+            empty_edge_label_style.as_str()
         );
         return;
     }
@@ -2106,34 +2119,30 @@ fn render_state_node_svg(
 
             let padding = ctx.state_padding;
             let half_pad = (padding / 2.0).max(0.0);
-            let top_pad = (half_pad - 1.0).max(0.0);
-            let gap = half_pad + 5.0;
+            let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
+            let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
 
             // Mirror `padding-right: 1px` in upstream HTML.
-            let title_w = crate::generated::state_text_overrides_11_12_2::
-                rect_with_title_span_effective_width_px(
-                    ctx.text_style.font_size,
-                    title.trim(),
-                    title_metrics.width,
-                );
-            let title_h = crate::generated::state_text_overrides_11_12_2::
-                rect_with_title_span_effective_height_px(
-                    ctx.text_style.font_size,
-                    title.trim(),
-                    title_metrics.height,
-                );
-            let desc_w = crate::generated::state_text_overrides_11_12_2::
-                rect_with_title_span_effective_width_px(
-                    ctx.text_style.font_size,
-                    desc.trim(),
-                    desc_metrics.width,
-                );
-            let desc_h = crate::generated::state_text_overrides_11_12_2::
-                rect_with_title_span_effective_height_px(
-                    ctx.text_style.font_size,
-                    desc.trim(),
-                    desc_metrics.height,
-                );
+            let title_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                ctx.text_style.font_size,
+                title.trim(),
+                title_metrics.width,
+            );
+            let title_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                ctx.text_style.font_size,
+                title.trim(),
+                title_metrics.height,
+            );
+            let desc_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                ctx.text_style.font_size,
+                desc.trim(),
+                desc_metrics.width,
+            );
+            let desc_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                ctx.text_style.font_size,
+                desc.trim(),
+                desc_metrics.height,
+            );
             let inner_w = (w - padding).max(0.0);
             let title_x = ((inner_w - title_w) / 2.0).max(0.0);
             let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
@@ -2148,7 +2157,7 @@ fn render_state_node_svg(
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
+                r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
@@ -2166,11 +2175,13 @@ fn render_state_node_svg(
                 fmt_display(title_w),
                 fmt_display(title_h),
                 fmt_display(title_x),
+                fmt_display(state_text_overrides::state_rect_with_title_span_padding_right_px()),
                 title_html,
                 fmt_display(desc_w),
                 fmt_display(desc_h),
                 fmt_display(desc_x),
                 fmt_display(desc_y),
+                fmt_display(state_text_overrides::state_rect_with_title_span_padding_right_px()),
                 desc_html
             );
             drop(_g_emit);

@@ -1,5 +1,6 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
+use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramV2Layout,
 };
@@ -76,7 +77,7 @@ fn edge_label_metrics(
     // Mermaid stores sanitized labels that can contain HTML entities like `&lt;`. In the browser,
     // those are decoded before layout/measurement, so decode them here to avoid skewing widths.
     let decoded = decode_html_entities_once(label);
-    let wrapping_width = 200.0;
+    let wrapping_width = state_text_overrides::state_edge_label_max_width_px();
     let mut metrics = measurer.measure_wrapped(
         decoded.as_ref(),
         text_style,
@@ -99,10 +100,7 @@ fn edge_label_metrics(
 
         let trimmed = decoded.as_ref().trim();
         if let Some(w) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_edge_label_width_px(
-                text_style.font_size,
-                trimmed,
-            )
+            state_text_overrides::lookup_state_edge_label_width_px(text_style.font_size, trimmed)
         {
             metrics.width = w;
         }
@@ -1076,36 +1074,31 @@ fn layout_state_diagram_v2_inner(
                     title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
 
                 // Mirror `padding-right: 1px` in upstream HTML.
-                let title_w = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_width_px(
-                        text_style.font_size,
-                        label_text.trim(),
-                        title_w,
-                    );
-                let desc_w = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_width_px(
-                        text_style.font_size,
-                        desc.trim(),
-                        desc_w,
-                    );
-                let title_h = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_height_px(
-                        text_style.font_size,
-                        label_text.trim(),
-                        title_h,
-                    );
-                let desc_h = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_height_px(
-                        text_style.font_size,
-                        desc.trim(),
-                        desc_h,
-                    );
+                let title_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                    title_w,
+                );
+                let desc_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                    text_style.font_size,
+                    desc.trim(),
+                    desc_w,
+                );
+                let title_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                    title_h,
+                );
+                let desc_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                    text_style.font_size,
+                    desc.trim(),
+                    desc_h,
+                );
 
                 let inner_w = title_w.max(desc_w);
-                let half_pad = (padding / 2.0).max(0.0);
-                let top_pad = (half_pad - 1.0).max(0.0);
-                let bottom_pad = half_pad + 1.0;
-                let gap = half_pad + 5.0;
+                let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
+                let bottom_pad = state_text_overrides::state_rect_with_title_bottom_pad_px(padding);
+                let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
                 let h = top_pad + title_h.max(0.0) + gap + desc_h.max(0.0) + bottom_pad;
                 let w = inner_w + padding;
                 (w.max(1.0), h.max(1.0))
@@ -1992,36 +1985,31 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                 let (desc_w, desc_h) =
                     title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
 
-                let title_w = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_width_px(
-                        text_style.font_size,
-                        label_text.trim(),
-                        title_w,
-                    );
-                let desc_w = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_width_px(
-                        text_style.font_size,
-                        desc.trim(),
-                        desc_w,
-                    );
-                let title_h = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_height_px(
-                        text_style.font_size,
-                        label_text.trim(),
-                        title_h,
-                    );
-                let desc_h = crate::generated::state_text_overrides_11_12_2::
-                    rect_with_title_span_effective_height_px(
-                        text_style.font_size,
-                        desc.trim(),
-                        desc_h,
-                    );
+                let title_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                    title_w,
+                );
+                let desc_w = state_text_overrides::rect_with_title_span_effective_width_px(
+                    text_style.font_size,
+                    desc.trim(),
+                    desc_w,
+                );
+                let title_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                    title_h,
+                );
+                let desc_h = state_text_overrides::rect_with_title_span_effective_height_px(
+                    text_style.font_size,
+                    desc.trim(),
+                    desc_h,
+                );
 
                 let inner_w = title_w.max(desc_w);
-                let half_pad = (padding / 2.0).max(0.0);
-                let top_pad = (half_pad - 1.0).max(0.0);
-                let bottom_pad = half_pad + 1.0;
-                let gap = half_pad + 5.0;
+                let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
+                let bottom_pad = state_text_overrides::state_rect_with_title_bottom_pad_px(padding);
+                let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
                 let h = top_pad + title_h.max(0.0) + gap + desc_h.max(0.0) + bottom_pad;
                 let w = inner_w + padding;
                 (w.max(1.0), h.max(1.0))
@@ -2225,6 +2213,28 @@ mod tests {
                 18.0,
             ),
             18.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_rect_with_title_span_padding_right_px(),
+            1.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_rect_with_title_top_pad_px(10.0),
+            4.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_rect_with_title_bottom_pad_px(
+                10.0
+            ),
+            6.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_rect_with_title_gap_px(10.0),
+            10.0
+        );
+        assert_eq!(
+            crate::generated::state_text_overrides_11_12_2::state_edge_label_max_width_px(),
+            200.0
         );
     }
 }
