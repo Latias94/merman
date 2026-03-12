@@ -665,37 +665,6 @@ pub fn layout_gitgraph_diagram(
         font_weight: None,
     };
 
-    fn corr_px(num_over_2048: i32) -> f64 {
-        // Keep gitGraph bbox corrections on a power-of-two grid (matches upstream `getBBox()`
-        // lattice and avoids introducing new FP drift in viewBox/max-width comparisons).
-        num_over_2048 as f64 / 2048.0
-    }
-
-    fn gitgraph_branch_label_bbox_width_correction_px(text: &str) -> f64 {
-        // Fixture-derived corrections for Mermaid@11.12.2 gitGraph branch labels.
-        //
-        // Upstream Mermaid uses `drawText(...).getBBox().width` for branch labels. Our headless text
-        // measurer approximates glyph outline extents, but can differ for some strings and move the
-        // root `viewBox`/`max-width` by 1/128px-1/32px.
-        match text {
-            // fixtures/gitgraph/upstream_cherry_pick_*_tag_spec.mmd
-            "develop" => corr_px(16), // +1/128
-            // fixtures/gitgraph/upstream_cherry_pick_merge_commits.mmd
-            "feature" => corr_px(-48), // -3/128
-            // fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_018.mmd
-            "newbranch" => corr_px(-32), // -1/64
-            // fixtures/gitgraph/upstream_switch_commit_merge_spec.mmd
-            "testBranch" => corr_px(-32), // -1/64
-            // fixtures/gitgraph/upstream_merges_spec.mmd
-            "testBranch2" => corr_px(-32), // -1/64
-            // fixtures/gitgraph/upstream_unsafe_id_branch_and_commit_spec.mmd
-            "__proto__" => corr_px(-16), // -1/128
-            // fixtures/gitgraph/upstream_branches_and_order.mmd
-            "branch/example-branch" => corr_px(-64), // -1/32
-            _ => 0.0,
-        }
-    }
-
     fn gitgraph_branch_label_bbox_width_px(
         measurer: &dyn TextMeasurer,
         text: &str,
@@ -710,7 +679,8 @@ pub fn layout_gitgraph_diagram(
                 .max(0.0),
         );
         let extra = if apply_corrections {
-            gitgraph_branch_label_bbox_width_correction_px(text)
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                lookup_gitgraph_branch_label_bbox_width_extra_px(text)
         } else {
             0.0
         };
@@ -932,4 +902,26 @@ pub fn layout_gitgraph_diagram(
         commits,
         arrows,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn gitgraph_branch_label_bbox_width_overrides_are_generated() {
+        assert_eq!(
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                lookup_gitgraph_branch_label_bbox_width_extra_px("develop"),
+            16.0 / 2048.0
+        );
+        assert_eq!(
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                lookup_gitgraph_branch_label_bbox_width_extra_px("feature"),
+            -48.0 / 2048.0
+        );
+        assert_eq!(
+            crate::generated::gitgraph_text_overrides_11_12_2::
+                lookup_gitgraph_branch_label_bbox_width_extra_px("unknown"),
+            0.0
+        );
+    }
 }

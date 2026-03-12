@@ -56,6 +56,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   inside `requirement.rs`.
 - GitGraph/Text: move the commit-label bbox correction tables into `gitgraph_text_overrides_11_12_2`, so rotated label
   parity no longer keeps those fixture-derived literal maps inline in `svg/parity/gitgraph.rs`.
+- GitGraph/Text: move the branch-label bbox correction table into `gitgraph_text_overrides_11_12_2`, so gitGraph layout
+  parity no longer keeps those fixture-derived branch-name literals inline in `gitgraph.rs`.
 - Class/Text: move the namespace title and note HTML-width repeat-offender tables into
   `class_text_overrides_11_12_2`, so class layout/render parity no longer keeps those fixture-derived literal maps
   inline in `class.rs`.
