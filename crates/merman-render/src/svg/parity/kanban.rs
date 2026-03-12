@@ -1,4 +1,5 @@
 use super::*;
+use crate::generated::kanban_text_overrides_11_12_2 as kanban_text_overrides;
 
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
@@ -75,8 +76,7 @@ pub(super) fn render_kanban_diagram_svg(
     out.push_str(r#"<g/>"#);
 
     out.push_str(r#"<g class="sections">"#);
-    let single_line_fo_h =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px();
+    let single_line_fo_h = kanban_text_overrides::kanban_label_foreign_object_height_px();
     for s in &layout.sections {
         let left = s.center_x - s.width / 2.0;
         let label_x = left + (s.width - s.label_width.max(0.0)) / 2.0;
@@ -134,7 +134,7 @@ pub(super) fn render_kanban_diagram_svg(
     }
 
     for n in &layout.items {
-        let max_w = (n.width - 10.0).max(0.0);
+        let max_w = (n.width - kanban_text_overrides::kanban_item_label_inset_x_px()).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
 
@@ -167,11 +167,13 @@ pub(super) fn render_kanban_diagram_svg(
             });
         let height_adj = (ticket_h.max(assigned_metrics.height)) / 2.0;
 
-        let left_x = rect_x + 10.0;
+        let left_x = rect_x + kanban_text_overrides::kanban_item_label_inset_x_px();
         let right_x = if assigned_metrics.width > 0.0 {
-            n.width / 2.0 - 10.0 - assigned_metrics.width
+            n.width / 2.0
+                - kanban_text_overrides::kanban_item_label_inset_x_px()
+                - assigned_metrics.width
         } else {
-            n.width / 2.0 - 10.0
+            n.width / 2.0 - kanban_text_overrides::kanban_item_label_inset_x_px()
         };
 
         let title_y = -height_adj - title_metrics.height / 2.0;
@@ -221,7 +223,7 @@ pub(super) fn render_kanban_diagram_svg(
                         } else {
                             (
                                 raw.width,
-                                crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px(),
+                                kanban_text_overrides::kanban_label_foreign_object_height_px(),
                                 Some(format!(
                                     "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                     mw = fmt(max_w),
@@ -232,7 +234,7 @@ pub(super) fn render_kanban_diagram_svg(
                         let raw = measure_text_metrics_html(t, None);
                         (
                             raw.width,
-                            crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px(),
+                            kanban_text_overrides::kanban_label_foreign_object_height_px(),
                             Some(format!(
                                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                 mw = fmt(max_w),

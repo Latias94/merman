@@ -1,9 +1,8 @@
 use crate::Result;
+use crate::generated::kanban_text_overrides_11_12_2 as kanban_text_overrides;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use serde::Deserialize;
-
-const SECTION_PADDING: f64 = 10.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct KanbanNode {
@@ -100,26 +99,19 @@ pub fn layout_kanban_diagram(
         .unwrap_or(8.0)
         .max(0.0);
 
-    let padding = SECTION_PADDING;
+    let padding = kanban_text_overrides::kanban_section_padding_px();
     let section_rect_y = -(section_width * 3.0) / 2.0;
 
     let legend_style = kanban_text_style(effective_config);
     let font_scale = legend_style.font_size / 16.0;
     let section_label_height_baseline =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_section_label_height_baseline_px()
-            * font_scale;
+        kanban_text_overrides::kanban_section_label_height_baseline_px() * font_scale;
     let section_label_fo_height =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px()
-            * font_scale;
-    let item_one_row_height =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_item_one_row_height_px()
-            * font_scale;
-    let item_two_row_height =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_item_two_row_height_px()
-            * font_scale;
+        kanban_text_overrides::kanban_label_foreign_object_height_px() * font_scale;
+    let item_one_row_height = kanban_text_overrides::kanban_item_one_row_height_px() * font_scale;
+    let item_two_row_height = kanban_text_overrides::kanban_item_two_row_height_px() * font_scale;
     let item_label_line_height =
-        crate::generated::kanban_text_overrides_11_12_2::kanban_item_label_line_height_px()
-            * font_scale;
+        kanban_text_overrides::kanban_item_label_line_height_px() * font_scale;
 
     let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::new();
@@ -161,7 +153,8 @@ pub fn layout_kanban_diagram(
 
         for item in section_items {
             let width = (section_width - 1.5 * padding).max(1.0);
-            let inner_max_w = (width - 10.0).max(0.0);
+            let inner_max_w =
+                (width - kanban_text_overrides::kanban_item_label_inset_x_px()).max(0.0);
 
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
@@ -268,28 +261,55 @@ pub fn layout_kanban_diagram(
 
 #[cfg(test)]
 mod tests {
+    use super::layout_kanban_diagram;
+    use crate::generated::kanban_text_overrides_11_12_2 as kanban_text_overrides;
+    use crate::text::DeterministicTextMeasurer;
+    use serde_json::json;
+
     #[test]
     fn kanban_text_constants_are_generated() {
         assert_eq!(
-            crate::generated::kanban_text_overrides_11_12_2::kanban_section_label_height_baseline_px(),
+            kanban_text_overrides::kanban_section_label_height_baseline_px(),
             25.0
         );
+        assert_eq!(kanban_text_overrides::kanban_section_padding_px(), 10.0);
         assert_eq!(
-            crate::generated::kanban_text_overrides_11_12_2::kanban_label_foreign_object_height_px(
-            ),
+            kanban_text_overrides::kanban_label_foreign_object_height_px(),
             24.0
         );
+        assert_eq!(kanban_text_overrides::kanban_item_one_row_height_px(), 44.0);
+        assert_eq!(kanban_text_overrides::kanban_item_label_inset_x_px(), 10.0);
+        assert_eq!(kanban_text_overrides::kanban_item_two_row_height_px(), 56.0);
         assert_eq!(
-            crate::generated::kanban_text_overrides_11_12_2::kanban_item_one_row_height_px(),
-            44.0
-        );
-        assert_eq!(
-            crate::generated::kanban_text_overrides_11_12_2::kanban_item_two_row_height_px(),
-            56.0
-        );
-        assert_eq!(
-            crate::generated::kanban_text_overrides_11_12_2::kanban_item_label_line_height_px(),
+            kanban_text_overrides::kanban_item_label_line_height_px(),
             24.0
+        );
+    }
+
+    #[test]
+    fn kanban_layout_uses_generated_padding() {
+        let semantic = json!({
+            "type": "kanban",
+            "nodes": [
+                {"id": "todo", "label": "Todo", "isGroup": true},
+                {"id": "doing", "label": "Doing", "isGroup": true},
+                {"id": "task-1", "label": "Task", "parentId": "todo"}
+            ]
+        });
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let layout = layout_kanban_diagram(&semantic, &json!({}), &measurer).unwrap();
+
+        assert_eq!(
+            layout.padding,
+            kanban_text_overrides::kanban_section_padding_px()
+        );
+        assert_eq!(
+            layout.items[0].width,
+            layout.section_width - 1.5 * kanban_text_overrides::kanban_section_padding_px()
         );
     }
 }

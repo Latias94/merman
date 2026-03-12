@@ -94,6 +94,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - XYChart/Text: move XYChart bar data-label width/inset/font heuristics into
   `xychart_text_overrides_11_12_2`, so SVG parity no longer keeps those Mermaid-specific bar-label
   literals inline.
+- Kanban/Text: move Kanban section/item padding and item label x-inset constants into
+  `kanban_text_overrides_11_12_2`, so layout and SVG parity no longer duplicate the same
+  Mermaid `padding = 10` / label inset literals inline.
 - GitGraph/Text: move the branch-label bbox correction gate and width-adjust helper into
   `gitgraph_text_overrides_11_12_2`, so gitGraph layout no longer keeps diagram-specific wrapper
   logic inline around the generated correction table.
