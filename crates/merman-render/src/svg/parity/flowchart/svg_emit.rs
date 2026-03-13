@@ -1242,7 +1242,6 @@ fn render_flowchart_v2_svg_with_config_inner(
                     FlowchartEdgePathCacheEntry {
                         origin_x: off.origin_x,
                         origin_y: off.origin_y,
-                        abs_top_transform: off.abs_top_transform,
                         geom,
                     },
                 );

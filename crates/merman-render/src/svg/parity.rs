@@ -993,59 +993,9 @@ pub fn render_sankey_diagram_svg(
     sankey::render_sankey_diagram_svg(layout, _semantic, effective_config, options)
 }
 
-fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
-    curve::curve_monotone_path_d(points, swap_xy)
-}
-
-fn curve_monotone_x_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve_monotone_path_d(points, false)
-}
-
-fn curve_monotone_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve_monotone_path_d(points, true)
-}
-
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_basis_path_d(points)
-}
-
-fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_linear_path_d(points)
-}
-
-fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_natural_path_d(points)
-}
-
-// Ported from D3 `curveBumpY` (d3-shape v3.x).
-fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_bump_y_path_d(points)
-}
-
-// Ported from D3 `curveCatmullRom` (d3-shape v3.x), with the default alpha=0.5.
-fn curve_catmull_rom_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_catmull_rom_path_d(points)
-}
-
-// Ported from D3 `curveStepAfter` (d3-shape v3.x).
-fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_step_after_path_d(points)
-}
-
-// Ported from D3 `curveStepBefore` (d3-shape v3.x).
-fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_step_before_path_d(points)
-}
-
-// Ported from D3 `curveStep` (d3-shape v3.x).
-fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    curve::curve_step_path_d(points)
-}
-
-// Ported from D3 `curveCardinal` (d3-shape v3.x).
-fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
-    curve::curve_cardinal_path_d(points, tension)
 }
 fn render_node(out: &mut String, n: &LayoutNode) {
     layout_debug::render_node(out, n)

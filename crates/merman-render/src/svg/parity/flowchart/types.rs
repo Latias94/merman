@@ -116,7 +116,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
 pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
     pub(in crate::svg::parity::flowchart) origin_x: f64,
     pub(in crate::svg::parity::flowchart) origin_y: f64,
-    pub(in crate::svg::parity::flowchart) abs_top_transform: f64,
     pub(in crate::svg::parity::flowchart) geom: FlowchartEdgePathGeom,
 }
 

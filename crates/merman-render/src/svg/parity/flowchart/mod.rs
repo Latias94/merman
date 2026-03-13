@@ -41,26 +41,6 @@ pub(super) fn render_flowchart_v2_debug_svg(
     debug_svg::render_flowchart_v2_debug_svg(layout, options)
 }
 
-pub(super) fn flowchart_edge_path_d_for_bbox(
-    layout_edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,
-    translate_x: f64,
-    translate_y: f64,
-    default_edge_interpolate: &str,
-    edge_html_labels: bool,
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<(String, super::path_bounds::SvgPathBounds)> {
-    edge_bbox::flowchart_edge_path_d_for_bbox(
-        layout_edges_by_id,
-        layout_clusters_by_id,
-        translate_x,
-        translate_y,
-        default_edge_interpolate,
-        edge_html_labels,
-        edge,
-    )
-}
-
 // Entry points (split from parity.rs).
 
 fn flowchart_compute_edge_path_geom_impl(

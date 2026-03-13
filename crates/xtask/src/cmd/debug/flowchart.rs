@@ -1,18 +1,11 @@
 //! Flowchart debug utilities.
 
 use crate::XtaskError;
-use crate::util::*;
 use regex::Regex;
-use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 use std::sync::OnceLock;
-
-use super::super::svg_compare_layout_opts;
 
 pub(crate) fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<String> = None;

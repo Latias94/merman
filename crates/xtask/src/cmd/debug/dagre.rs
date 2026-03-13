@@ -1,13 +1,10 @@
 //! Dagre layout debug utilities.
 
 use crate::XtaskError;
-use crate::util::*;
 use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {

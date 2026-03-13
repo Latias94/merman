@@ -101,7 +101,6 @@ type Rect = merman_core::geom::Box2;
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     extracted: BTreeMap<String, PreparedGraph>,
-    prefer_dagreish_disconnected: bool,
     injected_cluster_root_id: Option<String>,
 }
 
@@ -131,7 +130,6 @@ fn prepare_graph(
         return Ok(PreparedGraph {
             graph,
             extracted: BTreeMap::new(),
-            prefer_dagreish_disconnected,
             injected_cluster_root_id: None,
         });
     }
@@ -214,7 +212,6 @@ fn prepare_graph(
     Ok(PreparedGraph {
         graph,
         extracted,
-        prefer_dagreish_disconnected,
         injected_cluster_root_id: None,
     })
 }

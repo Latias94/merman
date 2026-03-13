@@ -2,13 +2,8 @@ use crate::XtaskError;
 use crate::util::*;
 use regex::Regex;
 use serde_json::Value as JsonValue;
-use serde_yaml::Value as YamlValue;
-use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::OnceLock;
+use std::path::PathBuf;
 
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();

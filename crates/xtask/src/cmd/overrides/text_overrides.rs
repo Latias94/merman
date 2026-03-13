@@ -1,9 +1,7 @@
 //! Text/bbox override generators derived from upstream SVG fixtures.
 
 use crate::XtaskError;
-use crate::util::*;
 use std::fmt::Write as _;
-use std::fs;
 use std::path::PathBuf;
 
 pub(crate) fn gen_er_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {

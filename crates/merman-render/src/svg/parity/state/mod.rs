@@ -34,9 +34,7 @@ use style::*;
 use viewport::*;
 
 type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
-type StateSvgStyleClass = merman_core::diagrams::state::StateDiagramRenderStyleClass;
 type StateSvgState = merman_core::diagrams::state::StateDiagramRenderState;
-type StateSvgNote = merman_core::diagrams::state::StateDiagramRenderNote;
 type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
 type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;

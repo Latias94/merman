@@ -581,6 +581,7 @@ fn curve_linear_path_d_impl(
 // Ported from D3 `curveNatural` (d3-shape v3.x).
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: natural }`).
+#[allow(dead_code)]
 pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_natural_path_d_impl(points, None)
 }
@@ -696,6 +697,7 @@ fn curve_natural_path_d_impl(
 }
 
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
+#[allow(dead_code)]
 pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_step_after_path_d_impl(points, None)
 }
@@ -728,6 +730,7 @@ fn curve_step_after_path_d_impl(
 }
 
 // Ported from D3 `curveStepBefore` (d3-shape v3.x).
+#[allow(dead_code)]
 pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_step_before_path_d_impl(points, None)
 }
@@ -760,6 +763,7 @@ fn curve_step_before_path_d_impl(
 }
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
+#[allow(dead_code)]
 pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_step_path_d_impl(points, None)
 }
@@ -794,6 +798,7 @@ fn curve_step_path_d_impl(
 }
 
 // Ported from D3 `curveCardinal` (d3-shape v3.x).
+#[allow(dead_code)]
 pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
     curve_cardinal_path_d_impl(points, tension, None)
 }
@@ -930,6 +935,7 @@ fn curve_cardinal_path_d_impl(
 // Ported from D3 `curveBumpY` (d3-shape v3.x).
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: bumpY }`).
+#[allow(dead_code)]
 pub(super) fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_bump_y_path_d_impl(points, None)
 }
@@ -971,6 +977,7 @@ fn curve_bump_y_path_d_impl(
 // Ported from D3 `curveCatmullRom` (d3-shape v3.x), with the default alpha=0.5.
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: catmullRom }`).
+#[allow(dead_code)]
 pub(super) fn curve_catmull_rom_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_catmull_rom_path_d_with_alpha(points, 0.5)
 }
@@ -983,6 +990,7 @@ pub(super) fn curve_catmull_rom_path_d_and_bounds(
     (d, b.bounds)
 }
 
+#[allow(dead_code)]
 fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alpha: f64) -> String {
     curve_catmull_rom_path_d_with_alpha_impl(points, alpha, None)
 }

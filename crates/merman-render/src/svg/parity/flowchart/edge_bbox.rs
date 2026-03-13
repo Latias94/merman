@@ -6,6 +6,7 @@
 use super::*;
 use crate::svg::parity;
 
+#[allow(dead_code)]
 pub(super) fn flowchart_edge_path_d_for_bbox(
     layout_edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,
@@ -26,6 +27,7 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     )
 }
 
+#[allow(dead_code)]
 fn flowchart_edge_path_d_for_bbox_impl(
     layout_edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,

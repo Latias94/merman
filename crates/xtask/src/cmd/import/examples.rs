@@ -72,10 +72,8 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     #[derive(Debug, Clone)]
     struct ExampleBlock {
         source_ts: PathBuf,
-        source_stem: String,
         idx_in_file: usize,
         title: Option<String>,
-        body: String,
     }
 
     #[derive(Debug, Clone)]
@@ -493,10 +491,8 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             candidates.push(Candidate {
                 block: ExampleBlock {
                     source_ts: ts_path.clone(),
-                    source_stem: source_stem.clone(),
                     idx_in_file,
                     title: title.clone(),
-                    body: body.clone(),
                 },
                 diagram_dir,
                 fixtures_dir,

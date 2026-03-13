@@ -1,7 +1,6 @@
 //! Mindmap debug utilities.
 
 use crate::XtaskError;
-use crate::util::*;
 use regex::Regex;
 use std::fs;
 use std::path::PathBuf;

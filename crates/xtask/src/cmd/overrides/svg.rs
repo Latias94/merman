@@ -838,7 +838,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
                         by_text.insert(text, (size_key, left_em, right_em));
                     }
                     Some((existing_size, _, _)) if *existing_size == base_size_key => {}
-                    Some((existing_size, _, _)) if size_key == base_size_key => {
+                    Some((_existing_size, _, _)) if size_key == base_size_key => {
                         by_text.insert(text, (size_key, left_em, right_em));
                     }
                     Some(_) => {}
@@ -876,7 +876,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
                     by_text.insert(text, (size_key, left_em, right_em));
                 }
                 Some((existing_size, _, _)) if *existing_size == base_size_key => {}
-                Some((existing_size, _, _)) if size_key == base_size_key => {
+                Some((_existing_size, _, _)) if size_key == base_size_key => {
                     by_text.insert(text, (size_key, left_em, right_em));
                 }
                 Some(_) => {}

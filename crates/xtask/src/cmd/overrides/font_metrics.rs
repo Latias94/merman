@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use crate::util::*;
 use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -2142,7 +2142,7 @@ const strings = input.strings;
                             best_by_text.insert(text, (size_key, left_em, right_em));
                         }
                         Some((existing_size, _, _)) if *existing_size == base_size_key => {}
-                        Some((existing_size, _, _)) if size_key == base_size_key => {
+                        Some((_existing_size, _, _)) if size_key == base_size_key => {
                             best_by_text.insert(text, (size_key, left_em, right_em));
                         }
                         Some(_) => {}

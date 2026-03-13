@@ -6,7 +6,7 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use super::super::svg_compare_layout_opts;

@@ -48,7 +48,6 @@ pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
     pub(super) font_family: String,
-    pub(super) font_size: f64,
     pub(super) text_color: String,
     pub(super) line_color: String,
 }
@@ -129,7 +128,6 @@ pub(super) fn info_css_parts_with_config(
         css_prefix: out,
         root_rule,
         font_family,
-        font_size,
         text_color,
         line_color,
     }
@@ -142,44 +140,6 @@ pub(super) fn info_css_with_config(
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     out.push_str(&parts.root_rule);
-    out
-}
-
-pub(super) fn architecture_css(diagram_id: &str) -> String {
-    // Mermaid@11.12.2: architecture uses the shared base stylesheet plus a few
-    // diagram-specific class rules (and keeps `:root` last).
-    let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-
-    let mut out = info_css(diagram_id);
-    if let Some(prefix) = out.strip_suffix(&root_rule) {
-        out = prefix.to_string();
-    }
-
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge{{stroke-width:3;stroke:#333333;fill:none;}}"#,
-        id
-    );
-    let _ = write!(&mut out, r#"#{} .arrow{{fill:#333333;}}"#, id);
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-bkg{{fill:none;stroke:hsl(240, 60%, 86.2745098039%);stroke-width:2px;stroke-dasharray:8;}}"#,
-        id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-icon-text{{display:flex;align-items:center;}}"#,
-        id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .node-icon-text>div{{color:#fff;margin:1px;height:fit-content;text-align:center;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;}}"#,
-        id
-    );
-
-    out.push_str(&root_rule);
     out
 }
 

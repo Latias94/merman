@@ -48,6 +48,7 @@ pub(crate) struct BlockNode {
     pub columns: Option<i64>,
     #[serde(default, rename = "widthInColumns")]
     pub width_in_columns: Option<i64>,
+    #[allow(dead_code)]
     #[serde(default)]
     pub width: Option<i64>,
     #[serde(default)]

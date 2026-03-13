@@ -1,11 +1,6 @@
 //! Text measurement helpers used to derive overrides and validate rendering.
 
 use crate::XtaskError;
-use crate::util::*;
-use std::fmt::Write as _;
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
 
 pub(crate) fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
     use merman_render::text::TextMeasurer as _;

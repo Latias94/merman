@@ -95,6 +95,7 @@ enum ArchitectureNodeType {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct ArchitectureNodeView<'a> {
     id: &'a str,
     node_type: ArchitectureNodeType,
@@ -112,6 +113,7 @@ struct ArchitectureGroupView<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct ArchitectureEdgeView<'a> {
     lhs_id: &'a str,
     rhs_id: &'a str,
@@ -1396,6 +1398,7 @@ fn layout_architecture_diagram_model(
         // on inter-group edge directions (e.g. `groupA:R -- L:groupB` implies `groupA` is left of
         // `groupB`). We move the entire groups (all descendant nodes) together to preserve each
         // group's internal relative placements.
+        #[allow(dead_code)]
         fn resolve_top_level_group_separation(
             nodes: &mut [LayoutNode],
             model: &ArchitectureModelView<'_>,

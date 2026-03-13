@@ -2014,8 +2014,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         enum Mode {
             Normal,
-            SingleQuote,
-            DoubleQuote,
             LineComment,
             BlockComment,
         }
@@ -2064,7 +2062,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                         }
                         i += 1;
                     }
-                    Mode::SingleQuote | Mode::DoubleQuote => unreachable!(),
                 }
             }
             i

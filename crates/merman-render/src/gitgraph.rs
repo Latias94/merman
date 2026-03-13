@@ -95,46 +95,6 @@ fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
         .max(1.0)
 }
 
-fn normalize_css_font_family(font_family: &str) -> String {
-    let s = font_family.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return String::new();
-    }
-
-    let mut parts: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-
-    for ch in s.chars() {
-        match ch {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                cur.push(ch);
-            }
-            '"' if !in_single => {
-                in_double = !in_double;
-                cur.push(ch);
-            }
-            ',' if !in_single && !in_double => {
-                let p = cur.trim();
-                if !p.is_empty() {
-                    parts.push(p.to_string());
-                }
-                cur.clear();
-            }
-            _ => cur.push(ch),
-        }
-    }
-
-    let p = cur.trim();
-    if !p.is_empty() {
-        parts.push(p.to_string());
-    }
-
-    parts.join(",")
-}
-
 fn commit_symbol_type(commit: &GitGraphCommit) -> i64 {
     commit.custom_type.unwrap_or(commit.commit_type)
 }

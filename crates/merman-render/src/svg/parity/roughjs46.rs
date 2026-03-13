@@ -39,14 +39,12 @@ impl Random {
 enum OpType {
     Move,
     BCurveTo,
-    LineTo,
 }
 
 #[derive(Debug, Clone)]
 struct Op {
     op: OpType,
     data: [f64; 6],
-    len: usize,
 }
 
 impl Op {
@@ -54,15 +52,6 @@ impl Op {
         Self {
             op: OpType::Move,
             data: [x, y, 0.0, 0.0, 0.0, 0.0],
-            len: 2,
-        }
-    }
-
-    fn lineto(x: f64, y: f64) -> Self {
-        Self {
-            op: OpType::LineTo,
-            data: [x, y, 0.0, 0.0, 0.0, 0.0],
-            len: 2,
         }
     }
 
@@ -70,7 +59,6 @@ impl Op {
         Self {
             op: OpType::BCurveTo,
             data: [x1, y1, x2, y2, x, y],
-            len: 6,
         }
     }
 }
@@ -276,9 +264,6 @@ fn ops_to_path_d(ops: &[Op]) -> String {
         match op.op {
             OpType::Move => {
                 let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-            }
-            OpType::LineTo => {
-                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
             }
             OpType::BCurveTo => {
                 let _ = write!(

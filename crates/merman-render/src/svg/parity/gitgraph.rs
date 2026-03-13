@@ -61,12 +61,6 @@ pub(super) fn render_gitgraph_diagram_svg(
             + gitgraph_simple_text_bbox_width_correction_right_px(last)
     }
 
-    fn corr_px(num_over_2048: i32) -> f64 {
-        // Keep gitGraph bbox corrections on a power-of-two grid (matches upstream `getBBox()`
-        // lattice and avoids introducing new FP drift in viewBox/max-width comparisons).
-        num_over_2048 as f64 / 2048.0
-    }
-
     fn gitgraph_simple_text_bbox_width_correction_left_px(ch: char) -> f64 {
         crate::generated::gitgraph_text_overrides_11_12_2::
             lookup_gitgraph_simple_text_bbox_width_left_px(ch)
