@@ -315,26 +315,43 @@ pub(super) fn render_treemap_diagram_svg(
         color_scale_peer.range.push(v);
     }
 
-    // Mermaid treemap uses `cScaleLabel*` theme variables (see `renderer.ts`), but not all of our
-    // effective configs include the derived fields. Mirror theme-default's defaults as a
-    // fallback so strict SVG baselines match:
-    // - `cScaleLabel0` and `cScaleLabel3`: `invert(labelTextColor)`
-    // - the rest: `labelTextColor`
+    // Mermaid treemap label colors come from theme-derived `cScaleLabel*` values, but some of our
+    // effective configs do not materialize those derived fields. Mirror the relevant Mermaid
+    // theme defaults as a fallback so strict SVG baselines stay aligned:
+    // - `default`/custom: `cScaleLabel0` and `cScaleLabel3` use `invert(labelTextColor)`
+    // - `dark` and `forest`: all labels use `scaleLabelColor`
+    // - `neutral`: `cScaleLabel0` and `cScaleLabel2` use `cScale1`, the rest use
+    //   `scaleLabelColor`
+    let theme_name = config_string(effective_config, &["theme"])
+        .unwrap_or_else(|| "default".to_string())
+        .trim()
+        .to_ascii_lowercase();
     let label_text_color = theme_color(effective_config, "labelTextColor", "black");
     let label_text_is_calculated = label_text_color.trim() == "calculated";
     let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
+    let neutral_special_label_color = theme_color(effective_config, "cScale1", default_c_scale(1));
     let mut color_scale_label = OrdinalScale::default();
     for i in 0..12 {
         let key = format!("cScaleLabel{i}");
         let v = config_string(effective_config, &["themeVariables", key.as_str()]).unwrap_or_else(
-            || {
-                if label_text_is_calculated {
-                    scale_label_color.clone()
-                } else if i == 0 || i == 3 {
-                    invert_css_color_to_hex(&label_text_color)
-                        .unwrap_or_else(|| label_text_color.clone())
-                } else {
-                    label_text_color.clone()
+            || match theme_name.as_str() {
+                "dark" | "forest" => scale_label_color.clone(),
+                "neutral" => {
+                    if i == 0 || i == 2 {
+                        neutral_special_label_color.clone()
+                    } else {
+                        scale_label_color.clone()
+                    }
+                }
+                _ => {
+                    if label_text_is_calculated {
+                        scale_label_color.clone()
+                    } else if i == 0 || i == 3 {
+                        invert_css_color_to_hex(&label_text_color)
+                            .unwrap_or_else(|| label_text_color.clone())
+                    } else {
+                        label_text_color.clone()
+                    }
                 }
             },
         );
@@ -763,10 +780,6 @@ pub(super) fn render_treemap_diagram_svg(
         let available_w = w - 2.0 * padding;
         let available_h = h - 2.0 * padding;
 
-        // Chromium text metrics used by upstream Mermaid are slightly less conservative than our
-        // headless measurer for some short treemap labels. Allow a small fit tolerance so labels
-        // keep the upstream size instead of shrinking by 1px.
-        let fit_tolerance_px = 1.0;
         let mut label_font_size = 38.0;
         let min_label_font_size = 8.0;
         let original_value_rel_font_size = 28.0;
@@ -784,9 +797,17 @@ pub(super) fn render_treemap_diagram_svg(
                 font_weight: None,
             };
 
-            while measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
-                && label_font_size > min_label_font_size
-            {
+            loop {
+                let fit_tolerance_px = treemap_text_overrides::treemap_leaf_label_fit_tolerance_px(
+                    &leaf.name,
+                    label_font_size,
+                    available_w,
+                );
+                if measurer.measure(&leaf.name, &style).width <= available_w + fit_tolerance_px
+                    || label_font_size <= min_label_font_size
+                {
+                    break;
+                }
                 label_font_size -= 1.0;
                 style.font_size = label_font_size;
             }
@@ -810,6 +831,11 @@ pub(super) fn render_treemap_diagram_svg(
             }
 
             style.font_size = label_font_size;
+            let fit_tolerance_px = treemap_text_overrides::treemap_leaf_label_fit_tolerance_px(
+                &leaf.name,
+                label_font_size,
+                available_w,
+            );
             if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
                 || label_font_size < min_label_font_size
                 || available_h < label_font_size
@@ -884,7 +910,7 @@ pub(super) fn render_treemap_diagram_svg(
                     font_weight: None,
                 };
                 let value_w_px = measurer.measure(&value_text, &style).width;
-                if value_w_px <= available_w_for_value + fit_tolerance_px
+                if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
                 {

@@ -526,7 +526,8 @@ fn edge_label_metrics(
         WrapMode::SvgLike
     };
 
-    // Mermaid ER relationship labels follow the root `htmlLabels` switch:
+    // Mermaid ER relationship labels follow Mermaid's effective HTML-label resolution:
+    // root `htmlLabels` first, then `flowchart.htmlLabels`, then default `true`.
     // - HTML mode uses the generic HTML edge-label path (`foreignObject`, line-height 1.5)
     // - SVG mode uses `createFormattedText(...)` (`<text>/<tspan>`, line-height 1.1)
     // Markdown emphasis is tokenized in both branches before the final DOM shape is emitted.
@@ -576,11 +577,17 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
 }
 
 pub(crate) fn er_relationship_html_labels(effective_config: &Value) -> bool {
-    // Mermaid ER relationship labels call `createText(..., { useHtmlLabels: config.htmlLabels })`.
-    // In `createText.ts`, `useHtmlLabels` defaults to `true`, so an unset root `htmlLabels`
-    // still produces HTML `<foreignObject>` labels. This intentionally differs from the entity
-    // padding quirk, which keys off raw `!config.htmlLabels`.
-    config_bool(effective_config, &["htmlLabels"]).unwrap_or(true)
+    // Mermaid ER relationship labels follow `getEffectiveHtmlLabels(config)` from
+    // `rendering-elements/edges.js`:
+    // - root `htmlLabels` wins when explicitly set
+    // - otherwise `flowchart.htmlLabels` is used
+    // - otherwise the default is `true`
+    //
+    // This intentionally differs from the entity padding quirk, which keys off raw
+    // `!config.htmlLabels` in `erBox.ts`.
+    config_bool(effective_config, &["htmlLabels"])
+        .or_else(|| config_bool(effective_config, &["flowchart", "htmlLabels"]))
+        .unwrap_or(true)
 }
 
 #[derive(Debug, Clone)]
@@ -1098,9 +1105,16 @@ mod tests {
     }
 
     #[test]
-    fn er_relationship_htmllabels_follow_root_config_only() {
+    fn er_relationship_htmllabels_follow_root_then_flowchart_config() {
         assert!(super::er_relationship_html_labels(&json!({})));
         assert!(super::er_relationship_html_labels(&json!({
+            "flowchart": { "htmlLabels": true }
+        })));
+        assert!(!super::er_relationship_html_labels(&json!({
+            "flowchart": { "htmlLabels": false }
+        })));
+        assert!(super::er_relationship_html_labels(&json!({
+            "htmlLabels": true,
             "flowchart": { "htmlLabels": false }
         })));
         assert!(!super::er_relationship_html_labels(&json!({

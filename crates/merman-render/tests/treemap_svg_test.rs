@@ -18,7 +18,14 @@ fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     rest[..end].parse::<f64>().ok()
 }
 
-fn render_treemap_svg_from_fixture(fixture: &str) -> String {
+fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
+    let needle = format!(">{text}</text>");
+    let end = svg.find(&needle).expect("expected text tag") + needle.len();
+    let start = svg[..end].rfind("<text").expect("expected text tag start");
+    &svg[start..end]
+}
+
+fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_json::Value) {
     let path = workspace_root()
         .join("fixtures")
         .join("treemap")
@@ -36,13 +43,19 @@ fn render_treemap_svg_from_fixture(fixture: &str) -> String {
         panic!("expected TreemapDiagram layout");
     };
 
-    render_treemap_diagram_svg(
+    let svg = render_treemap_diagram_svg(
         layout,
         &out.semantic,
         &out.meta.effective_config,
         &SvgRenderOptions::default(),
     )
-    .expect("render svg")
+    .expect("render svg");
+
+    (svg, out.meta.effective_config.clone())
+}
+
+fn render_treemap_svg_from_fixture(fixture: &str) -> String {
+    render_treemap_svg_and_config_from_fixture(fixture).0
 }
 
 #[test]
@@ -51,8 +64,7 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
 
     let needle = ">Item A1</text>";
     let end = svg.find(needle).expect("expected Item A1 label");
-    let start = svg[..end].rfind("<text").expect("expected label tag start");
-    let tag = &svg[start..(end + needle.len())];
+    let tag = text_tag_by_text(&svg, "Item A1");
 
     assert!(tag.contains(r#"class="treemapLabel""#));
     assert!(
@@ -73,4 +85,52 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
     let value_tag = &rest[value_start..(value_start + value_end_rel + "</text>".len())];
     let y = attr_f64(value_tag, "y").expect("expected y attr");
     assert!((y - 174.0).abs() < 0.0001, "expected value y to be 174");
+}
+
+#[test]
+fn treemap_hierarchical_accessories_label_matches_upstream_font_size() {
+    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
+    let tag = text_tag_by_text(&svg, "Accessories");
+
+    assert!(
+        tag.contains("font-size: 16px"),
+        "expected Accessories label font-size to stay at 16px"
+    );
+}
+
+#[test]
+fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
+    let (svg, effective_config) = render_treemap_svg_and_config_from_fixture(
+        "upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd",
+    );
+    let theme = effective_config
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<missing>");
+    let label_text_color = effective_config
+        .pointer("/themeVariables/labelTextColor")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<missing>");
+    let scale_label_color = effective_config
+        .pointer("/themeVariables/scaleLabelColor")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<missing>");
+
+    let engineering_tag = text_tag_by_text(&svg, "Engineering");
+    assert!(
+        engineering_tag.contains("fill:lightgrey") || engineering_tag.contains("fill: lightgrey"),
+        "expected Engineering section label to use lightgrey like upstream, got {engineering_tag}; theme={theme}; labelTextColor={label_text_color}; scaleLabelColor={scale_label_color}"
+    );
+
+    let frontend_tag = text_tag_by_text(&svg, "Frontend");
+    assert!(
+        frontend_tag.contains("fill:lightgrey") || frontend_tag.contains("fill: lightgrey"),
+        "expected Frontend leaf label to use lightgrey like upstream, got {frontend_tag}"
+    );
+
+    let digital_tag = text_tag_by_text(&svg, "Digital");
+    assert!(
+        digital_tag.contains("font-size: 36px"),
+        "expected Digital label font-size to stay at 36px, got {digital_tag}"
+    );
 }

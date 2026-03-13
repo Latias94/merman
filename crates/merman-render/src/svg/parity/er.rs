@@ -837,9 +837,10 @@ pub(super) fn render_er_diagram_svg(
             }
 
             if has_label_text && w > 0.0 && h > 0.0 {
-                // Mermaid ER relationship labels follow the root `htmlLabels` switch from
-                // `erBox.ts`, not `flowchart.htmlLabels`. When the root option is unset, upstream
-                // still defaults to HTML `<foreignObject>` labels through `createText(...)`.
+                // Mermaid ER relationship labels follow Mermaid's effective HTML-label
+                // resolution: root `htmlLabels`, then `flowchart.htmlLabels`, then default
+                // `true`. When both are unset, upstream still emits HTML `<foreignObject>`
+                // labels through `createText(...)`.
                 let edge_html_labels = crate::er::er_relationship_html_labels(effective_config);
 
                 let _ = write!(

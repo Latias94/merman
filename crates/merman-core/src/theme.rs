@@ -271,7 +271,6 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     // Mermaid's JS theme sets many more variables (and calculates derived values in `updateColors()`).
     // We seed the commonly-consumed surfaces + xychart palette here; other missing values are left
     // for future parity work as fixtures demand.
-    set_if_missing(&mut tv, "darkMode", Value::Bool(true));
     set_if_missing(&mut tv, "background", Value::String("#333".to_string()));
     set_if_missing(
         &mut tv,
@@ -323,13 +322,17 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "labelTextColor",
         Value::String("lightgrey".to_string()),
     );
+    // Mermaid's `config.ts` calls `theme-dark.getThemeVariables(conf.themeVariables)` without
+    // injecting `darkMode=true`, so `theme-dark.js` falls back to `labelTextColor` here.
+    let label_text_color =
+        get_truthy_string(&tv, "labelTextColor").unwrap_or_else(|| "lightgrey".to_string());
     set_if_missing(
         &mut tv,
         "scaleLabelColor",
-        Value::String("black".to_string()),
+        Value::String(label_text_color.clone()),
     );
     let scale_label_color =
-        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "black".to_string());
+        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| label_text_color.clone());
 
     for (i, c_hex) in c_scales_hex.iter().enumerate() {
         set_if_missing(
@@ -1072,7 +1075,7 @@ mod tests {
         );
         assert_eq!(
             tv.get("cScaleLabel1").and_then(|v| v.as_str()),
-            Some("black")
+            Some("lightgrey")
         );
     }
 

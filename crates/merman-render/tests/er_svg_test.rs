@@ -11,6 +11,17 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn edge_labels_group(svg: &str) -> &str {
+    let start = svg
+        .find(r#"<g class="edgeLabels">"#)
+        .expect("expected edgeLabels group");
+    let end = svg[start..]
+        .find(r#"<g class="nodes">"#)
+        .map(|idx| start + idx)
+        .expect("expected nodes group after edgeLabels");
+    &svg[start..end]
+}
+
 #[test]
 fn er_debug_svg_renders() {
     let path = workspace_root()
@@ -148,8 +159,47 @@ erDiagram
     )
     .expect("render svg");
 
+    let edge_labels = edge_labels_group(&svg);
     assert!(
-        svg.contains(r#"class="labelBkg""#) && svg.contains(r#"<foreignObject width=""#),
+        edge_labels.contains(r#"class="labelBkg""#)
+            && edge_labels.contains(r#"<foreignObject width=""#),
         "expected ER relationship labels to keep HTML foreignObject output when root htmlLabels=true"
+    );
+}
+
+#[test]
+fn er_svg_relationship_labels_follow_flowchart_htmllabels_when_root_unset() {
+    let text = r#"%%{init: {"flowchart": {"htmlLabels": false}}}%%
+erDiagram
+  A ||--|| B : owns
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
+        panic!("expected ErDiagram layout");
+    };
+
+    let svg = render_er_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    let edge_labels = edge_labels_group(&svg);
+    assert!(
+        edge_labels.contains(r#"<rect class="background""#)
+            && edge_labels.contains(">owns</tspan>")
+            && !edge_labels.contains("<foreignObject"),
+        "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
     );
 }
