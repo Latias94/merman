@@ -25,6 +25,7 @@ pub(super) struct ClassNoteRenderState<'a> {
     pub out: &'a mut String,
     pub content_bounds: &'a mut Option<Bounds>,
     pub sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
+    pub borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -44,6 +45,7 @@ pub(super) fn render_class_note_node(
     let out = &mut *state.out;
     let content_bounds = &mut *state.content_bounds;
     let sanitize_config = &mut *state.sanitize_config;
+    let borrowed_sanitize_config = state.borrowed_sanitize_config;
     let mut stats = ClassNoteRenderStats::default();
 
     let note_src = note.text.trim();
@@ -52,9 +54,11 @@ pub(super) fn render_class_note_node(
         match (layout_node.label_width, layout_node.label_height) {
             (Some(w), Some(h)) => (w, h),
             _ => {
-                let note_html_config = sanitize_config.get_or_insert_with(|| {
-                    merman_core::MermaidConfig::from_value(ctx.effective_config.clone())
-                });
+                let note_html_config = class_note_sanitize_config(
+                    borrowed_sanitize_config,
+                    sanitize_config,
+                    ctx.effective_config,
+                );
                 let metrics = crate::class::class_html_measure_note_metrics(
                     ctx.measurer,
                     ctx.text_style,
@@ -149,9 +153,11 @@ pub(super) fn render_class_note_node(
             escape_attr_display(&note_div_style),
         );
         let sanitize_start = ctx.timing_enabled.then(std::time::Instant::now);
-        let note_html_config = sanitize_config.get_or_insert_with(|| {
-            merman_core::MermaidConfig::from_value(ctx.effective_config.clone())
-        });
+        let note_html_config = class_note_sanitize_config(
+            borrowed_sanitize_config,
+            sanitize_config,
+            ctx.effective_config,
+        );
         let note_html = crate::class::class_note_html_fragment(note_src, note_html_config);
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
@@ -184,6 +190,18 @@ pub(super) fn render_class_note_node(
     }
 
     stats
+}
+
+fn class_note_sanitize_config<'a>(
+    borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
+    owned_sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
+    effective_config: &serde_json::Value,
+) -> &'a merman_core::MermaidConfig {
+    if let Some(config) = borrowed_sanitize_config {
+        return config;
+    }
+    owned_sanitize_config
+        .get_or_insert_with(|| merman_core::MermaidConfig::from_value(effective_config.clone()))
 }
 
 fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, style: &str) {

@@ -24,6 +24,7 @@ pub(super) struct ClassNodesRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
     pub(super) sanitize_config: &'a mut Option<merman_core::MermaidConfig>,
+    pub(super) borrowed_sanitize_config: Option<&'a merman_core::MermaidConfig>,
 }
 
 pub(super) struct ClassNodesRenderContext<'a> {
@@ -55,6 +56,7 @@ pub(super) fn render_class_nodes(
         content_bounds,
         detail,
         sanitize_config,
+        borrowed_sanitize_config,
     } = state;
     let settings = ctx.settings;
 
@@ -144,6 +146,7 @@ pub(super) fn render_class_nodes(
                     out,
                     content_bounds,
                     sanitize_config,
+                    borrowed_sanitize_config,
                 },
                 note,
                 n,

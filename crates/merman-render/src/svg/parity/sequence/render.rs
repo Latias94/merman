@@ -24,7 +24,7 @@ pub(super) fn render_sequence_diagram_svg(
     let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     render_sequence_diagram_svg_inner(
         layout,
-        model,
+        &model,
         effective_config,
         &sanitize_config,
         diagram_title,
@@ -62,7 +62,7 @@ pub(super) fn render_sequence_diagram_svg_model_with_config(
 ) -> Result<String> {
     render_sequence_diagram_svg_inner(
         layout,
-        model.clone(),
+        model,
         effective_config.as_value(),
         effective_config,
         diagram_title,
@@ -73,18 +73,19 @@ pub(super) fn render_sequence_diagram_svg_model_with_config(
 
 fn render_sequence_diagram_svg_inner(
     layout: &SequenceDiagramLayout,
-    mut model: SequenceSvgModel,
+    model: &SequenceSvgModel,
     effective_config: &serde_json::Value,
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    if model.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
-        if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
-            model.title = Some(title.to_string());
-        }
-    }
+    let fallback_title = model
+        .title
+        .as_deref()
+        .is_none_or(|t| t.trim().is_empty())
+        .then(|| diagram_title.map(str::trim).filter(|t| !t.is_empty()))
+        .flatten();
 
     let seq_cfg = effective_config
         .get("sequence")
@@ -93,7 +94,7 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, &model, diagram_id);
+    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id);
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -109,7 +110,7 @@ fn render_sequence_diagram_svg_inner(
 
     render_sequence_box_frames_and_rect_blocks(
         &mut out,
-        &model,
+        model,
         &nodes_by_id,
         settings.actor_label_font_size,
         settings.box_margin,
@@ -119,7 +120,7 @@ fn render_sequence_diagram_svg_inner(
     if settings.mirror_actors {
         render_sequence_bottom_actors(
             &mut out,
-            &model,
+            model,
             &nodes_by_id,
             settings.actor_wrap_width,
             settings.label_box_height,
@@ -131,7 +132,7 @@ fn render_sequence_diagram_svg_inner(
     // Top actors + lifelines.
     render_sequence_top_actors_and_lifelines(
         &mut out,
-        &model,
+        model,
         &nodes_by_id,
         &edges_by_id,
         settings.actor_wrap_width,
@@ -149,11 +150,11 @@ fn render_sequence_diagram_svg_inner(
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     out.push_str(MERMAID_SEQUENCE_BASE_DEFS_11_12_2);
 
-    render_sequence_actor_man_tops(&mut out, &model, &nodes_by_id, settings.actor_height);
+    render_sequence_actor_man_tops(&mut out, model, &nodes_by_id, settings.actor_height);
 
     render_sequence_interaction_overlays(
         &mut out,
-        &model,
+        model,
         &nodes_by_id,
         &edges_by_id,
         seq_cfg,
@@ -164,7 +165,7 @@ fn render_sequence_diagram_svg_inner(
 
     render_sequence_messages(
         &mut out,
-        &model,
+        model,
         &nodes_by_id,
         &edges_by_id,
         measurer,
@@ -179,7 +180,7 @@ fn render_sequence_diagram_svg_inner(
 
     render_sequence_actor_popup_menus(
         &mut out,
-        &model,
+        model,
         &nodes_by_id,
         sanitize_config,
         settings.force_menus,
@@ -190,14 +191,14 @@ fn render_sequence_diagram_svg_inner(
     if settings.mirror_actors {
         render_sequence_actor_man_bottoms(
             &mut out,
-            &model,
+            model,
             &nodes_by_id,
             settings.actor_height,
             settings.label_box_height,
         );
     }
 
-    if let Some(title) = model.title.as_deref() {
+    if let Some(title) = fallback_title.or(model.title.as_deref()) {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
         // Mermaid positions the title using the inner (content) box width:
         // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.

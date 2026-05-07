@@ -211,8 +211,15 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     `mindmap_layout_stress` benches with the same Criterion options.
   Note: package-wide Criterion options were rejected by the lib bench harness, so the recorded
   baseline uses explicit `--bench` commands.
-- [ ] Profile JSON clone cost in `layout_parsed` and public wrapper APIs.
+- [x] Profile JSON clone cost in `layout_parsed` and public wrapper APIs.
+  Evidence: `JSON_CLONE_AUDIT.md`. Decision: `layout_parsed` keeps the owned semantic clone for the
+  compatibility API; public `render_svg_sync` already uses typed layout/render dispatch and avoids
+  owned semantic JSON.
 - [ ] Reduce repeated `serde_json::Value` cloning in render-only paths.
+  Progress: class typed render-with-config now keeps `&MermaidConfig` through note HTML
+  sanitization, and sequence SVG rendering no longer clones the typed render model for title
+  fallback. Remaining clones are mostly legacy `&Value` compatibility bridges or diagram-specific
+  sanitize/config wrappers that still need ownership review.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 

@@ -307,14 +307,17 @@ pub fn render_layout_svg_parts_with_config(
             measurer,
             options,
         ),
-        LayoutDiagram::ClassDiagramV2(layout) => render_class_diagram_v2_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
+        LayoutDiagram::ClassDiagramV2(layout) => {
+            let model = crate::json::from_value_ref(semantic)?;
+            class::render_class_diagram_v2_svg_model_with_config(
+                layout,
+                &model,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         LayoutDiagram::ErDiagram(layout) => render_er_diagram_svg(
             layout,
             semantic,
@@ -498,10 +501,10 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             )
         }
         (LayoutDiagram::ClassDiagramV2(layout), RenderSemanticModel::Class(model)) => {
-            class::render_class_diagram_v2_svg_model(
+            class::render_class_diagram_v2_svg_model_with_config(
                 layout,
                 model,
-                effective_config.as_value(),
+                effective_config,
                 title,
                 measurer,
                 options,

@@ -37,6 +37,45 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    render_class_diagram_v2_svg_model_impl_inner(
+        layout,
+        model,
+        effective_config,
+        None,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_class_diagram_v2_svg_model_impl_with_config(
+    layout: &ClassDiagramV2Layout,
+    model: &ClassSvgModel,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    render_class_diagram_v2_svg_model_impl_inner(
+        layout,
+        model,
+        effective_config.as_value(),
+        Some(effective_config),
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+fn render_class_diagram_v2_svg_model_impl_inner(
+    layout: &ClassDiagramV2Layout,
+    model: &ClassSvgModel,
+    effective_config: &serde_json::Value,
+    borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     let timing_enabled = render_timing_enabled();
     let total_start = timing_enabled.then(std::time::Instant::now);
     let mut timings = RenderTimings::default();
@@ -199,6 +238,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             content_bounds: &mut content_bounds,
             detail: &mut detail,
             sanitize_config: &mut sanitize_config,
+            borrowed_sanitize_config,
         },
         &ClassNodesRenderContext {
             layout,

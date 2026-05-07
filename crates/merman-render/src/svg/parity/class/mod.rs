@@ -91,3 +91,21 @@ pub(super) fn render_class_diagram_v2_svg_model(
         options,
     )
 }
+
+pub(super) fn render_class_diagram_v2_svg_model_with_config(
+    layout: &ClassDiagramV2Layout,
+    model: &ClassSvgModel,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    render::render_class_diagram_v2_svg_model_impl_with_config(
+        layout,
+        model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
