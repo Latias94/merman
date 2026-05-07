@@ -3,7 +3,7 @@
 use super::{
     DeterministicTextMeasurer, FLOWCHART_DEFAULT_FONT_KEY, TextMeasurer, TextMetrics, TextStyle,
     WrapMode, flowchart_default_bold_delta_em, flowchart_default_bold_kern_delta_em,
-    font_key_uses_courier_metrics, is_flowchart_default_font, round_to_1_64_px,
+    font_key_uses_courier_metrics, is_flowchart_default_font, overrides, round_to_1_64_px,
     style_requests_bold_font_weight, svg_wrapped_first_line_bbox_height_px,
 };
 
@@ -280,11 +280,7 @@ impl VendoredFontMetricsTextMeasurer {
         }
 
         if let Some((left, right)) =
-            crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_svg_bbox_x_px(
-                table.font_key,
-                font_size,
-                t,
-            )
+            overrides::lookup_flowchart_svg_bbox_x_px(table.font_key, font_size, t)
         {
             return (left, right);
         }
@@ -501,10 +497,7 @@ impl VendoredFontMetricsTextMeasurer {
         let t = text.trim_end();
         if !t.is_empty() {
             if let Some((left_em, right_em)) =
-                crate::generated::svg_overrides_sequence_11_12_2::lookup_svg_override_em(
-                    table.font_key,
-                    t,
-                )
+                overrides::lookup_sequence_svg_override_em(table.font_key, t)
             {
                 let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
                 let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
@@ -1065,12 +1058,7 @@ fn vendored_measure_wrapped_impl(
         // `getBoundingClientRect()` into `foreignObject width="..."` (1/64px lattice). For
         // strict XML parity and viewport calculations we treat those as the source of truth when
         // available.
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
-            table.font_key,
-            font_size,
-            line,
-        )
-        .or_else(|| {
+        overrides::lookup_flowchart_html_width_px(table.font_key, font_size, line).or_else(|| {
             if max_width.is_some() {
                 return None;
             }
@@ -1081,17 +1069,9 @@ fn vendored_measure_wrapped_impl(
             // baselines. They are valid for unwrapped `measure_wrapped(..., None, HtmlLike)`
             // callers in those diagrams, but leaking them into explicit wrapped-flowchart
             // measurements can hijack short common strings like `plain`.
-            crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size, line)
-                .or_else(|| {
-                    crate::generated::mindmap_text_overrides_11_12_2::lookup_html_width_px(
-                        font_size, line,
-                    )
-                })
-                .or_else(|| {
-                    crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(
-                        font_size, line,
-                    )
-                })
+            overrides::lookup_er_html_width_px(font_size, line)
+                .or_else(|| overrides::lookup_mindmap_html_width_px(font_size, line))
+                .or_else(|| overrides::lookup_block_html_width_px(font_size, line))
         })
     };
 

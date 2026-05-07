@@ -3,7 +3,7 @@
 use super::{
     DeterministicTextMeasurer, FLOWCHART_DEFAULT_FONT_KEY, MermaidMarkdownWordType, TextMeasurer,
     TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode, ceil_to_1_64_px,
-    mermaid_markdown_to_lines, normalize_font_key, round_to_1_64_px, wrap,
+    mermaid_markdown_to_lines, normalize_font_key, overrides, round_to_1_64_px, wrap,
 };
 
 pub(crate) fn is_flowchart_default_font(style: &TextStyle) -> bool {
@@ -536,8 +536,7 @@ fn markdown_word_line_plain_text_and_delta_px(
         let is_strong = *ty == MermaidMarkdownWordType::Strong;
         let is_em = *ty == MermaidMarkdownWordType::Em;
         let bold_override_em = if is_flowchart_default_font(style) && is_strong {
-            crate::generated::flowchart_text_overrides_11_12_2::
-                lookup_flowchart_markdown_bold_word_delta_em(wrap_mode, word)
+            overrides::lookup_flowchart_markdown_bold_word_delta_em(wrap_mode, word)
         } else {
             None
         };
@@ -559,8 +558,9 @@ fn markdown_word_line_plain_text_and_delta_px(
             }
             if is_strong && bold_override_em.is_none() {
                 let mut delta_em = flowchart_default_bold_delta_em(ch);
-                delta_em += crate::generated::flowchart_text_overrides_11_12_2::
-                    lookup_flowchart_markdown_bold_char_extra_delta_em(wrap_mode, word, ch);
+                delta_em += overrides::lookup_flowchart_markdown_bold_char_extra_delta_em(
+                    wrap_mode, word, ch,
+                );
                 delta_px += delta_em * font_size * bold_delta_scale;
             }
             prev_char = Some(ch);
@@ -579,8 +579,8 @@ fn markdown_word_line_plain_text_and_delta_px(
                 let font_size = style.font_size.max(1.0);
                 delta_px += delta_em * font_size * bold_delta_scale;
             }
-            let extra_em = crate::generated::flowchart_text_overrides_11_12_2::
-                lookup_flowchart_markdown_bold_word_extra_delta_em(wrap_mode, word);
+            let extra_em =
+                overrides::lookup_flowchart_markdown_bold_word_extra_delta_em(wrap_mode, word);
             if extra_em != 0.0 {
                 let font_size = style.font_size.max(1.0);
                 delta_px += extra_em * font_size * bold_delta_scale;
@@ -590,8 +590,7 @@ fn markdown_word_line_plain_text_and_delta_px(
         if is_flowchart_default_font(style) && is_em {
             let font_size = style.font_size.max(1.0);
             if let Some(delta_em) =
-                crate::generated::flowchart_text_overrides_11_12_2::
-                    lookup_flowchart_markdown_italic_word_delta_em(wrap_mode, word)
+                overrides::lookup_flowchart_markdown_italic_word_delta_em(wrap_mode, word)
             {
                 delta_px += delta_em * font_size;
             } else {

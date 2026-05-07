@@ -65,40 +65,6 @@ fn markdown_strong_width_matches_flowchart_table() {
 }
 
 #[test]
-fn generated_flowchart_markdown_override_paths_cover_repeat_offenders() {
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_bold_word_delta_em(WrapMode::SvgLike, "Two"),
-        Some(9.0 / 128.0)
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_italic_word_delta_em(WrapMode::SvgLike, "Child"),
-        Some(172.0 / 2048.0)
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_italic_word_delta_em(WrapMode::HtmlLike, "Markdown"),
-        Some(83.0 / 1024.0)
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_bold_word_extra_delta_em(WrapMode::SvgLike, "dog"),
-        -7.0 / 16384.0
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_bold_char_extra_delta_em(WrapMode::SvgLike, "a", 'a'),
-        1.0 / 1024.0
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::
-            lookup_flowchart_markdown_bold_char_extra_delta_em(WrapMode::HtmlLike, "a", 'a'),
-        0.0
-    );
-}
-
-#[test]
 fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
     // Mermaid upstream fixture:
     // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_bigger_font_from_classes_spec.svg
@@ -501,42 +467,6 @@ fn default_font_extra_html_override_table_keeps_special_characters_stable() {
 }
 
 #[test]
-fn generated_flowchart_html_override_paths_cover_promoted_leftovers() {
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            16.0,
-            "special characters",
-        ),
-        Some(129.9375)
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
-            "courier",
-            16.0,
-            "special characters",
-        ),
-        None
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            16.0,
-            "Block 1",
-        ),
-        None
-    );
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_html_width_px(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            16.0,
-            "Line 2",
-        ),
-        Some(43.34375)
-    );
-}
-
-#[test]
 fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -553,7 +483,7 @@ fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
 }
 
 #[test]
-fn generated_flowchart_svg_override_paths_cover_pruned_literals() {
+fn flowchart_svg_width_uses_override_for_pruned_literals() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -561,14 +491,6 @@ fn generated_flowchart_svg_override_paths_cover_pruned_literals() {
         font_weight: None,
     };
 
-    assert_eq!(
-        crate::generated::flowchart_text_overrides_11_12_2::lookup_flowchart_svg_bbox_x_px(
-            FLOWCHART_DEFAULT_FONT_KEY,
-            16.0,
-            "End",
-        ),
-        Some((13.1171875, 13.1171875))
-    );
     let end = measurer.measure_wrapped("End", &style, Some(200.0), WrapMode::SvgLike);
     assert_eq!(end.width, 26.234375);
 

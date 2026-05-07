@@ -9,6 +9,7 @@ mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
+mod overrides;
 mod svg_metrics;
 mod types;
 mod wrap;

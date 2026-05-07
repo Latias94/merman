@@ -81,7 +81,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/metrics.rs` (flowchart-aware HTML/Markdown/SVG measurement done)
   - `text/html_label.rs`
   - `text/svg_text.rs`
-  - `text/overrides.rs`
+  - `text/overrides.rs` (text override lookup boundary started)
   - `text/font_metrics.rs` (vendored browser/font measurer done)
 - [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
   Evidence: first text split keeps existing `crate::text::*` callers unchanged.
@@ -89,6 +89,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: tokenization and HTML/XHTML fragment tests now live in `text/markdown.rs` and
   `text/markdown_label.rs`; measurement/layout-spanning Markdown tests remain in `text/tests.rs`.
 - [ ] Move override lookup tests next to override code.
+  Progress: flowchart text override lookup tests now live in `text/overrides.rs`; timeline and
+  diagram-specific generated override tests still need the same treatment near their owners.
 - [x] Separate "browser compatibility measurement" from "deterministic fallback measurement".
   Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
   compatibility measurement lives behind `VendoredFontMetricsTextMeasurer` in

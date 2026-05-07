@@ -113,6 +113,8 @@ Progress:
   `VendoredFontMetricsTextMeasurer` re-exported from `crate::text`.
 - Extracted flowchart-aware HTML, Markdown, and precise SVG measurement helpers into
   `text/metrics.rs` while preserving the existing `crate::text::*` call surface.
+- Introduced `text/overrides.rs` as the text override lookup boundary and moved flowchart text
+  override lookup tests next to that owner.
 
 Exit criteria:
 
