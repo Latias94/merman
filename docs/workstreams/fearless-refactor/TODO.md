@@ -120,10 +120,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [ ] Split `svg/parity/sequence/render.rs`.
   Proposed boundaries:
   - render settings (sequence SVG config parsing now lives in `sequence/settings.rs`)
-  - actors and participants (actor label, top/bottom actor boxes, lifelines, actor-man top/bottom
-    variants, and popup menu emission are split across `sequence/actors.rs`,
-    `sequence/actor_man.rs`, and `sequence/actor_popup.rs`; pre-actor box/rect frame emission now
-    lives in `sequence/frames.rs`; shared node geometry now lives in `sequence/geometry.rs`)
+  - actors and participants (actor traversal and top/bottom ordering live in
+    `sequence/actors.rs`; actor label, lifeline wrapper, and non-actor-man shape emission now live
+    in `sequence/actor_shapes.rs`; actor-man top/bottom variants and popup menu emission are split
+    across `sequence/actor_man.rs` and `sequence/actor_popup.rs`; pre-actor box/rect frame emission
+    now lives in `sequence/frames.rs`; shared node geometry now lives in `sequence/geometry.rs`)
   - messages (message label/line emission and autonumber handling now live in
     `sequence/messages.rs`)
   - notes (note emission now lives in `sequence/notes.rs`)

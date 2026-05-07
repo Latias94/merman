@@ -167,6 +167,8 @@ Progress:
   `svg/parity/sequence/block_text.rs`.
 - Split sequence block frame/message range geometry into
   `svg/parity/sequence/block_geometry.rs`.
+- Split sequence actor label, lifeline wrapper, and non-actor-man shape emission into
+  `svg/parity/sequence/actor_shapes.rs`.
 - Extracted sequence message label/line emission and autonumber handling into
   `svg/parity/sequence/messages.rs`.
 - Shared sequence block frame and label-box emission helpers across loop/alt/par/critical

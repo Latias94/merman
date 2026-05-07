@@ -5,6 +5,7 @@ use super::*;
 mod activation;
 mod actor_man;
 mod actor_popup;
+mod actor_shapes;
 mod actors;
 mod block_collection;
 mod block_geometry;
