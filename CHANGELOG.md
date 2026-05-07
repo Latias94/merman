@@ -32,6 +32,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   paths, and avoid cloning the sequence typed render model for title fallback.
 - Flowchart layout: borrow normal edges during self-loop expansion and keep ownership only for
   generated helper edges.
+- Flowchart self-loops: share explicit helper-edge construction between layout and SVG rendering
+  while preserving Mermaid marker and label differences.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like
   Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
   HTML parity helpers into dedicated `text/*` modules, and move the `TextMeasurer` trait,

@@ -128,36 +128,16 @@ fn prepare_render_edges_and_extra_nodes<'a>(
             continue;
         }
 
-        let node_id = e.from.clone();
-        let special_id_1 = format!("{node_id}---{node_id}---1");
-        let special_id_2 = format!("{node_id}---{node_id}---2");
-        self_loop_label_node_ids.insert(special_id_1.clone());
-        self_loop_label_node_ids.insert(special_id_2.clone());
+        let helper_edges = crate::flowchart::flowchart_self_loop_helper_edges(
+            e,
+            crate::flowchart::FlowchartSelfLoopEdgeOptions::svg_render(),
+        );
+        self_loop_label_node_ids.insert(helper_edges.special_id_1.clone());
+        self_loop_label_node_ids.insert(helper_edges.special_id_2.clone());
 
-        let mut edge1 = e.clone();
-        edge1.id = format!("{node_id}-cyclic-special-1");
-        edge1.from = node_id.clone();
-        edge1.to = special_id_1.clone();
-        edge1.label = None;
-        edge1.label_type = None;
-        edge1.edge_type = Some("arrow_open".to_string());
-
-        let mut edge_mid = e.clone();
-        edge_mid.id = format!("{node_id}-cyclic-special-mid");
-        edge_mid.from = special_id_1.clone();
-        edge_mid.to = special_id_2.clone();
-        edge_mid.edge_type = Some("arrow_open".to_string());
-
-        let mut edge2 = e.clone();
-        edge2.id = format!("{node_id}-cyclic-special-2");
-        edge2.from = special_id_2.clone();
-        edge2.to = node_id.clone();
-        edge2.label = None;
-        edge2.label_type = None;
-
-        render_edges.push(std::borrow::Cow::Owned(edge1));
-        render_edges.push(std::borrow::Cow::Owned(edge_mid));
-        render_edges.push(std::borrow::Cow::Owned(edge2));
+        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge1));
+        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge_mid));
+        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge2));
     }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
