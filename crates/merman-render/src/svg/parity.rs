@@ -465,6 +465,16 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::JourneyDiagram(layout), RenderSemanticModel::Journey(model)) => {
+            journey::render_journey_diagram_svg_model(
+                layout,
+                model,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -572,6 +582,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         }
         (LayoutDiagram::TimelineDiagram(layout), RenderSemanticModel::Timeline(model)) => {
             timeline::render_timeline_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::JourneyDiagram(layout), RenderSemanticModel::Journey(model)) => {
+            journey::render_journey_diagram_svg_model(
                 layout,
                 model,
                 effective_config.as_value(),

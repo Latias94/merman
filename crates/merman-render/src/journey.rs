@@ -6,39 +6,8 @@ use crate::model::{
     JourneyTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use serde::Deserialize;
+use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::{BTreeMap, BTreeSet};
-
-#[derive(Debug, Clone, Deserialize)]
-struct JourneyTaskModel {
-    section: String,
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    task_type: String,
-    task: String,
-    score: i64,
-    #[serde(default, rename = "scoreIsNaN")]
-    score_is_nan: bool,
-    #[serde(default)]
-    people: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct JourneyModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[serde(default)]
-    actors: Vec<String>,
-    #[serde(default)]
-    sections: Vec<String>,
-    #[serde(default)]
-    tasks: Vec<JourneyTaskModel>,
-    title: Option<String>,
-    #[serde(rename = "type")]
-    diagram_type: String,
-}
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -73,7 +42,7 @@ fn cfg_string_vec(cfg: &serde_json::Value, path: &[&str]) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn actors_from_tasks(tasks: &[JourneyTaskModel]) -> Vec<String> {
+fn actors_from_tasks(tasks: &[JourneyRenderTask]) -> Vec<String> {
     let mut set = BTreeSet::<String>::new();
     for t in tasks {
         for p in &t.people {
@@ -151,12 +120,19 @@ pub fn layout_journey_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
-    let model: JourneyModel = crate::json::from_value_ref(semantic)?;
+    let model: JourneyDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_journey_diagram_typed(&model, effective_config, measurer)
+}
+
+pub fn layout_journey_diagram_typed(
+    model: &JourneyDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<JourneyDiagramLayout> {
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),
         model.sections.as_slice(),
-        model.diagram_type.as_str(),
     );
 
     let left_margin_base = cfg_f64(effective_config, &["journey", "leftMargin"])

@@ -2,14 +2,36 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-#[derive(Debug, Clone)]
-struct JourneyTask {
-    section: String,
-    type_: String,
-    task: String,
-    score: i64,
-    score_is_nan: bool,
-    people: Vec<String>,
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JourneyRenderTask {
+    pub score: i64,
+    #[serde(default, rename = "scoreIsNaN", skip_serializing_if = "is_false")]
+    pub score_is_nan: bool,
+    #[serde(default)]
+    pub people: Vec<String>,
+    pub section: String,
+    #[serde(rename = "type")]
+    pub task_type: String,
+    pub task: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct JourneyDiagramRenderModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub sections: Vec<String>,
+    #[serde(default)]
+    pub tasks: Vec<JourneyRenderTask>,
+    #[serde(default)]
+    pub actors: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -20,7 +42,7 @@ struct JourneyDb {
 
     current_section: String,
     sections: Vec<String>,
-    tasks: Vec<JourneyTask>,
+    tasks: Vec<JourneyRenderTask>,
 }
 
 impl JourneyDb {
@@ -66,13 +88,13 @@ impl JourneyDb {
                 .collect()
         };
 
-        self.tasks.push(JourneyTask {
-            section: self.current_section.clone(),
-            type_: self.current_section.clone(),
-            task: descr.to_string(),
+        self.tasks.push(JourneyRenderTask {
             score,
             score_is_nan,
             people,
+            section: self.current_section.clone(),
+            task_type: self.current_section.clone(),
+            task: descr.to_string(),
         });
         Ok(())
     }
@@ -86,6 +108,11 @@ impl JourneyDb {
         }
         set.into_iter().collect()
     }
+}
+
+enum JourneyParseOutput {
+    Empty,
+    Model(JourneyDiagramRenderModel),
 }
 
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
@@ -167,6 +194,31 @@ fn strip_comment_prefix(line: &str) -> &str {
 }
 
 pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    match parse_journey_model(code, meta)? {
+        JourneyParseOutput::Empty => Ok(json!({})),
+        JourneyParseOutput::Model(model) => Ok(json!({
+            "type": meta.diagram_type,
+            "title": model.title,
+            "accTitle": model.acc_title,
+            "accDescr": model.acc_descr,
+            "sections": model.sections,
+            "tasks": model.tasks,
+            "actors": model.actors,
+        })),
+    }
+}
+
+pub fn parse_journey_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<JourneyDiagramRenderModel> {
+    match parse_journey_model(code, meta)? {
+        JourneyParseOutput::Empty => Ok(JourneyDiagramRenderModel::default()),
+        JourneyParseOutput::Model(model) => Ok(model),
+    }
+}
+
+fn parse_journey_model(code: &str, meta: &ParseMetadata) -> Result<JourneyParseOutput> {
     let mut db = JourneyDb::default();
     db.clear();
 
@@ -186,14 +238,14 @@ pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 let rest = t["journey".len()..].trim_start();
                 if !rest.is_empty() {
                     return Err(Error::DiagramParse {
-                        diagram_type: "journey".to_string(),
+                        diagram_type: meta.diagram_type.clone(),
                         message: "unexpected content after journey header".to_string(),
                     });
                 }
                 continue;
             }
             return Err(Error::DiagramParse {
-                diagram_type: "journey".to_string(),
+                diagram_type: meta.diagram_type.clone(),
                 message: "expected journey header".to_string(),
             });
         }
@@ -222,7 +274,7 @@ pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
         let Some(colon) = stripped.find(':') else {
             return Err(Error::DiagramParse {
-                diagram_type: "journey".to_string(),
+                diagram_type: meta.diagram_type.clone(),
                 message: format!("unrecognized statement: {t}"),
             });
         };
@@ -235,35 +287,30 @@ pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     if !header_seen {
-        return Ok(json!({}));
+        return Ok(JourneyParseOutput::Empty);
     }
 
     let actors = db.actors_sorted();
-    let tasks_json: Vec<Value> = db
-        .tasks
-        .into_iter()
-        .map(|t| {
-            let mut map = serde_json::Map::new();
-            map.insert("score".to_string(), json!(t.score));
-            if t.score_is_nan {
-                map.insert("scoreIsNaN".to_string(), json!(true));
-            }
-            map.insert("people".to_string(), json!(t.people));
-            map.insert("section".to_string(), json!(t.section));
-            map.insert("type".to_string(), json!(t.type_));
-            map.insert("task".to_string(), json!(t.task));
-            Value::Object(map)
-        })
-        .collect();
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": if db.title.is_empty() { None::<String> } else { Some(db.title) },
-        "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title) },
-        "accDescr": if db.acc_descr.is_empty() { None::<String> } else { Some(db.acc_descr) },
-        "sections": db.sections,
-        "tasks": tasks_json,
-        "actors": actors,
+    Ok(JourneyParseOutput::Model(JourneyDiagramRenderModel {
+        title: if db.title.is_empty() {
+            None
+        } else {
+            Some(db.title)
+        },
+        acc_title: if db.acc_title.is_empty() {
+            None
+        } else {
+            Some(db.acc_title)
+        },
+        acc_descr: if db.acc_descr.is_empty() {
+            None
+        } else {
+            Some(db.acc_descr)
+        },
+        sections: db.sections,
+        tasks: db.tasks,
+        actors,
     }))
 }
 
@@ -484,7 +531,7 @@ R task: 5:\n",
                         "people": t.people,
                         "section": t.section,
                         "task": t.task,
-                        "type": t.type_,
+                        "type": t.task_type,
                     })
                 })
                 .collect::<Vec<_>>(),

@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
+use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
     v.map(|x| fmt(x).to_string())
@@ -122,24 +123,33 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     out
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct JourneySvgModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-}
-
 pub(super) fn render_journey_diagram_svg(
     layout: &crate::model::JourneyDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: JourneyDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_journey_diagram_svg_model(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_journey_diagram_svg_model(
+    layout: &crate::model::JourneyDiagramLayout,
+    model: &JourneyDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: JourneySvgModel = crate::json::from_value_ref(semantic)?;
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 

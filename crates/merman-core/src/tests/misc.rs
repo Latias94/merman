@@ -417,6 +417,59 @@ Task 1: event 1: event 2
 }
 
 #[test]
+fn parse_journey_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+journey
+title Typed Journey
+accTitle: Journey accTitle
+accDescr: Journey accDescription
+section Shopping
+Get keys: 5: Dad
+Drive: bad-score: Dad, Mum
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "journey");
+    match parsed.model {
+        RenderSemanticModel::Journey(model) => {
+            assert_eq!(model.title.as_deref(), Some("Typed Journey"));
+            assert_eq!(model.acc_title.as_deref(), Some("Journey accTitle"));
+            assert_eq!(model.acc_descr.as_deref(), Some("Journey accDescription"));
+            assert_eq!(model.sections.as_slice(), ["Shopping"]);
+            assert_eq!(model.actors.as_slice(), ["Dad", "Mum"]);
+            assert_eq!(model.tasks.len(), 2);
+            assert_eq!(model.tasks[0].score, 5);
+            assert!(!model.tasks[0].score_is_nan);
+            assert_eq!(model.tasks[0].people.as_slice(), ["Dad"]);
+            assert_eq!(model.tasks[1].task, "Drive");
+            assert!(model.tasks[1].score_is_nan);
+            assert_eq!(model.tasks[1].people.as_slice(), ["Dad", "Mum"]);
+        }
+        other => panic!("journey render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("journey"));
+    assert_eq!(parsed_json.model["title"], json!("Typed Journey"));
+    assert_eq!(parsed_json.model["actors"], json!(["Dad", "Mum"]));
+    assert_eq!(parsed_json.model["tasks"][0]["score"], json!(5));
+    assert!(parsed_json.model["tasks"][0].get("scoreIsNaN").is_none());
+    assert_eq!(parsed_json.model["tasks"][1]["scoreIsNaN"], json!(true));
+    assert_eq!(
+        parsed_json.model["tasks"][1]["people"],
+        json!(["Dad", "Mum"])
+    );
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

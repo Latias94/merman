@@ -33,7 +33,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `info` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `packet` | `typed-first` | typed layout + typed SVG | Config-heavy small diagram; keep as a high-ROI migration pattern. |
 | `timeline` | `typed-first` | typed layout + typed SVG | Moderate small-diagram migration; watch layout/render midpoint drift. |
-| `journey` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `journey` | `typed-first` | typed layout + typed SVG | Small-to-moderate migration; watch render midpoint drift. |
 | `gitGraph` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `pie` | `typed-first` | typed layout + typed SVG | Small typed migration; keep as a simple-diagram pattern. |
 | `xychart` | `json-fallback` | JSON layout + JSON SVG | Defer. |

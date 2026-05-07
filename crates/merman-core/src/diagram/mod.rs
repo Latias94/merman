@@ -94,6 +94,7 @@ pub enum RenderSemanticModel {
     Pie(crate::diagrams::pie::PieDiagramRenderModel),
     Packet(crate::diagrams::packet::PacketDiagramRenderModel),
     Timeline(crate::diagrams::timeline::TimelineDiagramRenderModel),
+    Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]
