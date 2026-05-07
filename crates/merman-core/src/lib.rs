@@ -307,9 +307,9 @@ impl Engine {
     /// Parses a diagram into a typed semantic model optimized for headless layout + SVG rendering.
     ///
     /// Unlike [`Engine::parse_diagram_sync`], this avoids constructing large
-    /// `serde_json::Value` object trees for some high-impact diagrams (currently `stateDiagram` and
-    /// `mindmap`) and instead returns typed semantic structs that the renderer can consume
-    /// directly.
+    /// `serde_json::Value` object trees for some high-impact diagrams (currently `sequence`,
+    /// `stateDiagram`, and `mindmap`) and instead returns typed semantic structs that the renderer
+    /// can consume directly.
     ///
     /// Callers that need the semantic JSON model should continue using
     /// [`Engine::parse_diagram_sync`].

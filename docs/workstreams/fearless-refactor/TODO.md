@@ -62,6 +62,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Selection rule: choose the diagram with better test coverage and less parser churn.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
+  Sequence status: post-migration baseline captured in
+  `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`; keep this item open so
+  the next typed migration captures a same-machine pre-migration baseline first.
 
 ## P1: Text and Measurement Module Split
 
