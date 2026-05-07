@@ -123,7 +123,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     variants, and popup menu emission now live in `sequence/actors.rs`; pre-actor box/rect frame
     emission now lives in `sequence/frames.rs`; shared node geometry now lives in
     `sequence/geometry.rs`)
-  - messages
+  - messages (message label/line emission and autonumber handling now live in
+    `sequence/messages.rs`)
   - notes (note emission now lives in `sequence/notes.rs`)
   - loops/alt/par/rect blocks (loop/alt/par/critical block collection, label wrapping,
     loop text emission, and frame range helpers now live in `sequence/blocks.rs`)

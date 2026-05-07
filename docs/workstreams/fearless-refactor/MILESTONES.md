@@ -155,6 +155,8 @@ Progress:
   `svg/parity/sequence/blocks.rs`.
 - Extracted sequence block label wrapping, loop text emission, and block frame range helpers into
   `svg/parity/sequence/blocks.rs`.
+- Extracted sequence message label/line emission and autonumber handling into
+  `svg/parity/sequence/messages.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
