@@ -369,15 +369,6 @@ pub(super) fn render_class_edge_terminal_group(
     }
 }
 
-pub(super) fn class_edge_dom_id(
-    edge: &LayoutEdge,
-    relation_index_by_id: &FxHashMap<&str, usize>,
-) -> String {
-    let mut out = String::new();
-    class_edge_dom_id_into(&mut out, edge, relation_index_by_id);
-    out
-}
-
 pub(super) fn class_edge_dom_id_into(
     out: &mut String,
     edge: &LayoutEdge,

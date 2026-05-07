@@ -91,6 +91,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.
 - Class renderer: move namespace ordering and nested subgraph emission into
   `svg/parity/class/namespace.rs`.
+- Class renderer: remove the duplicate namespace-subgraph edge path/label emitter and route it
+  through the shared optimized edge group path.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

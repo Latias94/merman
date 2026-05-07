@@ -112,7 +112,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     and divider emission now live in `class/bounds.rs` and `class/node.rs`; interface node
     emission now lives in `class/interface.rs`)
   - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
-    now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`)
+    now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`;
+    the namespace-subgraph branch now reuses the shared optimized edge group path instead of a
+    duplicate edge emitter)
   - note rendering (note node emission now lives in `class/note.rs`)
   - namespace/subgraph rendering (ordering and subgraph open/close emission now live in
     `class/namespace.rs`)
