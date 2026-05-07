@@ -62,6 +62,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture renderer: move JSON/typed render-model access into
   `svg/parity/architecture/model.rs` and foreignObject XHTML normalization into
   `svg/parity/architecture/foreign_object.rs`.
+- Architecture renderer: move Mermaid architecture icon bodies into
+  `svg/parity/architecture/icons.rs` and SVG label wrapping/text emission into
+  `svg/parity/architecture/labels.rs`.
 - Sequence renderer: start the actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into

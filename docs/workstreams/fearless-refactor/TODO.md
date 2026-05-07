@@ -171,7 +171,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - service/group layout emission
   - edge rendering
   - icon/text XHTML normalization (foreignObject XHTML normalization and entity-safe ampersand
-    escaping now live in `architecture/foreign_object.rs`)
+    escaping now live in `architecture/foreign_object.rs`; built-in icon SVG bodies now live in
+    `architecture/icons.rs`; SVG label wrapping/text emission now lives in
+    `architecture/labels.rs`)
   - CSS/theme emission
 - [ ] Prefer small render context structs over long parameter lists.
   Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for

@@ -224,6 +224,9 @@ Progress:
   `svg/parity/architecture/model.rs`.
 - Extracted architecture foreignObject XHTML normalization and entity-safe ampersand escaping into
   `svg/parity/architecture/foreign_object.rs`, with its normalization tests colocated there.
+- Extracted architecture built-in icon SVG bodies into `svg/parity/architecture/icons.rs`.
+- Extracted architecture SVG label wrapping and text/tspan emission into
+  `svg/parity/architecture/labels.rs`.
 
 Exit criteria:
 
