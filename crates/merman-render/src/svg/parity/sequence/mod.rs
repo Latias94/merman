@@ -9,6 +9,7 @@ mod debug;
 mod frames;
 mod geometry;
 mod model;
+mod notes;
 mod render;
 
 pub(super) fn render_sequence_diagram_debug_svg(

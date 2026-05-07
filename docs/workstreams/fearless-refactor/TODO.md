@@ -124,7 +124,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     emission now lives in `sequence/frames.rs`; shared node geometry now lives in
     `sequence/geometry.rs`)
   - messages
-  - notes
+  - notes (note emission now lives in `sequence/notes.rs`)
   - loops/alt/par/rect blocks
   - activation rendering (precomputation and group emission now live in
     `sequence/activation.rs`)
