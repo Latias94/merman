@@ -111,6 +111,8 @@ Progress:
   leaving browser/font compatibility measurement behind the vendored measurer boundary.
 - Extracted vendored browser/font measurement into `text/font_metrics.rs` while keeping
   `VendoredFontMetricsTextMeasurer` re-exported from `crate::text`.
+- Extracted flowchart-aware HTML, Markdown, and precise SVG measurement helpers into
+  `text/metrics.rs` while preserving the existing `crate::text::*` call surface.
 
 Exit criteria:
 

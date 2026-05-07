@@ -78,7 +78,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/deterministic.rs` (deterministic fallback measurer done)
   - `text/svg_metrics.rs` (done)
   - `text/flowchart_parity.rs` (done)
-  - `text/metrics.rs`
+  - `text/metrics.rs` (flowchart-aware HTML/Markdown/SVG measurement done)
   - `text/html_label.rs`
   - `text/svg_text.rs`
   - `text/overrides.rs`
