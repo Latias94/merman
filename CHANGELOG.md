@@ -72,6 +72,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/sequence/block_geometry.rs`.
 - Sequence renderer: split actor label, lifeline wrapper, and non-actor-man shape emission into
   `svg/parity/sequence/actor_shapes.rs`.
+- Sequence renderer: split actor-man glyph geometry and SVG emission into
+  `svg/parity/sequence/actor_man_glyphs.rs`.
 - Sequence renderer: move message label/line emission and autonumber handling into
   `svg/parity/sequence/messages.rs`.
 - Sequence renderer: share block frame and label-box emission helpers across

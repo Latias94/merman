@@ -4,6 +4,7 @@ use super::*;
 
 mod activation;
 mod actor_man;
+mod actor_man_glyphs;
 mod actor_popup;
 mod actor_shapes;
 mod actors;
