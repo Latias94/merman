@@ -45,6 +45,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   deserializing layout input from semantic JSON.
 - Gantt render pipeline: parse a typed render model for layout/render-only flows and reuse it in
   SVG render-model dispatch instead of deserializing private JSON transport structs.
+- CLI render command: share layout-option construction and SVG rasterization output handling across
+  Mermaid-input and SVG-input render flows.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids
   for edge-label center lookup.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like

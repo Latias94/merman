@@ -289,6 +289,68 @@ fn default_raster_out_path(input: Option<&str>, ext: &str) -> std::path::PathBuf
     }
 }
 
+fn text_measurer(kind: TextMeasurerKind) -> Arc<dyn TextMeasurer + Send + Sync> {
+    match kind {
+        TextMeasurerKind::Deterministic => Arc::new(DeterministicTextMeasurer::default()),
+        TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
+    }
+}
+
+fn layout_options(args: &Args) -> LayoutOptions {
+    LayoutOptions {
+        viewport_width: args.viewport_width,
+        viewport_height: args.viewport_height,
+        text_measurer: text_measurer(args.text_measurer),
+        math_renderer: None,
+        // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on manatee-backed
+        // layout engines. Prefer correctness for CLI output.
+        use_manatee_layout: true,
+    }
+}
+
+fn raster_options(args: &Args) -> merman::render::raster::RasterOptions {
+    merman::render::raster::RasterOptions {
+        scale: args.render_scale,
+        background: args.background.clone(),
+        ..Default::default()
+    }
+}
+
+fn raster_extension(format: RenderFormat) -> Option<&'static str> {
+    match format {
+        RenderFormat::Svg => None,
+        RenderFormat::Png => Some("png"),
+        RenderFormat::Jpeg => Some("jpg"),
+        RenderFormat::Pdf => Some("pdf"),
+    }
+}
+
+fn rasterize_svg(svg: &str, args: &Args) -> Result<Vec<u8>, CliError> {
+    let svg = merman::render::foreign_object_label_fallback_svg_text(svg);
+    match args.render_format {
+        RenderFormat::Svg => Err(CliError::Usage(usage())),
+        RenderFormat::Png => Ok(merman::render::raster::svg_to_png(
+            &svg,
+            &raster_options(args),
+        )?),
+        RenderFormat::Jpeg => Ok(merman::render::raster::svg_to_jpeg(
+            &svg,
+            &raster_options(args),
+        )?),
+        RenderFormat::Pdf => Ok(merman::render::raster::svg_to_pdf(&svg)?),
+    }
+}
+
+fn write_rasterized_svg(svg: &str, args: &Args) -> Result<(), CliError> {
+    let bytes = rasterize_svg(svg, args)?;
+    let ext = raster_extension(args.render_format).ok_or(CliError::Usage(usage()))?;
+    let default_out_path = default_raster_out_path(args.input.as_deref(), ext)
+        .to_string_lossy()
+        .into_owned();
+    let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
+    write_output(Some(out), &bytes)
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
     let result = (|| -> Result<(), CliError> {
@@ -359,21 +421,7 @@ fn run(args: Args) -> Result<(), CliError> {
             Ok(())
         }
         Command::Layout => {
-            let measurer: Arc<dyn TextMeasurer + Send + Sync> = match args.text_measurer {
-                TextMeasurerKind::Deterministic => Arc::new(DeterministicTextMeasurer::default()),
-                TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
-            };
-
-            let layout = LayoutOptions {
-                viewport_width: args.viewport_width,
-                viewport_height: args.viewport_height,
-                text_measurer: measurer,
-                math_renderer: None,
-                // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
-                // manatee-backed layout engines. Prefer correctness for CLI output.
-                use_manatee_layout: true,
-            };
-
+            let layout = layout_options(&args);
             let Some(layouted) =
                 merman::render::layout_diagram_sync(&engine, &text, options, &layout)?
             else {
@@ -389,66 +437,10 @@ fn run(args: Args) -> Result<(), CliError> {
         Command::Render => {
             let input_is_svg = text.trim_start().starts_with("<svg");
             if input_is_svg && !matches!(args.render_format, RenderFormat::Svg) {
-                match args.render_format {
-                    RenderFormat::Svg => unreachable!(),
-                    RenderFormat::Png => {
-                        let raster = merman::render::raster::RasterOptions {
-                            scale: args.render_scale,
-                            background: args.background.clone(),
-                            ..Default::default()
-                        };
-                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
-                        let bytes = merman::render::raster::svg_to_png(&svg, &raster)?;
-                        let default_out_path =
-                            default_raster_out_path(args.input.as_deref(), "png")
-                                .to_string_lossy()
-                                .into_owned();
-                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                        return write_output(Some(out), &bytes);
-                    }
-                    RenderFormat::Jpeg => {
-                        let raster = merman::render::raster::RasterOptions {
-                            scale: args.render_scale,
-                            background: args.background.clone(),
-                            ..Default::default()
-                        };
-                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
-                        let bytes = merman::render::raster::svg_to_jpeg(&svg, &raster)?;
-                        let default_out_path =
-                            default_raster_out_path(args.input.as_deref(), "jpg")
-                                .to_string_lossy()
-                                .into_owned();
-                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                        return write_output(Some(out), &bytes);
-                    }
-                    RenderFormat::Pdf => {
-                        let svg = merman::render::foreign_object_label_fallback_svg_text(&text);
-                        let bytes = merman::render::raster::svg_to_pdf(&svg)?;
-                        let default_out_path =
-                            default_raster_out_path(args.input.as_deref(), "pdf")
-                                .to_string_lossy()
-                                .into_owned();
-                        let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                        return write_output(Some(out), &bytes);
-                    }
-                }
+                return write_rasterized_svg(&text, &args);
             }
 
-            let measurer: Arc<dyn TextMeasurer + Send + Sync> = match args.text_measurer {
-                TextMeasurerKind::Deterministic => Arc::new(DeterministicTextMeasurer::default()),
-                TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
-            };
-
-            let layout = LayoutOptions {
-                viewport_width: args.viewport_width,
-                viewport_height: args.viewport_height,
-                text_measurer: measurer,
-                math_renderer: None,
-                // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
-                // manatee-backed layout engines. Prefer correctness for CLI output.
-                use_manatee_layout: true,
-            };
-
+            let layout = layout_options(&args);
             let svg_opts = SvgRenderOptions {
                 diagram_id: args.diagram_id.clone(),
                 ..Default::default()
@@ -465,42 +457,8 @@ fn run(args: Args) -> Result<(), CliError> {
                     let out = args.out.as_deref();
                     write_output(out, svg.as_bytes())
                 }
-                RenderFormat::Png => {
-                    let raster = merman::render::raster::RasterOptions {
-                        scale: args.render_scale,
-                        background: args.background.clone(),
-                        ..Default::default()
-                    };
-                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
-                    let bytes = merman::render::raster::svg_to_png(&svg, &raster)?;
-                    let default_out_path = default_raster_out_path(args.input.as_deref(), "png")
-                        .to_string_lossy()
-                        .into_owned();
-                    let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                    write_output(Some(out), &bytes)
-                }
-                RenderFormat::Jpeg => {
-                    let raster = merman::render::raster::RasterOptions {
-                        scale: args.render_scale,
-                        background: args.background.clone(),
-                        ..Default::default()
-                    };
-                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
-                    let bytes = merman::render::raster::svg_to_jpeg(&svg, &raster)?;
-                    let default_out_path = default_raster_out_path(args.input.as_deref(), "jpg")
-                        .to_string_lossy()
-                        .into_owned();
-                    let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                    write_output(Some(out), &bytes)
-                }
-                RenderFormat::Pdf => {
-                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
-                    let bytes = merman::render::raster::svg_to_pdf(&svg)?;
-                    let default_out_path = default_raster_out_path(args.input.as_deref(), "pdf")
-                        .to_string_lossy()
-                        .into_owned();
-                    let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-                    write_output(Some(out), &bytes)
+                RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => {
+                    write_rasterized_svg(&svg, &args)
                 }
             }
         }

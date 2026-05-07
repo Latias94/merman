@@ -249,8 +249,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [ ] Review public `merman::render` API after typed render migration.
 - [ ] Keep synchronous executor-free API as the default path.
 - [ ] Decide whether async wrappers should remain simple aliases or be feature-gated later.
-- [ ] Audit CLI option parsing for duplicated raster branches.
+- [x] Audit CLI option parsing for duplicated raster branches.
+  Evidence: CLI layout options and SVG rasterization output handling now share small helpers across
+  Mermaid-input render and direct SVG-input rasterization flows.
 - [ ] Consider a small internal `RenderRequest`/`RasterRequest` struct for CLI command execution.
+  Progress: shared helpers removed the immediate duplication; keep this open until command
+  execution needs a larger request object.
 
 ## P3: Documentation Cleanup
 
