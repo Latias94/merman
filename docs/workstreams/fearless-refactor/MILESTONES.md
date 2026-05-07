@@ -150,6 +150,8 @@ Progress:
   `svg/parity/sequence/actors.rs`.
 - Extracted sequence SVG render settings/config parsing into
   `svg/parity/sequence/settings.rs`.
+- Extracted sequence root SVG opening, accessibility title/description, and viewport override
+  handling into `svg/parity/sequence/root.rs`.
 - Extracted sequence activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.

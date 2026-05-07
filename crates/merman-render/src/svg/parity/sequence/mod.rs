@@ -13,6 +13,7 @@ mod messages;
 mod model;
 mod notes;
 mod render;
+mod root;
 mod settings;
 
 pub(super) fn render_sequence_diagram_debug_svg(
