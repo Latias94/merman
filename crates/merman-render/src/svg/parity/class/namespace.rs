@@ -1,12 +1,12 @@
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
-use crate::model::{Bounds, LayoutCluster};
+use crate::model::{Bounds, ClassDiagramV2Layout, LayoutCluster, LayoutNode};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use super::super::{escape_attr, escape_xml, fmt, fmt_into};
-use super::ClassSvgNode;
 use super::bounds::include_xywh;
+use super::{ClassSvgModel, ClassSvgNode};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct ClassNamespaceSubgraphState<'a> {
@@ -38,6 +38,101 @@ pub(super) fn class_order_ids_for_namespace_subgraphs<'a>(
         }
     }
     inner.into_iter().chain(outer).collect()
+}
+
+pub(super) struct ClassNodeRenderOrder<'a> {
+    pub layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
+    pub ordered_ids: Vec<&'a str>,
+    pub namespace_key_set: HashSet<&'a str>,
+    pub clusters_by_id: HashMap<&'a str, &'a LayoutCluster>,
+}
+
+pub(super) fn build_class_node_render_order<'a>(
+    layout: &'a ClassDiagramV2Layout,
+    model: &'a ClassSvgModel,
+    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    wrap_nodes_root: bool,
+    single_namespace_id: Option<&'a str>,
+    render_namespaces_as_subgraphs: bool,
+) -> ClassNodeRenderOrder<'a> {
+    let mut layout_nodes_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
+    layout_nodes_by_id.reserve(layout.nodes.len());
+    for n in &layout.nodes {
+        if n.is_cluster {
+            continue;
+        }
+        layout_nodes_by_id.insert(n.id.as_str(), n);
+    }
+
+    let mut ordered_ids: Vec<&str> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    seen.reserve(model.classes.len() + model.notes.len() + model.interfaces.len());
+    for cls in model.classes.values() {
+        let id = cls.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for note in &model.notes {
+        let id = note.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for iface in &model.interfaces {
+        let id = iface.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for n in &layout.nodes {
+        if n.is_cluster {
+            continue;
+        }
+        let id = n.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+
+    if wrap_nodes_root {
+        let mut inner: Vec<&str> = Vec::new();
+        let mut outer: Vec<&str> = Vec::new();
+        for id in &ordered_ids {
+            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            if single_namespace_id.is_some_and(|ns| parent == Some(ns)) {
+                inner.push(*id);
+            } else {
+                outer.push(*id);
+            }
+        }
+        ordered_ids = inner.into_iter().chain(outer).collect();
+    }
+
+    let namespace_keys: Vec<&str> = crate::class::class_namespace_ids_in_decl_order(model);
+    let namespace_key_set = namespace_keys.iter().copied().collect();
+
+    let mut clusters_by_id: HashMap<&str, &LayoutCluster> = HashMap::new();
+    for c in &layout.clusters {
+        clusters_by_id.insert(c.id.as_str(), c);
+    }
+
+    if render_namespaces_as_subgraphs {
+        // Ensure namespace-contained nodes are rendered in namespace order (one nested subgraph per
+        // namespace) before emitting any non-namespace nodes at the outer level.
+        ordered_ids = class_order_ids_for_namespace_subgraphs(
+            ordered_ids,
+            &namespace_keys,
+            class_nodes_by_id,
+        );
+    }
+
+    ClassNodeRenderOrder {
+        layout_nodes_by_id,
+        ordered_ids,
+        namespace_key_set,
+        clusters_by_id,
+    }
 }
 
 pub(super) fn transition_class_namespace_subgraph<'a>(

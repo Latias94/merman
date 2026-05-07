@@ -200,6 +200,8 @@ Progress:
 - Extracted class note node emission into `svg/parity/class/note.rs`.
 - Extracted class namespace ordering and nested subgraph emission into
   `svg/parity/class/namespace.rs`.
+- Extracted class node render-order/index construction into
+  `svg/parity/class/namespace.rs`.
 
 Exit criteria:
 

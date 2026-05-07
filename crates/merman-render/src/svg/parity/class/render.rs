@@ -11,7 +11,7 @@ use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
 use super::namespace::{
-    ClassNamespaceSubgraphState, class_order_ids_for_namespace_subgraphs,
+    ClassNamespaceSubgraphState, ClassNodeRenderOrder, build_class_node_render_order,
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
 use super::node::{
@@ -22,7 +22,7 @@ use super::node::{
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 pub(super) fn render_class_diagram_v2_svg_impl(
     layout: &ClassDiagramV2Layout,
@@ -640,84 +640,19 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         out.push_str(r#"<g class="nodes">"#);
     }
 
-    // Render all non-cluster nodes. Mermaid's class renderer inserts nodes in semantic order
-    // (namespaces, then classes, then notes). Using the raw layout node iteration order can drift
-    // when the layout pipeline injects and removes internal dummy nodes. Build a stable rendering
-    // order from the semantic model and fall back to any remaining nodes in layout order.
-    let mut layout_nodes_by_id: FxHashMap<&str, &crate::model::LayoutNode> = FxHashMap::default();
-    layout_nodes_by_id.reserve(layout.nodes.len());
-    for n in &layout.nodes {
-        if n.is_cluster {
-            continue;
-        }
-        layout_nodes_by_id.insert(n.id.as_str(), n);
-    }
-
-    let mut ordered_ids: Vec<&str> = Vec::new();
-    let mut seen: FxHashSet<&str> = FxHashSet::default();
-    seen.reserve(model.classes.len() + model.notes.len() + model.interfaces.len());
-    for cls in model.classes.values() {
-        let id = cls.id.as_str();
-        if seen.insert(id) {
-            ordered_ids.push(id);
-        }
-    }
-    for note in &model.notes {
-        let id = note.id.as_str();
-        if seen.insert(id) {
-            ordered_ids.push(id);
-        }
-    }
-    for iface in &model.interfaces {
-        let id = iface.id.as_str();
-        if seen.insert(id) {
-            ordered_ids.push(id);
-        }
-    }
-    for n in &layout.nodes {
-        if n.is_cluster {
-            continue;
-        }
-        let id = n.id.as_str();
-        if seen.insert(id) {
-            ordered_ids.push(id);
-        }
-    }
-
-    if wrap_nodes_root {
-        let ns_id = single_namespace_id;
-        let mut inner: Vec<&str> = Vec::new();
-        let mut outer: Vec<&str> = Vec::new();
-        for id in &ordered_ids {
-            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
-            if ns_id.is_some_and(|ns| parent == Some(ns)) {
-                inner.push(*id);
-            } else {
-                outer.push(*id);
-            }
-        }
-        ordered_ids = inner.into_iter().chain(outer).collect();
-    }
-
-    let namespace_keys: Vec<&str> = crate::class::class_namespace_ids_in_decl_order(model);
-    let namespace_key_set: std::collections::HashSet<&str> =
-        namespace_keys.iter().copied().collect();
-
-    let mut clusters_by_id: std::collections::HashMap<&str, &crate::model::LayoutCluster> =
-        std::collections::HashMap::new();
-    for c in &layout.clusters {
-        clusters_by_id.insert(c.id.as_str(), c);
-    }
-
-    if render_namespaces_as_subgraphs {
-        // Ensure namespace-contained nodes are rendered in namespace order (one nested subgraph per
-        // namespace) before emitting any non-namespace nodes at the outer level.
-        ordered_ids = class_order_ids_for_namespace_subgraphs(
-            ordered_ids,
-            &namespace_keys,
-            &class_nodes_by_id,
-        );
-    }
+    let ClassNodeRenderOrder {
+        layout_nodes_by_id,
+        ordered_ids,
+        namespace_key_set,
+        clusters_by_id,
+    } = build_class_node_render_order(
+        layout,
+        model,
+        &class_nodes_by_id,
+        wrap_nodes_root,
+        single_namespace_id,
+        render_namespaces_as_subgraphs,
+    );
 
     let mut inner_nodes_group_open = wrap_nodes_root;
     let mut namespace_subgraph_state = ClassNamespaceSubgraphState::default();
