@@ -7,7 +7,8 @@ use super::actors::{
 };
 use super::blocks::{
     SequenceBlock, collect_sequence_blocks, display_block_label, frame_x_from_actors,
-    frame_x_from_message_ids, item_y_range, wrap_svg_text_lines, write_loop_text_lines,
+    frame_x_from_message_ids, item_y_range, wrap_svg_text_lines, write_block_frame,
+    write_block_label_box, write_loop_text_lines,
 };
 use super::frames::render_sequence_box_frames_and_rect_blocks;
 use super::messages::render_sequence_messages;
@@ -436,34 +437,7 @@ fn render_sequence_diagram_svg_inner(
                         out.push_str(r#"<g>"#);
 
                         // frame
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
 
                         // separators (dashed)
                         // Keep separator endpoints identical to the frame endpoints to match upstream
@@ -508,30 +482,7 @@ fn render_sequence_diagram_svg_inner(
 
                         // label box + label text
                         // This matches Mermaid's label-box shape: a 50px-wide header with a 8.4px cut.
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">alt</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "alt");
 
                         // section labels
                         let label_box_right = frame_x1 + 50.0;
@@ -620,34 +571,7 @@ fn render_sequence_diagram_svg_inner(
                         out.push_str(r#"<g>"#);
 
                         // frame
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
 
                         // separators (dashed)
                         let dash_x1 = frame_x1;
@@ -689,30 +613,7 @@ fn render_sequence_diagram_svg_inner(
                         }
 
                         // label box + label text
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">par</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "par");
 
                         // section labels
                         let label_box_right = frame_x1 + 50.0;
@@ -795,58 +696,8 @@ fn render_sequence_diagram_svg_inner(
                         let frame_y2 = max_y + 10.0;
 
                         out.push_str(r#"<g>"#);
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "loop");
                         let label_box_right = frame_x1 + 50.0;
                         let text_x = (label_box_right + frame_x2) / 2.0;
                         let text_y = frame_y1 + 18.0;
@@ -905,58 +756,8 @@ fn render_sequence_diagram_svg_inner(
                         let frame_y2 = max_y + 10.0;
 
                         out.push_str(r#"<g>"#);
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">opt</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "opt");
                         let label_box_right = frame_x1 + 50.0;
                         let text_x = (label_box_right + frame_x2) / 2.0;
                         let text_y = frame_y1 + 18.0;
@@ -1010,58 +811,8 @@ fn render_sequence_diagram_svg_inner(
                         let frame_y2 = max_y + 10.0;
 
                         out.push_str(r#"<g>"#);
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">break</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "break");
                         let label_box_right = frame_x1 + 50.0;
                         let text_x = (label_box_right + frame_x2) / 2.0;
                         let text_y = frame_y1 + 18.0;
@@ -1154,34 +905,7 @@ fn render_sequence_diagram_svg_inner(
                         out.push_str(r#"<g>"#);
 
                         // frame
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x2 = fmt(frame_x2),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            x2 = fmt(frame_x2),
-                            y2 = fmt(frame_y2)
-                        );
-                        let _ = write!(
-                            &mut out,
-                            r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                            x1 = fmt(frame_x1),
-                            y1 = fmt(frame_y1),
-                            y2 = fmt(frame_y2)
-                        );
+                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
 
                         // separators (dashed)
                         let dash_x1 = frame_x1;
@@ -1223,30 +947,7 @@ fn render_sequence_diagram_svg_inner(
                         }
 
                         // label box + label text
-                        let x1 = frame_x1;
-                        let y1 = frame_y1;
-                        let x2 = x1 + 50.0;
-                        let y2 = y1 + 13.0;
-                        let y3 = y1 + 20.0;
-                        let x3 = x2 - 8.4;
-                        let _ = write!(
-                            &mut out,
-                            r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                            x1 = fmt(x1),
-                            y1 = fmt(y1),
-                            x2 = fmt(x2),
-                            y2 = fmt(y2),
-                            x3 = fmt(x3),
-                            y3 = fmt(y3)
-                        );
-                        let label_cx = (x1 + 25.0).round();
-                        let label_cy = y1 + 13.0;
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">critical</text>"#,
-                            x = fmt(label_cx),
-                            y = fmt(label_cy)
-                        );
+                        write_block_label_box(&mut out, frame_x1, frame_y1, "critical");
 
                         // section labels
                         let label_box_right = frame_x1 + 50.0;

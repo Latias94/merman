@@ -60,6 +60,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   into `svg/parity/sequence/blocks.rs`.
 - Sequence renderer: move message label/line emission and autonumber handling into
   `svg/parity/sequence/messages.rs`.
+- Sequence renderer: share block frame and label-box emission helpers across
+  loop/alt/par/critical variants.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.

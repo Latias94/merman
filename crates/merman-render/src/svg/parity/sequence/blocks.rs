@@ -330,6 +330,71 @@ pub(super) fn write_loop_text_lines(
     }
 }
 
+pub(super) fn write_block_frame(
+    out: &mut String,
+    frame_x1: f64,
+    frame_x2: f64,
+    frame_y1: f64,
+    frame_y2: f64,
+) {
+    let _ = write!(
+        out,
+        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
+        x1 = fmt(frame_x1),
+        x2 = fmt(frame_x2),
+        y1 = fmt(frame_y1)
+    );
+    let _ = write!(
+        out,
+        r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+        x2 = fmt(frame_x2),
+        y1 = fmt(frame_y1),
+        y2 = fmt(frame_y2)
+    );
+    let _ = write!(
+        out,
+        r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+        x1 = fmt(frame_x1),
+        x2 = fmt(frame_x2),
+        y2 = fmt(frame_y2)
+    );
+    let _ = write!(
+        out,
+        r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
+        x1 = fmt(frame_x1),
+        y1 = fmt(frame_y1),
+        y2 = fmt(frame_y2)
+    );
+}
+
+pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f64, label: &str) {
+    let x1 = frame_x1;
+    let y1 = frame_y1;
+    let x2 = x1 + 50.0;
+    let y2 = y1 + 13.0;
+    let y3 = y1 + 20.0;
+    let x3 = x2 - 8.4;
+    let _ = write!(
+        out,
+        r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+        x1 = fmt(x1),
+        y1 = fmt(y1),
+        x2 = fmt(x2),
+        y2 = fmt(y2),
+        x3 = fmt(x3),
+        y3 = fmt(y3)
+    );
+    let label_cx = (x1 + 25.0).round();
+    let label_cy = y1 + 13.0;
+    let _ = write!(
+        out,
+        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">{label}</text>"#,
+        x = fmt(label_cx),
+        y = fmt(label_cy),
+        label = escape_xml(label)
+    );
+}
+
 pub(super) fn frame_x_from_actors(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
