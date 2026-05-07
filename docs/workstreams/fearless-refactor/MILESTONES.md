@@ -1,0 +1,137 @@
+# Fearless Refactor Milestones
+
+This roadmap targets a cleaner next release without losing Mermaid parity. Milestones are ordered
+so each stage reduces future risk before deeper changes begin.
+
+## Goal Statement
+
+The next version should be easier to maintain than the current one while being at least as complete,
+at least as fast, and at least as parity-safe.
+
+Success means:
+
+- New contributors can understand the parse/layout/render pipeline without reading multiple
+  duplicate dispatch blocks.
+- High-impact diagrams no longer pay unnecessary JSON construction costs in render-only paths.
+- Text measurement and markdown/HTML/SVG label logic have clear module boundaries.
+- Large parity renderers can be changed locally without scanning thousands of unrelated lines.
+- All feature-gated code compiles regularly.
+- Clippy stays green for the workspace under the agreed release gate.
+- Override growth is visible and justified.
+
+## M0: Refactor Safety Baseline
+
+Status: complete.
+
+Evidence:
+
+- `cargo run -p xtask -- verify --strict` passed. This covers fmt, all-features check,
+  workspace all-target/all-features clippy, nextest, and SVG DOM parity.
+
+Scope:
+
+- Keep default tests green.
+- Keep `--all-features` compilation green.
+- Establish the standard gate list for refactor work.
+- Make optional environment-dependent tests robust.
+
+Exit criteria:
+
+- `cargo fmt`
+- `cargo check --workspace --all-features`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo run -p xtask -- verify --strict`
+- `cargo nextest run -p merman-core -p merman-render`
+- No known broken feature flags.
+
+## M1: Pipeline Ownership Cleanup
+
+Scope:
+
+- Centralize parse/render dispatch.
+- Centralize JSON layout dispatch.
+- Centralize suppressed-error diagram construction.
+- Decide the long-term role of `parse_diagram_for_render_sync`.
+
+Exit criteria:
+
+- One typed render parse dispatcher in `merman-core`.
+- One JSON layout fallback dispatcher in `merman-render`.
+- Error-diagram fallback code is not repeated across public parse methods.
+- Public wrappers use the typed render path where possible.
+
+## M2: Typed Model Expansion
+
+Scope:
+
+- Move one large remaining JSON-render diagram to a typed render model.
+- Use the first migration to define the repeatable pattern.
+- Prefer sequence first unless profiling points elsewhere.
+
+Exit criteria:
+
+- At least one additional high-impact diagram has a typed render model.
+- Render-only path avoids constructing the full semantic JSON model for that diagram.
+- Existing semantic JSON API remains stable.
+- Benchmarks or timing logs show the cost impact.
+
+## M3: Text System Modularization
+
+Scope:
+
+- Split `merman-render` text handling by responsibility.
+- Separate markdown, HTML label, SVG text, font metrics, wrapping, and override lookup code.
+- Keep public text APIs stable through re-exports.
+
+Exit criteria:
+
+- `text.rs` is no longer a large mixed-responsibility module.
+- Tests live near the text subsystem they protect.
+- Override lookup rules are documented.
+- Flowchart/class/state text parity fixtures remain green.
+
+## M4: Large Renderer Decomposition
+
+Scope:
+
+- Split class, sequence, and architecture parity renderers into smaller modules.
+- Introduce render context structs where long parameter lists obscure ownership.
+- Delete obsolete debug-only code after replacing it with `xtask` tooling or tests.
+
+Exit criteria:
+
+- No single parity renderer file remains difficult to navigate because of unrelated concerns.
+- Diagram-specific tests still cover layout, SVG, and entity-sanitization behavior.
+- No DOM parity regressions for the touched diagram families.
+
+## M5: Override Governance and Debt Reduction
+
+Scope:
+
+- Inventory generated and manual overrides.
+- Remove stale or redundant overrides.
+- Add removal criteria for temporary parity bridges.
+
+Exit criteria:
+
+- Override footprint is reported and tracked.
+- Temporary overrides have owners or removal conditions.
+- New model fixes are preferred over new overrides unless browser/font probing proves otherwise.
+
+## M6: Release Readiness
+
+Scope:
+
+- Run broad parity gates.
+- Run benchmarks.
+- Update README and contributor guidance.
+- Decide whether any pre-1.0 public API cleanup should happen before release.
+
+Exit criteria:
+
+- `cargo run -p xtask -- verify --strict`
+- `cargo check --workspace --all-features`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo bench -p merman --features render`
+- Workstream TODO has no unresolved P0 items.
+- Release notes call out internal cleanup and any public API changes.
