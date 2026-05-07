@@ -16,9 +16,10 @@ use super::namespace::{
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
 use super::node::{
-    ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
-    ClassNodeRenderState, measure_class_html_node_rows, render_class_node_basic_container,
-    render_class_node_shell_open,
+    ClassHtmlNodeLabelGroupSpec, ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext,
+    ClassNodeRenderPosition, ClassNodeRenderState, measure_class_html_node_rows,
+    render_class_html_node_label_group, render_class_html_node_rows_group,
+    render_class_node_basic_container, render_class_node_shell_open,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -1328,23 +1329,25 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     class_html_div_style(annotation_width.max(1.0), annotation_max_width_px);
                 let _ = write!(
                     &mut out,
-                    r#"<g class="annotation-group text" transform="translate({}, {})"><g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
+                    r#"<g class="annotation-group text" transform="translate({}, {})">"#,
                     fmt(annotation_group_x),
-                    fmt(annotation_group_y),
-                    fmt(-annotation_height / 2.0),
-                    fmt(annotation_width.max(1.0)),
-                    fmt(annotation_height.max(1.0)),
-                    escape_attr_display(&annotation_div_style)
+                    fmt(annotation_group_y)
                 );
-                render_class_html_label(
+                render_class_html_node_label_group(
                     &mut out,
-                    "nodeLabel",
-                    annotation_text,
-                    true,
-                    Some("markdown-node-label"),
-                    Some(node_style_attr),
+                    &ClassHtmlNodeLabelGroupSpec {
+                        label_style: "",
+                        translate_y: -annotation_height / 2.0,
+                        width: annotation_width.max(1.0),
+                        height: annotation_height.max(1.0),
+                        div_style: annotation_div_style.as_str(),
+                        text: annotation_text,
+                        include_p: true,
+                        extra_span_class: Some("markdown-node-label"),
+                        span_style: Some(node_style_attr),
+                    },
                 );
-                out.push_str("</div></foreignObject></g></g>");
+                out.push_str("</g>");
             } else {
                 let _ = write!(
                     &mut out,
@@ -1356,100 +1359,45 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let title_div_style = class_html_div_style(title_width, title_max_width_px);
             let _ = write!(
                 &mut out,
-                r#"<g class="label-group text" transform="translate({}, {})"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
+                r#"<g class="label-group text" transform="translate({}, {})">"#,
                 fmt(title_x),
-                fmt(title_y),
-                fmt(title_width),
-                fmt(title_height),
-                escape_attr_display(&title_div_style)
+                fmt(title_y)
             );
-            render_class_html_label(
+            render_class_html_node_label_group(
                 &mut out,
-                "nodeLabel",
-                title_text.as_ref(),
-                true,
-                Some("markdown-node-label"),
-                Some(node_style_attr),
+                &ClassHtmlNodeLabelGroupSpec {
+                    label_style: "font-weight: bolder",
+                    translate_y: -12.0,
+                    width: title_width,
+                    height: title_height,
+                    div_style: title_div_style.as_str(),
+                    text: title_text.as_ref(),
+                    include_p: true,
+                    extra_span_class: Some("markdown-node-label"),
+                    span_style: Some(node_style_attr),
+                },
             );
-            out.push_str("</div></foreignObject></g></g>");
+            out.push_str("</g>");
 
-            if members_rows_rendered.rows.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="members-group text" transform="translate({}, {})"/>"#,
-                    fmt(members_x),
-                    fmt(members_group_y)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="members-group text" transform="translate({}, {})">"#,
-                    fmt(members_x),
-                    fmt(members_group_y)
-                );
-                for row in &members_rows_rendered.rows {
-                    let div_style =
-                        class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-                        escape_attr_display(row.row_style.as_str()),
-                        fmt(row.y),
-                        fmt(row.metrics.width.max(1.0)),
-                        fmt(row.metrics.height.max(line_height).max(1.0)),
-                        escape_attr_display(&div_style)
-                    );
-                    render_class_html_label(
-                        &mut out,
-                        "nodeLabel",
-                        row.text.as_str(),
-                        true,
-                        Some("markdown-node-label"),
-                        Some(node_style_attr),
-                    );
-                    out.push_str("</div></foreignObject></g>");
-                }
-                out.push_str("</g>");
-            }
+            render_class_html_node_rows_group(
+                &mut out,
+                "members-group text",
+                members_x,
+                members_group_y,
+                &members_rows_rendered,
+                line_height,
+                node_style_attr,
+            );
 
-            if methods_rows_rendered.rows.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
-                    fmt(members_x),
-                    fmt(methods_group_y)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="methods-group text" transform="translate({}, {})">"#,
-                    fmt(members_x),
-                    fmt(methods_group_y)
-                );
-                for row in &methods_rows_rendered.rows {
-                    let div_style =
-                        class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-                        escape_attr_display(row.row_style.as_str()),
-                        fmt(row.y),
-                        fmt(row.metrics.width.max(1.0)),
-                        fmt(row.metrics.height.max(line_height).max(1.0)),
-                        escape_attr_display(&div_style)
-                    );
-                    render_class_html_label(
-                        &mut out,
-                        "nodeLabel",
-                        row.text.as_str(),
-                        true,
-                        Some("markdown-node-label"),
-                        Some(node_style_attr),
-                    );
-                    out.push_str("</div></foreignObject></g>");
-                }
-                out.push_str("</g>");
-            }
+            render_class_html_node_rows_group(
+                &mut out,
+                "methods-group text",
+                members_x,
+                methods_group_y,
+                &methods_rows_rendered,
+                line_height,
+                node_style_attr,
+            );
 
             if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
                 for y in [divider1_y, divider2_y] {

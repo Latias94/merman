@@ -8,7 +8,10 @@ use std::time::Duration;
 use super::super::{escape_attr_display, fmt, fmt_into};
 use super::ClassSvgNode;
 use super::bounds::{include_path_bounds, include_xywh};
-use super::label::{class_html_label_max_width_px, class_html_label_metrics};
+use super::label::{
+    class_html_div_style, class_html_label_max_width_px, class_html_label_metrics,
+    render_class_html_label,
+};
 use super::rough::{class_rough_rect_stroke_path_and_bounds, class_rough_seed};
 
 #[derive(Debug, Clone, Copy)]
@@ -71,6 +74,18 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
     pub text_style: &'a TextStyle,
     pub html_calc_text_style: &'a TextStyle,
     pub line_height: f64,
+}
+
+pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
+    pub label_style: &'a str,
+    pub translate_y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub div_style: &'a str,
+    pub text: &'a str,
+    pub include_p: bool,
+    pub extra_span_class: Option<&'a str>,
+    pub span_style: Option<&'a str>,
 }
 
 pub(super) fn render_class_node_shell_open(
@@ -255,4 +270,75 @@ pub(super) fn measure_class_html_node_rows(
     }
 
     ClassHtmlNodeRows { rows, raw_height }
+}
+
+pub(super) fn render_class_html_node_label_group(
+    out: &mut String,
+    spec: &ClassHtmlNodeLabelGroupSpec<'_>,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
+        escape_attr_display(spec.label_style),
+        fmt(spec.translate_y),
+        fmt(spec.width),
+        fmt(spec.height),
+        escape_attr_display(spec.div_style)
+    );
+    render_class_html_label(
+        out,
+        "nodeLabel",
+        spec.text,
+        spec.include_p,
+        spec.extra_span_class,
+        spec.span_style,
+    );
+    out.push_str("</div></foreignObject></g>");
+}
+
+pub(super) fn render_class_html_node_rows_group(
+    out: &mut String,
+    group_class: &str,
+    group_x: f64,
+    group_y: f64,
+    rows_rendered: &ClassHtmlNodeRows,
+    line_height: f64,
+    node_style_attr: &str,
+) {
+    if rows_rendered.rows.is_empty() {
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({}, {})"/>"#,
+            group_class,
+            fmt(group_x),
+            fmt(group_y)
+        );
+        return;
+    }
+
+    let _ = write!(
+        out,
+        r#"<g class="{}" transform="translate({}, {})">"#,
+        group_class,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    for row in &rows_rendered.rows {
+        let div_style = class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
+        render_class_html_node_label_group(
+            out,
+            &ClassHtmlNodeLabelGroupSpec {
+                label_style: row.row_style.as_str(),
+                translate_y: row.y,
+                width: row.metrics.width.max(1.0),
+                height: row.metrics.height.max(line_height).max(1.0),
+                div_style: div_style.as_str(),
+                text: row.text.as_str(),
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: Some(node_style_attr),
+            },
+        );
+    }
+    out.push_str("</g>");
 }

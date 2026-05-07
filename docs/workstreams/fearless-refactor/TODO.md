@@ -108,8 +108,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Proposed boundaries:
   - render context and ids
   - class box geometry (bounds accumulation helpers, class node shell/basic-container emission,
-    and HTML row measurement now live in `class/bounds.rs` and `class/node.rs`; interface node
-    emission now lives in `class/interface.rs`)
+    HTML row measurement, and HTML label-group emission now live in `class/bounds.rs` and
+    `class/node.rs`; interface node emission now lives in `class/interface.rs`)
   - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
     now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`)
   - note rendering (note node emission now lives in `class/note.rs`)
