@@ -6,6 +6,8 @@ use super::*;
 
 type Rect = merman_core::geom::Box2;
 
+mod bounds;
+
 mod debug_svg;
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,

@@ -36,6 +36,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   layout owner.
 - Class renderer: split edge ids/classes, geometry/order, edge label/terminal emission, and shared
   HTML label helpers out of `svg/parity/class/render.rs`.
+- Class renderer: move SVG content-bounds accumulation helpers into
+  `svg/parity/class/bounds.rs`.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

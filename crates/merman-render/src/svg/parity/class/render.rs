@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
+use super::bounds::{include_path_bounds, include_path_d, include_xywh};
 use super::edge::{
     class_edge_dom_id, class_edge_dom_id_into, class_edge_label_center, class_edge_path_style,
     class_edge_pattern, class_edge_render_order, class_line_with_marker_offset_points,
@@ -218,59 +219,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
     // emit (using the exact same `d` strings we output for paths).
     let mut content_bounds: Option<Bounds> = None;
-    fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
-        // Match Chromium's `getBBox()` behavior: ignore placeholder boxes that should not affect
-        // the measured diagram bounds.
-        let w = (max_x - min_x).abs();
-        let h = (max_y - min_y).abs();
-        if (w < 1e-9 && h < 1e-9) || (w <= 0.1 + 1e-9 && h <= 0.1 + 1e-9) {
-            return;
-        }
-        if let Some(cur) = bounds.as_mut() {
-            cur.min_x = cur.min_x.min(min_x);
-            cur.min_y = cur.min_y.min(min_y);
-            cur.max_x = cur.max_x.max(max_x);
-            cur.max_y = cur.max_y.max(max_y);
-        } else {
-            *bounds = Some(Bounds {
-                min_x,
-                min_y,
-                max_x,
-                max_y,
-            });
-        }
-    }
-
-    fn include_xywh(bounds: &mut Option<Bounds>, x: f64, y: f64, w: f64, h: f64) {
-        include_rect(bounds, x, y, x + w, y + h);
-    }
-
-    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, dx: f64, dy: f64) {
-        if let Some(pb) = svg_path_bounds_from_d(d) {
-            include_rect(
-                bounds,
-                pb.min_x + dx,
-                pb.min_y + dy,
-                pb.max_x + dx,
-                pb.max_y + dy,
-            );
-        }
-    }
-
-    fn include_path_bounds(
-        bounds: &mut Option<Bounds>,
-        pb: &super::path_bounds::SvgPathBounds,
-        dx: f64,
-        dy: f64,
-    ) {
-        include_rect(
-            bounds,
-            pb.min_x + dx,
-            pb.min_y + dy,
-            pb.max_x + dx,
-            pb.max_y + dy,
-        );
-    }
 
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
