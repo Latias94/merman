@@ -162,6 +162,7 @@ Progress:
 - Shared sequence block message y-range and separator y-position helpers across
   loop/alt/par/critical variants.
 - Shared single-section sequence block emission for loop/opt/break variants.
+- Shared multi-section sequence block emission for alt/par variants.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

@@ -65,6 +65,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: share block message y-range and separator y-position helpers across
   loop/alt/par/critical variants.
 - Sequence renderer: share single-section loop/opt/break block emission through a common helper.
+- Sequence renderer: share multi-section alt/par block emission through a common helper.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.
