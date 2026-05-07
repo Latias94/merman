@@ -4,6 +4,7 @@ use super::*;
 
 mod activation;
 mod actors;
+mod blocks;
 mod css;
 mod debug;
 mod frames;
