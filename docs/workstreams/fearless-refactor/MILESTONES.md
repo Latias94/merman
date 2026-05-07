@@ -82,6 +82,8 @@ Progress:
   semantic JSON parsing remains stable for the compatibility API.
 - `packet` now has a typed render model consumed by render-layout and SVG render-model dispatch;
   semantic JSON parsing remains stable for the compatibility API.
+- `timeline` now has a typed render model consumed by render-layout and SVG render-model dispatch;
+  semantic JSON parsing remains stable for the compatibility API.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Kanban parent-vs-typed timing evidence is recorded in
@@ -94,6 +96,8 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_pie_typed_render_model.md`.
 - Packet parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_packet_typed_render_model.md`.
+- Timeline parent-vs-typed timing evidence is recorded in
+  `docs/performance/spotcheck_2026-05-08_timeline_typed_render_model.md`.
 - Same-machine baseline capture remains a process requirement for the next typed migration.
 
 Exit criteria:

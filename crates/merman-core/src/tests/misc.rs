@@ -367,6 +367,56 @@ accDescr: Packet accDescription
 }
 
 #[test]
+fn parse_timeline_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+timeline
+title Typed Timeline
+accTitle: Timeline accTitle
+accDescr: Timeline accDescription
+section Alpha
+Task 1: event 1: event 2
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "timeline");
+    match parsed.model {
+        RenderSemanticModel::Timeline(model) => {
+            assert_eq!(model.title.as_deref(), Some("Typed Timeline"));
+            assert_eq!(model.acc_title.as_deref(), Some("Timeline accTitle"));
+            assert_eq!(model.acc_descr.as_deref(), Some("Timeline accDescription"));
+            assert_eq!(model.sections.as_slice(), ["Alpha"]);
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].id, 0);
+            assert_eq!(model.tasks[0].section, "Alpha");
+            assert_eq!(model.tasks[0].task_type, "Alpha");
+            assert_eq!(model.tasks[0].task, "Task 1");
+            assert_eq!(model.tasks[0].events.as_slice(), ["event 1", "event 2"]);
+        }
+        other => panic!("timeline render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("timeline"));
+    assert_eq!(parsed_json.model["title"], json!("Typed Timeline"));
+    assert_eq!(parsed_json.model["sections"][0], json!("Alpha"));
+    assert_eq!(parsed_json.model["tasks"][0]["id"], json!(0));
+    assert_eq!(parsed_json.model["tasks"][0]["type"], json!("Alpha"));
+    assert_eq!(parsed_json.model["tasks"][0]["task"], json!("Task 1"));
+    assert_eq!(
+        parsed_json.model["tasks"][0]["events"],
+        json!(["event 1", "event 2"])
+    );
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

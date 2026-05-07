@@ -79,6 +79,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_packet_model_for_render` now returns `PacketDiagramRenderModel`, layout/SVG
   render-model dispatch consume it directly, and `parse_diagram_sync` keeps the semantic JSON
   payload stable.
+- [x] Move one moderate small diagram to a typed render model and record drift honestly.
+  Evidence: `parse_timeline_model_for_render` now returns `TimelineDiagramRenderModel`, layout/SVG
+  render-model dispatch consume it directly, and `parse_diagram_sync` keeps the semantic JSON
+  payload stable. The timing note records parse wins plus small layout/render midpoint drift.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -92,7 +96,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parent-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_pie_typed_render_model.md`. Packet status:
   parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_packet_typed_render_model.md`. Keep this item open for
+  `docs/performance/spotcheck_2026-05-08_packet_typed_render_model.md`. Timeline status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_timeline_typed_render_model.md`. Keep this item open for
   the next typed migration.
 
 ## P1: Text and Measurement Module Split

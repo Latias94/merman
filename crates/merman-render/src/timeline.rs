@@ -6,7 +6,7 @@ use crate::model::{
     TimelineTaskLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use serde::Deserialize;
+use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use std::borrow::Cow;
 
 const MAX_SECTIONS: i64 = 12;
@@ -20,36 +20,6 @@ const EVENT_GAP_Y: f64 = 10.0;
 
 const TITLE_Y: f64 = 20.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
-
-#[derive(Debug, Clone, Deserialize)]
-struct TimelineTaskModel {
-    #[allow(dead_code)]
-    id: i64,
-    section: String,
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    task_type: String,
-    task: String,
-    #[allow(dead_code)]
-    score: i64,
-    #[serde(default)]
-    events: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct TimelineModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[serde(default)]
-    sections: Vec<String>,
-    #[serde(default)]
-    tasks: Vec<TimelineTaskModel>,
-    title: Option<String>,
-    #[serde(rename = "type")]
-    diagram_type: String,
-}
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -398,12 +368,16 @@ pub fn layout_timeline_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
-    let model: TimelineModel = crate::json::from_value_ref(semantic)?;
-    let _ = (
-        model.acc_title.as_deref(),
-        model.acc_descr.as_deref(),
-        model.diagram_type.as_str(),
-    );
+    let model: TimelineDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_timeline_diagram_typed(&model, effective_config, measurer)
+}
+
+pub fn layout_timeline_diagram_typed(
+    model: &TimelineDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<TimelineDiagramLayout> {
+    let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
     let text_style = timeline_text_style(effective_config);
     let render_font_size = text_style.font_size;
@@ -489,7 +463,7 @@ pub fn layout_timeline_diagram(
 
         for (section_number, section_label) in model.sections.iter().enumerate() {
             let section_number = section_number as i64;
-            let tasks_for_section: Vec<&TimelineTaskModel> = model
+            let tasks_for_section: Vec<&TimelineRenderTask> = model
                 .tasks
                 .iter()
                 .filter(|t| t.section == *section_label)

@@ -1,14 +1,29 @@
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 
-#[derive(Debug, Clone)]
-struct TimelineTask {
-    id: i64,
-    section: String,
-    type_: String,
-    task: String,
-    score: i64,
-    events: Vec<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TimelineRenderTask {
+    pub id: i64,
+    pub section: String,
+    #[serde(rename = "type")]
+    pub task_type: String,
+    pub task: String,
+    pub score: i64,
+    #[serde(default)]
+    pub events: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct TimelineDiagramRenderModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub sections: Vec<String>,
+    #[serde(default)]
+    pub tasks: Vec<TimelineRenderTask>,
 }
 
 #[derive(Debug, Default)]
@@ -19,7 +34,7 @@ struct TimelineDb {
 
     current_section: String,
     sections: Vec<String>,
-    tasks: Vec<TimelineTask>,
+    tasks: Vec<TimelineRenderTask>,
     next_id: i64,
 }
 
@@ -36,10 +51,10 @@ impl TimelineDb {
     fn add_task(&mut self, period: &str) {
         let id = self.next_id;
         self.next_id += 1;
-        self.tasks.push(TimelineTask {
+        self.tasks.push(TimelineRenderTask {
             id,
             section: self.current_section.clone(),
-            type_: self.current_section.clone(),
+            task_type: self.current_section.clone(),
             task: period.to_string(),
             score: 0,
             events: Vec::new(),
@@ -56,6 +71,11 @@ impl TimelineDb {
         last.events.push(event.to_string());
         Ok(())
     }
+}
+
+enum TimelineParseOutput {
+    Empty,
+    Model(TimelineDiagramRenderModel),
 }
 
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
@@ -193,6 +213,30 @@ fn split_events_from_colon_whitespace(input: &str) -> Result<Vec<String>> {
 }
 
 pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    match parse_timeline_model(code, meta)? {
+        TimelineParseOutput::Empty => Ok(json!({})),
+        TimelineParseOutput::Model(model) => Ok(json!({
+            "type": meta.diagram_type,
+            "title": model.title,
+            "accTitle": model.acc_title,
+            "accDescr": model.acc_descr,
+            "sections": model.sections,
+            "tasks": model.tasks,
+        })),
+    }
+}
+
+pub fn parse_timeline_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<TimelineDiagramRenderModel> {
+    match parse_timeline_model(code, meta)? {
+        TimelineParseOutput::Empty => Ok(TimelineDiagramRenderModel::default()),
+        TimelineParseOutput::Model(model) => Ok(model),
+    }
+}
+
+fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelineParseOutput> {
     let mut db = TimelineDb::default();
     db.clear();
 
@@ -211,14 +255,14 @@ pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 let rest = t["timeline".len()..].trim_start();
                 if !rest.is_empty() {
                     return Err(Error::DiagramParse {
-                        diagram_type: "timeline".to_string(),
+                        diagram_type: meta.diagram_type.clone(),
                         message: "unexpected content after timeline header".to_string(),
                     });
                 }
                 continue;
             }
             return Err(Error::DiagramParse {
-                diagram_type: "timeline".to_string(),
+                diagram_type: meta.diagram_type.clone(),
                 message: "expected timeline header".to_string(),
             });
         }
@@ -286,37 +330,33 @@ pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
             continue;
         }
         return Err(Error::DiagramParse {
-            diagram_type: "timeline".to_string(),
+            diagram_type: meta.diagram_type.clone(),
             message: format!("unrecognized statement: {trimmed}"),
         });
     }
 
     if !header_seen {
-        return Ok(json!({}));
+        return Ok(TimelineParseOutput::Empty);
     }
 
-    let tasks_json: Vec<Value> = db
-        .tasks
-        .into_iter()
-        .map(|t| {
-            json!({
-                "id": t.id,
-                "section": t.section,
-                "type": t.type_,
-                "task": t.task,
-                "score": t.score,
-                "events": t.events,
-            })
-        })
-        .collect();
-
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": if db.title.is_empty() { None::<String> } else { Some(db.title) },
-        "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title) },
-        "accDescr": if db.acc_descr.is_empty() { None::<String> } else { Some(db.acc_descr) },
-        "sections": db.sections,
-        "tasks": tasks_json,
+    Ok(TimelineParseOutput::Model(TimelineDiagramRenderModel {
+        title: if db.title.is_empty() {
+            None
+        } else {
+            Some(db.title)
+        },
+        acc_title: if db.acc_title.is_empty() {
+            None
+        } else {
+            Some(db.acc_title)
+        },
+        acc_descr: if db.acc_descr.is_empty() {
+            None
+        } else {
+            Some(db.acc_descr)
+        },
+        sections: db.sections,
+        tasks: db.tasks,
     }))
 }
 

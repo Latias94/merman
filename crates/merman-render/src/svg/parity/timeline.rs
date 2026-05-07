@@ -1,4 +1,5 @@
 use super::*;
+use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
 fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
@@ -179,12 +180,32 @@ pub(super) fn render_timeline_diagram_svg(
     layout: &TimelineDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let _ = semantic;
+    render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
+}
+
+pub(super) fn render_timeline_diagram_svg_model(
+    layout: &TimelineDiagramLayout,
+    _model: &TimelineDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
+}
+
+fn render_timeline_diagram_svg_inner(
+    layout: &TimelineDiagramLayout,
+    effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let _ = (semantic, effective_config);
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
