@@ -32,6 +32,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   boundaries while keeping existing `crate::text::*` callers stable.
 - Render text overrides: add a `text/overrides.rs` lookup boundary for generated text override
   data and colocate flowchart override lookup tests with it.
+- Timeline: colocate long-word SVG bbox override lookup and regression tests with the timeline
+  layout owner.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

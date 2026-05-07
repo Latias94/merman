@@ -1,13 +1,5 @@
 use super::*;
 use crate::flowchart::flowchart_label_metrics_for_layout;
-use merman_core::{Engine, ParseOptions};
-use std::path::PathBuf;
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-}
 
 #[test]
 fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
@@ -398,57 +390,6 @@ fn svg_title_bbox_vertical_extents_use_courier_profile_for_courier_stacks() {
     assert_ne!(
         svg_title_bbox_vertical_extents_px(&courier_stack),
         svg_title_bbox_vertical_extents_px(&trebuchet)
-    );
-}
-
-#[test]
-fn generated_timeline_svg_override_paths_cover_long_word_bbox() {
-    assert_eq!(
-        crate::generated::timeline_text_overrides_11_12_2::
-            lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
-                "\"trebuchet ms\", verdana, arial, sans-serif",
-                16.0,
-                "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
-            ),
-        Some((235.3203125, 235.3203125))
-    );
-    assert_eq!(
-        crate::generated::timeline_text_overrides_11_12_2::
-            lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
-                "",
-                16.0,
-                "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
-            ),
-        Some((235.3203125, 235.3203125))
-    );
-    assert_eq!(
-        crate::generated::timeline_text_overrides_11_12_2::
-            lookup_timeline_svg_bbox_x_with_ascii_overhang_px("courier", 16.0, "Line 2"),
-        None
-    );
-}
-
-#[test]
-fn timeline_long_word_wrap_keeps_upstream_activity_line_extent() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("timeline")
-        .join("upstream_long_word_wrap.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
-    let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
-        panic!("expected TimelineDiagram layout");
-    };
-
-    let actual = layout.activity_line.x2;
-    assert!(
-        (actual - 920.640625).abs() < 0.0001,
-        "expected long-word timeline activity line extent to stay aligned with upstream, got {actual}"
     );
 }
 

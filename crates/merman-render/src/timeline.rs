@@ -350,6 +350,15 @@ fn bounds_from_nodes_and_lines<'a, 'b>(
     }
 }
 
+fn timeline_svg_bbox_x_with_ascii_overhang_override_px(
+    font_key: &str,
+    font_size_px: f64,
+    text: &str,
+) -> Option<(f64, f64)> {
+    crate::generated::timeline_text_overrides_11_12_2::
+        lookup_timeline_svg_bbox_x_with_ascii_overhang_px(font_key, font_size_px, text)
+}
+
 fn expand_bounds_for_node_text(
     min_x: &mut f64,
     _min_y: &mut f64,
@@ -372,13 +381,12 @@ fn expand_bounds_for_node_text(
             // Timeline node labels can overflow the node shape. Mermaid computes the final
             // viewport from SVG `getBBox()`, which includes glyph overhang and can be asymmetric
             // even for ASCII strings (observed in upstream fixtures).
-            let (left, right) = crate::generated::timeline_text_overrides_11_12_2::
-                lookup_timeline_svg_bbox_x_with_ascii_overhang_px(
-                    style.font_family.as_deref().unwrap_or_default(),
-                    style.font_size,
-                    line,
-                )
-                .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style));
+            let (left, right) = timeline_svg_bbox_x_with_ascii_overhang_override_px(
+                style.font_family.as_deref().unwrap_or_default(),
+                style.font_size,
+                line,
+            )
+            .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style));
             *min_x = (*min_x).min(anchor_x - left);
             *max_x = (*max_x).max(anchor_x + right);
         }
@@ -733,4 +741,65 @@ pub fn layout_timeline_diagram(
         title_x,
         title_y: TITLE_Y,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_core::{Engine, ParseOptions};
+    use std::path::PathBuf;
+
+    const LONG_WORD: &str = "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious";
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+    }
+
+    #[test]
+    fn svg_override_paths_cover_long_word_bbox() {
+        assert_eq!(
+            timeline_svg_bbox_x_with_ascii_overhang_override_px(
+                "\"trebuchet ms\", verdana, arial, sans-serif",
+                16.0,
+                LONG_WORD,
+            ),
+            Some((235.3203125, 235.3203125))
+        );
+        assert_eq!(
+            timeline_svg_bbox_x_with_ascii_overhang_override_px("", 16.0, LONG_WORD),
+            Some((235.3203125, 235.3203125))
+        );
+        assert_eq!(
+            timeline_svg_bbox_x_with_ascii_overhang_override_px("courier", 16.0, "Line 2"),
+            None
+        );
+    }
+
+    #[test]
+    fn long_word_wrap_keeps_upstream_activity_line_extent() {
+        let path = workspace_root()
+            .join("fixtures")
+            .join("timeline")
+            .join("upstream_long_word_wrap.mmd");
+        let text = std::fs::read_to_string(&path).expect("fixture");
+
+        let engine = Engine::new();
+        let parsed =
+            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        let out =
+            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
+        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
+            panic!("expected TimelineDiagram layout");
+        };
+
+        let actual = layout.activity_line.x2;
+        assert!(
+            (actual - 920.640625).abs() < 0.0001,
+            "expected long-word timeline activity line extent to stay aligned with upstream, got {actual}"
+        );
+    }
 }

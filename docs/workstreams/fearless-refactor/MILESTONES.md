@@ -115,6 +115,7 @@ Progress:
   `text/metrics.rs` while preserving the existing `crate::text::*` call surface.
 - Introduced `text/overrides.rs` as the text override lookup boundary and moved flowchart text
   override lookup tests next to that owner.
+- Moved timeline long-word override lookup and regression tests next to `timeline.rs`.
 
 Exit criteria:
 
