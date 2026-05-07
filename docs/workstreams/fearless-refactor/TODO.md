@@ -75,6 +75,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/markdown.rs` (tokenization done)
   - `text/markdown_label.rs` (HTML/XHTML fragment rendering done)
   - `text/measure.rs` (trait boundary done)
+  - `text/deterministic.rs` (deterministic fallback measurer done)
   - `text/svg_metrics.rs` (done)
   - `text/flowchart_parity.rs` (done)
   - `text/metrics.rs`
@@ -88,7 +89,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: tokenization and HTML/XHTML fragment tests now live in `text/markdown.rs` and
   `text/markdown_label.rs`; measurement/layout-spanning Markdown tests remain in `text/tests.rs`.
 - [ ] Move override lookup tests next to override code.
-- [ ] Separate "browser compatibility measurement" from "deterministic fallback measurement".
+- [x] Separate "browser compatibility measurement" from "deterministic fallback measurement".
+  Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
+  compatibility measurement remains isolated behind `VendoredFontMetricsTextMeasurer`.
 - [ ] Document when a text width override is allowed.
   Rule: override only after a fixture/probe proves upstream browser/font behavior.
 

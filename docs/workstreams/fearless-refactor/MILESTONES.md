@@ -107,6 +107,8 @@ Progress:
 - Moved markdown-only tests next to the split Markdown modules; cross-boundary measurement tests
   stay in the shared text test module.
 - Extracted the `TextMeasurer` trait boundary into `text/measure.rs`.
+- Extracted deterministic fallback text measurement and wrapping into `text/deterministic.rs`,
+  leaving browser/font compatibility measurement behind the vendored measurer boundary.
 
 Exit criteria:
 
