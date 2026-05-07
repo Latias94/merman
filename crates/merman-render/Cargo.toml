@@ -34,6 +34,3 @@ unicode-width.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
-
-[features]
-flowchart_root_pack = []

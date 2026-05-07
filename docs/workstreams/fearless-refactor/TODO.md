@@ -26,10 +26,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - simple mechanical lints (`or_default`, `then_some`, `vec![]`, `with_capacity`, `?`).
   - render context structs replacing long parameter lists in flowchart/root SVG helpers.
   - all-target test-module ordering fixes and `xtask` helper lint cleanup.
-- [ ] Add a documented "fast local refactor gate" command set.
+- [x] Add a documented "fast local refactor gate" command set.
   Gap check: confirm which nextest packages and snapshot gates give the best signal per minute.
-- [ ] Audit feature flags and remove or document stale experimental flags.
-  Candidates: `flowchart_root_pack`.
+  Evidence: `README.md` now documents core, render, public API, feature-flag, and strict release
+  gates.
+- [x] Audit feature flags and remove or document stale experimental flags.
+  Evidence: `flowchart_root_pack` was removed; remaining feature flags are documented in
+  `README.md`.
 
 ## P1: Typed Render Pipeline Cleanup
 

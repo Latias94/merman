@@ -79,6 +79,35 @@ cargo bench -p merman --features render
 
 Use narrower `xtask compare-*` commands when working on one diagram family.
 
+## Fast Local Refactor Gates
+
+Use the narrowest gate that still covers the changed ownership boundary:
+
+- Core parser/API changes:
+  `cargo fmt`, `cargo nextest run -p merman-core`,
+  `cargo clippy -p merman-core --all-targets -- -D warnings`.
+- Render layout/SVG changes:
+  `cargo fmt`, `cargo nextest run -p merman-render`,
+  `cargo clippy -p merman-render --all-targets -- -D warnings`, plus a targeted
+  `cargo run -p xtask -- compare-svg-xml --diagram <name> --check`.
+- Public API or feature-flag changes:
+  add `cargo check --workspace --all-features` and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
+- Release-boundary changes:
+  use `cargo run -p xtask -- verify --strict`.
+
+## Feature Flag Audit
+
+Current feature flags:
+
+- `merman/render`: keep. This is the public opt-in boundary for layout/SVG dependencies.
+- `merman/raster`: keep. This is the public opt-in boundary for PNG/JPG/PDF dependencies.
+- `merman-core/large-features`: keep for now. It controls the full detector surface versus the
+  tiny detector surface and needs a separate public API decision before removal.
+- `dugong/dagreish`: keep. It exposes the parity-oriented Dagre pipeline variant.
+- `merman-render/flowchart_root_pack`: removed. The gated code was an experimental debug-only
+  post-layout packing path that Mermaid does not apply and default parity paths did not use.
+
 ## Priority Model
 
 Use this order when choosing work:

@@ -165,11 +165,6 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(feature = "flowchart_root_pack")]
-fn edge_label_leaf_id(edge: &FlowEdge) -> String {
-    format!("edge-label::{}", edge.id)
-}
-
 fn lowest_common_parent(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     a: &str,
@@ -1545,13 +1540,6 @@ fn layout_flowchart_v2_with_model(
         std::collections::HashMap::new();
     let mut edge_override_to_cluster: std::collections::HashMap<String, Option<String>> =
         std::collections::HashMap::new();
-    #[cfg(feature = "flowchart_root_pack")]
-    let mut edge_packed_shift: std::collections::HashMap<String, (f64, f64)> =
-        std::collections::HashMap::new();
-    #[cfg(not(feature = "flowchart_root_pack"))]
-    let edge_packed_shift: std::collections::HashMap<String, (f64, f64)> =
-        std::collections::HashMap::new();
-
     let mut leaf_node_ids: std::collections::HashSet<String> = model
         .nodes
         .iter()
@@ -1871,394 +1859,6 @@ fn layout_flowchart_v2_with_model(
                 .entry(p.to_string())
                 .or_default()
                 .push(id.clone());
-        }
-    }
-
-    // Mermaid does not apply an extra post-layout packing step for disconnected subgraphs.
-    // Keep the experimental packing logic behind a feature flag for debugging only.
-    #[cfg(feature = "flowchart_root_pack")]
-    {
-        let subgraph_ids: std::collections::HashSet<&str> =
-            model.subgraphs.iter().map(|s| s.id.as_str()).collect();
-
-        let mut subgraph_has_parent: std::collections::HashSet<&str> =
-            std::collections::HashSet::new();
-        for sg in &model.subgraphs {
-            for child in &sg.nodes {
-                if subgraph_ids.contains(child.as_str()) {
-                    subgraph_has_parent.insert(child.as_str());
-                }
-            }
-        }
-
-        fn collect_descendant_leaf_nodes<'a>(
-            id: &'a str,
-            subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
-            subgraph_ids: &std::collections::HashSet<&'a str>,
-            out: &mut std::collections::HashSet<String>,
-            visiting: &mut std::collections::HashSet<&'a str>,
-        ) {
-            if !visiting.insert(id) {
-                return;
-            }
-            let Some(sg) = subgraphs_by_id.get(id) else {
-                visiting.remove(id);
-                return;
-            };
-            for member in &sg.nodes {
-                if subgraph_ids.contains(member.as_str()) {
-                    collect_descendant_leaf_nodes(
-                        member,
-                        subgraphs_by_id,
-                        subgraph_ids,
-                        out,
-                        visiting,
-                    );
-                } else {
-                    out.insert(member.clone());
-                }
-            }
-            visiting.remove(id);
-        }
-
-        fn collect_descendant_cluster_ids<'a>(
-            id: &'a str,
-            subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
-            subgraph_ids: &std::collections::HashSet<&'a str>,
-            out: &mut std::collections::HashSet<String>,
-            visiting: &mut std::collections::HashSet<&'a str>,
-        ) {
-            if !visiting.insert(id) {
-                return;
-            }
-            let Some(sg) = subgraphs_by_id.get(id) else {
-                visiting.remove(id);
-                return;
-            };
-            out.insert(id.to_string());
-            for member in &sg.nodes {
-                if subgraph_ids.contains(member.as_str()) {
-                    collect_descendant_cluster_ids(
-                        member,
-                        subgraphs_by_id,
-                        subgraph_ids,
-                        out,
-                        visiting,
-                    );
-                }
-            }
-            visiting.remove(id);
-        }
-
-        fn has_external_edges(
-            leaves: &std::collections::HashSet<String>,
-            edges: &[FlowEdge],
-        ) -> bool {
-            for e in edges {
-                let in_from = leaves.contains(&e.from);
-                let in_to = leaves.contains(&e.to);
-                if in_from ^ in_to {
-                    return true;
-                }
-            }
-            false
-        }
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum PackAxis {
-            X,
-            Y,
-        }
-
-        let pack_axis = match diagram_direction.as_str() {
-            "LR" | "RL" => PackAxis::Y,
-            _ => PackAxis::X,
-        };
-
-        let mut pack_rects: std::collections::HashMap<String, Rect> =
-            std::collections::HashMap::new();
-        let mut pack_visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-        fn compute_pack_rect(
-            id: &str,
-            subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
-            leaf_rects: &std::collections::HashMap<String, Rect>,
-            extra_children: &std::collections::HashMap<String, Vec<String>>,
-            extracted_cluster_rects: &std::collections::HashMap<String, Rect>,
-            pack_rects: &mut std::collections::HashMap<String, Rect>,
-            pack_visiting: &mut std::collections::HashSet<String>,
-            measurer: &dyn TextMeasurer,
-            text_style: &TextStyle,
-            title_wrapping_width: f64,
-            wrap_mode: WrapMode,
-            config: &MermaidConfig,
-            math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-            cluster_padding: f64,
-            title_total_margin: f64,
-        ) -> Option<Rect> {
-            if let Some(r) = pack_rects.get(id).copied() {
-                return Some(r);
-            }
-            if !pack_visiting.insert(id.to_string()) {
-                return None;
-            }
-            if let Some(r) = extracted_cluster_rects.get(id).copied() {
-                pack_visiting.remove(id);
-                pack_rects.insert(id.to_string(), r);
-                return Some(r);
-            }
-            let Some(sg) = subgraphs_by_id.get(id) else {
-                pack_visiting.remove(id);
-                return None;
-            };
-
-            let mut content: Option<Rect> = None;
-            for member in &sg.nodes {
-                let member_rect = if let Some(r) = leaf_rects.get(member).copied() {
-                    Some(r)
-                } else if subgraphs_by_id.contains_key(member) {
-                    compute_pack_rect(
-                        member,
-                        subgraphs_by_id,
-                        leaf_rects,
-                        extra_children,
-                        extracted_cluster_rects,
-                        pack_rects,
-                        pack_visiting,
-                        measurer,
-                        text_style,
-                        title_wrapping_width,
-                        wrap_mode,
-                        config,
-                        math_renderer,
-                        cluster_padding,
-                        title_total_margin,
-                    )
-                } else {
-                    None
-                };
-
-                if let Some(r) = member_rect {
-                    if let Some(ref mut cur) = content {
-                        cur.union(r);
-                    } else {
-                        content = Some(r);
-                    }
-                }
-            }
-
-            if let Some(extra) = extra_children.get(id) {
-                for child in extra {
-                    if let Some(r) = leaf_rects.get(child).copied() {
-                        if let Some(ref mut cur) = content {
-                            cur.union(r);
-                        } else {
-                            content = Some(r);
-                        }
-                    }
-                }
-            }
-
-            let label_type = sg.label_type.as_deref().unwrap_or("text");
-            let title_width_limit = Some(title_wrapping_width);
-            let title_metrics = flowchart_label_metrics_for_layout(
-                measurer,
-                &sg.title,
-                label_type,
-                text_style,
-                title_width_limit,
-                wrap_mode,
-                config,
-                math_renderer,
-            );
-
-            let mut rect = if let Some(r) = content {
-                r
-            } else {
-                Rect::from_center(
-                    0.0,
-                    0.0,
-                    title_metrics.width.max(1.0),
-                    title_metrics.height.max(1.0),
-                )
-            };
-
-            rect.pad(cluster_padding);
-
-            // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
-            // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
-            // `title_width + cluster_padding` when the title is wider than the content.
-            let min_width = title_metrics.width.max(1.0) + cluster_padding;
-            if rect.width() < min_width {
-                let (cx, cy) = rect.center();
-                rect = Rect::from_center(cx, cy, min_width, rect.height());
-            }
-
-            if title_total_margin > 0.0 {
-                let (cx, cy) = rect.center();
-                rect = Rect::from_center(cx, cy, rect.width(), rect.height() + title_total_margin);
-            }
-
-            let min_height = title_metrics.height.max(1.0) + title_total_margin;
-            if rect.height() < min_height {
-                let (cx, cy) = rect.center();
-                rect = Rect::from_center(cx, cy, rect.width(), min_height);
-            }
-
-            pack_visiting.remove(id);
-            pack_rects.insert(id.to_string(), rect);
-            Some(rect)
-        }
-
-        struct PackItem {
-            rect: Rect,
-            members: Vec<String>,
-            internal_edge_ids: Vec<String>,
-            cluster_ids: Vec<String>,
-        }
-
-        let mut items: Vec<PackItem> = Vec::new();
-        for sg in &model.subgraphs {
-            if subgraph_has_parent.contains(sg.id.as_str()) {
-                continue;
-            }
-
-            let mut leaves: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut visiting: std::collections::HashSet<&str> = std::collections::HashSet::new();
-            collect_descendant_leaf_nodes(
-                &sg.id,
-                &subgraphs_by_id,
-                &subgraph_ids,
-                &mut leaves,
-                &mut visiting,
-            );
-            if leaves.is_empty() {
-                continue;
-            }
-
-            // Treat cluster ids as part of the pack-membership boundary when detecting external
-            // edges. Mermaid flowcharts allow edges to reference subgraph ids directly (cluster
-            // nodes). If we only consider leaf nodes, edges like `X --> Y` would incorrectly mark
-            // both top-level clusters as "isolated" and the packing step would separate them,
-            // diverging from Mermaid's Dagre layout.
-            let mut cluster_ids_set: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-            let mut cluster_visiting: std::collections::HashSet<&str> =
-                std::collections::HashSet::new();
-            collect_descendant_cluster_ids(
-                &sg.id,
-                &subgraphs_by_id,
-                &subgraph_ids,
-                &mut cluster_ids_set,
-                &mut cluster_visiting,
-            );
-
-            let mut membership_endpoints: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-            membership_endpoints.extend(leaves.iter().cloned());
-            membership_endpoints.extend(cluster_ids_set.iter().cloned());
-
-            if has_external_edges(&membership_endpoints, &render_edges) {
-                continue;
-            }
-
-            let Some(rect) = compute_pack_rect(
-                &sg.id,
-                &subgraphs_by_id,
-                &leaf_rects,
-                &extra_children,
-                &extracted_cluster_rects,
-                &mut pack_rects,
-                &mut pack_visiting,
-                measurer,
-                &text_style,
-                cluster_title_wrapping_width,
-                node_wrap_mode,
-                effective_config,
-                math_renderer,
-                cluster_padding,
-                title_total_margin,
-            ) else {
-                continue;
-            };
-
-            let mut members = leaves.iter().cloned().collect::<Vec<_>>();
-            if let Some(extra) = extra_children.get(&sg.id) {
-                members.extend(extra.iter().cloned());
-            }
-
-            // Ensure internal labeled edge nodes participate in translation.
-            let mut internal_edge_ids: Vec<String> = Vec::new();
-            for e in &render_edges {
-                if leaves.contains(&e.from) && leaves.contains(&e.to) {
-                    internal_edge_ids.push(e.id.clone());
-                    if edge_label_is_non_empty(e) {
-                        members.push(edge_label_leaf_id(e));
-                    }
-                }
-            }
-
-            let mut cluster_ids = cluster_ids_set.into_iter().collect::<Vec<_>>();
-            cluster_ids.sort();
-
-            items.push(PackItem {
-                rect,
-                members,
-                internal_edge_ids,
-                cluster_ids,
-            });
-        }
-
-        if !items.is_empty() {
-            items.sort_by(|a, b| match pack_axis {
-                PackAxis::X => a.rect.min_x().total_cmp(&b.rect.min_x()),
-                PackAxis::Y => a.rect.min_y().total_cmp(&b.rect.min_y()),
-            });
-
-            let mut cursor = match pack_axis {
-                PackAxis::X => items.first().unwrap().rect.min_x(),
-                PackAxis::Y => items.first().unwrap().rect.min_y(),
-            };
-
-            for item in items {
-                let (cx, cy) = item.rect.center();
-                let desired_center = match pack_axis {
-                    PackAxis::X => cursor + item.rect.width() / 2.0,
-                    PackAxis::Y => cursor + item.rect.height() / 2.0,
-                };
-                let (dx, dy) = match pack_axis {
-                    PackAxis::X => (desired_center - cx, 0.0),
-                    PackAxis::Y => (0.0, desired_center - cy),
-                };
-
-                if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
-                    for id in &item.members {
-                        if let Some((x, y)) = base_pos.get_mut(id) {
-                            *x += dx;
-                            *y += dy;
-                        }
-                        if let Some(r) = leaf_rects.get_mut(id) {
-                            r.translate(dx, dy);
-                        }
-                    }
-                    for cid in &item.cluster_ids {
-                        if let Some(r) = extracted_cluster_rects.get_mut(cid) {
-                            r.translate(dx, dy);
-                        }
-                        if let Some(r) = cluster_rects_from_graph.get_mut(cid) {
-                            r.translate(dx, dy);
-                        }
-                    }
-                    for edge_id in &item.internal_edge_ids {
-                        edge_packed_shift.insert(edge_id.clone(), (dx, dy));
-                    }
-                }
-
-                cursor += match pack_axis {
-                    PackAxis::X => item.rect.width() + nodesep,
-                    PackAxis::Y => item.rect.height() + nodesep,
-                };
-            }
         }
     }
 
@@ -2743,66 +2343,59 @@ fn layout_flowchart_v2_with_model(
 
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
     for e in &render_edges {
-        let (dx, dy) = edge_packed_shift.get(&e.id).copied().unwrap_or((0.0, 0.0));
-        let (
-            mut points,
-            mut label_pos,
-            label_pos_already_shifted,
-            mut from_cluster,
-            mut to_cluster,
-        ) = if let Some(points) = edge_override_points.get(&e.id) {
-            let from_cluster = edge_override_from_cluster
-                .get(&e.id)
-                .cloned()
-                .unwrap_or(None);
-            let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
-            (
-                points.clone(),
-                edge_override_label.get(&e.id).cloned().unwrap_or(None),
-                false,
-                from_cluster,
-                to_cluster,
-            )
-        } else {
-            let (v, w) = edge_endpoints_by_id
-                .get(&e.id)
-                .cloned()
-                .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
-            let edge_key = edge_key_by_id
-                .get(&e.id)
-                .map(String::as_str)
-                .unwrap_or(e.id.as_str());
-            let Some(label) = g.edge(&v, &w, Some(edge_key)) else {
-                return Err(Error::InvalidModel {
-                    message: format!("missing layout edge {}", e.id),
-                });
+        let (points, label_pos, mut from_cluster, mut to_cluster) =
+            if let Some(points) = edge_override_points.get(&e.id) {
+                let from_cluster = edge_override_from_cluster
+                    .get(&e.id)
+                    .cloned()
+                    .unwrap_or(None);
+                let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
+                (
+                    points.clone(),
+                    edge_override_label.get(&e.id).cloned().unwrap_or(None),
+                    from_cluster,
+                    to_cluster,
+                )
+            } else {
+                let (v, w) = edge_endpoints_by_id
+                    .get(&e.id)
+                    .cloned()
+                    .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
+                let edge_key = edge_key_by_id
+                    .get(&e.id)
+                    .map(String::as_str)
+                    .unwrap_or(e.id.as_str());
+                let Some(label) = g.edge(&v, &w, Some(edge_key)) else {
+                    return Err(Error::InvalidModel {
+                        message: format!("missing layout edge {}", e.id),
+                    });
+                };
+                let from_cluster = label
+                    .extras
+                    .get("fromCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                let to_cluster = label
+                    .extras
+                    .get("toCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                let points = label
+                    .points
+                    .iter()
+                    .map(|p| LayoutPoint { x: p.x, y: p.y })
+                    .collect::<Vec<_>>();
+                let label_pos = match (label.x, label.y) {
+                    (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
+                        Some(LayoutLabel {
+                            x,
+                            y,
+                            width: label.width,
+                            height: label.height,
+                        })
+                    }
+                    _ => None,
+                };
+                (points, label_pos, from_cluster, to_cluster)
             };
-            let from_cluster = label
-                .extras
-                .get("fromCluster")
-                .and_then(|v| v.as_str().map(|s| s.to_string()));
-            let to_cluster = label
-                .extras
-                .get("toCluster")
-                .and_then(|v| v.as_str().map(|s| s.to_string()));
-            let points = label
-                .points
-                .iter()
-                .map(|p| LayoutPoint { x: p.x, y: p.y })
-                .collect::<Vec<_>>();
-            let label_pos = match (label.x, label.y) {
-                (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
-                    Some(LayoutLabel {
-                        x,
-                        y,
-                        width: label.width,
-                        height: label.height,
-                    })
-                }
-                _ => None,
-            };
-            (points, label_pos, false, from_cluster, to_cluster)
-        };
 
         // Match Mermaid's dagre adapter: self-loop special edges on group nodes are annotated with
         // `fromCluster` / `toCluster` so downstream renderers can clip routes to the cluster
@@ -2814,18 +2407,6 @@ fn layout_flowchart_v2_with_model(
             to_cluster = Some(e.to.clone());
         }
 
-        if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
-            for p in &mut points {
-                p.x += dx;
-                p.y += dy;
-            }
-            if !label_pos_already_shifted {
-                if let Some(l) = label_pos.as_mut() {
-                    l.x += dx;
-                    l.y += dy;
-                }
-            }
-        }
         out_edges.push(LayoutEdge {
             id: e.id.clone(),
             from: e.from.clone(),

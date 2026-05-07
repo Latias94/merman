@@ -25,6 +25,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Core/render API: removed the obsolete `parse_diagram_for_render_sync` compatibility API and its
   async alias, plus the old `mindmap` / `stateDiagram` JSON-for-render helper paths.
+- Render feature flags: removed the stale `merman-render/flowchart_root_pack` experimental debug
+  feature and its disabled post-layout packing code.
 
 ## [0.4.0] - 2026-03-12
 
