@@ -129,7 +129,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - loops/alt/par/rect blocks (loop/alt/par/critical block collection, label wrapping,
     loop text emission, frame range helpers, shared frame/label-box emission, and shared
     message y-range/separator helpers now live in `sequence/blocks.rs`; loop/opt/break share
-    single-section block emission; alt/par share multi-section block emission)
+    single-section block emission; alt/par share multi-section block emission; critical block
+    emission owns a dedicated helper for its Mermaid-specific layout quirks)
   - activation rendering (precomputation and group emission now live in
     `sequence/activation.rs`)
   - viewport/bounds

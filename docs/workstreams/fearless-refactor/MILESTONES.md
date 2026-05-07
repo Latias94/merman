@@ -163,6 +163,8 @@ Progress:
   loop/alt/par/critical variants.
 - Shared single-section sequence block emission for loop/opt/break variants.
 - Shared multi-section sequence block emission for alt/par variants.
+- Extracted critical sequence block emission into `svg/parity/sequence/blocks.rs`, keeping its
+  multi-section frame widening and single-section header wrap behavior localized.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

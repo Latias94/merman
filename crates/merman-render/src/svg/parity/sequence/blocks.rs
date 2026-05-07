@@ -571,6 +571,131 @@ pub(super) fn render_sectioned_sequence_block(
     out.push_str("</g>");
 }
 
+pub(super) fn render_critical_sequence_block(
+    out: &mut String,
+    sections: &[AltSection],
+    default_frame_x1: f64,
+    default_frame_x2: f64,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    label_box_height: f64,
+    box_text_margin: f64,
+    measurer: &dyn TextMeasurer,
+    loop_text_style: &TextStyle,
+) {
+    if sections.is_empty() {
+        return;
+    }
+
+    let Some((min_y, max_y)) =
+        section_message_y_range(sections, edges_by_id, nodes_by_id, msg_endpoints, false)
+    else {
+        return;
+    };
+
+    let (mut frame_x1, frame_x2, min_left) = frame_x_from_message_ids(
+        sections.iter().flat_map(|s| s.message_ids.iter()),
+        msg_endpoints,
+        actor_nodes_by_id,
+        edges_by_id,
+        nodes_by_id,
+    )
+    .unwrap_or((default_frame_x1, default_frame_x2, f64::INFINITY));
+    if sections.len() > 1 && min_left.is_finite() {
+        // Mermaid's `critical` w/ `option` sections widens the frame to the left.
+        frame_x1 = frame_x1.min(min_left - 9.0);
+    }
+
+    let header_offset = if sections
+        .first()
+        .is_some_and(|s| s.raw_label.trim().is_empty())
+    {
+        (79.0 - label_box_height).max(0.0)
+    } else if sections.len() > 1 {
+        // Mermaid does not apply the wrap height adjustment for multi-section
+        // `critical` blocks (those with one or more `option` sections).
+        79.0
+    } else {
+        // Mermaid's `adjustLoopHeightForWrap(...)` expands the header height when the
+        // section label wraps to multiple lines. This affects the frame's top y.
+        let label_text = display_block_label(&sections[0].raw_label, true)
+            .unwrap_or_else(|| "\u{200B}".to_string());
+        let label_box_right = frame_x1 + 50.0;
+        let max_w = (frame_x2 - label_box_right).max(0.0);
+        let wrapped = wrap_svg_text_lines(&label_text, measurer, loop_text_style, Some(max_w));
+        let extra_lines = wrapped.len().saturating_sub(1) as f64;
+        let extra_per_line =
+            (sequence_text_overrides::sequence_text_line_step_px(loop_text_style.font_size)
+                - box_text_margin)
+                .max(0.0);
+        79.0 + extra_lines * extra_per_line
+    };
+    let frame_y1 = min_y - header_offset;
+    let frame_y2 = max_y + 10.0;
+
+    out.push_str(r#"<g>"#);
+
+    // frame
+    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
+
+    // separators (dashed)
+    let dash_x1 = frame_x1;
+    let dash_x2 = frame_x2;
+    let sep_ys = section_separator_ys(sections, min_y, edges_by_id, nodes_by_id, msg_endpoints);
+    for y in &sep_ys {
+        let _ = write!(
+            out,
+            r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
+            x1 = fmt(dash_x1),
+            x2 = fmt(dash_x2),
+            y = fmt(*y)
+        );
+    }
+
+    // label box + label text
+    write_block_label_box(out, frame_x1, frame_y1, "critical");
+
+    // section labels
+    let label_box_right = frame_x1 + 50.0;
+    let main_text_x = (label_box_right + frame_x2) / 2.0;
+    let center_text_x = (frame_x1 + frame_x2) / 2.0;
+    for (i, sec) in sections.iter().enumerate() {
+        let Some(label_text) = display_block_label(&sec.raw_label, i == 0) else {
+            continue;
+        };
+        if i == 0 {
+            let y = frame_y1 + 18.0;
+            let max_w = (frame_x2 - label_box_right).max(0.0);
+            write_loop_text_lines(
+                out,
+                measurer,
+                loop_text_style,
+                main_text_x,
+                y,
+                Some(max_w),
+                &label_text,
+                true,
+            );
+            continue;
+        }
+        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        write_loop_text_lines(
+            out,
+            measurer,
+            loop_text_style,
+            center_text_x,
+            y,
+            None,
+            &label_text,
+            false,
+        );
+    }
+
+    out.push_str("</g>");
+}
+
 fn section_header_offset(
     sections: &[AltSection],
     frame_x1: f64,
