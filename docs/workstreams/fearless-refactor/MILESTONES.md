@@ -136,6 +136,7 @@ Scope:
 Progress:
 
 - Extracted class SVG content-bounds helpers into `svg/parity/class/bounds.rs`.
+- Extracted class node shell and basic-container emission into `svg/parity/class/node.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

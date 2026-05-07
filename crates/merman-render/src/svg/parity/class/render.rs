@@ -15,7 +15,10 @@ use super::namespace::{
     ClassNamespaceSubgraphState, class_order_ids_for_namespace_subgraphs,
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
-use super::node::ClassNodeRenderPosition;
+use super::node::{
+    ClassNodeBasicContainerContext, ClassNodeRenderPosition, ClassNodeRenderState,
+    render_class_node_basic_container, render_class_node_shell_open,
+};
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
 use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
@@ -1108,107 +1111,45 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             .trim();
         let node_stroke_dasharray = node_inline_styles.stroke_dasharray.unwrap_or("0 0");
 
-        let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
-        let has_tooltip = !tooltip.is_empty();
-
-        let link = node
-            .link
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty());
-        let include_href = link.is_some_and(|s| {
-            let lower = s.to_ascii_lowercase();
-            !lower.starts_with("javascript:") && lower != "about:blank"
-        });
-        let have_callback = node.have_callback;
-
-        if let Some(link) = link {
-            out.push_str("<a");
-            if include_href {
-                out.push_str(r#" xlink:href=""#);
-                super::util::escape_attr_into(&mut out, link);
-                out.push('"');
-            }
-            if have_callback {
-                out.push_str(r#" class="null clickable""#);
-            }
-            out.push_str(r#" transform="translate("#);
-            fmt_into(&mut out, node_tx);
-            out.push_str(", ");
-            fmt_into(&mut out, node_ty);
-            out.push_str(r#")">"#);
-        }
-
-        out.push_str(r#"<g class=""#);
-        out.push_str("node ");
-        super::util::escape_attr_into(&mut out, node.css_classes.trim());
-        out.push_str(r#"" id=""#);
-        super::util::escape_attr_into(&mut out, &node.dom_id);
-        out.push('"');
-        if has_tooltip {
-            out.push_str(r#" title=""#);
-            super::util::escape_attr_into(&mut out, tooltip);
-            out.push('"');
-        }
-        if link.is_none() {
-            out.push_str(r#" transform="translate("#);
-            fmt_into(&mut out, node_tx);
-            out.push_str(", ");
-            fmt_into(&mut out, node_ty);
-            out.push_str(r#")""#);
-        }
-        out.push('>');
-
-        out.push_str(r#"<g class="basic label-container">"#);
-        let w = n.width.max(1.0);
-        let h = n.height.max(1.0);
-        let left = -w / 2.0;
-        let top = -h / 2.0;
-        let rough_seed = class_rough_seed(diagram_id, &node.dom_id);
-        let _ = write!(
+        let node_link_open = render_class_node_shell_open(
             &mut out,
-            r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-            fmt(left),
-            fmt(top),
-            fmt(left + w),
-            fmt(top),
-            fmt(left + w),
-            fmt(top + h),
-            fmt(left),
-            fmt(top + h),
-            escape_attr_display(node_fill),
-            escape_attr_display(node_style_attr)
+            node,
+            ClassNodeRenderPosition {
+                node_tx,
+                node_ty,
+                node_bounds_tx,
+                node_bounds_ty,
+            },
         );
-        let (stroke_d, stroke_pb) =
-            class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
-        include_xywh(
-            &mut content_bounds,
-            node_bounds_tx + left,
-            node_bounds_ty + top,
-            w,
-            h,
+        let basic_container = render_class_node_basic_container(
+            ClassNodeRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+            },
+            node,
+            n,
+            ClassNodeRenderPosition {
+                node_tx,
+                node_ty,
+                node_bounds_tx,
+                node_bounds_ty,
+            },
+            &ClassNodeBasicContainerContext {
+                diagram_id,
+                node_style_attr,
+                node_fill,
+                node_stroke,
+                node_stroke_width,
+                node_stroke_dasharray,
+                timing_enabled,
+            },
         );
-        let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-        include_path_bounds(
-            &mut content_bounds,
-            &stroke_pb,
-            node_bounds_tx,
-            node_bounds_ty,
-        );
-        if let Some(s) = path_bounds_start {
-            detail.path_bounds += s.elapsed();
-            detail.path_bounds_calls += 1;
-        }
-        let _ = write!(
-            &mut out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-            escape_attr_display(&stroke_d),
-            escape_attr_display(node_stroke),
-            escape_attr_display(node_stroke_width),
-            escape_attr_display(node_stroke_dasharray),
-            escape_attr_display(node_style_attr),
-        );
-        out.push_str("</g>");
+        detail.path_bounds += basic_container.stats.path_bounds;
+        detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
+        let w = basic_container.geometry.w;
+        let h = basic_container.geometry.h;
+        let left = basic_container.geometry.left;
+        let rough_seed = basic_container.geometry.rough_seed;
 
         let use_html_labels = diagram_use_html_labels;
         if use_html_labels {
@@ -2431,7 +2372,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         }
 
         out.push_str("</g>");
-        if link.is_some() {
+        if node_link_open {
             out.push_str("</a>");
         }
     }
