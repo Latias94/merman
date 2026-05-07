@@ -25,13 +25,15 @@ to keep render-only paths typed/config-borrowed.
 | --- | --- | --- | --- |
 | Owned semantic compatibility payload | `layout_parsed` | Intentional | Keep until a future borrowed/typed `LayoutedRenderModel` API replaces this surface. |
 | Value-to-`MermaidConfig` bridge in legacy JSON render entrypoints | `render_layout_svg_parts`, `render_layout_svg_parts_for_render_model` | Compatibility cost | Keep for callers that only provide `&Value`; prefer `*_with_config` for public wrappers. |
-| Rebuilding `MermaidConfig` inside typed render-with-config path | class note HTML rendering | Removed for class typed render path | Pass the existing `&MermaidConfig` through class render state and only allocate on legacy `&Value` entrypoints. |
+| Rebuilding `MermaidConfig` inside class typed layout/render paths | class note HTML layout metrics and rendering | Removed for class typed/config path | Pass the existing `&MermaidConfig` through class layout/render state and only allocate on legacy `&Value` entrypoints. |
 | Cloning typed render models for local title fallback | sequence SVG rendering | Removed | Keep model borrowed and compute an effective title override at emission time. |
 
 ## Changes Made
 
 - Class SVG render-with-config now has a dedicated model entrypoint that keeps
   `&merman_core::MermaidConfig` available through note HTML measurement and sanitization.
+- Class layout now has JSON and typed `*_with_config` entrypoints so note HTML layout metrics can
+  reuse the parser's existing `MermaidConfig`.
 - `render_layout_svg_parts_with_config` and typed render-model dispatch use the class with-config
   path instead of degrading to `effective_config.as_value()`.
 - Sequence SVG rendering no longer clones `SequenceDiagramRenderModel` just to fill a fallback

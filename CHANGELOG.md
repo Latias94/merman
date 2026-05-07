@@ -28,8 +28,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   entrypoint; semantic JSON callers should continue using `parse_diagram_sync`.
 - Sequence render pipeline: add a typed render model for layout/SVG render-model dispatch while
   keeping the semantic JSON parse API stable.
-- Render performance: avoid rebuilding `MermaidConfig` in the class typed render-with-config path
-  and avoid cloning the sequence typed render model for title fallback.
+- Render performance: avoid rebuilding `MermaidConfig` in class typed/config layout and render
+  paths, and avoid cloning the sequence typed render model for title fallback.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like
   Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
   HTML parity helpers into dedicated `text/*` modules, and move the `TextMeasurer` trait,

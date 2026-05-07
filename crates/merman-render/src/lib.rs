@@ -184,9 +184,9 @@ pub fn layout_parsed_render_layout_only(
             )?,
         )),
         (RenderSemanticModel::Class(model), "classDiagram" | "class") => Ok(
-            LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2_typed(
+            LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2_typed_with_config(
                 model,
-                effective_config,
+                &parsed.meta.effective_config,
                 options.text_measurer.as_ref(),
             )?),
         ),
@@ -264,9 +264,9 @@ fn layout_json_by_type(
             )?,
         )),
         "classDiagram" | "class" => Ok(LayoutDiagram::ClassDiagramV2(
-            class::layout_class_diagram_v2(
+            class::layout_class_diagram_v2_with_config(
                 semantic,
-                effective_config_value,
+                effective_config,
                 options.text_measurer.as_ref(),
             )?,
         )),

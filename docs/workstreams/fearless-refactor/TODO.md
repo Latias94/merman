@@ -215,11 +215,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `JSON_CLONE_AUDIT.md`. Decision: `layout_parsed` keeps the owned semantic clone for the
   compatibility API; public `render_svg_sync` already uses typed layout/render dispatch and avoids
   owned semantic JSON.
-- [ ] Reduce repeated `serde_json::Value` cloning in render-only paths.
-  Progress: class typed render-with-config now keeps `&MermaidConfig` through note HTML
-  sanitization, and sequence SVG rendering no longer clones the typed render model for title
-  fallback. Remaining clones are mostly legacy `&Value` compatibility bridges or diagram-specific
-  sanitize/config wrappers that still need ownership review.
+- [ ] Reduce repeated `serde_json::Value` cloning in layout/render-only paths.
+  Progress: class typed/config layout and render now keep `&MermaidConfig` through note HTML
+  measurement/sanitization, and sequence SVG rendering no longer clones the typed render model for
+  title fallback. Remaining clones are mostly legacy `&Value` compatibility bridges or
+  diagram-specific sanitize/config wrappers that still need ownership review.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
