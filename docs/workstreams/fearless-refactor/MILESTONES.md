@@ -51,13 +51,14 @@ Scope:
 - Centralize parse/render dispatch.
 - Centralize JSON layout dispatch.
 - Centralize suppressed-error diagram construction.
-- Decide the long-term role of `parse_diagram_for_render_sync`.
+- Remove the obsolete `parse_diagram_for_render_sync` compatibility API.
 
 Exit criteria:
 
 - One typed render parse dispatcher in `merman-core`.
 - One JSON layout fallback dispatcher in `merman-render`.
 - Error-diagram fallback code is not repeated across public parse methods.
+- The render-optimized public parse API is `parse_diagram_for_render_model_sync`.
 - Public wrappers use the typed render path where possible.
 
 ## M2: Typed Model Expansion

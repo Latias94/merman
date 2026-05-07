@@ -153,12 +153,6 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     assert_suppressed_error_diagram(&parsed);
 
     let parsed = engine
-        .parse_diagram_for_render_sync(input, options)
-        .unwrap()
-        .unwrap();
-    assert_suppressed_error_diagram(&parsed);
-
-    let parsed = engine
         .parse_diagram_as_sync("flowchart-v2", input, options)
         .unwrap()
         .unwrap();
@@ -168,16 +162,26 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
         .parse_diagram_for_render_model_sync(input, options)
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "error");
-    let RenderSemanticModel::Json(model) = parsed.model else {
-        panic!("suppressed parse failures must render through a JSON error model");
-    };
-    assert_eq!(model["type"], json!("error"));
+    assert_suppressed_error_render_diagram(&parsed);
+
+    let parsed = engine
+        .parse_diagram_for_render_model_as_sync("flowchart-v2", input, options)
+        .unwrap()
+        .unwrap();
+    assert_suppressed_error_render_diagram(&parsed);
 }
 
 fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
     assert_eq!(parsed.meta.diagram_type, "error");
     assert_eq!(parsed.model["type"], json!("error"));
+}
+
+fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
+    assert_eq!(parsed.meta.diagram_type, "error");
+    match &parsed.model {
+        RenderSemanticModel::Json(model) => assert_eq!(model["type"], json!("error")),
+        other => panic!("suppressed parse failures must render through JSON, got {other:?}"),
+    }
 }
 
 #[test]

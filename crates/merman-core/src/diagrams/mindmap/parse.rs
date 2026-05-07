@@ -12,11 +12,7 @@ use super::utils::{
 static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_mindmap_impl(code, meta, MindmapEmit::Full)
-}
-
-pub fn parse_mindmap_for_render(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_mindmap_impl(code, meta, MindmapEmit::RenderOnly)
+    parse_mindmap_impl(code, meta)
 }
 
 pub fn parse_mindmap_model_for_render(
@@ -34,12 +30,6 @@ pub fn parse_mindmap_model_for_render(
         nodes: db.to_layout_nodes_for_render(root_id),
         edges: db.to_edges_for_render(root_id),
     })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MindmapEmit {
-    Full,
-    RenderOnly,
 }
 
 fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
@@ -191,31 +181,24 @@ fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
     Ok(db)
 }
 
-fn parse_mindmap_impl(code: &str, meta: &ParseMetadata, emit: MindmapEmit) -> Result<Value> {
+fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = parse_mindmap_db(code, meta)?;
 
     let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-        if emit == MindmapEmit::Full {
-            let mut final_config = meta.effective_config.as_value().clone();
-            if meta.config.as_value().get("layout").is_none() {
-                if let Some(obj) = final_config.as_object_mut() {
-                    obj.insert(
-                        "layout".to_string(),
-                        Value::String("cose-bilkent".to_string()),
-                    );
-                }
+        let mut final_config = meta.effective_config.as_value().clone();
+        if meta.config.as_value().get("layout").is_none() {
+            if let Some(obj) = final_config.as_object_mut() {
+                obj.insert(
+                    "layout".to_string(),
+                    Value::String("cose-bilkent".to_string()),
+                );
             }
-
-            return Ok(json!({
-                "nodes": [],
-                "edges": [],
-                "config": final_config,
-            }));
         }
 
         return Ok(json!({
             "nodes": [],
             "edges": [],
+            "config": final_config,
         }));
     };
 
@@ -223,13 +206,6 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata, emit: MindmapEmit) -> Re
 
     let nodes = db.to_layout_node_values(root_id);
     let edges = db.to_edge_values(root_id);
-
-    if emit == MindmapEmit::RenderOnly {
-        return Ok(json!({
-            "nodes": nodes,
-            "edges": edges,
-        }));
-    }
 
     let mut final_config = meta.effective_config.as_value().clone();
     if meta.config.as_value().get("layout").is_none() {

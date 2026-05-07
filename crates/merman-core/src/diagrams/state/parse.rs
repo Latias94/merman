@@ -20,22 +20,6 @@ pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     db.to_model(meta)
 }
 
-pub fn parse_state_for_render(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut doc = super::state_grammar::RootParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message: format!("{e:?}"),
-        })?;
-
-    let mut divider_cnt = 0usize;
-    assign_divider_ids(&mut doc, &mut divider_cnt);
-
-    let mut db = StateDb::new();
-    db.set_root_doc(doc);
-    db.to_model_for_render(meta)
-}
-
 pub fn parse_state_model_for_render(
     code: &str,
     meta: &ParseMetadata,

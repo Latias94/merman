@@ -6,6 +6,26 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Docs: add the `docs/workstreams/fearless-refactor/` workstream with roadmap, TODOs, milestones,
+  and render-model inventory for the next cleanup-focused release.
+- `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
+  `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
+  `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.
+
+### Changed
+
+- Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
+  construction so public parse/render entrypoints share one fallback path.
+- Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse
+  entrypoint; semantic JSON callers should continue using `parse_diagram_sync`.
+
+### Removed
+
+- Core/render API: removed the obsolete `parse_diagram_for_render_sync` compatibility API and its
+  async alias, plus the old `mindmap` / `stateDiagram` JSON-for-render helper paths.
+
 ## [0.4.0] - 2026-03-12
 
 ### Added

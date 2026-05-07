@@ -304,68 +304,15 @@ impl Engine {
         self.parse_diagram_sync(text, options)
     }
 
-    /// Parses a diagram for layout/render pipelines.
-    ///
-    /// Compared to [`Engine::parse_diagram_sync`], this may omit semantic-model keys that are not
-    /// required by merman's layout/SVG renderers (e.g. embedding the full effective config into the
-    /// returned model). This keeps the public `parse_diagram*` APIs stable while allowing render
-    /// pipelines to avoid paying large JSON clone costs.
-    pub fn parse_diagram_for_render_sync(
-        &self,
-        text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParsedDiagram>> {
-        let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
-            return Ok(None);
-        };
-
-        let parse_res = match meta.diagram_type.as_str() {
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_for_render(&code, &meta),
-            "stateDiagram" | "state" => {
-                crate::diagrams::state::parse_state_for_render(&code, &meta)
-            }
-            _ => diagram::parse_or_unsupported(
-                &self.diagram_registry,
-                &meta.diagram_type,
-                &code,
-                &meta,
-            ),
-        };
-
-        let mut model = match parse_res {
-            Ok(v) => v,
-            Err(err) => {
-                if !options.suppress_errors {
-                    return Err(err);
-                }
-
-                return Ok(Some(
-                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
-                ));
-            }
-        };
-
-        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-        Ok(Some(ParsedDiagram { meta, model }))
-    }
-
-    pub async fn parse_diagram_for_render(
-        &self,
-        text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParsedDiagram>> {
-        self.parse_diagram_for_render_sync(text, options)
-    }
-
     /// Parses a diagram into a typed semantic model optimized for headless layout + SVG rendering.
     ///
-    /// Unlike [`Engine::parse_diagram_for_render_sync`], this avoids constructing large
+    /// Unlike [`Engine::parse_diagram_sync`], this avoids constructing large
     /// `serde_json::Value` object trees for some high-impact diagrams (currently `stateDiagram` and
     /// `mindmap`) and instead returns typed semantic structs that the renderer can consume
     /// directly.
     ///
-    /// Callers that need the semantic JSON model should continue using [`Engine::parse_diagram_sync`]
-    /// or [`Engine::parse_diagram_for_render_sync`].
+    /// Callers that need the semantic JSON model should continue using
+    /// [`Engine::parse_diagram_sync`].
     pub fn parse_diagram_for_render_model_sync(
         &self,
         text: &str,

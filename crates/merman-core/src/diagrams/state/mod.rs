@@ -11,7 +11,7 @@ pub use render_model::{
     StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
-pub use parse::{parse_state, parse_state_for_render, parse_state_model_for_render};
+pub use parse::{parse_state, parse_state_model_for_render};
 
 pub(crate) use ast::{ClickStmt, Note, StateStmt, Stmt};
 

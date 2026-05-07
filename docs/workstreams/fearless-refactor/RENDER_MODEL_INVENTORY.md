@@ -17,9 +17,9 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | Diagram ids | Mode | Render dispatch | Migration priority |
 | --- | --- | --- | --- |
 | `flowchart-v2`, `flowchart`, `flowchart-elk` | `typed-first` | typed layout + typed SVG | Keep as the pattern for future migrations. |
-| `stateDiagram`, `state` | `typed-first` | typed layout + typed SVG | Remove obsolete JSON-for-render compatibility helpers. |
+| `stateDiagram`, `state` | `typed-first` | typed layout + typed SVG | Obsolete JSON-for-render compatibility helpers removed. |
 | `classDiagram`, `class` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
-| `mindmap` | `typed-first` | typed layout + typed SVG | Remove obsolete JSON-for-render compatibility helpers. |
+| `mindmap` | `typed-first` | typed layout + typed SVG | Obsolete JSON-for-render compatibility helpers removed. |
 | `architecture` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
 | `sequence`, `zenuml` | `json-fallback` | JSON layout + JSON SVG | Highest next migration candidate; large renderer and frequent layout/render coupling. |
 | `gantt` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence; date semantics need careful parity gates. |
@@ -49,8 +49,8 @@ render models. The in-tree render helper already uses `parse_diagram_for_render_
 
 Decision:
 
-- Remove `parse_diagram_for_render_sync` and its async alias from `merman-core`.
-- Remove `parse_mindmap_for_render` and `parse_state_for_render` once no public API calls them.
+- Removed `parse_diagram_for_render_sync` and its async alias from `merman-core`.
+- Removed `parse_mindmap_for_render` and `parse_state_for_render`.
 - Keep `parse_diagram_sync` as the stable semantic JSON API.
 - Keep `parse_diagram_for_render_model_sync` as the render-pipeline API.
 - Keep `layout_diagram_sync` on semantic JSON for now because it returns `LayoutedDiagram` with a

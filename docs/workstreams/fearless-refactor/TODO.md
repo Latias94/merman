@@ -47,8 +47,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Decision: remove it in M1. In-tree rendering already uses
   `parse_diagram_for_render_model_sync`, and the remaining special JSON-for-render handlers are
   obsolete for typed `mindmap` and `stateDiagram`.
-- [ ] Remove obsolete `parse_diagram_for_render_sync` compatibility API.
+- [x] Remove obsolete `parse_diagram_for_render_sync` compatibility API.
   Scope: remove the async alias and the `mindmap` / `stateDiagram` JSON-for-render helpers.
+  Evidence: `parse_diagram_for_render_model_sync` is now the only render-optimized parse API.
 - [ ] Move sequence diagram render path toward a typed render model.
   Rationale: sequence has a large renderer and frequent layout/render coupling.
 - [ ] Move gantt or kanban render path toward a typed render model after sequence.
