@@ -19,20 +19,20 @@ struct SequenceActivationRect {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SequenceActivationPlan {
+pub(super) struct SequenceActivationPlan<'a> {
     groups: Vec<Option<SequenceActivationRect>>,
-    group_by_start_id: FxHashMap<String, usize>,
+    group_by_start_id: FxHashMap<&'a str, usize>,
     fill: String,
     stroke: String,
 }
 
-pub(super) fn build_sequence_activation_plan(
-    model: &SequenceSvgModel,
+pub(super) fn build_sequence_activation_plan<'a>(
+    model: &'a SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     seq_cfg: &serde_json::Value,
     effective_config: &serde_json::Value,
-) -> SequenceActivationPlan {
+) -> SequenceActivationPlan<'a> {
     let activation_width = seq_cfg
         .get("activationWidth")
         .and_then(|v| v.as_f64())
@@ -58,10 +58,10 @@ pub(super) fn build_sequence_activation_plan(
         .to_string();
 
     let mut last_line_y: Option<f64> = None;
-    let mut activation_stacks: std::collections::BTreeMap<String, Vec<SequenceActivationStart>> =
+    let mut activation_stacks: std::collections::BTreeMap<&str, Vec<SequenceActivationStart>> =
         std::collections::BTreeMap::new();
     let mut groups: Vec<Option<SequenceActivationRect>> = Vec::new();
-    let mut group_by_start_id: FxHashMap<String, usize> =
+    let mut group_by_start_id: FxHashMap<&str, usize> =
         FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
 
     for msg in &model.messages {
@@ -79,7 +79,7 @@ pub(super) fn build_sequence_activation_plan(
                     continue;
                 };
                 let has_any_activation = !activation_stacks.is_empty();
-                let stack = activation_stacks.entry(actor_id.to_string()).or_default();
+                let stack = activation_stacks.entry(actor_id).or_default();
                 let stacked_size = stack.len();
                 let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
 
@@ -94,7 +94,7 @@ pub(super) fn build_sequence_activation_plan(
 
                 let group_index = groups.len();
                 groups.push(None);
-                group_by_start_id.insert(msg.id.clone(), group_index);
+                group_by_start_id.insert(msg.id.as_str(), group_index);
                 stack.push(SequenceActivationStart {
                     startx,
                     starty,

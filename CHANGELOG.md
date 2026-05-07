@@ -36,6 +36,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   while preserving Mermaid marker and label differences.
 - Sequence renderer: borrow block labels and message ids during block collection instead of
   copying them into temporary `String`s.
+- Sequence renderer: borrow activation message/actor ids while building activation overlay plans.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids
   for edge-label center lookup.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like

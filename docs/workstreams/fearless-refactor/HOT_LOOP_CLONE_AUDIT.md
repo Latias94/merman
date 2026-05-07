@@ -47,6 +47,22 @@ Result:
 - `collect_sequence_blocks` no longer copies each block label and message id into `String`.
 - Block geometry helpers now consume `&str` iterators directly.
 
+## Sequence Activation Plan
+
+Sequence activation overlays are also computed and emitted inside one SVG render pass. The plan
+only needs stable references to message ids and actor ids from the typed render model.
+
+Decision:
+
+- Borrow ACTIVE_START message ids in the activation group lookup.
+- Borrow actor ids for activation stacks instead of allocating `String` keys per start message.
+- Keep fill and stroke as owned strings because they are derived fallback values from config.
+
+Result:
+
+- Activation plan construction no longer clones message ids for group lookup.
+- Activation stack lookup no longer allocates actor id strings.
+
 ## Class Edge Rendering
 
 Class edge SVG rendering is a hot path for namespace/relation-heavy diagrams. Before this pass it
