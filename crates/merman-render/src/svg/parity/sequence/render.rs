@@ -7,8 +7,9 @@ use super::actors::{
 };
 use super::blocks::{
     SequenceBlock, collect_sequence_blocks, display_block_label, frame_x_from_actors,
-    frame_x_from_message_ids, message_ids_y_range, section_message_y_range, section_separator_ys,
-    wrap_svg_text_lines, write_block_frame, write_block_label_box, write_loop_text_lines,
+    frame_x_from_message_ids, render_simple_sequence_block, section_message_y_range,
+    section_separator_ys, wrap_svg_text_lines, write_block_frame, write_block_label_box,
+    write_loop_text_lines,
 };
 use super::frames::render_sequence_box_frames_and_rect_blocks;
 use super::messages::render_sequence_messages;
@@ -600,154 +601,61 @@ fn render_sequence_diagram_svg_inner(
                         raw_label,
                         message_ids,
                     } => {
-                        let Some((min_y, max_y)) = message_ids_y_range(
-                            message_ids.iter(),
-                            &edges_by_id,
-                            &nodes_by_id,
-                            &msg_endpoints,
-                            false,
-                        ) else {
-                            continue;
-                        };
-
-                        let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-                            message_ids.iter(),
+                        render_simple_sequence_block(
+                            &mut out,
+                            "loop",
+                            raw_label,
+                            message_ids,
+                            _frame_x1,
+                            _frame_x2,
                             &msg_endpoints,
                             &actor_nodes_by_id,
                             &edges_by_id,
                             &nodes_by_id,
-                        )
-                        .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
-
-                        // Mermaid draws the loop frame far enough above the first message line to
-                        // leave room for the header label box + label text.
-                        let header_offset = if raw_label.trim().is_empty() {
-                            (79.0 - label_box_height).max(0.0)
-                        } else {
-                            79.0
-                        };
-                        let frame_y1 = min_y - header_offset;
-                        let frame_y2 = max_y + 10.0;
-
-                        out.push_str(r#"<g>"#);
-                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
-                        write_block_label_box(&mut out, frame_x1, frame_y1, "loop");
-                        let label_box_right = frame_x1 + 50.0;
-                        let text_x = (label_box_right + frame_x2) / 2.0;
-                        let text_y = frame_y1 + 18.0;
-                        let label = display_block_label(raw_label, true)
-                            .unwrap_or_else(|| "\u{200B}".to_string());
-                        let max_w = (frame_x2 - label_box_right).max(0.0);
-                        write_loop_text_lines(
-                            &mut out,
+                            label_box_height,
                             measurer,
                             &loop_text_style,
-                            text_x,
-                            text_y,
-                            Some(max_w),
-                            &label,
-                            true,
                         );
-                        out.push_str("</g>");
                     }
                     SequenceBlock::Opt {
                         raw_label,
                         message_ids,
                     } => {
-                        let Some((min_y, max_y)) = message_ids_y_range(
-                            message_ids.iter(),
-                            &edges_by_id,
-                            &nodes_by_id,
-                            &msg_endpoints,
-                            false,
-                        ) else {
-                            continue;
-                        };
-
-                        let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-                            message_ids.iter(),
+                        render_simple_sequence_block(
+                            &mut out,
+                            "opt",
+                            raw_label,
+                            message_ids,
+                            _frame_x1,
+                            _frame_x2,
                             &msg_endpoints,
                             &actor_nodes_by_id,
                             &edges_by_id,
                             &nodes_by_id,
-                        )
-                        .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
-
-                        let header_offset = if raw_label.trim().is_empty() {
-                            (79.0 - label_box_height).max(0.0)
-                        } else {
-                            79.0
-                        };
-                        let frame_y1 = min_y - header_offset;
-                        let frame_y2 = max_y + 10.0;
-
-                        out.push_str(r#"<g>"#);
-                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
-                        write_block_label_box(&mut out, frame_x1, frame_y1, "opt");
-                        let label_box_right = frame_x1 + 50.0;
-                        let text_x = (label_box_right + frame_x2) / 2.0;
-                        let text_y = frame_y1 + 18.0;
-                        let label = display_block_label(raw_label, true)
-                            .unwrap_or_else(|| "\u{200B}".to_string());
-                        let max_w = (frame_x2 - label_box_right).max(0.0);
-                        write_loop_text_lines(
-                            &mut out,
+                            label_box_height,
                             measurer,
                             &loop_text_style,
-                            text_x,
-                            text_y,
-                            Some(max_w),
-                            &label,
-                            true,
                         );
-                        out.push_str("</g>");
                     }
                     SequenceBlock::Break {
                         raw_label,
                         message_ids,
                     } => {
-                        let Some((min_y, max_y)) = message_ids_y_range(
-                            message_ids.iter(),
-                            &edges_by_id,
-                            &nodes_by_id,
-                            &msg_endpoints,
-                            false,
-                        ) else {
-                            continue;
-                        };
-
-                        let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-                            message_ids.iter(),
+                        render_simple_sequence_block(
+                            &mut out,
+                            "break",
+                            raw_label,
+                            message_ids,
+                            _frame_x1,
+                            _frame_x2,
                             &msg_endpoints,
                             &actor_nodes_by_id,
                             &edges_by_id,
                             &nodes_by_id,
-                        )
-                        .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
-
-                        let frame_y1 = min_y - 93.0;
-                        let frame_y2 = max_y + 10.0;
-
-                        out.push_str(r#"<g>"#);
-                        write_block_frame(&mut out, frame_x1, frame_x2, frame_y1, frame_y2);
-                        write_block_label_box(&mut out, frame_x1, frame_y1, "break");
-                        let label_box_right = frame_x1 + 50.0;
-                        let text_x = (label_box_right + frame_x2) / 2.0;
-                        let text_y = frame_y1 + 18.0;
-                        let label = display_block_label(raw_label, true)
-                            .unwrap_or_else(|| "\u{200B}".to_string());
-                        let max_w = (frame_x2 - label_box_right).max(0.0);
-                        write_loop_text_lines(
-                            &mut out,
+                            label_box_height,
                             measurer,
                             &loop_text_style,
-                            text_x,
-                            text_y,
-                            Some(max_w),
-                            &label,
-                            true,
                         );
-                        out.push_str("</g>");
                     }
                     SequenceBlock::Critical { sections } => {
                         if sections.is_empty() {

@@ -395,6 +395,71 @@ pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f
     );
 }
 
+pub(super) fn render_simple_sequence_block(
+    out: &mut String,
+    block_label: &str,
+    raw_label: &str,
+    message_ids: &[String],
+    default_frame_x1: f64,
+    default_frame_x2: f64,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    label_box_height: f64,
+    measurer: &dyn TextMeasurer,
+    loop_text_style: &TextStyle,
+) {
+    let Some((min_y, max_y)) = message_ids_y_range(
+        message_ids.iter(),
+        edges_by_id,
+        nodes_by_id,
+        msg_endpoints,
+        false,
+    ) else {
+        return;
+    };
+
+    let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
+        message_ids.iter(),
+        msg_endpoints,
+        actor_nodes_by_id,
+        edges_by_id,
+        nodes_by_id,
+    )
+    .unwrap_or((default_frame_x1, default_frame_x2, f64::INFINITY));
+
+    let header_offset = if block_label == "break" {
+        93.0
+    } else if raw_label.trim().is_empty() {
+        (79.0 - label_box_height).max(0.0)
+    } else {
+        79.0
+    };
+    let frame_y1 = min_y - header_offset;
+    let frame_y2 = max_y + 10.0;
+
+    out.push_str(r#"<g>"#);
+    write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
+    write_block_label_box(out, frame_x1, frame_y1, block_label);
+    let label_box_right = frame_x1 + 50.0;
+    let text_x = (label_box_right + frame_x2) / 2.0;
+    let text_y = frame_y1 + 18.0;
+    let label = display_block_label(raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
+    let max_w = (frame_x2 - label_box_right).max(0.0);
+    write_loop_text_lines(
+        out,
+        measurer,
+        loop_text_style,
+        text_x,
+        text_y,
+        Some(max_w),
+        &label,
+        true,
+    );
+    out.push_str("</g>");
+}
+
 pub(super) fn frame_x_from_actors(
     model: &SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
