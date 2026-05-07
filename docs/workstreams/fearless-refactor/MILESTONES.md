@@ -144,6 +144,8 @@ Progress:
 - Extracted sequence pre-actor box/rect frame emission into `svg/parity/sequence/frames.rs`.
 - Extracted sequence actor popup menu emission into `svg/parity/sequence/actors.rs` and shared
   node geometry into `svg/parity/sequence/geometry.rs`.
+- Extracted sequence actor-man top/bottom variant emission into
+  `svg/parity/sequence/actors.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
