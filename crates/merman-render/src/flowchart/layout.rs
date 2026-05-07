@@ -1989,6 +1989,8 @@ fn layout_flowchart_v2_with_model(
             text_style: &TextStyle,
             title_wrapping_width: f64,
             wrap_mode: WrapMode,
+            config: &MermaidConfig,
+            math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
             cluster_padding: f64,
             title_total_margin: f64,
             node_padding: f64,
@@ -2026,6 +2028,8 @@ fn layout_flowchart_v2_with_model(
                         text_style,
                         title_wrapping_width,
                         wrap_mode,
+                        config,
+                        math_renderer,
                         cluster_padding,
                         title_total_margin,
                         node_padding,
@@ -2064,7 +2068,7 @@ fn layout_flowchart_v2_with_model(
                 text_style,
                 title_width_limit,
                 wrap_mode,
-                effective_config,
+                config,
                 math_renderer,
             );
 
@@ -2079,10 +2083,7 @@ fn layout_flowchart_v2_with_model(
                 )
             };
 
-            rect.min_x -= cluster_padding;
-            rect.max_x += cluster_padding;
-            rect.min_y -= cluster_padding;
-            rect.max_y += cluster_padding;
+            rect.pad(cluster_padding);
 
             // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
             // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
@@ -2173,6 +2174,8 @@ fn layout_flowchart_v2_with_model(
                 &text_style,
                 cluster_title_wrapping_width,
                 node_wrap_mode,
+                effective_config,
+                math_renderer,
                 cluster_padding,
                 title_total_margin,
                 node_padding,
@@ -2209,13 +2212,13 @@ fn layout_flowchart_v2_with_model(
 
         if !items.is_empty() {
             items.sort_by(|a, b| match pack_axis {
-                PackAxis::X => a.rect.min_x.total_cmp(&b.rect.min_x),
-                PackAxis::Y => a.rect.min_y.total_cmp(&b.rect.min_y),
+                PackAxis::X => a.rect.min_x().total_cmp(&b.rect.min_x()),
+                PackAxis::Y => a.rect.min_y().total_cmp(&b.rect.min_y()),
             });
 
             let mut cursor = match pack_axis {
-                PackAxis::X => items.first().unwrap().rect.min_x,
-                PackAxis::Y => items.first().unwrap().rect.min_y,
+                PackAxis::X => items.first().unwrap().rect.min_x(),
+                PackAxis::Y => items.first().unwrap().rect.min_y(),
             };
 
             for item in items {

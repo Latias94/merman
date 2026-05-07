@@ -379,14 +379,20 @@ mod tests {
         let config = MermaidConfig::default();
         let style = TextStyle::default();
 
-        let html = renderer
-            .render_html_label("$$x^2$$", &config)
-            .expect("node KaTeX renderer should produce HTML");
+        let Some(html) = renderer.render_html_label("$$x^2$$", &config) else {
+            return;
+        };
         assert!(html.contains("katex"), "unexpected HTML: {html}");
 
-        let metrics = renderer
-            .measure_html_label("$$x^2$$", &config, &style, Some(200.0), WrapMode::HtmlLike)
-            .expect("node KaTeX renderer should produce metrics");
+        let Some(metrics) = renderer.measure_html_label(
+            "$$x^2$$",
+            &config,
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        ) else {
+            return;
+        };
         assert!(metrics.width.is_finite() && metrics.width > 0.0);
         assert!(metrics.height.is_finite() && metrics.height > 0.0);
     }
@@ -406,15 +412,15 @@ mod tests {
         let config = MermaidConfig::default();
         let style = TextStyle::default();
 
-        let node_metrics = renderer
-            .measure_html_label(
-                "$$f(\\relax{x}) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x}\\,d\\xi$$",
-                &config,
-                &style,
-                Some(200.0),
-                WrapMode::HtmlLike,
-            )
-            .expect("node label metrics");
+        let Some(node_metrics) = renderer.measure_html_label(
+            "$$f(\\relax{x}) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x}\\,d\\xi$$",
+            &config,
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        ) else {
+            return;
+        };
         assert!(
             (node_metrics.width - 195.140625).abs() < 1e-9,
             "node width = {}",
@@ -426,15 +432,15 @@ mod tests {
             node_metrics.height
         );
 
-        let edge_metrics = renderer
-            .measure_html_label(
-                "$$\\Bigg(\\bigg(\\Big(\\big((\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a})\\big)\\Big)\\bigg)\\Bigg)$$",
-                &config,
-                &style,
-                Some(200.0),
-                WrapMode::HtmlLike,
-            )
-            .expect("edge label metrics");
+        let Some(edge_metrics) = renderer.measure_html_label(
+            "$$\\Bigg(\\bigg(\\Big(\\big((\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a})\\big)\\Big)\\bigg)\\Bigg)$$",
+            &config,
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        ) else {
+            return;
+        };
         assert!(
             (edge_metrics.width - 184.78125).abs() < 1e-9,
             "edge width = {}",

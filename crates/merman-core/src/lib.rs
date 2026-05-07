@@ -387,133 +387,9 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
-        let timing_enabled = Self::parse_timing_enabled();
-        let total_start = timing_enabled.then(std::time::Instant::now);
-
-        let preprocess_start = timing_enabled.then(std::time::Instant::now);
-        let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
-            return Ok(None);
-        };
-        let preprocess = preprocess_start.map(|s| s.elapsed());
-
-        let parse_start = timing_enabled.then(std::time::Instant::now);
-        let parse_res: Result<RenderSemanticModel> = match meta.diagram_type.as_str() {
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(&code, &meta)
-                .map(RenderSemanticModel::Mindmap),
-            "stateDiagram" | "state" => {
-                crate::diagrams::state::parse_state_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::State)
-            }
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
-                crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::Flowchart)
-            }
-            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(&code, &meta)
-                .map(RenderSemanticModel::Class),
-            "architecture" => {
-                crate::diagrams::architecture::parse_architecture_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::Architecture)
-            }
-            _ => diagram::parse_or_unsupported(
-                &self.diagram_registry,
-                &meta.diagram_type,
-                &code,
-                &meta,
-            )
-            .map(RenderSemanticModel::Json),
-        };
-        let parse = parse_start.map(|s| s.elapsed());
-
-        let mut model = match parse_res {
-            Ok(v) => v,
-            Err(err) => {
-                if !options.suppress_errors {
-                    return Err(err);
-                }
-
-                let mut error_meta = meta.clone();
-                error_meta.diagram_type = "error".to_string();
-                let mut error_model = serde_json::json!({ "type": "error" });
-                common_db::apply_common_db_sanitization(
-                    &mut error_model,
-                    &error_meta.effective_config,
-                );
-                if let Some(start) = total_start {
-                    eprintln!(
-                        "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                        start.elapsed(),
-                        preprocess.unwrap_or_default(),
-                        parse.unwrap_or_default(),
-                        std::time::Duration::default(),
-                        text.len(),
-                    );
-                }
-                return Ok(Some(ParsedDiagramRender {
-                    meta: error_meta,
-                    model: RenderSemanticModel::Json(error_model),
-                }));
-            }
-        };
-
-        let sanitize_start = timing_enabled.then(std::time::Instant::now);
-        match &mut model {
-            RenderSemanticModel::Json(v) => {
-                common_db::apply_common_db_sanitization(v, &meta.effective_config);
-            }
-            RenderSemanticModel::State(v) => {
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-            RenderSemanticModel::Mindmap(_) => {}
-            RenderSemanticModel::Flowchart(_) => {}
-            RenderSemanticModel::Class(v) => {
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-            RenderSemanticModel::Architecture(v) => {
-                if let Some(s) = v.title.as_deref() {
-                    v.title = Some(crate::sanitize::sanitize_text(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-        }
-        let sanitize = sanitize_start.map(|s| s.elapsed());
-
-        if let Some(start) = total_start {
-            let model_kind = match &model {
-                RenderSemanticModel::Json(_) => "json",
-                RenderSemanticModel::State(_) => "state",
-                RenderSemanticModel::Mindmap(_) => "mindmap",
-                RenderSemanticModel::Flowchart(_) => "flowchart",
-                RenderSemanticModel::Architecture(_) => "architecture",
-                RenderSemanticModel::Class(_) => "class",
-            };
-            eprintln!(
-                "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                meta.diagram_type,
-                model_kind,
-                start.elapsed(),
-                preprocess.unwrap_or_default(),
-                parse.unwrap_or_default(),
-                sanitize.unwrap_or_default(),
-                text.len(),
-            );
-        }
-
-        Ok(Some(ParsedDiagramRender { meta, model }))
+        self.parse_diagram_for_render_model_inner(text, options, |engine| {
+            engine.preprocess_and_detect(text, options)
+        })
     }
 
     pub async fn parse_diagram_for_render_model(
@@ -536,42 +412,28 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
+        self.parse_diagram_for_render_model_inner(text, options, |engine| {
+            engine.preprocess_and_assume_type(diagram_type, text, options)
+        })
+    }
+
+    fn parse_diagram_for_render_model_inner(
+        &self,
+        text: &str,
+        options: ParseOptions,
+        preprocess: impl FnOnce(&Self) -> Result<Option<(String, ParseMetadata)>>,
+    ) -> Result<Option<ParsedDiagramRender>> {
         let timing_enabled = Self::parse_timing_enabled();
         let total_start = timing_enabled.then(std::time::Instant::now);
 
         let preprocess_start = timing_enabled.then(std::time::Instant::now);
-        let Some((code, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)?
-        else {
+        let Some((code, meta)) = preprocess(self)? else {
             return Ok(None);
         };
         let preprocess = preprocess_start.map(|s| s.elapsed());
 
         let parse_start = timing_enabled.then(std::time::Instant::now);
-        let parse_res: Result<RenderSemanticModel> = match meta.diagram_type.as_str() {
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(&code, &meta)
-                .map(RenderSemanticModel::Mindmap),
-            "stateDiagram" | "state" => {
-                crate::diagrams::state::parse_state_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::State)
-            }
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
-                crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::Flowchart)
-            }
-            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(&code, &meta)
-                .map(RenderSemanticModel::Class),
-            "architecture" => {
-                crate::diagrams::architecture::parse_architecture_model_for_render(&code, &meta)
-                    .map(RenderSemanticModel::Architecture)
-            }
-            _ => diagram::parse_or_unsupported(
-                &self.diagram_registry,
-                &meta.diagram_type,
-                &code,
-                &meta,
-            )
-            .map(RenderSemanticModel::Json),
-        };
+        let parse_res = self.parse_render_semantic_model(&code, &meta);
         let parse = parse_start.map(|s| s.elapsed());
 
         let mut model = match parse_res {
@@ -606,51 +468,11 @@ impl Engine {
         };
 
         let sanitize_start = timing_enabled.then(std::time::Instant::now);
-        match &mut model {
-            RenderSemanticModel::Json(v) => {
-                common_db::apply_common_db_sanitization(v, &meta.effective_config);
-            }
-            RenderSemanticModel::State(v) => {
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-            RenderSemanticModel::Mindmap(_) => {}
-            RenderSemanticModel::Flowchart(_) => {}
-            RenderSemanticModel::Class(v) => {
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-            RenderSemanticModel::Architecture(v) => {
-                if let Some(s) = v.title.as_deref() {
-                    v.title = Some(crate::sanitize::sanitize_text(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_title.as_deref() {
-                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
-                }
-                if let Some(s) = v.acc_descr.as_deref() {
-                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
-                }
-            }
-        }
+        Self::sanitize_render_semantic_model(&mut model, &meta.effective_config);
         let sanitize = sanitize_start.map(|s| s.elapsed());
 
         if let Some(start) = total_start {
-            let model_kind = match &model {
-                RenderSemanticModel::Json(_) => "json",
-                RenderSemanticModel::State(_) => "state",
-                RenderSemanticModel::Mindmap(_) => "mindmap",
-                RenderSemanticModel::Flowchart(_) => "flowchart",
-                RenderSemanticModel::Architecture(_) => "architecture",
-                RenderSemanticModel::Class(_) => "class",
-            };
+            let model_kind = Self::render_model_kind(&model);
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                 meta.diagram_type,
@@ -664,6 +486,89 @@ impl Engine {
         }
 
         Ok(Some(ParsedDiagramRender { meta, model }))
+    }
+
+    fn parse_render_semantic_model(
+        &self,
+        code: &str,
+        meta: &ParseMetadata,
+    ) -> Result<RenderSemanticModel> {
+        match meta.diagram_type.as_str() {
+            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(code, meta)
+                .map(RenderSemanticModel::Mindmap),
+            "stateDiagram" | "state" => {
+                crate::diagrams::state::parse_state_model_for_render(code, meta)
+                    .map(RenderSemanticModel::State)
+            }
+            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+                crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
+                    .map(RenderSemanticModel::Flowchart)
+            }
+            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(code, meta)
+                .map(RenderSemanticModel::Class),
+            "architecture" => {
+                crate::diagrams::architecture::parse_architecture_model_for_render(code, meta)
+                    .map(RenderSemanticModel::Architecture)
+            }
+            _ => diagram::parse_or_unsupported(
+                &self.diagram_registry,
+                &meta.diagram_type,
+                code,
+                meta,
+            )
+            .map(RenderSemanticModel::Json),
+        }
+    }
+
+    fn sanitize_render_semantic_model(
+        model: &mut RenderSemanticModel,
+        effective_config: &MermaidConfig,
+    ) {
+        match model {
+            RenderSemanticModel::Json(v) => {
+                common_db::apply_common_db_sanitization(v, effective_config);
+            }
+            RenderSemanticModel::State(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
+            RenderSemanticModel::Mindmap(_) => {}
+            RenderSemanticModel::Flowchart(_) => {}
+            RenderSemanticModel::Class(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
+            RenderSemanticModel::Architecture(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
+        }
+    }
+
+    fn render_model_kind(model: &RenderSemanticModel) -> &'static str {
+        match model {
+            RenderSemanticModel::Json(_) => "json",
+            RenderSemanticModel::State(_) => "state",
+            RenderSemanticModel::Mindmap(_) => "mindmap",
+            RenderSemanticModel::Flowchart(_) => "flowchart",
+            RenderSemanticModel::Architecture(_) => "architecture",
+            RenderSemanticModel::Class(_) => "class",
+        }
     }
 
     pub async fn parse_diagram_for_render_model_as(
