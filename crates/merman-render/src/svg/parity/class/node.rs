@@ -5,14 +5,17 @@ use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
 use std::time::Duration;
 
-use super::super::{escape_attr_display, fmt, fmt_into};
+use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::ClassSvgNode;
 use super::bounds::{include_path_bounds, include_xywh};
 use super::label::{
     class_html_div_style, class_html_label_max_width_px, class_html_label_metrics,
     render_class_html_label,
 };
-use super::rough::{class_rough_rect_stroke_path_and_bounds, class_rough_seed};
+use super::rough::{
+    class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
+    class_rough_seed,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ClassNodeRenderPosition {
@@ -39,6 +42,14 @@ pub(super) struct ClassNodeBasicContainerContext<'a> {
     pub diagram_id: &'a str,
     pub node_style_attr: &'a str,
     pub node_fill: &'a str,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub timing_enabled: bool,
+}
+
+pub(super) struct ClassNodeDividerContext<'a> {
+    pub node_style_attr: &'a str,
     pub node_stroke: &'a str,
     pub node_stroke_width: &'a str,
     pub node_stroke_dasharray: &'a str,
@@ -227,6 +238,52 @@ pub(super) fn render_class_node_basic_container(
     }
 }
 
+pub(super) fn render_class_node_dividers(
+    state: ClassNodeRenderState<'_>,
+    position: ClassNodeRenderPosition,
+    left: f64,
+    right: f64,
+    divider_ys: [f64; 2],
+    rough_seed: u64,
+    ctx: &ClassNodeDividerContext<'_>,
+) -> ClassNodeRenderStats {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let mut stats = ClassNodeRenderStats::default();
+
+    for y in divider_ys {
+        let _ = write!(
+            out,
+            r#"<g class="divider" style="{}">"#,
+            escape_attr_display(ctx.node_style_attr)
+        );
+        let (d, d_pb) = class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed);
+        let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+        include_path_bounds(
+            content_bounds,
+            &d_pb,
+            position.node_bounds_tx,
+            position.node_bounds_ty,
+        );
+        if let Some(s) = path_bounds_start {
+            stats.path_bounds += s.elapsed();
+            stats.path_bounds_calls += 1;
+        }
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+            escape_attr_display(&d),
+            escape_attr_display(ctx.node_stroke),
+            escape_attr_display(ctx.node_stroke_width),
+            escape_attr_display(ctx.node_stroke_dasharray),
+            escape_attr_display(ctx.node_style_attr),
+        );
+        out.push_str("</g>");
+    }
+
+    stats
+}
+
 pub(super) fn measure_class_html_node_rows(
     members: &[ClassMember],
     row_metrics: Option<&[crate::text::TextMetrics]>,
@@ -392,4 +449,47 @@ pub(super) fn render_class_svg_node_runs_group(
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
+}
+
+pub(super) fn render_class_svg_title_group(
+    out: &mut String,
+    group_x: f64,
+    group_y: f64,
+    title_lines: &[String],
+    title_metrics: &crate::text::TextMetrics,
+) {
+    let _ = write!(
+        out,
+        r#"<g class="label-group text" transform="translate({}, {})">"#,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    let t_y = -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
+    let _ = write!(
+        out,
+        r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="">"#,
+        fmt(t_y)
+    );
+    for (idx, line) in title_lines.iter().enumerate() {
+        if idx == 0 {
+            out.push_str(
+                r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#,
+            );
+        } else {
+            let y_em = if idx == 1 {
+                "1em".to_string()
+            } else {
+                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+            };
+            let _ = write!(
+                out,
+                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
+                y_em
+            );
+        }
+        out.push_str(r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="">"#);
+        escape_xml_into(out, line);
+        out.push_str("</tspan></tspan>");
+    }
+    out.push_str("</text></g></g></g>");
 }

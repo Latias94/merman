@@ -36,7 +36,6 @@ mod node;
 mod note;
 
 mod rough;
-use rough::class_rough_line_double_path_and_bounds;
 
 type ClassSvgModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassSvgNode = merman_core::models::class_diagram::ClassNode;

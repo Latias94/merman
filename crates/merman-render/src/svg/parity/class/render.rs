@@ -17,10 +17,11 @@ use super::namespace::{
 };
 use super::node::{
     ClassHtmlNodeLabelGroupSpec, ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext,
-    ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
+    ClassNodeDividerContext, ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
     measure_class_html_node_rows, render_class_html_node_label_group,
     render_class_html_node_rows_group, render_class_node_basic_container,
-    render_class_node_shell_open, render_class_svg_node_runs_group,
+    render_class_node_dividers, render_class_node_shell_open, render_class_svg_node_runs_group,
+    render_class_svg_title_group,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -1401,31 +1402,31 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             );
 
             if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
-                for y in [divider1_y, divider2_y] {
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="divider" style="{}">"#,
-                        escape_attr_display(node_style_attr)
-                    );
-                    let (d, d_pb) =
-                        class_rough_line_double_path_and_bounds(left, y, left + w, y, rough_seed);
-                    let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                    include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
-                    if let Some(s) = path_bounds_start {
-                        detail.path_bounds += s.elapsed();
-                        detail.path_bounds_calls += 1;
-                    }
-                    let _ = write!(
-                        &mut out,
-                        r#"<path d="{}" fill="none" stroke="{}" stroke-dasharray="{}" stroke-width="{}" style="{}"/>"#,
-                        escape_attr_display(&d),
-                        escape_attr_display(node_stroke),
-                        escape_attr_display(node_stroke_dasharray),
-                        escape_attr_display(node_stroke_width),
-                        escape_attr_display(node_style_attr),
-                    );
-                    out.push_str("</g>");
-                }
+                let divider_stats = render_class_node_dividers(
+                    ClassNodeRenderState {
+                        out: &mut out,
+                        content_bounds: &mut content_bounds,
+                    },
+                    ClassNodeRenderPosition {
+                        node_tx,
+                        node_ty,
+                        node_bounds_tx,
+                        node_bounds_ty,
+                    },
+                    left,
+                    left + w,
+                    [divider1_y, divider2_y],
+                    rough_seed,
+                    &ClassNodeDividerContext {
+                        node_style_attr,
+                        node_stroke,
+                        node_stroke_width,
+                        node_stroke_dasharray,
+                        timing_enabled,
+                    },
+                );
+                detail.path_bounds += divider_stats.path_bounds;
+                detail.path_bounds_calls += divider_stats.path_bounds_calls;
             }
         } else {
             fn label_rect(m: &crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
@@ -2056,44 +2057,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             );
 
             let label_new_y = adjust_y(label_ty);
-            let _ = write!(
+            render_class_svg_title_group(
                 &mut out,
-                r#"<g class="label-group text" transform="translate({}, {})">"#,
-                fmt(adjusted_label_group_x),
-                fmt(label_new_y)
+                adjusted_label_group_x,
+                label_new_y,
+                &title_lines,
+                &title_metrics,
             );
-            {
-                let t_y =
-                    -title_metrics.height.max(0.0) / (2.0 * title_metrics.line_count.max(1) as f64);
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="label" style="font-weight: bolder" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/><text y="-10.1" style="">"#,
-                    fmt(t_y)
-                );
-                for (idx, line) in title_lines.iter().enumerate() {
-                    if idx == 0 {
-                        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#);
-                    } else {
-                        let y_em = if idx == 1 {
-                            "1em".to_string()
-                        } else {
-                            format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-                        };
-                        let _ = write!(
-                            &mut out,
-                            r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
-                            y_em
-                        );
-                    }
-                    out.push_str(
-                        r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="">"#,
-                    );
-                    escape_xml_into(&mut out, line);
-                    out.push_str("</tspan></tspan>");
-                }
-                out.push_str("</text></g></g>");
-            }
-            out.push_str("</g>");
 
             let members_new_y = adjust_y(members_ty);
             render_class_svg_node_runs_group(
@@ -2126,31 +2096,31 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 }
                 let divider1_y = ann_h + label_h + y + padding;
                 let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
-                for y in [divider1_y, divider2_y] {
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="divider" style="{}">"#,
-                        escape_attr_display(node_style_attr)
-                    );
-                    let (d, d_pb) =
-                        class_rough_line_double_path_and_bounds(left, y, left + w, y, rough_seed);
-                    let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                    include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
-                    if let Some(s) = path_bounds_start {
-                        detail.path_bounds += s.elapsed();
-                        detail.path_bounds_calls += 1;
-                    }
-                    let _ = write!(
-                        &mut out,
-                        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                        escape_attr_display(&d),
-                        escape_attr_display(node_stroke),
-                        escape_attr_display(node_stroke_width),
-                        escape_attr_display(node_stroke_dasharray),
-                        escape_attr_display(node_style_attr),
-                    );
-                    out.push_str("</g>");
-                }
+                let divider_stats = render_class_node_dividers(
+                    ClassNodeRenderState {
+                        out: &mut out,
+                        content_bounds: &mut content_bounds,
+                    },
+                    ClassNodeRenderPosition {
+                        node_tx,
+                        node_ty,
+                        node_bounds_tx,
+                        node_bounds_ty,
+                    },
+                    left,
+                    left + w,
+                    [divider1_y, divider2_y],
+                    rough_seed,
+                    &ClassNodeDividerContext {
+                        node_style_attr,
+                        node_stroke,
+                        node_stroke_width,
+                        node_stroke_dasharray,
+                        timing_enabled,
+                    },
+                );
+                detail.path_bounds += divider_stats.path_bounds;
+                detail.path_bounds_calls += divider_stats.path_bounds_calls;
             }
         }
 
