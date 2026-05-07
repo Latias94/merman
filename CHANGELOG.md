@@ -36,6 +36,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   while preserving Mermaid marker and label differences.
 - Sequence renderer: borrow block labels and message ids during block collection instead of
   copying them into temporary `String`s.
+- Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids
+  for edge-label center lookup.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like
   Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
   HTML parity helpers into dedicated `text/*` modules, and move the `TextMeasurer` trait,

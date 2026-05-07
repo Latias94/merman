@@ -42,10 +42,11 @@ fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str> {
     }
 }
 
-pub(super) fn class_line_with_marker_offset_points(
+pub(super) fn class_line_with_marker_offset_points_into(
     input: &[LayoutPoint],
     relation: Option<&ClassSvgRelation>,
-) -> Vec<LayoutPoint> {
+    out: &mut Vec<LayoutPoint>,
+) {
     fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
         match arrow_type {
             Some("dependency") => Some(6.0),
@@ -62,8 +63,11 @@ pub(super) fn class_line_with_marker_offset_points(
         (angle, delta_x, delta_y)
     }
 
+    out.clear();
+    out.reserve(input.len());
     if input.len() < 2 {
-        return input.to_vec();
+        out.extend(input.iter().cloned());
+        return;
     }
 
     let arrow_type_start =
@@ -78,7 +82,6 @@ pub(super) fn class_line_with_marker_offset_points(
     let start_marker_height = marker_offset_for(arrow_type_start);
     let end_marker_height = marker_offset_for(arrow_type_end);
 
-    let mut out = Vec::with_capacity(input.len());
     for (idx, point) in input.iter().enumerate() {
         let mut offset_x = 0.0;
         let mut offset_y = 0.0;
@@ -141,8 +144,6 @@ pub(super) fn class_line_with_marker_offset_points(
             y: point.y + offset_y,
         });
     }
-
-    out
 }
 
 fn class_js_round(v: f64, decimals: i32) -> f64 {
@@ -248,14 +249,17 @@ pub(super) fn render_class_edge_groups(
     let mut edge_points_json_ryu = ryu_js::Buffer::new();
     let mut edge_points_b64_buf = String::new();
     let mut edge_raw_points: Vec<LayoutPoint> = Vec::new();
+    let mut edge_marker_points: Vec<LayoutPoint> = Vec::new();
     let mut edge_curve_points: Vec<LayoutPoint> = Vec::new();
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
 
     let edge_paths_start = ctx.timing_enabled.then(std::time::Instant::now);
-    let mut edge_label_centers: FxHashMap<String, LayoutPoint> = FxHashMap::default();
+    let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
+    let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
+        FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     out.push_str(r#"<g class="edgePaths">"#);
-    for e in class_edge_render_order(ctx.edges, ctx.relation_index_by_id) {
+    for e in ordered_edges.iter().copied() {
         if e.points.len() < 2 {
             continue;
         }
@@ -277,7 +281,12 @@ pub(super) fn render_class_edge_groups(
         } else {
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
-        let edge_curve_source = class_line_with_marker_offset_points(&edge_raw_points, relation);
+        class_line_with_marker_offset_points_into(
+            &edge_raw_points,
+            relation,
+            &mut edge_marker_points,
+        );
+        let edge_curve_source = edge_marker_points.as_slice();
         let (d, d_pb) = if edge_curve_source.len() == 2 {
             edge_curve_points.clear();
             let a = &edge_curve_source[0];
@@ -290,11 +299,11 @@ pub(super) fn render_class_edge_groups(
             edge_curve_points.push(b.clone());
             super::super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
         } else {
-            super::super::curve::curve_basis_path_d_and_bounds(&edge_curve_source)
+            super::super::curve::curve_basis_path_d_and_bounds(edge_curve_source)
         };
         if let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
-                e.id.clone(),
+                e.id.as_str(),
                 class_edge_label_center(&edge_raw_points, &d, lbl, ctx.content_tx, ctx.content_ty),
             );
         }
@@ -378,7 +387,6 @@ pub(super) fn render_class_edge_groups(
     let edge_labels_start = ctx.timing_enabled.then(std::time::Instant::now);
     out.push_str(r#"<g class="edgeLabels">"#);
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
-    let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     for e in ordered_edges.iter().copied() {
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
         let label_text = if e.id.starts_with("edgeNote") {

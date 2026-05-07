@@ -47,6 +47,25 @@ Result:
 - `collect_sequence_blocks` no longer copies each block label and message id into `String`.
 - Block geometry helpers now consume `&str` iterators directly.
 
+## Class Edge Rendering
+
+Class edge SVG rendering is a hot path for namespace/relation-heavy diagrams. Before this pass it
+rebuilt the sorted edge order for the path pass and the label pass, allocated a fresh marker-offset
+point vector for each edge, and cloned edge ids into the label-center lookup table.
+
+Decision:
+
+- Compute the Mermaid-compatible edge order once and reuse it for paths, labels, and terminals.
+- Keep a reusable marker-adjusted point buffer inside the render loop instead of allocating one
+  vector per edge.
+- Borrow edge ids in the label-center lookup because layout edges outlive the whole render pass.
+
+Result:
+
+- Class edge rendering avoids one duplicate sort/allocation per edge group.
+- Marker-adjusted point storage is reused across edges.
+- Edge-label center lookup no longer clones layout edge ids into `String`.
+
 ## Remaining Candidates
 
 1. Class namespace/relation lookup construction still clones ids heavily because graphlib-style
@@ -61,3 +80,5 @@ Result:
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo nextest run -p merman-render sequence`
 - `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run -p merman-render class`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
