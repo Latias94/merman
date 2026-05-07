@@ -79,6 +79,8 @@ Result:
 - Non-wrapped actor labels, message labels, and notes no longer collect split lines into
   `Vec<String>`.
 - Empty message label fallback now uses the static zero-width string directly.
+- Block label long-word wrapping now probes hyphenated fragments in-place instead of cloning the
+  current head string.
 
 ## Class Edge Rendering
 

@@ -190,10 +190,13 @@ fn wrap_svg_text_line(
                 .chars()
                 .last()
                 .is_some_and(|ch| ch.is_ascii_alphanumeric())
-            && svg_bbox_width_px(measurer, style, &(head.clone() + "-")) <= max_width
         {
             head.push('-');
-            hyphenated = true;
+            if svg_bbox_width_px(measurer, style, &head) <= max_width {
+                hyphenated = true;
+            } else {
+                head.pop();
+            }
         }
         out.push(head);
         if !tail.is_empty() {

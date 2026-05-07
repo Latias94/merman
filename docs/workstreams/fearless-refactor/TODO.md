@@ -226,8 +226,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   constructor that clones only retained source fields. Sequence block collection now borrows block
   labels and message ids from the typed render model; sequence activation planning now borrows
   active message and actor ids; non-wrapped sequence actor/message/note labels now render borrowed
-  `<br>` split lines. Class edge rendering now reuses sorted edge order, reuses marker-adjusted
-  point buffers, and borrows edge ids for edge-label center lookup.
+  `<br>` split lines; block label hyphenation probes no longer clone the current head string. Class
+  edge rendering now reuses sorted edge order, reuses marker-adjusted point buffers, and borrows
+  edge ids for edge-label center lookup.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
 ## P3: Public API and CLI Cleanup
