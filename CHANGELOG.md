@@ -15,6 +15,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a post-migration sequence typed render-model performance spot-check.
 - Docs: add a current-main Criterion performance baseline covering pipeline and targeted
   flowchart/architecture/mindmap stress benches.
+- Docs: add a gantt JSON baseline and typed render-model performance spot-check.
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
@@ -42,6 +43,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: avoid cloning block label fragments when probing hyphenated long-word wraps.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
   deserializing layout input from semantic JSON.
+- Gantt render pipeline: parse a typed render model for layout/render-only flows and reuse it in
+  SVG render-model dispatch instead of deserializing private JSON transport structs.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids
   for edge-label center lookup.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like

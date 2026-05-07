@@ -182,6 +182,23 @@ fn parse_click_statement(line: &str) -> Option<ClickStatementParts> {
 type ClickStatementParts = (String, Option<String>, Option<(String, Option<String>)>);
 
 pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let Some(db) = parse_gantt_db(code, meta)? else {
+        return Ok(json!({}));
+    };
+    gantt_db_to_json(db, meta)
+}
+
+pub fn parse_gantt_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<GanttDiagramRenderModel> {
+    let Some(mut db) = parse_gantt_db(code, meta)? else {
+        return Ok(GanttDiagramRenderModel::default());
+    };
+    gantt_db_to_render_model(&mut db)
+}
+
+fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
     let mut db = GanttDb::default();
     db.clear();
     db.set_security_level(meta.effective_config.get_str("securityLevel"));
@@ -218,9 +235,13 @@ pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     if !header_seen {
-        return Ok(json!({}));
+        return Ok(None);
     }
 
+    Ok(Some(db))
+}
+
+fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Result<Value> {
     let tasks = db.get_tasks()?;
     let tasks_json: Vec<Value> = tasks
         .into_iter()
@@ -282,6 +303,66 @@ pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "links": db.links,
         "clickEvents": db.click_events,
     }))
+}
+
+fn gantt_db_to_render_model(db: &mut GanttDb) -> Result<GanttDiagramRenderModel> {
+    let tasks = db
+        .get_tasks()?
+        .into_iter()
+        .map(raw_task_to_render_task)
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(GanttDiagramRenderModel {
+        title: non_empty_opt(std::mem::take(&mut db.diagram_title)),
+        acc_title: non_empty_opt(std::mem::take(&mut db.acc_title)),
+        acc_descr: non_empty_opt(std::mem::take(&mut db.acc_descr)),
+        date_format: std::mem::take(&mut db.date_format),
+        axis_format: std::mem::take(&mut db.axis_format),
+        tick_interval: db.tick_interval.take(),
+        today_marker: std::mem::take(&mut db.today_marker),
+        includes: std::mem::take(&mut db.includes),
+        excludes: std::mem::take(&mut db.excludes),
+        display_mode: std::mem::take(&mut db.display_mode),
+        top_axis: db.top_axis,
+        weekday: std::mem::take(&mut db.weekday),
+        weekend: std::mem::take(&mut db.weekend),
+        tasks,
+    })
+}
+
+fn non_empty_opt(value: String) -> Option<String> {
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
+    let start_ms = task_time_ms(&t, "startTime", t.start_time)?;
+    let end_ms = task_time_ms(&t, "endTime", t.end_time)?;
+
+    Ok(GanttRenderTask {
+        id: t.id,
+        task: t.task,
+        section: t.section,
+        task_type: t.type_,
+        classes: t.classes,
+        active: t.active,
+        done: t.done,
+        crit: t.crit,
+        milestone: t.milestone,
+        vert: t.vert,
+        order: t.order,
+        start_ms,
+        end_ms,
+        render_end_ms: t.render_end_time.map(|d| d.timestamp_millis()),
+    })
+}
+
+fn task_time_ms(task: &RawTask, field: &str, value: Option<DateTimeFixed>) -> Result<i64> {
+    value
+        .map(|d| d.timestamp_millis())
+        .ok_or_else(|| Error::DiagramParse {
+            diagram_type: "gantt".to_string(),
+            message: format!("task `{}` has unresolved {field}", task.id),
+        })
 }
 
 fn parse_gantt_statement(

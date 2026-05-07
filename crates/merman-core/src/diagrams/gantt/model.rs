@@ -1,5 +1,66 @@
 use super::*;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct GanttDiagramRenderModel {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default, rename = "dateFormat")]
+    pub date_format: String,
+    #[serde(default, rename = "axisFormat")]
+    pub axis_format: String,
+    #[serde(default, rename = "tickInterval")]
+    pub tick_interval: Option<String>,
+    #[serde(default, rename = "todayMarker")]
+    pub today_marker: String,
+    #[serde(default)]
+    pub includes: Vec<String>,
+    #[serde(default)]
+    pub excludes: Vec<String>,
+    #[serde(default, rename = "displayMode")]
+    pub display_mode: String,
+    #[serde(default, rename = "topAxis")]
+    pub top_axis: bool,
+    #[serde(default)]
+    pub weekday: String,
+    #[serde(default)]
+    pub weekend: String,
+    #[serde(default)]
+    pub tasks: Vec<GanttRenderTask>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GanttRenderTask {
+    pub id: String,
+    pub task: String,
+    pub section: String,
+    #[serde(rename = "type")]
+    pub task_type: String,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub done: bool,
+    #[serde(default)]
+    pub crit: bool,
+    #[serde(default)]
+    pub milestone: bool,
+    #[serde(default)]
+    pub vert: bool,
+    #[serde(default)]
+    pub order: i64,
+    #[serde(rename = "startTime")]
+    pub start_ms: i64,
+    #[serde(rename = "endTime")]
+    pub end_ms: i64,
+    #[serde(default, rename = "renderEndTime")]
+    pub render_end_ms: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub(super) enum StartTimeRaw {
     PrevTaskEnd,

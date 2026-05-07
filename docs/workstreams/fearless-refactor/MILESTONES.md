@@ -76,12 +76,16 @@ Progress:
 - `sequence` now has a typed render model consumed by layout and SVG render-model dispatch.
 - `kanban` now has a typed render model consumed by render-layout dispatch; semantic JSON parsing
   remains stable for the compatibility API.
+- `gantt` now has a typed render model consumed by render-layout and SVG render-model dispatch;
+  semantic JSON parsing remains stable for the compatibility API.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Kanban parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_kanban_typed_render_model.md`.
 - Gantt pre-migration JSON-fallback baseline is recorded in
   `docs/performance/spotcheck_2026-05-08_gantt_json_baseline.md`.
+- Gantt post-migration typed timing evidence is recorded in
+  `docs/performance/spotcheck_2026-05-08_gantt_typed_render_model.md`.
 - Same-machine baseline capture remains a process requirement for the next typed migration.
 
 Exit criteria:

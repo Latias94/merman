@@ -22,7 +22,8 @@ use date::*;
 use datetime::*;
 use model::*;
 
-pub use parse::parse_gantt;
+pub use model::{GanttDiagramRenderModel, GanttRenderTask};
+pub use parse::{parse_gantt, parse_gantt_model_for_render};
 
 fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool {
     let formatted = format_dayjs_like(date, date_format);

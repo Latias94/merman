@@ -1,40 +1,7 @@
 use super::*;
+use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
-
-#[derive(Debug, Clone, Deserialize)]
-struct GanttSemanticTask {
-    id: String,
-    #[serde(rename = "type")]
-    task_type: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    classes: Vec<String>,
-    #[serde(default)]
-    active: bool,
-    #[serde(default)]
-    done: bool,
-    #[serde(default)]
-    crit: bool,
-    #[serde(default)]
-    milestone: bool,
-    #[serde(default)]
-    vert: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct GanttSemanticModel {
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default, rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[serde(default, rename = "todayMarker")]
-    today_marker: Option<String>,
-    #[serde(default)]
-    tasks: Vec<GanttSemanticTask>,
-}
 
 fn gantt_section_num(task_type: &str, categories: &[String], number_section_styles: i64) -> i64 {
     if number_section_styles <= 0 {
@@ -167,11 +134,19 @@ fn render_gantt_axis_group(
 pub(super) fn render_gantt_diagram_svg(
     layout: &crate::model::GanttDiagramLayout,
     semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: GanttDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_gantt_diagram_svg_model(layout, &model, effective_config, options)
+}
+
+pub(super) fn render_gantt_diagram_svg_model(
+    layout: &crate::model::GanttDiagramLayout,
+    model: &GanttDiagramRenderModel,
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: GanttSemanticModel = crate::json::from_value_ref(semantic)?;
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -324,7 +299,7 @@ pub(super) fn render_gantt_diagram_svg(
         layout.tasks.iter().enumerate().collect();
     tasks_in_draw_order.sort_by(|(ai, a), (bi, b)| a.vert.cmp(&b.vert).then(ai.cmp(bi)));
 
-    let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttSemanticTask> =
+    let mut semantic_task_by_id: std::collections::HashMap<&str, &GanttRenderTask> =
         std::collections::HashMap::new();
     for t in &model.tasks {
         semantic_task_by_id.insert(t.id.as_str(), t);
@@ -466,7 +441,7 @@ pub(super) fn render_gantt_diagram_svg(
         out.push_str("</g>");
     }
 
-    if model.today_marker.as_deref().unwrap_or("").trim() != "off" {
+    if model.today_marker.trim() != "off" {
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
@@ -485,7 +460,7 @@ pub(super) fn render_gantt_diagram_svg(
             y1 = fmt(y1),
             y2 = fmt(y2),
         );
-        let style_raw = model.today_marker.as_deref().unwrap_or("").trim();
+        let style_raw = model.today_marker.trim();
         if !style_raw.is_empty() && style_raw != "off" {
             let mut style = style_raw.to_string();
             // Mermaid upstream mmdc output for `todayMarker stroke:#00f;opacity:0.5` ends up as
@@ -500,13 +475,13 @@ pub(super) fn render_gantt_diagram_svg(
         out.push_str("/></g>");
     }
 
-    let title = model.title.unwrap_or_default();
+    let title = model.title.as_deref().unwrap_or_default();
     let _ = write!(
         &mut out,
         r#"<text x="{x}" y="{y}" class="titleText">{txt}</text>"#,
         x = fmt(layout.title_x),
         y = fmt(layout.title_y),
-        txt = escape_xml(&title),
+        txt = escape_xml(title),
     );
 
     out.push_str("</svg>\n");

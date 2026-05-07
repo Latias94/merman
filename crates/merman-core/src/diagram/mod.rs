@@ -90,6 +90,7 @@ pub enum RenderSemanticModel {
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
     Class(crate::models::class_diagram::ClassDiagram),
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
+    Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

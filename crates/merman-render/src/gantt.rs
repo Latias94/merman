@@ -6,8 +6,9 @@ use crate::model::{
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use chrono::{Datelike, FixedOffset, Timelike};
-use serde::Deserialize;
 use std::collections::HashMap;
+
+use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Mermaid's gantt renderer derives the width from the parent element's `offsetWidth`.
 // In Mermaid CLI (and typical browser defaults), the body margin results in an effective
@@ -21,63 +22,6 @@ fn utc_offset() -> FixedOffset {
 
 fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
     merman_core::time::datetime_to_local_fixed(dt_utc.with_timezone(&utc_offset()))
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct GanttTaskModel {
-    id: String,
-    task: String,
-    section: String,
-    #[serde(rename = "type")]
-    task_type: String,
-    #[serde(default)]
-    classes: Vec<String>,
-    #[serde(default)]
-    active: bool,
-    #[serde(default)]
-    done: bool,
-    #[serde(default)]
-    crit: bool,
-    #[serde(default)]
-    milestone: bool,
-    #[serde(default)]
-    vert: bool,
-    #[serde(default)]
-    order: i64,
-    #[serde(rename = "startTime")]
-    start_ms: i64,
-    #[serde(rename = "endTime")]
-    end_ms: i64,
-    #[serde(default, rename = "renderEndTime")]
-    render_end_ms: Option<i64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct GanttModel {
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default, rename = "dateFormat")]
-    date_format: String,
-    #[serde(default, rename = "axisFormat")]
-    axis_format: String,
-    #[serde(default, rename = "tickInterval")]
-    tick_interval: Option<String>,
-    #[serde(default, rename = "todayMarker")]
-    today_marker: String,
-    #[serde(default)]
-    includes: Vec<String>,
-    #[serde(default)]
-    excludes: Vec<String>,
-    #[serde(default, rename = "displayMode")]
-    display_mode: String,
-    #[serde(default, rename = "topAxis")]
-    top_axis: bool,
-    #[serde(default)]
-    weekday: String,
-    #[serde(default)]
-    weekend: String,
-    #[serde(default)]
-    tasks: Vec<GanttTaskModel>,
 }
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
@@ -348,7 +292,7 @@ fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     (t * range).round()
 }
 
-fn collect_categories(tasks: &[GanttTaskModel]) -> Vec<String> {
+fn collect_categories(tasks: &[GanttRenderTask]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for t in tasks {
         if !out.iter().any(|x| x == &t.task_type) {
@@ -358,7 +302,7 @@ fn collect_categories(tasks: &[GanttTaskModel]) -> Vec<String> {
     out
 }
 
-fn get_max_intersections(tasks: &mut [GanttTaskModel], order_offset: i64) -> i64 {
+fn get_max_intersections(tasks: &mut [GanttRenderTask], order_offset: i64) -> i64 {
     let mut timeline: Vec<i64> = vec![i64::MIN; tasks.len()];
     let mut sorted: Vec<usize> = (0..tasks.len()).collect();
     sorted.sort_by(|&a, &b| {
@@ -1049,7 +993,16 @@ pub fn layout_gantt_diagram(
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<GanttDiagramLayout> {
-    let mut m: GanttModel = from_value_ref(model).map_err(Error::Json)?;
+    let model: GanttDiagramRenderModel = from_value_ref(model).map_err(Error::Json)?;
+    layout_gantt_diagram_typed(&model, config, text_measurer)
+}
+
+pub fn layout_gantt_diagram_typed(
+    model: &GanttDiagramRenderModel,
+    config: &serde_json::Value,
+    text_measurer: &dyn TextMeasurer,
+) -> Result<GanttDiagramLayout> {
+    let mut m = model.clone();
 
     let gantt_cfg = config.get("gantt").unwrap_or(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);
@@ -1098,7 +1051,7 @@ pub fn layout_gantt_diagram(
         let mut order_offset: i64 = 0;
         for sec in section_order {
             let idxs = section_map.get(&sec).cloned().unwrap_or_default();
-            let mut subset: Vec<GanttTaskModel> =
+            let mut subset: Vec<GanttRenderTask> =
                 idxs.iter().map(|&i| m.tasks[i].clone()).collect();
             let max_i = get_max_intersections(&mut subset, order_offset);
             for (pos, &orig_idx) in idxs.iter().enumerate() {

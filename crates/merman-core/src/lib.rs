@@ -307,9 +307,8 @@ impl Engine {
     /// Parses a diagram into a typed semantic model optimized for headless layout + SVG rendering.
     ///
     /// Unlike [`Engine::parse_diagram_sync`], this avoids constructing large
-    /// `serde_json::Value` object trees for some high-impact diagrams (currently `sequence`,
-    /// `stateDiagram`, and `mindmap`) and instead returns typed semantic structs that the renderer
-    /// can consume directly.
+    /// `serde_json::Value` object trees for high-impact typed-first diagrams and instead returns
+    /// typed semantic structs that the renderer can consume directly.
     ///
     /// Callers that need the semantic JSON model should continue using
     /// [`Engine::parse_diagram_sync`].
@@ -437,6 +436,8 @@ impl Engine {
             }
             "kanban" => crate::diagrams::kanban::parse_kanban_model_for_render(code, meta)
                 .map(RenderSemanticModel::Kanban),
+            "gantt" => crate::diagrams::gantt::parse_gantt_model_for_render(code, meta)
+                .map(RenderSemanticModel::Gantt),
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -496,6 +497,17 @@ impl Engine {
                 }
             }
             RenderSemanticModel::Kanban(_) => {}
+            RenderSemanticModel::Gantt(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
         }
     }
 
@@ -509,6 +521,7 @@ impl Engine {
             RenderSemanticModel::Architecture(_) => "architecture",
             RenderSemanticModel::Class(_) => "class",
             RenderSemanticModel::Kanban(_) => "kanban",
+            RenderSemanticModel::Gantt(_) => "gantt",
         }
     }
 

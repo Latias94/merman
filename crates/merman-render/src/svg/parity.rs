@@ -446,6 +446,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::KanbanDiagram(layout), RenderSemanticModel::Kanban(_)) => {
             render_kanban_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
         }
+        (LayoutDiagram::GanttDiagram(layout), RenderSemanticModel::Gantt(model)) => {
+            gantt::render_gantt_diagram_svg_model(layout, model, effective_config, options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -527,6 +530,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             render_kanban_diagram_svg(
                 layout,
                 &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::GanttDiagram(layout), RenderSemanticModel::Gantt(model)) => {
+            gantt::render_gantt_diagram_svg_model(
+                layout,
+                model,
                 effective_config.as_value(),
                 options,
             )

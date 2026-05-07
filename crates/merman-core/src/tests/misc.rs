@@ -243,6 +243,45 @@ fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
 }
 
 #[test]
+fn parse_gantt_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+gantt
+dateFormat YYYY-MM-DD
+title Typed Gantt
+section Alpha
+Task 1: id1, 2024-01-01, 2d
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "gantt");
+    match parsed.model {
+        RenderSemanticModel::Gantt(model) => {
+            assert_eq!(model.title.as_deref(), Some("Typed Gantt"));
+            assert_eq!(model.date_format, "YYYY-MM-DD");
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].id, "id1");
+            assert_eq!(model.tasks[0].task, "Task 1");
+            assert_eq!(model.tasks[0].section, "Alpha");
+        }
+        other => panic!("gantt render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("gantt"));
+    assert_eq!(parsed_json.model["title"], json!("Typed Gantt"));
+    assert_eq!(parsed_json.model["tasks"][0]["id"], json!("id1"));
+    assert_eq!(parsed_json.model["tasks"][0]["task"], json!("Task 1"));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
