@@ -141,6 +141,7 @@ Progress:
   `svg/parity/class/node.rs`.
 - Started sequence renderer actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
+- Extracted sequence pre-actor box/rect frame emission into `svg/parity/sequence/frames.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

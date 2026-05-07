@@ -5,6 +5,7 @@ use super::*;
 mod actors;
 mod css;
 mod debug;
+mod frames;
 mod model;
 mod render;
 
