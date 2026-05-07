@@ -88,7 +88,7 @@ Exit criteria:
 
 ## M3: Text System Modularization
 
-Status: in progress.
+Status: complete for the text module split; keep follow-up cleanup under M5 override governance.
 
 Scope:
 

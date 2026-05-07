@@ -68,7 +68,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P1: Text and Measurement Module Split
 
-- [ ] Split `crates/merman-render/src/text.rs` by responsibility.
+- [x] Split `crates/merman-render/src/text.rs` by responsibility.
+  Evidence: `text.rs` is now a thin module/re-export boundary; text responsibilities live under
+  dedicated `text/*` modules.
   Proposed modules:
   - `text/types.rs` (done)
   - `text/heuristic.rs` (done)
@@ -79,8 +81,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/svg_metrics.rs` (done)
   - `text/flowchart_parity.rs` (done)
   - `text/metrics.rs` (flowchart-aware HTML/Markdown/SVG measurement done)
-  - `text/html_label.rs`
-  - `text/svg_text.rs`
+  - `text/html_label.rs` (defer until HTML label measurement needs another split)
+  - `text/svg_text.rs` (defer until SVG text emission/measurement needs another split)
   - `text/overrides.rs` (text override lookup boundary started)
   - `text/font_metrics.rs` (vendored browser/font measurer done)
 - [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
