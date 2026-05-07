@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod actors;
 mod css;
 mod debug;
 mod model;

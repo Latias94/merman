@@ -41,6 +41,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class renderer: move class node shell, basic-container emission, HTML row measurement, HTML
   label-group emission, SVG title emission, SVG label-run emission, and divider emission into
   `svg/parity/class/node.rs`.
+- Sequence renderer: start the actor/participant split by moving actor label emission into
+  `svg/parity/sequence/actors.rs`.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.

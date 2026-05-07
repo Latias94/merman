@@ -139,6 +139,8 @@ Progress:
 - Extracted class node shell, basic-container emission, HTML row measurement, HTML label-group
   emission, SVG title emission, SVG label-run emission, and divider emission into
   `svg/parity/class/node.rs`.
+- Started sequence renderer actor/participant split by moving actor label emission into
+  `svg/parity/sequence/actors.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
