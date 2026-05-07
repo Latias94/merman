@@ -29,6 +29,8 @@ use label::{
     class_html_label_metrics, class_html_title_metrics, render_class_html_label,
 };
 
+mod namespace;
+
 mod node;
 
 mod note;

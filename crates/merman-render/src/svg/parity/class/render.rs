@@ -11,6 +11,10 @@ use super::edge::{
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
+use super::namespace::{
+    ClassNamespaceSubgraphState, class_order_ids_for_namespace_subgraphs,
+    close_class_namespace_subgraph, transition_class_namespace_subgraph,
+};
 use super::node::ClassNodeRenderPosition;
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -970,30 +974,15 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     if render_namespaces_as_subgraphs {
         // Ensure namespace-contained nodes are rendered in namespace order (one nested subgraph per
         // namespace) before emitting any non-namespace nodes at the outer level.
-        let mut inner: Vec<&str> = Vec::new();
-        let mut used: std::collections::HashSet<&str> = std::collections::HashSet::new();
-
-        for ns_id in &namespace_keys {
-            for id in &ordered_ids {
-                let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
-                if parent == Some(*ns_id) && used.insert(*id) {
-                    inner.push(*id);
-                }
-            }
-        }
-
-        let mut outer: Vec<&str> = Vec::new();
-        for id in &ordered_ids {
-            if !used.contains(id) {
-                outer.push(*id);
-            }
-        }
-        ordered_ids = inner.into_iter().chain(outer).collect();
+        ordered_ids = class_order_ids_for_namespace_subgraphs(
+            ordered_ids,
+            &namespace_keys,
+            &class_nodes_by_id,
+        );
     }
 
     let mut inner_nodes_group_open = wrap_nodes_root;
-    let mut active_namespace_subgraph: Option<&str> = None;
-    let mut active_namespace_root_offset: Option<(f64, f64)> = None;
+    let mut namespace_subgraph_state = ClassNamespaceSubgraphState::default();
     for id in ordered_ids {
         if wrap_nodes_root && inner_nodes_group_open {
             let parent = class_nodes_by_id.get(id).and_then(|n| n.parent.as_deref());
@@ -1009,76 +998,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         if render_namespaces_as_subgraphs {
             let parent = class_nodes_by_id.get(id).and_then(|n| n.parent.as_deref());
             let parent = parent.filter(|p| namespace_key_set.contains(p));
-
-            if parent != active_namespace_subgraph {
-                if active_namespace_subgraph.is_some() {
-                    out.push_str("</g>"); // namespace subgraph nodes
-                    out.push_str("</g>"); // namespace subgraph root
-                    active_namespace_root_offset = None;
-                }
-
-                active_namespace_subgraph = parent;
-                if let Some(ns_id) = active_namespace_subgraph {
-                    if let Some(c) = clusters_by_id.get(ns_id).copied() {
-                        let w = c.width.max(1.0);
-                        let h = c.height.max(1.0);
-                        let root_dx = c.x - w / 2.0 - 8.0;
-                        let root_dy = c.y - h / 2.0;
-                        active_namespace_root_offset = Some((root_dx, root_dy));
-
-                        out.push_str(r#"<g class="root" transform="translate("#);
-                        fmt_into(&mut out, root_dx);
-                        out.push_str(r#", "#);
-                        fmt_into(&mut out, root_dy);
-                        out.push_str(r#")">"#);
-                        out.push_str(r#"<g class="clusters">"#);
-
-                        let local_left = 8.0;
-                        let local_top = 8.0;
-                        let global_left = root_dx + local_left;
-                        let global_top = root_dy + local_top;
-                        include_xywh(&mut content_bounds, global_left, global_top, w, h);
-
-                        let label_w = c.title_label.width.max(0.0);
-                        let label_h = 24.0;
-                        let local_label_x = local_left + (w - label_w) / 2.0;
-                        let local_label_y = local_top + c.title_margin_top;
-                        let global_label_x = root_dx + local_label_x;
-                        let global_label_y = root_dy + local_label_y;
-                        include_xywh(
-                            &mut content_bounds,
-                            global_label_x,
-                            global_label_y,
-                            label_w,
-                            label_h,
-                        );
-
-                        let _ = write!(
-                            &mut out,
-                            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
-                            escape_attr(&c.id),
-                            fmt(local_left),
-                            fmt(local_top),
-                            fmt(w),
-                            fmt(h),
-                            fmt(local_label_x),
-                            fmt(local_label_y),
-                            fmt(label_w),
-                            class_text_overrides::class_html_label_max_width_px(),
-                            escape_xml(&c.title)
-                        );
-                    } else {
-                        active_namespace_root_offset = Some((0.0, 0.0));
-                        out.push_str(
-                            r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#,
-                        );
-                    }
-
-                    out.push_str(
-                        r#"</g><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes">"#,
-                    );
-                }
-            }
+            transition_class_namespace_subgraph(
+                &mut out,
+                &mut content_bounds,
+                &mut namespace_subgraph_state,
+                parent,
+                &clusters_by_id,
+            );
         }
 
         let (active_nodes_root_dx, active_nodes_root_dy) =
@@ -1088,14 +1014,14 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 (0.0, 0.0)
             };
         let (active_namespace_root_dx, active_namespace_root_dy) =
-            active_namespace_root_offset.unwrap_or((0.0, 0.0));
+            namespace_subgraph_state.root_offset.unwrap_or((0.0, 0.0));
 
         let Some(n) = layout_nodes_by_id.get(id).copied() else {
             continue;
         };
 
         let in_namespace_root =
-            render_namespaces_as_subgraphs && active_namespace_subgraph.is_some();
+            render_namespaces_as_subgraphs && namespace_subgraph_state.active_subgraph.is_some();
         let node_tx = if in_namespace_root {
             n.x - active_namespace_root_dx
         } else {
@@ -2510,9 +2436,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         }
     }
 
-    if render_namespaces_as_subgraphs && active_namespace_subgraph.is_some() {
-        out.push_str("</g>"); // namespace subgraph nodes
-        out.push_str("</g>"); // namespace subgraph root
+    if render_namespaces_as_subgraphs {
+        close_class_namespace_subgraph(&mut out, &mut namespace_subgraph_state);
     }
 
     if inner_nodes_group_open {

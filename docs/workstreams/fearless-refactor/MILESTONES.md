@@ -143,6 +143,8 @@ Progress:
 - Extracted class interface node emission into `svg/parity/class/interface.rs`, sharing node
   position data through `svg/parity/class/node.rs`.
 - Extracted class note node emission into `svg/parity/class/note.rs`.
+- Extracted class namespace ordering and nested subgraph emission into
+  `svg/parity/class/namespace.rs`.
 
 Exit criteria:
 
