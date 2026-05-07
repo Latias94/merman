@@ -282,6 +282,43 @@ Task 1: id1, 2024-01-01, 2d
 }
 
 #[test]
+fn parse_pie_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+pie showData title Typed Pie
+  "Alpha" : 60
+  "Beta" : 40
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "pie");
+    match parsed.model {
+        RenderSemanticModel::Pie(model) => {
+            assert!(model.show_data);
+            assert_eq!(model.title.as_deref(), Some("Typed Pie"));
+            assert_eq!(model.sections.len(), 2);
+            assert_eq!(model.sections[0].label, "Alpha");
+            assert_eq!(model.sections[0].value, 60.0);
+        }
+        other => panic!("pie render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("pie"));
+    assert_eq!(parsed_json.model["showData"], json!(true));
+    assert_eq!(parsed_json.model["title"], json!("Typed Pie"));
+    assert_eq!(parsed_json.model["sections"][0]["label"], json!("Alpha"));
+    assert_eq!(parsed_json.model["sections"][0]["value"], json!(60.0));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

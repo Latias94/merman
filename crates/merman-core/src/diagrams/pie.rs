@@ -2,7 +2,60 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct PieDiagramRenderModel {
+    #[serde(rename = "showData")]
+    pub show_data: bool,
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub sections: Vec<PieRenderSection>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PieRenderSection {
+    pub label: String,
+    pub value: f64,
+}
+
+enum PieParseOutput {
+    Empty,
+    ExpectedPie,
+    Model(PieDiagramRenderModel),
+}
+
 pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    match parse_pie_model(code, meta)? {
+        PieParseOutput::Empty => Ok(json!({})),
+        PieParseOutput::ExpectedPie => Ok(json!({ "error": "expected pie" })),
+        PieParseOutput::Model(model) => Ok(json!({
+            "type": meta.diagram_type,
+            "showData": model.show_data,
+            "title": model.title,
+            "accTitle": model.acc_title,
+            "accDescr": model.acc_descr,
+            "sections": model.sections,
+        })),
+    }
+}
+
+pub fn parse_pie_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<PieDiagramRenderModel> {
+    match parse_pie_model(code, meta)? {
+        PieParseOutput::Empty => Ok(PieDiagramRenderModel::default()),
+        PieParseOutput::ExpectedPie => Err(Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: "expected pie".to_string(),
+        }),
+        PieParseOutput::Model(model) => Ok(model),
+    }
+}
+
+fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
     let mut raw_lines = code.lines();
 
     let mut header: Option<String> = None;
@@ -15,15 +68,15 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let Some(header) = header else {
-        return Ok(json!({}));
+        return Ok(PieParseOutput::Empty);
     };
 
     let mut it0 = header.split_whitespace();
     let Some(first) = it0.next() else {
-        return Ok(json!({}));
+        return Ok(PieParseOutput::Empty);
     };
     if first != "pie" {
-        return Ok(json!({ "error": "expected pie" }));
+        return Ok(PieParseOutput::ExpectedPie);
     }
 
     let mut show_data = false;
@@ -105,7 +158,7 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    let mut sections: Vec<Value> = Vec::new();
+    let mut sections: Vec<PieRenderSection> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
     let mut lines = raw_lines.peekable();
@@ -161,7 +214,7 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 });
             }
             if seen.insert(label.clone()) {
-                sections.push(json!({ "label": label, "value": value }));
+                sections.push(PieRenderSection { label, value });
             }
             continue;
         }
@@ -172,13 +225,12 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "showData": show_data,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "sections": sections,
+    Ok(PieParseOutput::Model(PieDiagramRenderModel {
+        show_data,
+        title,
+        acc_title,
+        acc_descr,
+        sections,
     }))
 }
 

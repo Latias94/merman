@@ -2,27 +2,9 @@ use crate::Result;
 use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 use ryu_js::Buffer;
-use serde::Deserialize;
 use std::cmp::Ordering;
-
-#[derive(Debug, Clone, Deserialize)]
-struct PieSection {
-    label: String,
-    value: f64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct PieModel {
-    #[serde(rename = "showData")]
-    show_data: bool,
-    title: Option<String>,
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    sections: Vec<PieSection>,
-}
 
 #[derive(Debug, Clone)]
 struct ColorScale {
@@ -300,7 +282,15 @@ pub fn layout_pie_diagram(
     _effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
-    let model: PieModel = crate::json::from_value_ref(semantic)?;
+    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_pie_diagram_typed(&model, _effective_config, measurer)
+}
+
+pub fn layout_pie_diagram_typed(
+    model: &PieDiagramRenderModel,
+    _effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<PieDiagramLayout> {
     let _ = (
         model.title.as_deref(),
         model.acc_title.as_deref(),
@@ -338,7 +328,7 @@ pub fn layout_pie_diagram(
         // - sort remaining values by descending value before D3 pie() computes angles
         // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
         // - percentage labels are still computed using the original total
-        let mut pie_sections: Vec<&PieSection> = model
+        let mut pie_sections: Vec<&PieRenderSection> = model
             .sections
             .iter()
             .filter(|s| s.value.is_finite() && s.value > 0.0)

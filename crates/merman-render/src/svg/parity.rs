@@ -449,6 +449,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::GanttDiagram(layout), RenderSemanticModel::Gantt(model)) => {
             gantt::render_gantt_diagram_svg_model(layout, model, effective_config, options)
         }
+        (LayoutDiagram::PieDiagram(layout), RenderSemanticModel::Pie(model)) => {
+            pie::render_pie_diagram_svg_model(layout, model, effective_config, options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -542,6 +545,9 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 options,
             )
         }
+        (LayoutDiagram::PieDiagram(layout), RenderSemanticModel::Pie(model)) => {
+            pie::render_pie_diagram_svg_model(layout, model, effective_config.as_value(), options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config(
             layout,
             semantic,
@@ -561,27 +567,6 @@ pub fn render_flowchart_v2_debug_svg(
     options: &SvgRenderOptions,
 ) -> String {
     flowchart::render_flowchart_v2_debug_svg(layout, options)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct PieSvgSection {
-    #[allow(dead_code)]
-    label: String,
-    #[allow(dead_code)]
-    value: f64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct PieSvgModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[serde(rename = "showData")]
-    show_data: bool,
-    title: Option<String>,
-    #[allow(dead_code)]
-    sections: Vec<PieSvgSection>,
 }
 
 pub fn render_sequence_diagram_debug_svg(

@@ -71,6 +71,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_gantt_model_for_render` now returns `GanttDiagramRenderModel`, render-layout
   dispatch consumes it directly, SVG render-model dispatch consumes the same typed model, and
   `parse_diagram_sync` keeps the semantic JSON payload stable.
+- [x] Move one small JSON-fallback diagram to a typed render model after gantt.
+  Evidence: `parse_pie_model_for_render` now returns `PieDiagramRenderModel`, layout/SVG
+  render-model dispatch consume it directly, and `parse_diagram_sync` keeps the semantic JSON
+  payload stable.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -80,7 +84,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   pre-migration JSON-fallback baseline captured in
   `docs/performance/spotcheck_2026-05-08_gantt_json_baseline.md`, and post-migration typed
   Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_gantt_typed_render_model.md`. Keep this item open for the
+  `docs/performance/spotcheck_2026-05-08_gantt_typed_render_model.md`. Pie status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_pie_typed_render_model.md`. Keep this item open for the
   next typed migration.
 
 ## P1: Text and Measurement Module Split

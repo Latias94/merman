@@ -16,6 +16,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a current-main Criterion performance baseline covering pipeline and targeted
   flowchart/architecture/mindmap stress benches.
 - Docs: add a gantt JSON baseline and typed render-model performance spot-check.
+- Docs: add a pie typed render-model performance spot-check.
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
 - Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
@@ -46,6 +47,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   deserializing layout input from semantic JSON.
 - Gantt render pipeline: parse a typed render model for layout/render-only flows and reuse it in
   SVG render-model dispatch instead of deserializing private JSON transport structs.
+- Pie render pipeline: parse a typed render model for layout/render-only flows and reuse it in SVG
+  render-model dispatch instead of deserializing duplicate private transport structs.
 - CLI render command: share layout-option construction and SVG rasterization output handling across
   Mermaid-input and SVG-input render flows.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids

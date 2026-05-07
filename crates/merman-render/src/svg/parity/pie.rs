@@ -1,5 +1,6 @@
 use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
 use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
+use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
 
 fn pie_legend_rect_style(fill: &str) -> String {
@@ -24,11 +25,19 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
 pub(super) fn render_pie_diagram_svg(
     layout: &PieDiagramLayout,
     semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_pie_diagram_svg_model(layout, &model, effective_config, options)
+}
+
+pub(super) fn render_pie_diagram_svg_model(
+    layout: &PieDiagramLayout,
+    model: &PieDiagramRenderModel,
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: super::PieSvgModel = crate::json::from_value_ref(semantic)?;
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = super::escape_xml(diagram_id);
 
