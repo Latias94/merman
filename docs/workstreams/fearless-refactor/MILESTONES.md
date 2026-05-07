@@ -190,6 +190,8 @@ Progress:
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
 - Moved class edge paths, edge labels, terminals, data-point encoding, and timing accumulation into
   `svg/parity/class/edge.rs`.
+- Extracted shared class cluster/edge group orchestration for `clusters`, `edgePaths`, and
+  `edgeLabels` into `svg/parity/class/groups.rs`.
 - Moved class HTML label metrics/styles into `svg/parity/class/label.rs`.
 - Moved class SVG text wrapping, label bbox, and bold-width compensation helpers into
   `svg/parity/class/label.rs`.

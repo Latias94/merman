@@ -26,6 +26,8 @@ use defs::class_markers;
 
 mod edge;
 
+mod groups;
+
 mod interface;
 
 mod label;

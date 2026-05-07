@@ -1,16 +1,16 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
-use super::edge::{
-    ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
+use super::groups::{
+    ClassClusterEdgeGroupsRenderContext, ClassClusterEdgeGroupsRenderState,
+    render_class_cluster_edge_groups,
 };
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
 use super::namespace::{
-    ClassNamespaceClusterGroupContext, ClassNamespaceRenderMode, ClassNamespaceSubgraphState,
-    ClassNodeRenderOrder, build_class_node_render_order, class_namespace_render_mode,
-    close_class_namespace_subgraph, render_class_namespace_cluster_group,
+    ClassNamespaceRenderMode, ClassNamespaceSubgraphState, ClassNodeRenderOrder,
+    build_class_node_render_order, class_namespace_render_mode, close_class_namespace_subgraph,
     transition_class_namespace_subgraph,
 };
 use super::node::{
@@ -141,55 +141,45 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         out
     };
 
-    let mut render_clusters_edges_and_labels =
-        |out: &mut String,
-         content_bounds: &mut Option<Bounds>,
-         bounds_dx: f64,
-         bounds_dy: f64,
-         emit_clusters: bool| {
-            if emit_clusters {
-                detail.clusters += render_class_namespace_cluster_group(
-                    out,
-                    content_bounds,
-                    &layout.clusters,
-                    ClassNamespaceClusterGroupContext {
-                        content_tx,
-                        content_ty,
-                        bounds_dx,
-                        bounds_dy,
-                        timing_enabled,
-                    },
-                );
-            }
-
-            render_class_edge_groups(
-                ClassEdgeGroupsRenderState {
-                    out,
-                    content_bounds,
-                    detail: &mut detail,
-                },
-                &ClassEdgeGroupsRenderContext {
-                    edges: &layout.edges,
-                    relations_by_id: &relations_by_id,
-                    relation_index_by_id: &relation_index_by_id,
-                    marker_url_prefix: &marker_url_prefix,
-                    content_tx,
-                    content_ty,
-                    bounds_dx,
-                    bounds_dy,
-                    edge_use_html_labels: settings.edge_use_html_labels,
-                    timing_enabled,
-                },
-            );
-        };
+    let group_ctx = ClassClusterEdgeGroupsRenderContext {
+        clusters: &layout.clusters,
+        edges: &layout.edges,
+        relations_by_id: &relations_by_id,
+        relation_index_by_id: &relation_index_by_id,
+        marker_url_prefix: &marker_url_prefix,
+        content_tx,
+        content_ty,
+        edge_use_html_labels: settings.edge_use_html_labels,
+        timing_enabled,
+    };
 
     if wrap_nodes_root {
         out.push_str(r#"<g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/>"#);
     } else if render_namespaces_as_subgraphs {
         out.push_str(r#"<g class="clusters"/>"#);
-        render_clusters_edges_and_labels(&mut out, &mut content_bounds, 0.0, 0.0, false);
+        render_class_cluster_edge_groups(
+            ClassClusterEdgeGroupsRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+            },
+            &group_ctx,
+            0.0,
+            0.0,
+            false,
+        );
     } else {
-        render_clusters_edges_and_labels(&mut out, &mut content_bounds, 0.0, 0.0, true);
+        render_class_cluster_edge_groups(
+            ClassClusterEdgeGroupsRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+            },
+            &group_ctx,
+            0.0,
+            0.0,
+            true,
+        );
     }
 
     // Nodes.
@@ -203,9 +193,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             fmt(nodes_root_dx),
             fmt(nodes_root_dy)
         );
-        render_clusters_edges_and_labels(
-            &mut out,
-            &mut content_bounds,
+        render_class_cluster_edge_groups(
+            ClassClusterEdgeGroupsRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+            },
+            &group_ctx,
             nodes_root_dx,
             nodes_root_dy,
             true,
