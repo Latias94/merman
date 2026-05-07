@@ -8,6 +8,12 @@ type Rect = merman_core::geom::Box2;
 
 mod bounds;
 
+mod context;
+use context::{
+    ClassRenderDetails, ClassRenderLookups, emit_class_render_timing, parse_viewbox_min_xy,
+    theme_font_size_px_string_only,
+};
+
 mod debug_svg;
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,

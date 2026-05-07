@@ -59,19 +59,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     let total_start = timing_enabled.then(std::time::Instant::now);
     let mut timings = RenderTimings::default();
 
-    #[derive(Debug, Default, Clone)]
-    struct ClassRenderDetails {
-        clusters: std::time::Duration,
-        edge_paths: std::time::Duration,
-        edge_curve: std::time::Duration,
-        edge_points_json: std::time::Duration,
-        edge_points_b64: std::time::Duration,
-        edge_labels: std::time::Duration,
-        nodes: std::time::Duration,
-        notes_sanitize: std::time::Duration,
-        path_bounds: std::time::Duration,
-        path_bounds_calls: usize,
-    }
     let mut detail = ClassRenderDetails::default();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -84,16 +71,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     let edge_use_html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"])
         .or_else(|| config_bool(effective_config, &["htmlLabels"]))
         .unwrap_or(true);
-    fn theme_font_size_px_string_only(effective_config: &serde_json::Value) -> Option<f64> {
-        let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
-        let t = raw.trim().trim_end_matches(';').trim();
-        let t = t.trim_end_matches("!important").trim();
-        if !t.ends_with("px") {
-            return None;
-        }
-        t.trim_end_matches("px").trim().parse::<f64>().ok()
-    }
-
     let font_size = if diagram_use_html_labels {
         // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI
         // baselines show that those HTML labels do not reliably inherit the surrounding SVG-root
@@ -240,34 +217,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     out.push_str("<g>");
     class_markers(&mut out, diagram_id, aria_roledescription);
 
-    let mut class_nodes_by_id: FxHashMap<&str, &ClassSvgNode> = FxHashMap::default();
-    class_nodes_by_id.reserve(model.classes.len());
-    for (id, n) in &model.classes {
-        class_nodes_by_id.insert(id.as_str(), n);
-    }
-
-    let mut relations_by_id: FxHashMap<&str, &ClassSvgRelation> = FxHashMap::default();
-    relations_by_id.reserve(model.relations.len());
-    for r in &model.relations {
-        relations_by_id.insert(r.id.as_str(), r);
-    }
-    let mut relation_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
-    relation_index_by_id.reserve(model.relations.len());
-    for (idx, r) in model.relations.iter().enumerate() {
-        relation_index_by_id.insert(r.id.as_str(), idx + 1);
-    }
-
-    let mut note_by_id: FxHashMap<&str, &ClassSvgNote> = FxHashMap::default();
-    note_by_id.reserve(model.notes.len());
-    for n in &model.notes {
-        note_by_id.insert(n.id.as_str(), n);
-    }
-
-    let mut iface_by_id: FxHashMap<&str, &ClassSvgInterface> = FxHashMap::default();
-    iface_by_id.reserve(model.interfaces.len());
-    for i in &model.interfaces {
-        iface_by_id.insert(i.id.as_str(), i);
-    }
+    let ClassRenderLookups {
+        class_nodes_by_id,
+        relations_by_id,
+        relation_index_by_id,
+        note_by_id,
+        iface_by_id,
+    } = ClassRenderLookups::new(model);
 
     out.push_str(r#"<g class="root">"#);
 
@@ -279,12 +235,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // - `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_add_classes_namespaces_039`
     // - `upstream_docs_classdiagram_define_namespace_035`
     // - `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`
-    fn parse_viewbox_min_xy(view_box: &str) -> Option<(f64, f64)> {
-        let mut it = view_box.split_whitespace();
-        let min_x = it.next()?.parse::<f64>().ok()?;
-        let min_y = it.next()?.parse::<f64>().ok()?;
-        Some((min_x, min_y))
-    }
     let viewbox_override_min_xy =
         crate::generated::class_root_overrides_11_12_2::lookup_class_root_viewport_override(
             diagram_id,
@@ -2163,28 +2113,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
 
     if let Some(s) = total_start {
         timings.total = s.elapsed();
-        eprintln!(
-            "[render-timing] diagram=classDiagram total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} clusters={:?} edge_paths={:?} edge_curve={:?} edge_points_json={:?} edge_points_b64={:?} edge_labels={:?} nodes={:?} notes_sanitize={:?} path_bounds={:?} path_bounds_calls={} nodes_count={} edges_count={} clusters_count={}",
-            timings.total,
-            timings.deserialize_model,
-            timings.build_ctx,
-            timings.viewbox,
-            timings.render_svg,
-            timings.finalize_svg,
-            detail.clusters,
-            detail.edge_paths,
-            detail.edge_curve,
-            detail.edge_points_json,
-            detail.edge_points_b64,
-            detail.edge_labels,
-            detail.nodes,
-            detail.notes_sanitize,
-            detail.path_bounds,
-            detail.path_bounds_calls,
-            layout.nodes.len(),
-            layout.edges.len(),
-            layout.clusters.len(),
-        );
+        emit_class_render_timing(&timings, &detail, layout);
     }
     Ok(out)
 }

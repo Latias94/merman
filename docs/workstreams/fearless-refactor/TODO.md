@@ -106,7 +106,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 - [ ] Split `svg/parity/class/render.rs`.
   Proposed boundaries:
-  - render context and ids
+  - render context and ids (render lookup maps, small config helpers, and timing detail emission
+    now live in `class/context.rs`)
   - class box geometry (bounds accumulation helpers, class node shell/basic-container emission,
     HTML row measurement, HTML label-group emission, SVG title emission, SVG label-run emission,
     and divider emission now live in `class/bounds.rs` and `class/node.rs`; interface node

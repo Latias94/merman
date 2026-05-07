@@ -95,6 +95,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   through the shared optimized edge group path.
 - Class renderer: move SVG text wrapping, label bbox, and bold-width compensation helpers into
   `svg/parity/class/label.rs`.
+- Class renderer: move render lookup maps, small config helpers, and timing detail emission into
+  `svg/parity/class/context.rs`.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on
