@@ -40,6 +40,8 @@ mod note;
 
 mod rough;
 
+mod viewbox;
+
 type ClassSvgModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassSvgNode = merman_core::models::class_diagram::ClassNode;
 type ClassSvgRelation = merman_core::models::class_diagram::ClassRelation;
