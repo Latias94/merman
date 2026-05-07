@@ -38,7 +38,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   HTML label helpers out of `svg/parity/class/render.rs`.
 - Class renderer: move SVG content-bounds accumulation helpers into
   `svg/parity/class/bounds.rs`.
-- Class renderer: move class node shell and basic-container emission into
+- Class renderer: move class node shell, basic-container emission, and HTML row measurement into
   `svg/parity/class/node.rs`.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.

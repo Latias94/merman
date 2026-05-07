@@ -1,10 +1,14 @@
+use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
+use crate::text::{TextMeasurer, TextStyle};
+use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
 use std::time::Duration;
 
 use super::super::{escape_attr_display, fmt, fmt_into};
 use super::ClassSvgNode;
 use super::bounds::{include_path_bounds, include_xywh};
+use super::label::{class_html_label_max_width_px, class_html_label_metrics};
 use super::rough::{class_rough_rect_stroke_path_and_bounds, class_rough_seed};
 
 #[derive(Debug, Clone, Copy)]
@@ -47,6 +51,26 @@ pub(super) struct ClassNodeRenderStats {
 pub(super) struct ClassNodeBasicContainerResult {
     pub geometry: ClassNodeBoxGeometry,
     pub stats: ClassNodeRenderStats,
+}
+
+pub(super) struct ClassHtmlNodeRow {
+    pub text: String,
+    pub row_style: String,
+    pub metrics: crate::text::TextMetrics,
+    pub max_width_px: i64,
+    pub y: f64,
+}
+
+pub(super) struct ClassHtmlNodeRows {
+    pub rows: Vec<ClassHtmlNodeRow>,
+    pub raw_height: f64,
+}
+
+pub(super) struct ClassHtmlNodeRowsContext<'a> {
+    pub measurer: &'a dyn TextMeasurer,
+    pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
+    pub line_height: f64,
 }
 
 pub(super) fn render_class_node_shell_open(
@@ -179,4 +203,56 @@ pub(super) fn render_class_node_basic_container(
         },
         stats,
     }
+}
+
+pub(super) fn measure_class_html_node_rows(
+    members: &[ClassMember],
+    row_metrics: Option<&[crate::text::TextMetrics]>,
+    ctx: &ClassHtmlNodeRowsContext<'_>,
+) -> ClassHtmlNodeRows {
+    let mut raw_height = 0.0;
+    let mut rows = Vec::with_capacity(members.len());
+    for (idx, member) in members.iter().enumerate() {
+        let text = decode_entities_minimal_cow(member.display_text.trim()).into_owned();
+        let mut max_width_px = crate::class::class_html_create_text_width_px(
+            text.as_str(),
+            ctx.measurer,
+            ctx.html_calc_text_style,
+        );
+        let metrics = row_metrics
+            .and_then(|rows| rows.get(idx).cloned())
+            .unwrap_or_else(|| {
+                class_html_label_metrics(
+                    ctx.measurer,
+                    ctx.text_style,
+                    text.as_str(),
+                    max_width_px,
+                    member.css_style.as_str(),
+                )
+            });
+        if metrics.width > 0.0
+            && metrics.width < 60.0
+            && !(text.contains('*') || text.contains('_') || text.contains('`'))
+        {
+            max_width_px = class_html_label_max_width_px(metrics.width, false);
+        }
+        if let Some(width) = crate::class::class_html_known_calc_text_width_override_px(
+            text.as_str(),
+            ctx.html_calc_text_style,
+        ) {
+            max_width_px = width + 50;
+        }
+        let row_height = metrics.height.max(ctx.line_height).max(1.0);
+        let y = raw_height - row_height / 2.0;
+        raw_height += row_height;
+        rows.push(ClassHtmlNodeRow {
+            text,
+            row_style: member.css_style.trim().to_string(),
+            metrics,
+            max_width_px,
+            y,
+        });
+    }
+
+    ClassHtmlNodeRows { rows, raw_height }
 }

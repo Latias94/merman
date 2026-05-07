@@ -16,8 +16,9 @@ use super::namespace::{
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
 use super::node::{
-    ClassNodeBasicContainerContext, ClassNodeRenderPosition, ClassNodeRenderState,
-    render_class_node_basic_container, render_class_node_shell_open,
+    ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
+    ClassNodeRenderState, measure_class_html_node_rows, render_class_node_basic_container,
+    render_class_node_shell_open,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -1254,55 +1255,18 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let annotation_group_y = text_translate_y;
             let title_y = annotation_height + text_translate_y;
 
-            let mut members_group_raw_height = 0.0;
-            let mut members_rows_rendered: Vec<(
-                String,
-                String,
-                crate::text::TextMetrics,
-                i64,
-                f64,
-            )> = Vec::with_capacity(node.members.len());
-            for (idx, member) in node.members.iter().enumerate() {
-                let text = decode_entities_minimal_cow(member.display_text.trim()).into_owned();
-                let mut max_width_px = crate::class::class_html_create_text_width_px(
-                    text.as_str(),
-                    measurer,
-                    &html_calc_text_style,
-                );
-                let metrics = class_row_metrics
-                    .and_then(|rows| rows.members.get(idx).cloned())
-                    .unwrap_or_else(|| {
-                        class_html_label_metrics(
-                            measurer,
-                            &text_style,
-                            text.as_str(),
-                            max_width_px,
-                            member.css_style.as_str(),
-                        )
-                    });
-                if metrics.width > 0.0
-                    && metrics.width < 60.0
-                    && !(text.contains('*') || text.contains('_') || text.contains('`'))
-                {
-                    max_width_px = class_html_label_max_width_px(metrics.width, false);
-                }
-                if let Some(width) = crate::class::class_html_known_calc_text_width_override_px(
-                    text.as_str(),
-                    &html_calc_text_style,
-                ) {
-                    max_width_px = width + 50;
-                }
-                let row_height = metrics.height.max(line_height).max(1.0);
-                let y = members_group_raw_height - row_height / 2.0;
-                members_group_raw_height += row_height;
-                members_rows_rendered.push((
-                    text,
-                    member.css_style.trim().to_string(),
-                    metrics,
-                    max_width_px,
-                    y,
-                ));
-            }
+            let html_rows_ctx = ClassHtmlNodeRowsContext {
+                measurer,
+                text_style: &text_style,
+                html_calc_text_style: &html_calc_text_style,
+                line_height,
+            };
+            let members_rows_rendered = measure_class_html_node_rows(
+                &node.members,
+                class_row_metrics.map(|rows| rows.members.as_slice()),
+                &html_rows_ctx,
+            );
+            let members_group_raw_height = members_rows_rendered.raw_height;
             let members_group_y = annotation_height + title_height + gap * 2.0 + text_translate_y;
 
             let methods_offset_base = if members_group_raw_height > 0.0 {
@@ -1310,68 +1274,22 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             } else {
                 gap / 2.0 + gap * 4.0
             };
-            let mut methods_group_raw_height = 0.0;
-            let mut methods_rows_rendered: Vec<(
-                String,
-                String,
-                crate::text::TextMetrics,
-                i64,
-                f64,
-            )> = Vec::with_capacity(node.methods.len());
-            for (idx, method) in node.methods.iter().enumerate() {
-                let text = decode_entities_minimal_cow(method.display_text.trim()).into_owned();
-                let mut max_width_px = crate::class::class_html_create_text_width_px(
-                    text.as_str(),
-                    measurer,
-                    &html_calc_text_style,
-                );
-                let metrics = class_row_metrics
-                    .and_then(|rows| rows.methods.get(idx).cloned())
-                    .unwrap_or_else(|| {
-                        class_html_label_metrics(
-                            measurer,
-                            &text_style,
-                            text.as_str(),
-                            max_width_px,
-                            method.css_style.as_str(),
-                        )
-                    });
-                if metrics.width > 0.0
-                    && metrics.width < 60.0
-                    && !(text.contains('*') || text.contains('_') || text.contains('`'))
-                {
-                    max_width_px = class_html_label_max_width_px(metrics.width, false);
-                }
-                if let Some(width) = crate::class::class_html_known_calc_text_width_override_px(
-                    text.as_str(),
-                    &html_calc_text_style,
-                ) {
-                    max_width_px = width + 50;
-                }
-                let row_height = metrics.height.max(line_height).max(1.0);
-                let y = methods_group_raw_height - row_height / 2.0;
-                methods_group_raw_height += row_height;
-                methods_rows_rendered.push((
-                    text,
-                    method.css_style.trim().to_string(),
-                    metrics,
-                    max_width_px,
-                    y,
-                ));
-            }
+            let methods_rows_rendered = measure_class_html_node_rows(
+                &node.methods,
+                class_row_metrics.map(|rows| rows.methods.as_slice()),
+                &html_rows_ctx,
+            );
             let methods_group_y =
                 annotation_height + title_height + methods_offset_base + text_translate_y;
 
             let members_group_width = members_rows_rendered
+                .rows
                 .iter()
-                .fold(0.0_f64, |acc, (_, _, metrics, _, _)| {
-                    acc.max(metrics.width.max(1.0))
-                });
+                .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
             let methods_group_width = methods_rows_rendered
+                .rows
                 .iter()
-                .fold(0.0_f64, |acc, (_, _, metrics, _, _)| {
-                    acc.max(metrics.width.max(1.0))
-                });
+                .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
             let mut content_bbox_min_x = 0.0_f64;
             let mut content_bbox_max_x = 0.0_f64;
             for centered_width in [annotation_width, title_width] {
@@ -1455,7 +1373,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             );
             out.push_str("</div></foreignObject></g></g>");
 
-            if members_rows_rendered.is_empty() {
+            if members_rows_rendered.rows.is_empty() {
                 let _ = write!(
                     &mut out,
                     r#"<g class="members-group text" transform="translate({}, {})"/>"#,
@@ -1469,21 +1387,22 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     fmt(members_x),
                     fmt(members_group_y)
                 );
-                for (text, row_style, metrics, max_width_px, y) in &members_rows_rendered {
-                    let div_style = class_html_div_style(metrics.width.max(1.0), *max_width_px);
+                for row in &members_rows_rendered.rows {
+                    let div_style =
+                        class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
                     let _ = write!(
                         &mut out,
                         r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-                        escape_attr_display(row_style),
-                        fmt(*y),
-                        fmt(metrics.width.max(1.0)),
-                        fmt(metrics.height.max(line_height).max(1.0)),
+                        escape_attr_display(row.row_style.as_str()),
+                        fmt(row.y),
+                        fmt(row.metrics.width.max(1.0)),
+                        fmt(row.metrics.height.max(line_height).max(1.0)),
                         escape_attr_display(&div_style)
                     );
                     render_class_html_label(
                         &mut out,
                         "nodeLabel",
-                        text.as_str(),
+                        row.text.as_str(),
                         true,
                         Some("markdown-node-label"),
                         Some(node_style_attr),
@@ -1493,7 +1412,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 out.push_str("</g>");
             }
 
-            if methods_rows_rendered.is_empty() {
+            if methods_rows_rendered.rows.is_empty() {
                 let _ = write!(
                     &mut out,
                     r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
@@ -1507,21 +1426,22 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     fmt(members_x),
                     fmt(methods_group_y)
                 );
-                for (text, row_style, metrics, max_width_px, y) in &methods_rows_rendered {
-                    let div_style = class_html_div_style(metrics.width.max(1.0), *max_width_px);
+                for row in &methods_rows_rendered.rows {
+                    let div_style =
+                        class_html_div_style(row.metrics.width.max(1.0), row.max_width_px);
                     let _ = write!(
                         &mut out,
                         r#"<g class="label" style="{}" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">"#,
-                        escape_attr_display(row_style),
-                        fmt(*y),
-                        fmt(metrics.width.max(1.0)),
-                        fmt(metrics.height.max(line_height).max(1.0)),
+                        escape_attr_display(row.row_style.as_str()),
+                        fmt(row.y),
+                        fmt(row.metrics.width.max(1.0)),
+                        fmt(row.metrics.height.max(line_height).max(1.0)),
                         escape_attr_display(&div_style)
                     );
                     render_class_html_label(
                         &mut out,
                         "nodeLabel",
-                        text.as_str(),
+                        row.text.as_str(),
                         true,
                         Some("markdown-node-label"),
                         Some(node_style_attr),
