@@ -33,17 +33,22 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P1: Typed Render Pipeline Cleanup
 
-- [ ] Inventory all diagrams by render model mode.
-  Output: table of `typed`, `JSON-for-render`, and `JSON-only` diagrams.
+- [x] Inventory all diagrams by render model mode.
+  Evidence: `RENDER_MODEL_INVENTORY.md`.
 - [x] Remove duplicate error-diagram construction paths in `Engine`.
   Direction: centralize suppressed-error model construction for JSON and typed render models.
   Evidence: `error_diagram` now owns suppressed-error construction and
   `parse_lenient_failures_use_error_diagram_across_engine_entrypoints` covers all four Engine
   entrypoints.
-- [ ] Decide the future of `parse_diagram_for_render_sync`.
+- [x] Decide the future of `parse_diagram_for_render_sync`.
   Options:
   - Keep as compatibility-only and route all new render code through typed models.
   - Deprecate after public wrapper APIs no longer use it.
+  Decision: remove it in M1. In-tree rendering already uses
+  `parse_diagram_for_render_model_sync`, and the remaining special JSON-for-render handlers are
+  obsolete for typed `mindmap` and `stateDiagram`.
+- [ ] Remove obsolete `parse_diagram_for_render_sync` compatibility API.
+  Scope: remove the async alias and the `mindmap` / `stateDiagram` JSON-for-render helpers.
 - [ ] Move sequence diagram render path toward a typed render model.
   Rationale: sequence has a large renderer and frequent layout/render coupling.
 - [ ] Move gantt or kanban render path toward a typed render model after sequence.

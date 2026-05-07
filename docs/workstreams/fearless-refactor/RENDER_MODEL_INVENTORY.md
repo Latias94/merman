@@ -1,0 +1,57 @@
+# Render Model Inventory
+
+This inventory tracks the semantic transport boundary between `merman-core` and
+`merman-render`. It is intentionally about render-pipeline ownership, not parser completeness.
+
+## Modes
+
+- `typed-first`: `Engine::parse_diagram_for_render_model_sync` returns a dedicated
+  `RenderSemanticModel` variant, and layout/SVG dispatch consume that typed model directly.
+- `json-fallback`: `Engine::parse_diagram_for_render_model_sync` returns
+  `RenderSemanticModel::Json`; layout/SVG dispatch still consume the semantic JSON model.
+- `compat-json`: legacy render-only JSON API surface. This is only acceptable as a temporary
+  compatibility bridge when a typed model already exists.
+
+## Current State
+
+| Diagram ids | Mode | Render dispatch | Migration priority |
+| --- | --- | --- | --- |
+| `flowchart-v2`, `flowchart`, `flowchart-elk` | `typed-first` | typed layout + typed SVG | Keep as the pattern for future migrations. |
+| `stateDiagram`, `state` | `typed-first` | typed layout + typed SVG | Remove obsolete JSON-for-render compatibility helpers. |
+| `classDiagram`, `class` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
+| `mindmap` | `typed-first` | typed layout + typed SVG | Remove obsolete JSON-for-render compatibility helpers. |
+| `architecture` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
+| `sequence`, `zenuml` | `json-fallback` | JSON layout + JSON SVG | Highest next migration candidate; large renderer and frequent layout/render coupling. |
+| `gantt` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence; date semantics need careful parity gates. |
+| `kanban` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence if coverage remains easier than Gantt. |
+| `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |
+| `block` | `json-fallback` | JSON layout + JSON SVG | Defer unless profiling shows JSON cost. |
+| `requirement` | `json-fallback` | JSON layout + JSON SVG | Defer unless renderer cleanup requires typed data. |
+| `radar` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `treemap` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `info` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `packet` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `timeline` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `journey` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `gitGraph` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `pie` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `xychart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `quadrantChart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `sankey` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `c4` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `error` | `json-fallback` | JSON layout + JSON SVG | Keep JSON; this is the fallback payload for suppressed parse errors. |
+
+## API Decision
+
+`parse_diagram_for_render_sync` is obsolete. It predates `ParsedDiagramRender` and only has
+special JSON-for-render handling for `mindmap` and `stateDiagram`, both of which now have typed
+render models. The in-tree render helper already uses `parse_diagram_for_render_model_sync`.
+
+Decision:
+
+- Remove `parse_diagram_for_render_sync` and its async alias from `merman-core`.
+- Remove `parse_mindmap_for_render` and `parse_state_for_render` once no public API calls them.
+- Keep `parse_diagram_sync` as the stable semantic JSON API.
+- Keep `parse_diagram_for_render_model_sync` as the render-pipeline API.
+- Keep `layout_diagram_sync` on semantic JSON for now because it returns `LayoutedDiagram` with a
+  JSON semantic payload; revisit this only after the public render API is reviewed.
