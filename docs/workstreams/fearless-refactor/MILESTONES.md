@@ -148,6 +148,8 @@ Progress:
   `svg/parity/sequence/actors.rs`.
 - Extracted sequence top/bottom actor box and lifeline emission into
   `svg/parity/sequence/actors.rs`.
+- Extracted sequence SVG render settings/config parsing into
+  `svg/parity/sequence/settings.rs`.
 - Extracted sequence activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.
