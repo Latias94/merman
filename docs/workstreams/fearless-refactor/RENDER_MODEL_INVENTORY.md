@@ -31,7 +31,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `radar` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `treemap` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `info` | `json-fallback` | JSON layout + JSON SVG | Defer. |
-| `packet` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `packet` | `typed-first` | typed layout + typed SVG | Config-heavy small diagram; keep as a high-ROI migration pattern. |
 | `timeline` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `journey` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `gitGraph` | `json-fallback` | JSON layout + JSON SVG | Defer. |

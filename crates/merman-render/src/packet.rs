@@ -1,25 +1,8 @@
 use crate::Result;
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 use crate::text::TextMeasurer;
-use serde::Deserialize;
+use merman_core::diagrams::packet::PacketDiagramRenderModel;
 use serde_json::Value;
-
-#[derive(Debug, Clone, Deserialize)]
-struct PacketBlock {
-    start: i64,
-    end: i64,
-    label: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct PacketModel {
-    packet: Vec<Vec<PacketBlock>>,
-    title: Option<String>,
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-}
 
 pub fn layout_packet_diagram(
     semantic: &serde_json::Value,
@@ -27,7 +10,16 @@ pub fn layout_packet_diagram(
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
-    let model: PacketModel = crate::json::from_value_ref(semantic)?;
+    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_packet_diagram_typed(&model, diagram_title, effective_config, _measurer)
+}
+
+pub fn layout_packet_diagram_typed(
+    model: &PacketDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+    _measurer: &dyn TextMeasurer,
+) -> Result<PacketDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
     fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {

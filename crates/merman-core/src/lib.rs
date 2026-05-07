@@ -440,6 +440,8 @@ impl Engine {
                 .map(RenderSemanticModel::Gantt),
             "pie" => crate::diagrams::pie::parse_pie_model_for_render(code, meta)
                 .map(RenderSemanticModel::Pie),
+            "packet" => crate::diagrams::packet::parse_packet_model_for_render(code, meta)
+                .map(RenderSemanticModel::Packet),
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -521,6 +523,17 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Packet(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
         }
     }
 
@@ -536,6 +549,7 @@ impl Engine {
             RenderSemanticModel::Kanban(_) => "kanban",
             RenderSemanticModel::Gantt(_) => "gantt",
             RenderSemanticModel::Pie(_) => "pie",
+            RenderSemanticModel::Packet(_) => "packet",
         }
     }
 

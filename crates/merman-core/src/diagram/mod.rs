@@ -92,6 +92,7 @@ pub enum RenderSemanticModel {
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
     Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
     Pie(crate::diagrams::pie::PieDiagramRenderModel),
+    Packet(crate::diagrams::packet::PacketDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

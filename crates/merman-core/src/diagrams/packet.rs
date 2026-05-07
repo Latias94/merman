@@ -3,6 +3,24 @@ use serde_json::{Value, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct PacketDiagramRenderModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub packet: Vec<Vec<PacketRenderBlock>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PacketRenderBlock {
+    pub start: i64,
+    pub end: i64,
+    pub bits: i64,
+    pub label: String,
+}
+
 #[derive(Debug, Clone)]
 struct PacketBlock {
     start: Option<i64>,
@@ -11,17 +29,38 @@ struct PacketBlock {
     label: String,
 }
 
-#[derive(Debug, Clone)]
-struct RequiredPacketBlock {
-    start: i64,
-    end: i64,
-    bits: i64,
-    label: String,
+enum PacketParseOutput {
+    Empty,
+    Model(PacketDiagramRenderModel),
 }
 
-type PacketWord = Vec<RequiredPacketBlock>;
+type PacketWord = Vec<PacketRenderBlock>;
 
 pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    match parse_packet_model(code, meta)? {
+        PacketParseOutput::Empty => Ok(json!({})),
+        PacketParseOutput::Model(model) => Ok(json!({
+            "type": meta.diagram_type,
+            "title": model.title,
+            "accTitle": model.acc_title,
+            "accDescr": model.acc_descr,
+            "packet": model.packet,
+            "config": meta.effective_config.as_value().clone(),
+        })),
+    }
+}
+
+pub fn parse_packet_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<PacketDiagramRenderModel> {
+    match parse_packet_model(code, meta)? {
+        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::default()),
+        PacketParseOutput::Model(model) => Ok(model),
+    }
+}
+
+fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOutput> {
     let mut lines = code.lines();
 
     let mut header = None;
@@ -34,7 +73,7 @@ pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let Some(header) = header else {
-        return Ok(json!({}));
+        return Ok(PacketParseOutput::Empty);
     };
 
     if !is_packet_header(&header) {
@@ -82,22 +121,11 @@ pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
     let packet = populate_packet(blocks, bits_per_row)?;
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "packet": packet.iter().map(|word| {
-            word.iter().map(|b| {
-                json!({
-                    "start": b.start,
-                    "end": b.end,
-                    "bits": b.bits,
-                    "label": b.label,
-                })
-            }).collect::<Vec<_>>()
-        }).collect::<Vec<_>>(),
-        "config": meta.effective_config.as_value().clone(),
+    Ok(PacketParseOutput::Model(PacketDiagramRenderModel {
+        title,
+        acc_title,
+        acc_descr,
+        packet,
     }))
 }
 
@@ -142,7 +170,7 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
         let bits = block.bits.unwrap_or(end - start + 1);
         last_bit = end;
 
-        let mut cur = RequiredPacketBlock {
+        let mut cur = PacketRenderBlock {
             start,
             end,
             bits,
@@ -151,8 +179,9 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
 
         while word.len() <= (bits_per_row + 1) as usize && packet.len() < MAX_PACKET_SIZE {
             let (fitting, next) = get_next_fitting_block(cur, row, bits_per_row)?;
-            word.push(fitting.clone());
-            if fitting.end + 1 == row * bits_per_row {
+            let reached_row_end = fitting.end + 1 == row * bits_per_row;
+            word.push(fitting);
+            if reached_row_end {
                 if !word.is_empty() {
                     packet.push(std::mem::take(&mut word));
                 }
@@ -173,10 +202,10 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
 }
 
 fn get_next_fitting_block(
-    block: RequiredPacketBlock,
+    block: PacketRenderBlock,
     row: i64,
     bits_per_row: i64,
-) -> Result<(RequiredPacketBlock, Option<RequiredPacketBlock>)> {
+) -> Result<(PacketRenderBlock, Option<PacketRenderBlock>)> {
     if block.start > block.end {
         return Err(Error::DiagramParse {
             diagram_type: "packet".to_string(),
@@ -194,13 +223,13 @@ fn get_next_fitting_block(
     let row_end = row * bits_per_row - 1;
     let row_start = row * bits_per_row;
     Ok((
-        RequiredPacketBlock {
+        PacketRenderBlock {
             start: block.start,
             end: row_end,
             label: block.label.clone(),
             bits: row_end - block.start,
         },
-        Some(RequiredPacketBlock {
+        Some(PacketRenderBlock {
             start: row_start,
             end: block.end,
             label: block.label,

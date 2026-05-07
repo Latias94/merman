@@ -1,4 +1,5 @@
 use super::*;
+use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
 fn packet_css(diagram_id: &str) -> String {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
@@ -51,24 +52,24 @@ fn packet_css(diagram_id: &str) -> String {
     out
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct PacketSvgModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    title: Option<String>,
-}
-
 pub(super) fn render_packet_diagram_svg(
     layout: &PacketDiagramLayout,
     semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_packet_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
+}
+
+pub(super) fn render_packet_diagram_svg_model(
+    layout: &PacketDiagramLayout,
+    model: &PacketDiagramRenderModel,
     _effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: PacketSvgModel = crate::json::from_value_ref(semantic)?;
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 

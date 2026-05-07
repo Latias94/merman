@@ -452,6 +452,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::PieDiagram(layout), RenderSemanticModel::Pie(model)) => {
             pie::render_pie_diagram_svg_model(layout, model, effective_config, options)
         }
+        (LayoutDiagram::PacketDiagram(layout), RenderSemanticModel::Packet(model)) => {
+            packet::render_packet_diagram_svg_model(layout, model, effective_config, title, options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -547,6 +550,15 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         }
         (LayoutDiagram::PieDiagram(layout), RenderSemanticModel::Pie(model)) => {
             pie::render_pie_diagram_svg_model(layout, model, effective_config.as_value(), options)
+        }
+        (LayoutDiagram::PacketDiagram(layout), RenderSemanticModel::Packet(model)) => {
+            packet::render_packet_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                options,
+            )
         }
         (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config(
             layout,
