@@ -13,6 +13,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a generated parity override footprint snapshot for fearless-refactor governance.
 - Docs: add an override policy for text/render width compatibility data.
 - Docs: add a post-migration sequence typed render-model performance spot-check.
+- Docs: add a current-main Criterion performance baseline covering pipeline and targeted
+  flowchart/architecture/mindmap stress benches.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.

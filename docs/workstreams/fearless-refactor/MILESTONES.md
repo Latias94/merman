@@ -271,6 +271,12 @@ Scope:
 - Update README and contributor guidance.
 - Decide whether any pre-1.0 public API cleanup should happen before release.
 
+Progress:
+
+- Current-main Criterion baseline captured in
+  `docs/performance/spotcheck_2026-05-08_current_main_baseline.md`, covering the pipeline bench
+  plus targeted flowchart, architecture, and mindmap stress benches.
+
 Exit criteria:
 
 - `cargo run -p xtask -- verify --strict`

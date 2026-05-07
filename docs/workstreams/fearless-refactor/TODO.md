@@ -202,10 +202,15 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P2: Performance and Allocation
 
-- [ ] Establish baseline benchmark numbers for current `main`.
+- [x] Establish baseline benchmark numbers for current `main`.
+  Evidence: `docs/performance/spotcheck_2026-05-08_current_main_baseline.md`.
   Commands:
-  - `cargo bench -p merman --features render`
-  - targeted flowchart/architecture/mindmap benches
+  - `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 20
+    --warm-up-time 1 --measurement-time 1`
+  - targeted `flowchart_stress`, `architecture_stress`, `architecture_layout_stress`, and
+    `mindmap_layout_stress` benches with the same Criterion options.
+  Note: package-wide Criterion options were rejected by the lib bench harness, so the recorded
+  baseline uses explicit `--bench` commands.
 - [ ] Profile JSON clone cost in `layout_parsed` and public wrapper APIs.
 - [ ] Reduce repeated `serde_json::Value` cloning in render-only paths.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
