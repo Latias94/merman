@@ -192,6 +192,7 @@ Progress:
 - Moved class render lookup maps, small config helpers, and timing detail emission into
   `svg/parity/class/context.rs`.
 - Moved HTML class node body emission into `svg/parity/class/node.rs`.
+- Moved SVG class node body emission into `svg/parity/class/node.rs`.
 - Removed the duplicate class namespace-subgraph edge path/label emitter and routed it through
   the shared optimized edge group path.
 - Extracted class interface node emission into `svg/parity/class/interface.rs`, sharing node

@@ -30,10 +30,7 @@ mod edge;
 mod interface;
 
 mod label;
-use label::{
-    bolder_delta_scale_for_svg, class_apply_inline_styles, class_svg_label_rect,
-    round_to_1_1024_px_ties_to_even, wrap_class_svg_text_like_mermaid,
-};
+use label::class_apply_inline_styles;
 
 mod namespace;
 

@@ -39,8 +39,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class renderer: move SVG content-bounds accumulation helpers into
   `svg/parity/class/bounds.rs`.
 - Class renderer: move class node shell, basic-container emission, HTML row measurement, HTML
-  label-group emission, SVG title emission, SVG label-run emission, and divider emission into
-  `svg/parity/class/node.rs`.
+  label-group emission, SVG class node body emission, SVG title emission, SVG label-run emission,
+  and divider emission into `svg/parity/class/node.rs`.
 - Sequence renderer: start the actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into

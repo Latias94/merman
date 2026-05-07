@@ -15,14 +15,12 @@ use super::namespace::{
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
 use super::node::{
-    ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeDividerContext,
-    ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
-    render_class_html_node_body, render_class_node_basic_container, render_class_node_dividers,
-    render_class_node_shell_open, render_class_svg_node_runs_group, render_class_svg_title_group,
+    ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
+    ClassNodeRenderState, ClassSvgNodeBodyContext, render_class_html_node_body,
+    render_class_node_basic_container, render_class_node_shell_open, render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
-use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -883,12 +881,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         );
         detail.path_bounds += basic_container.stats.path_bounds;
         detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
-        let w = basic_container.geometry.w;
-        let left = basic_container.geometry.left;
-        let rough_seed = basic_container.geometry.rough_seed;
 
-        let use_html_labels = diagram_use_html_labels;
-        if use_html_labels {
+        if diagram_use_html_labels {
             let html_stats = render_class_html_node_body(
                 ClassNodeRenderState {
                     out: &mut out,
@@ -923,478 +917,35 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             detail.path_bounds += html_stats.path_bounds;
             detail.path_bounds_calls += html_stats.path_bounds_calls;
         } else {
-            let padding = _class_padding.max(0.0);
-            let gap = padding;
-            let text_padding = 3.0;
-
-            let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
-            if title_text.starts_with('\\') {
-                title_text = title_text.trim_start_matches('\\').to_string();
-            }
-            let wrapped_title_text = if !(title_text.contains('*')
-                || title_text.contains('_')
-                || title_text.contains('`'))
-            {
-                wrap_class_svg_text_like_mermaid(
-                    &title_text,
+            let svg_stats = render_class_svg_node_body(
+                ClassNodeRenderState {
+                    out: &mut out,
+                    content_bounds: &mut content_bounds,
+                },
+                ClassNodeRenderPosition {
+                    node_tx,
+                    node_ty,
+                    node_bounds_tx,
+                    node_bounds_ty,
+                },
+                node,
+                basic_container.geometry,
+                &ClassSvgNodeBodyContext {
                     measurer,
-                    &text_style,
+                    text_style: &text_style,
+                    font_size,
                     wrap_probe_font_size,
-                    true,
-                )
-            } else {
-                title_text.clone()
-            };
-            let title_lines =
-                crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
-            let title_has_markdown =
-                title_text.contains('*') || title_text.contains('_') || title_text.contains('`');
-            let mut title_metrics = if title_has_markdown {
-                let title_md = title_lines
-                    .iter()
-                    .map(|l| format!("**{l}**"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                crate::text::measure_markdown_with_flowchart_bold_deltas(
-                    measurer,
-                    &title_md,
-                    &text_style,
-                    None,
-                    WrapMode::SvgLike,
-                )
-            } else {
-                let mut m = measurer.measure_wrapped(
-                    &wrapped_title_text,
-                    &text_style,
-                    None,
-                    WrapMode::SvgLike,
-                );
-                let bold_title_style = TextStyle {
-                    font_family: text_style.font_family.clone(),
-                    font_size: text_style.font_size,
-                    font_weight: Some("bolder".to_string()),
-                };
-                let delta_px = crate::text::mermaid_default_bold_width_delta_px(
-                    wrapped_title_text.as_str(),
-                    &bold_title_style,
-                );
-                let scale = bolder_delta_scale_for_svg(text_style.font_size);
-                if delta_px.is_finite() && delta_px > 0.0 && m.width.is_finite() && m.width > 0.0 {
-                    m.width =
-                        round_to_1_1024_px_ties_to_even((m.width + delta_px * scale).max(0.0));
-                }
-                m
-            };
-            if !title_has_markdown {
-                let bold_title_style = TextStyle {
-                    font_family: text_style.font_family.clone(),
-                    font_size: text_style.font_size,
-                    font_weight: Some("bolder".to_string()),
-                };
-                if title_lines.len() == 1 && title_lines[0].chars().count() == 1 {
-                    title_metrics.width =
-                        crate::text::ceil_to_1_64_px(measurer.measure_svg_text_computed_length_px(
-                            wrapped_title_text.as_str(),
-                            &bold_title_style,
-                        ));
-                } else if title_lines.len() > 1 {
-                    let mut w = 0.0f64;
-                    for line in &title_lines {
-                        w =
-                            w.max(measurer.measure_svg_text_computed_length_px(
-                                line.as_str(),
-                                &bold_title_style,
-                            ));
-                    }
-                    if w.is_finite() && w > 0.0 {
-                        title_metrics.width = crate::text::ceil_to_1_64_px(w);
-                    }
-                }
-            }
-            if title_lines.len() > 1 && title_text.trim() == "FontSizeSvgProbe" && font_size == 16.0
-            {
-                // Upstream class SVG font-size precedence probe: Chromium bbox width for the wrapped
-                // bold title is slightly narrower than our vendored bold approximation.
-                title_metrics.width = 123.265625;
-            }
-
-            // Annotation group: Mermaid only renders the first annotation.
-            let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
-            let mut annotation_rect: Option<Rect> = None;
-            let mut annotation_group_height: f64 = 0.0;
-            let mut annotation_group_width: f64 = 0.0;
-            if let Some(a) = node.annotations.first() {
-                let decoded = decode_entities_minimal(a.trim());
-                let mut text = format!("\u{00AB}{decoded}\u{00BB}");
-                if !(text.contains('*') || text.contains('_') || text.contains('`')) {
-                    text = wrap_class_svg_text_like_mermaid(
-                        &text,
-                        measurer,
-                        &text_style,
-                        wrap_probe_font_size,
-                        false,
-                    );
-                }
-                let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                    measurer,
-                    &text,
-                    &text_style,
-                    None,
-                    WrapMode::SvgLike,
-                );
-                annotation_group_width = metrics.width.max(0.0);
-                if let Some(r) = class_svg_label_rect(&metrics, 0.0) {
-                    annotation_group_height = r.height().max(0.0);
-                    annotation_rect = Some(r);
-                }
-                annotation_runs.push(ClassSvgNodeLabelRun {
-                    text,
-                    style: String::new(),
-                    metrics,
-                    y_offset: 0.0,
-                });
-            }
-
-            let title_rect = class_svg_label_rect(&title_metrics, 0.0);
-            let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
-            let label_group_width = title_metrics.width.max(0.0);
-
-            let mut members_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
-            let mut members_rect: Option<Rect> = None;
-            let mut members_group_width: f64 = 0.0;
-            {
-                let mut y_offset = 0.0;
-                for m in &node.members {
-                    let mut t = decode_entities_minimal(m.display_text.trim());
-                    if t.starts_with('\\') {
-                        t = t.trim_start_matches('\\').to_string();
-                    }
-                    if !(t.contains('*') || t.contains('_') || t.contains('`')) {
-                        t = wrap_class_svg_text_like_mermaid(
-                            &t,
-                            measurer,
-                            &text_style,
-                            wrap_probe_font_size,
-                            false,
-                        );
-                    }
-                    let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                        measurer,
-                        &t,
-                        &text_style,
-                        None,
-                        WrapMode::SvgLike,
-                    );
-                    let mut metrics = metrics;
-                    if font_size >= 20.0 && metrics.width.is_finite() && metrics.width > 0.0 {
-                        let first_line =
-                            crate::text::DeterministicTextMeasurer::normalized_text_lines(
-                                t.as_str(),
-                            )
-                            .into_iter()
-                            .find(|l| !l.trim().is_empty());
-                        if let Some(line) = first_line {
-                            let ch0 = line.trim_start().chars().next();
-                            if matches!(ch0, Some('+' | '-' | '#' | '~')) {
-                                let line_w =
-                                    crate::text::measure_markdown_with_flowchart_bold_deltas(
-                                        measurer,
-                                        line.as_str(),
-                                        &text_style,
-                                        None,
-                                        WrapMode::SvgLike,
-                                    )
-                                    .width;
-                                if line_w + 1e-6 >= metrics.width {
-                                    metrics.width = (metrics.width + (1.0 / 64.0)).max(0.0);
-                                }
-                            }
-                        }
-                    }
-                    members_group_width = members_group_width.max(metrics.width.max(0.0));
-                    if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
-                        if let Some(cur) = members_rect.as_mut() {
-                            cur.union(r);
-                        } else {
-                            members_rect = Some(r);
-                        }
-                    }
-                    members_runs.push(ClassSvgNodeLabelRun {
-                        text: t,
-                        style: m.css_style.trim().to_string(),
-                        metrics,
-                        y_offset,
-                    });
-                    y_offset += metrics.height.max(0.0) + text_padding;
-                }
-            }
-            let mut members_group_height = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
-            if members_group_height <= 0.0 {
-                // Mermaid reserves half a gap when the members group is empty.
-                members_group_height = (gap / 2.0).max(0.0);
-            }
-
-            let mut methods_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
-            let mut methods_rect: Option<Rect> = None;
-            let mut methods_group_width: f64 = 0.0;
-            {
-                let mut y_offset = 0.0;
-                for m in &node.methods {
-                    let raw = decode_entities_minimal(m.display_text.trim());
-                    let raw_trimmed = raw.trim().to_string();
-                    let mut t = raw;
-                    if t.starts_with('\\') {
-                        t = t.trim_start_matches('\\').to_string();
-                    }
-                    if !(t.contains('*') || t.contains('_') || t.contains('`')) {
-                        t = wrap_class_svg_text_like_mermaid(
-                            &t,
-                            measurer,
-                            &text_style,
-                            wrap_probe_font_size,
-                            false,
-                        );
-                    }
-                    let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                        measurer,
-                        &t,
-                        &text_style,
-                        None,
-                        WrapMode::SvgLike,
-                    );
-                    let mut metrics = metrics;
-                    if font_size >= 20.0 && metrics.width.is_finite() && metrics.width > 0.0 {
-                        let first_line =
-                            crate::text::DeterministicTextMeasurer::normalized_text_lines(
-                                t.as_str(),
-                            )
-                            .into_iter()
-                            .find(|l| !l.trim().is_empty());
-                        if let Some(line) = first_line {
-                            let ch0 = line.trim_start().chars().next();
-                            if matches!(ch0, Some('+' | '-' | '#' | '~')) {
-                                let line_w =
-                                    crate::text::measure_markdown_with_flowchart_bold_deltas(
-                                        measurer,
-                                        line.as_str(),
-                                        &text_style,
-                                        None,
-                                        WrapMode::SvgLike,
-                                    )
-                                    .width;
-                                if line_w + 1e-6 >= metrics.width {
-                                    metrics.width = (metrics.width + (1.0 / 64.0)).max(0.0);
-                                }
-                            }
-                        }
-                    }
-                    if font_size == 16.0
-                        && raw_trimmed == "+veryLongMethodNameToForceMeasurement()"
-                        && text_style
-                            .font_family
-                            .as_deref()
-                            .is_some_and(|f| f.to_ascii_lowercase().contains("trebuchet"))
-                    {
-                        // Upstream class SVG baseline `stress_class_svg_font_size_precedence_025`:
-                        // Chromium `getBBox().width` for the wrapped first line is ~2px narrower than
-                        // our vendored font metrics model.
-                        metrics.width = 241.625;
-                    }
-                    methods_group_width = methods_group_width.max(metrics.width.max(0.0));
-                    if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
-                        if let Some(cur) = methods_rect.as_mut() {
-                            cur.union(r);
-                        } else {
-                            methods_rect = Some(r);
-                        }
-                    }
-                    methods_runs.push(ClassSvgNodeLabelRun {
-                        text: t,
-                        style: m.css_style.trim().to_string(),
-                        metrics,
-                        y_offset,
-                    });
-                    y_offset += metrics.height.max(0.0) + text_padding;
-                }
-            }
-            let _methods_group_height = methods_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
-
-            // textHelper(...) pre-adjust group transforms.
-            let ann_tx = -annotation_group_width / 2.0;
-            let ann_ty = 0.0;
-            let label_tx = -label_group_width / 2.0;
-            let label_ty = annotation_group_height;
-            let members_tx = 0.0;
-            let members_ty = annotation_group_height + label_group_height + gap * 2.0;
-            let methods_tx = 0.0;
-            let methods_ty =
-                annotation_group_height + label_group_height + (members_group_height + gap * 4.0);
-
-            // Compute bbox returned by textHelper(...) after group transforms.
-            let mut bbox_opt: Option<Rect> = None;
-            if let Some(mut r) = annotation_rect {
-                r.translate(ann_tx, ann_ty);
-                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
-                    cur.union(r);
-                    cur
-                } else {
-                    r
-                });
-            }
-            if let Some(mut r) = title_rect {
-                r.translate(label_tx, label_ty);
-                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
-                    cur.union(r);
-                    cur
-                } else {
-                    r
-                });
-            }
-            if let Some(mut r) = members_rect {
-                r.translate(members_tx, members_ty);
-                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
-                    cur.union(r);
-                    cur
-                } else {
-                    r
-                });
-            }
-            if let Some(mut r) = methods_rect {
-                r.translate(methods_tx, methods_ty);
-                bbox_opt = Some(if let Some(mut cur) = bbox_opt {
-                    cur.union(r);
-                    cur
-                } else {
-                    r
-                });
-            }
-            let bbox = bbox_opt.unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
-            let mut bbox_w = bbox.width().max(0.0);
-            if font_size >= 20.0 {
-                // Upstream classDiagram SVG-label `shapeSvg.getBBox().width` at larger font sizes
-                // can land one 1/64px step wider than our deterministic bbox union, which affects
-                // the members/methods group `translate(x, ...)` in strict XML comparisons.
-                bbox_w = (bbox_w + (1.0 / 64.0)).max(0.0);
-            }
-            let mut bbox_h = bbox.height().max(0.0);
-            let members_rows = node.members.len();
-            let methods_rows = node.methods.len();
-            if members_rows == 0 && methods_rows == 0 {
-                bbox_h += gap;
-            } else if members_rows > 0 && methods_rows == 0 {
-                bbox_h += gap * 2.0;
-            }
-            let x = -bbox_w / 2.0;
-            let y = -bbox_h / 2.0;
-
-            let render_extra_box =
-                members_rows == 0 && methods_rows == 0 && !hide_empty_members_box;
-            let adjust_term = if render_extra_box {
-                padding
-            } else if members_rows == 0 && methods_rows == 0 {
-                -padding / 2.0
-            } else {
-                0.0
-            };
-
-            // classBox.ts label adjustment stage.
-            let adjust_y = |ty: f64| ty + y + padding - adjust_term - 4.0;
-            let adjusted_label_group_x = -label_group_width / 2.0;
-            let adjusted_annotation_group_x = -annotation_group_width / 2.0;
-            let mut adjusted_text_group_x = x;
-            let expected_padding = config_f64(effective_config, &["class", "padding"])
-                .unwrap_or(12.0)
-                .max(0.0);
-            let expected_text_group_x = -w / 2.0 + expected_padding;
-            if expected_text_group_x.is_finite()
-                && adjusted_text_group_x.is_finite()
-                && (expected_text_group_x - adjusted_text_group_x).abs() > 1e-6
-            {
-                // Keep the members/methods groups consistent with the already-laid-out node
-                // rectangle width (`bbox.width + 2*PADDING` in Mermaid's `classBox.ts`).
-                adjusted_text_group_x = expected_text_group_x;
-            }
-
-            let ann_new_x = if annotation_runs.is_empty() {
-                0.0
-            } else {
-                adjusted_annotation_group_x
-            };
-            let ann_new_y = adjust_y(ann_ty);
-            render_class_svg_node_runs_group(
-                &mut out,
-                "annotation-group text",
-                ann_new_x,
-                ann_new_y,
-                &annotation_runs,
+                    class_padding: _class_padding,
+                    hide_empty_members_box,
+                    node_style_attr,
+                    node_stroke,
+                    node_stroke_width,
+                    node_stroke_dasharray,
+                    timing_enabled,
+                },
             );
-
-            let label_new_y = adjust_y(label_ty);
-            render_class_svg_title_group(
-                &mut out,
-                adjusted_label_group_x,
-                label_new_y,
-                &title_lines,
-                &title_metrics,
-            );
-
-            let members_new_y = adjust_y(members_ty);
-            render_class_svg_node_runs_group(
-                &mut out,
-                "members-group text",
-                adjusted_text_group_x,
-                members_new_y,
-                &members_runs,
-            );
-
-            let methods_new_y = adjust_y(methods_ty);
-            render_class_svg_node_runs_group(
-                &mut out,
-                "methods-group text",
-                adjusted_text_group_x,
-                methods_new_y,
-                &methods_runs,
-            );
-
-            // Dividers (classBox.ts uses group bbox heights).
-            if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
-                let mut ann_h = annotation_group_height;
-                let mut label_h = label_group_height;
-                let mut members_h = members_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
-                if render_extra_box {
-                    let shrink = (padding / 2.0).max(0.0);
-                    ann_h -= shrink;
-                    label_h -= shrink;
-                    members_h -= shrink;
-                }
-                let divider1_y = ann_h + label_h + y + padding;
-                let divider2_y = ann_h + label_h + members_h + y + gap * 2.0 + padding;
-                let divider_stats = render_class_node_dividers(
-                    ClassNodeRenderState {
-                        out: &mut out,
-                        content_bounds: &mut content_bounds,
-                    },
-                    ClassNodeRenderPosition {
-                        node_tx,
-                        node_ty,
-                        node_bounds_tx,
-                        node_bounds_ty,
-                    },
-                    left,
-                    left + w,
-                    [divider1_y, divider2_y],
-                    rough_seed,
-                    &ClassNodeDividerContext {
-                        node_style_attr,
-                        node_stroke,
-                        node_stroke_width,
-                        node_stroke_dasharray,
-                        timing_enabled,
-                    },
-                );
-                detail.path_bounds += divider_stats.path_bounds;
-                detail.path_bounds_calls += divider_stats.path_bounds_calls;
-            }
+            detail.path_bounds += svg_stats.path_bounds;
+            detail.path_bounds_calls += svg_stats.path_bounds_calls;
         }
 
         out.push_str("</g>");

@@ -109,9 +109,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - render context and ids (render lookup maps, small config helpers, and timing detail emission
     now live in `class/context.rs`)
   - class box geometry (bounds accumulation helpers, class node shell/basic-container emission,
-    HTML row measurement, HTML label-group emission, SVG title emission, SVG label-run emission,
-    HTML class node body emission, and divider emission now live in `class/bounds.rs` and
-    `class/node.rs`; interface node emission now lives in `class/interface.rs`)
+    HTML row measurement, HTML label-group emission, HTML class node body emission, SVG class node
+    body emission, SVG title emission, SVG label-run emission, and divider emission now live in
+    `class/bounds.rs` and `class/node.rs`; interface node emission now lives in
+    `class/interface.rs`)
   - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
     now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`;
     the namespace-subgraph branch now reuses the shared optimized edge group path instead of a
