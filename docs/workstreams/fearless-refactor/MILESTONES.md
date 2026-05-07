@@ -202,6 +202,8 @@ Progress:
   `svg/parity/class/namespace.rs`.
 - Extracted class node render-order/index construction into
   `svg/parity/class/namespace.rs`.
+- Extracted class namespace wrapper/subgraph mode selection into
+  `svg/parity/class/namespace.rs`.
 
 Exit criteria:
 

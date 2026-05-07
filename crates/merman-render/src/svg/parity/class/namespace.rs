@@ -47,6 +47,86 @@ pub(super) struct ClassNodeRenderOrder<'a> {
     pub clusters_by_id: HashMap<&'a str, &'a LayoutCluster>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ClassNamespaceRenderMode<'a> {
+    pub single_namespace_id: Option<&'a str>,
+    pub wrap_nodes_root: bool,
+    pub nodes_root_dx: f64,
+    pub nodes_root_dy: f64,
+    pub render_namespaces_as_subgraphs: bool,
+}
+
+pub(super) fn class_namespace_render_mode<'a>(
+    model: &'a ClassSvgModel,
+    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    viewbox_override_min_xy: Option<(f64, f64)>,
+    graph_margin_px: f64,
+) -> ClassNamespaceRenderMode<'a> {
+    let single_namespace_id = model.namespaces.keys().next().map(|s| s.as_str());
+
+    let wrap_nodes_root_fully_contained = model.notes.is_empty()
+        && model.namespaces.len() == 1
+        && model
+            .namespaces
+            .iter()
+            .next()
+            .is_some_and(|(_, ns)| ns.class_ids.len() == model.classes.len());
+
+    // Some upstream namespace fixtures use the wrapper even when the diagram is not fully
+    // contained, but the viewport indicates the -8px x-offset behavior (viewBox minX=-8, minY=0).
+    let wrap_nodes_root_viewbox_hint = model.notes.is_empty()
+        && model.namespaces.len() == 1
+        && single_namespace_id.is_some_and(|ns_id| {
+            // This wrapper structure only seems to apply when relations are fully inside the
+            // namespace cluster; otherwise upstream renders edges at the outer root level.
+            model.relations.iter().all(|rel| {
+                let p1 = class_nodes_by_id
+                    .get(rel.id1.as_str())
+                    .and_then(|n| n.parent.as_deref());
+                let p2 = class_nodes_by_id
+                    .get(rel.id2.as_str())
+                    .and_then(|n| n.parent.as_deref());
+                p1 == Some(ns_id) && p2 == Some(ns_id)
+            })
+        })
+        && has_namespace_root_viewbox_hint(viewbox_override_min_xy, graph_margin_px);
+
+    let wrap_nodes_root = wrap_nodes_root_fully_contained || wrap_nodes_root_viewbox_hint;
+    let nodes_root_dx = if wrap_nodes_root {
+        -graph_margin_px
+    } else {
+        0.0
+    };
+    let nodes_root_dy = 0.0;
+
+    // Mermaid@11.12.2 renders namespaces as nested subgraphs when the root viewBox indicates the
+    // `-8px` x-margin behavior (minX=-8, minY=0). In that mode:
+    // - The outer `clusters` group is an empty placeholder.
+    // - Each namespace cluster is emitted as a nested `<g class="root" ...>` inside
+    //   `<g class="nodes">`, with empty `edgePaths/edgeLabels` placeholders.
+    // - All relations still render at the outer root level (not inside the namespace subgraphs).
+    let render_namespaces_as_subgraphs = !wrap_nodes_root
+        && !model.namespaces.is_empty()
+        && has_namespace_root_viewbox_hint(viewbox_override_min_xy, graph_margin_px);
+
+    ClassNamespaceRenderMode {
+        single_namespace_id,
+        wrap_nodes_root,
+        nodes_root_dx,
+        nodes_root_dy,
+        render_namespaces_as_subgraphs,
+    }
+}
+
+fn has_namespace_root_viewbox_hint(
+    viewbox_override_min_xy: Option<(f64, f64)>,
+    graph_margin_px: f64,
+) -> bool {
+    viewbox_override_min_xy.is_some_and(|(min_x, min_y)| {
+        (min_x + graph_margin_px).abs() <= 1e-9 && (min_y - 0.0).abs() <= 1e-9
+    })
+}
+
 pub(super) fn build_class_node_render_order<'a>(
     layout: &'a ClassDiagramV2Layout,
     model: &'a ClassSvgModel,
