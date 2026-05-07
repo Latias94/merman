@@ -201,6 +201,8 @@ Progress:
   padding, and theme defaults into `svg/parity/class/settings.rs`.
 - Moved HTML class node body emission into `svg/parity/class/node.rs`.
 - Moved SVG class node body emission into `svg/parity/class/node.rs`.
+- Extracted class node traversal, namespace-subgraph transitions, note/interface dispatch, and
+  class node body orchestration into `svg/parity/class/nodes.rs`.
 - Removed the duplicate class namespace-subgraph edge path/label emitter and routed it through
   the shared optimized edge group path.
 - Extracted class interface node emission into `svg/parity/class/interface.rs`, sharing node
