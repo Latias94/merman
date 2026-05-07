@@ -10,6 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Docs: add the `docs/workstreams/fearless-refactor/` workstream with roadmap, TODOs, milestones,
   and render-model inventory for the next cleanup-focused release.
+- Docs: add a generated parity override footprint snapshot for fearless-refactor governance.
 - Docs: add a post-migration sequence typed render-model performance spot-check.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with

@@ -113,13 +113,16 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P2: Override Hygiene
 
-- [ ] Run and record override footprint.
+- [x] Run and record override footprint.
   Command: `cargo run -p xtask -- report-overrides`.
+  Evidence: `OVERRIDE_FOOTPRINT.md`.
 - [ ] Classify overrides by category:
   - generated text metrics
   - root viewport
   - raw SVG/path precision
   - temporary parity bridge
+  Status: `OVERRIDE_FOOTPRINT.md` has initial categories; keep open until `xtask
+  report-overrides` covers all generated tables and temporary bridges have removal criteria.
 - [ ] Add comments or metadata for temporary overrides with removal criteria.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
 - [ ] Prevent override tables from becoming the default fix for model bugs.

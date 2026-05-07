@@ -117,11 +117,18 @@ Exit criteria:
 
 ## M5: Override Governance and Debt Reduction
 
+Status: in progress.
+
 Scope:
 
 - Inventory generated and manual overrides.
 - Remove stale or redundant overrides.
 - Add removal criteria for temporary parity bridges.
+
+Progress:
+
+- `OVERRIDE_FOOTPRINT.md` records the first `xtask report-overrides` snapshot and current
+  reporting gaps.
 
 Exit criteria:
 

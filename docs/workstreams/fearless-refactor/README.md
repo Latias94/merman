@@ -124,3 +124,4 @@ Use this order when choosing work:
 - `TODO.md`: prioritized task backlog.
 - `MILESTONES.md`: staged roadmap and exit criteria.
 - `RENDER_MODEL_INVENTORY.md`: current typed-vs-JSON render pipeline inventory and API decision.
+- `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
