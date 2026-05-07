@@ -72,6 +72,78 @@ pub(super) fn render_class_html_label(
     out.push_str("</span>");
 }
 
+pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
+    let max_width_px = max_width_px.max(0);
+    if width >= max_width_px as f64 - 0.01 {
+        format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {max_width_px}px; text-align: center; width: {max_width_px}px;"
+        )
+    } else {
+        format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width_px}px; text-align: center;"
+        )
+    }
+}
+
+pub(super) fn class_note_html_div_style(width: f64, max_width_px: i64) -> String {
+    let max_width_px = max_width_px.max(0);
+    if width >= max_width_px as f64 - 0.01 {
+        format!(
+            "text-align: center; white-space: break-spaces; display: table; line-height: 1.5; max-width: {max_width_px}px; width: {max_width_px}px;"
+        )
+    } else {
+        format!(
+            "text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: {max_width_px}px;"
+        )
+    }
+}
+
+pub(super) fn class_html_label_max_width_px(width: f64, is_bold: bool) -> i64 {
+    width.max(0.0).ceil() as i64 + if is_bold { 51 } else { 50 }
+}
+
+pub(super) fn class_html_label_metrics(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    text: &str,
+    max_width_px: i64,
+    css_style: &str,
+) -> crate::text::TextMetrics {
+    let mut metrics = crate::class::class_html_measure_label_metrics(
+        measurer,
+        style,
+        text,
+        max_width_px,
+        css_style,
+    );
+    if let Some(width) =
+        crate::class::class_html_known_rendered_width_override_px(text, style, false)
+    {
+        metrics.width = width;
+    }
+    metrics
+}
+
+pub(super) fn class_html_title_metrics(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    text: &str,
+    max_width_px: i64,
+) -> crate::text::TextMetrics {
+    let markdown = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
+        .into_iter()
+        .map(|line| format!("**{line}**"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::text::measure_markdown_with_flowchart_bold_deltas(
+        measurer,
+        markdown.as_str(),
+        style,
+        Some(max_width_px.max(1) as f64),
+        WrapMode::HtmlLike,
+    )
+}
+
 pub(super) fn class_apply_inline_styles<'a>(
     node: &'a super::ClassSvgNode,
 ) -> ClassInlineStyles<'a> {
