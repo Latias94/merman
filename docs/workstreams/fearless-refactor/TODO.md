@@ -62,8 +62,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_sequence_model_for_render` now returns `SequenceDiagramRenderModel`, and
   layout/SVG render-model dispatch consumes that typed model directly while `parse_diagram_sync`
   keeps the semantic JSON payload stable.
-- [ ] Move gantt or kanban render path toward a typed render model after sequence.
-  Selection rule: choose the diagram with better test coverage and less parser churn.
+- [x] Move gantt or kanban render path toward a typed render model after sequence.
+  Selection: kanban had the smaller parser/render surface and SVG rendering already reads only the
+  layout model. Evidence: `parse_kanban_model_for_render` now returns `KanbanDiagramRenderModel`,
+  and render-layout dispatch consumes it directly while `parse_diagram_sync` keeps the semantic JSON
+  payload stable.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in

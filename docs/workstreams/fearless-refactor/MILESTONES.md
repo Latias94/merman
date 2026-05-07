@@ -74,6 +74,8 @@ Scope:
 Progress:
 
 - `sequence` now has a typed render model consumed by layout and SVG render-model dispatch.
+- `kanban` now has a typed render model consumed by render-layout dispatch; semantic JSON parsing
+  remains stable for the compatibility API.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Same-machine pre-migration baseline capture remains a process requirement for the next typed

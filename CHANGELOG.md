@@ -40,6 +40,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: render non-wrapped actor, message, and note label lines from borrowed `<br>`
   splits instead of collecting temporary `String` lines.
 - Sequence renderer: avoid cloning block label fragments when probing hyphenated long-word wraps.
+- Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
+  deserializing layout input from semantic JSON.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids
   for edge-label center lookup.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like

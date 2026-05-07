@@ -212,6 +212,37 @@ fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() 
 }
 
 #[test]
+fn parse_kanban_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = "kanban\n  Todo\n    item1\n  Doing\n    item2";
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "kanban");
+    match parsed.model {
+        RenderSemanticModel::Kanban(model) => {
+            assert_eq!(model.nodes.len(), 4);
+            assert!(model.nodes[0].is_group);
+            assert_eq!(model.nodes[0].label, "Todo");
+            assert_eq!(model.nodes[1].label, "item1");
+            assert_eq!(model.nodes[1].parent_id.as_deref(), Some("Todo"));
+        }
+        other => panic!("kanban render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("kanban"));
+    assert_eq!(parsed_json.model["nodes"][0]["label"], json!("Todo"));
+    assert_eq!(parsed_json.model["nodes"][1]["label"], json!("item1"));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

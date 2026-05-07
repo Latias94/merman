@@ -190,6 +190,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?),
         ),
+        (RenderSemanticModel::Kanban(model), "kanban") => Ok(LayoutDiagram::KanbanDiagram(
+            kanban::layout_kanban_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        )),
         (RenderSemanticModel::Json(semantic), _) => layout_json_by_type(
             diagram_type,
             semantic,

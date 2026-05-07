@@ -2,33 +2,7 @@ use crate::Result;
 use crate::generated::kanban_text_overrides_11_12_2 as kanban_text_overrides;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use serde::Deserialize;
-
-#[derive(Debug, Clone, Deserialize)]
-struct KanbanNode {
-    id: String,
-    label: String,
-    #[serde(default, rename = "isGroup")]
-    is_group: bool,
-    #[serde(default, rename = "parentId")]
-    parent_id: Option<String>,
-    #[serde(default)]
-    ticket: Option<String>,
-    #[serde(default)]
-    priority: Option<String>,
-    #[serde(default)]
-    assigned: Option<String>,
-    #[serde(default)]
-    icon: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct KanbanModel {
-    #[serde(default)]
-    nodes: Vec<KanbanNode>,
-    #[serde(rename = "type")]
-    diagram_type: String,
-}
+use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -85,9 +59,15 @@ pub fn layout_kanban_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let model: KanbanModel = crate::json::from_value_ref(semantic)?;
-    let _ = model.diagram_type.as_str();
+    let model: KanbanDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_kanban_diagram_typed(&model, effective_config, measurer)
+}
 
+pub fn layout_kanban_diagram_typed(
+    model: &KanbanDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<KanbanDiagramLayout> {
     let section_width = cfg_f64(effective_config, &["kanban", "sectionWidth"])
         .unwrap_or(200.0)
         .max(1.0);
@@ -117,7 +97,7 @@ pub fn layout_kanban_diagram(
     let mut sections: Vec<KanbanSectionLayout> = Vec::new();
     let mut items: Vec<KanbanItemLayout> = Vec::new();
 
-    let section_nodes: Vec<&KanbanNode> = model.nodes.iter().filter(|n| n.is_group).collect();
+    let section_nodes: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|n| n.is_group).collect();
     for (i, section) in section_nodes.iter().enumerate() {
         let index = (i + 1) as i64;
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
@@ -152,7 +132,7 @@ pub fn layout_kanban_diagram(
         let top = section_rect_y + max_label_height;
         let mut y = top;
 
-        let section_items: Vec<&KanbanNode> = model
+        let section_items: Vec<&KanbanRenderNode> = model
             .nodes
             .iter()
             .filter(|n| n.parent_id.as_deref() == Some(section.id.as_str()))

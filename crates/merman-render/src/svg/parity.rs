@@ -443,6 +443,9 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::KanbanDiagram(layout), RenderSemanticModel::Kanban(_)) => {
+            render_kanban_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -517,6 +520,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 effective_config,
                 title,
                 measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::KanbanDiagram(layout), RenderSemanticModel::Kanban(_)) => {
+            render_kanban_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
                 options,
             )
         }

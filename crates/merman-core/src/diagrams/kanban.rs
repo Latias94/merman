@@ -1,5 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 const NODE_TYPE_DEFAULT: i32 = 0;
@@ -25,6 +26,32 @@ struct KanbanNode {
     icon: Option<String>,
     css_classes: Option<String>,
     shape: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanDiagramRenderModel {
+    #[serde(default)]
+    pub nodes: Vec<KanbanRenderNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanRenderNode {
+    pub id: String,
+    pub label: String,
+    #[serde(default, rename = "isGroup")]
+    pub is_group: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub ticket: Option<String>,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub assigned: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -214,6 +241,43 @@ impl KanbanDb {
                     "ry": 5,
                     "cssStyles": ["text-align: left"],
                 }));
+            }
+        }
+        out
+    }
+
+    fn data_nodes_for_render(&self, config: &MermaidConfig) -> Vec<KanbanRenderNode> {
+        let mut out = Vec::new();
+        for &section_idx in &self.section_indices {
+            let Some(section) = self.nodes.get(section_idx) else {
+                continue;
+            };
+            out.push(KanbanRenderNode {
+                id: section.id.clone(),
+                label: sanitize_text(&section.label, config),
+                is_group: true,
+                parent_id: None,
+                ticket: section.ticket.clone(),
+                priority: None,
+                assigned: None,
+                icon: None,
+            });
+
+            for item in self
+                .nodes
+                .iter()
+                .filter(|n| n.parent_id.as_deref() == Some(&section.id))
+            {
+                out.push(KanbanRenderNode {
+                    id: item.id.clone(),
+                    label: sanitize_text(&item.label, config),
+                    is_group: false,
+                    parent_id: Some(section.id.clone()),
+                    ticket: item.ticket.clone(),
+                    priority: item.priority.clone(),
+                    assigned: item.assigned.clone(),
+                    icon: item.icon.clone(),
+                });
             }
         }
         out
@@ -620,7 +684,7 @@ fn split_node_and_shape_data(
     Ok((rest.trim_end().to_string(), None))
 }
 
-pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
+fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
     let mut db = KanbanDb::default();
     db.clear();
 
@@ -745,6 +809,11 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
         )?;
     }
 
+    Ok(db)
+}
+
+pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let db = parse_kanban_db(code, meta)?;
     let config = meta.effective_config.as_value().clone();
     Ok(json!({
         "type": meta.diagram_type,
@@ -754,6 +823,16 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "other": {},
         "config": config,
     }))
+}
+
+pub fn parse_kanban_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<KanbanDiagramRenderModel> {
+    let db = parse_kanban_db(code, meta)?;
+    Ok(KanbanDiagramRenderModel {
+        nodes: db.data_nodes_for_render(&meta.effective_config),
+    })
 }
 
 #[cfg(test)]

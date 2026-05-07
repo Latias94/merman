@@ -435,6 +435,8 @@ impl Engine {
                 crate::diagrams::architecture::parse_architecture_model_for_render(code, meta)
                     .map(RenderSemanticModel::Architecture)
             }
+            "kanban" => crate::diagrams::kanban::parse_kanban_model_for_render(code, meta)
+                .map(RenderSemanticModel::Kanban),
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -493,6 +495,7 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Kanban(_) => {}
         }
     }
 
@@ -505,6 +508,7 @@ impl Engine {
             RenderSemanticModel::Flowchart(_) => "flowchart",
             RenderSemanticModel::Architecture(_) => "architecture",
             RenderSemanticModel::Class(_) => "class",
+            RenderSemanticModel::Kanban(_) => "kanban",
         }
     }
 

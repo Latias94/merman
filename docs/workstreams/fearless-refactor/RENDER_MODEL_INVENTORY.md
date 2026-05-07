@@ -24,7 +24,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `sequence` | `typed-first` | typed layout + typed SVG | First large JSON-render migration; keep parity gates tight while splitting renderer modules. |
 | `zenuml` | `json-fallback` | JSON layout + JSON SVG via sequence renderer | Shares the sequence renderer but still enters through semantic JSON. |
 | `gantt` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence; date semantics need careful parity gates. |
-| `kanban` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence if coverage remains easier than Gantt. |
+| `kanban` | `typed-first` | typed layout + layout-only SVG | Migrated after sequence; keep as the small-diagram typed model pattern. |
 | `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |
 | `block` | `json-fallback` | JSON layout + JSON SVG | Defer unless profiling shows JSON cost. |
 | `requirement` | `json-fallback` | JSON layout + JSON SVG | Defer unless renderer cleanup requires typed data. |
