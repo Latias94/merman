@@ -2,8 +2,8 @@ use super::super::*;
 use super::activation::{build_sequence_activation_plan, render_sequence_activation_group};
 use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::blocks::{
-    frame_x_from_actors, render_critical_sequence_block, render_sectioned_sequence_block,
-    render_simple_sequence_block,
+    SequenceBlockRenderContext, frame_x_from_actors, render_critical_sequence_block,
+    render_sectioned_sequence_block, render_simple_sequence_block,
 };
 use super::model::*;
 use super::notes::render_sequence_notes;
@@ -61,6 +61,19 @@ pub(super) fn render_sequence_interaction_overlays(
         &settings.note_text_style,
     );
 
+    let block_ctx = SequenceBlockRenderContext {
+        default_frame_x1: frame_x1,
+        default_frame_x2: frame_x2,
+        msg_endpoints: &msg_endpoints,
+        actor_nodes_by_id: &actor_nodes_by_id,
+        edges_by_id,
+        nodes_by_id,
+        label_box_height: settings.label_box_height,
+        box_text_margin: settings.box_text_margin,
+        measurer,
+        loop_text_style: &settings.loop_text_style,
+    };
+
     for msg in &model.messages {
         render_sequence_activation_group(out, &activation_plan, &msg.id);
 
@@ -73,116 +86,31 @@ pub(super) fn render_sequence_interaction_overlays(
             };
             match block {
                 SequenceBlock::Alt { sections } => {
-                    render_sectioned_sequence_block(
-                        out,
-                        "alt",
-                        sections,
-                        true,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        settings.box_text_margin,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_sectioned_sequence_block(out, "alt", sections, true, &block_ctx);
                 }
                 SequenceBlock::Par { sections } => {
-                    render_sectioned_sequence_block(
-                        out,
-                        "par",
-                        sections,
-                        false,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        settings.box_text_margin,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_sectioned_sequence_block(out, "par", sections, false, &block_ctx);
                 }
                 SequenceBlock::Loop {
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(
-                        out,
-                        "loop",
-                        raw_label,
-                        message_ids,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_simple_sequence_block(out, "loop", raw_label, message_ids, &block_ctx);
                 }
                 SequenceBlock::Opt {
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(
-                        out,
-                        "opt",
-                        raw_label,
-                        message_ids,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_simple_sequence_block(out, "opt", raw_label, message_ids, &block_ctx);
                 }
                 SequenceBlock::Break {
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(
-                        out,
-                        "break",
-                        raw_label,
-                        message_ids,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_simple_sequence_block(out, "break", raw_label, message_ids, &block_ctx);
                 }
                 SequenceBlock::Critical { sections } => {
-                    render_critical_sequence_block(
-                        out,
-                        sections,
-                        frame_x1,
-                        frame_x2,
-                        &msg_endpoints,
-                        &actor_nodes_by_id,
-                        edges_by_id,
-                        nodes_by_id,
-                        settings.label_box_height,
-                        settings.box_text_margin,
-                        measurer,
-                        &settings.loop_text_style,
-                    );
+                    render_critical_sequence_block(out, sections, &block_ctx);
                 }
             }
         }

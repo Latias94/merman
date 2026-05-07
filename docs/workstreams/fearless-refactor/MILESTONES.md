@@ -173,6 +173,8 @@ Progress:
 - Shared multi-section sequence block emission for alt/par variants.
 - Extracted critical sequence block emission into `svg/parity/sequence/blocks.rs`, keeping its
   multi-section frame widening and single-section header wrap behavior localized.
+- Added `SequenceBlockRenderContext` so sequence block frame helpers share one explicit parameter
+  bundle instead of repeated long argument lists.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

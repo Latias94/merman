@@ -4,6 +4,19 @@ use super::model::SequenceSvgModel;
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
 
+pub(super) struct SequenceBlockRenderContext<'a> {
+    pub(super) default_frame_x1: f64,
+    pub(super) default_frame_x2: f64,
+    pub(super) msg_endpoints: &'a FxHashMap<&'a str, (&'a str, &'a str)>,
+    pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) label_box_height: f64,
+    pub(super) box_text_margin: f64,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) loop_text_style: &'a TextStyle,
+}
+
 pub(super) fn display_block_label(raw_label: &str, always_show: bool) -> Option<String> {
     let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw_label);
     let t = decoded.as_ref().trim();
@@ -146,21 +159,13 @@ pub(super) fn render_simple_sequence_block(
     block_label: &str,
     raw_label: &str,
     message_ids: &[String],
-    default_frame_x1: f64,
-    default_frame_x2: f64,
-    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
-    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    label_box_height: f64,
-    measurer: &dyn TextMeasurer,
-    loop_text_style: &TextStyle,
+    ctx: &SequenceBlockRenderContext<'_>,
 ) {
     let Some((min_y, max_y)) = message_ids_y_range(
         message_ids.iter(),
-        edges_by_id,
-        nodes_by_id,
-        msg_endpoints,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
+        ctx.msg_endpoints,
         false,
     ) else {
         return;
@@ -168,17 +173,17 @@ pub(super) fn render_simple_sequence_block(
 
     let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
         message_ids.iter(),
-        msg_endpoints,
-        actor_nodes_by_id,
-        edges_by_id,
-        nodes_by_id,
+        ctx.msg_endpoints,
+        ctx.actor_nodes_by_id,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
     )
-    .unwrap_or((default_frame_x1, default_frame_x2, f64::INFINITY));
+    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
 
     let header_offset = if block_label == "break" {
         93.0
     } else if raw_label.trim().is_empty() {
-        (79.0 - label_box_height).max(0.0)
+        (79.0 - ctx.label_box_height).max(0.0)
     } else {
         79.0
     };
@@ -195,8 +200,8 @@ pub(super) fn render_simple_sequence_block(
     let max_w = (frame_x2 - label_box_right).max(0.0);
     write_loop_text_lines(
         out,
-        measurer,
-        loop_text_style,
+        ctx.measurer,
+        ctx.loop_text_style,
         text_x,
         text_y,
         Some(max_w),
@@ -211,45 +216,40 @@ pub(super) fn render_sectioned_sequence_block(
     block_label: &str,
     sections: &[AltSection],
     adjust_header_for_wrap: bool,
-    default_frame_x1: f64,
-    default_frame_x2: f64,
-    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
-    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    label_box_height: f64,
-    box_text_margin: f64,
-    measurer: &dyn TextMeasurer,
-    loop_text_style: &TextStyle,
+    ctx: &SequenceBlockRenderContext<'_>,
 ) {
     if sections.is_empty() {
         return;
     }
 
-    let Some((min_y, max_y)) =
-        section_message_y_range(sections, edges_by_id, nodes_by_id, msg_endpoints, false)
-    else {
+    let Some((min_y, max_y)) = section_message_y_range(
+        sections,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
+        ctx.msg_endpoints,
+        false,
+    ) else {
         return;
     };
 
     let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
         sections.iter().flat_map(|s| s.message_ids.iter()),
-        msg_endpoints,
-        actor_nodes_by_id,
-        edges_by_id,
-        nodes_by_id,
+        ctx.msg_endpoints,
+        ctx.actor_nodes_by_id,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
     )
-    .unwrap_or((default_frame_x1, default_frame_x2, f64::INFINITY));
+    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
 
     let header_offset = section_header_offset(
         sections,
         frame_x1,
         frame_x2,
         adjust_header_for_wrap,
-        label_box_height,
-        box_text_margin,
-        measurer,
-        loop_text_style,
+        ctx.label_box_height,
+        ctx.box_text_margin,
+        ctx.measurer,
+        ctx.loop_text_style,
     );
     let frame_y1 = min_y - header_offset;
     let frame_y2 = max_y + 10.0;
@@ -264,7 +264,13 @@ pub(super) fn render_sectioned_sequence_block(
     // Mermaid output and avoid sub-pixel gaps at the frame border.
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(sections, min_y, edges_by_id, nodes_by_id, msg_endpoints);
+    let sep_ys = section_separator_ys(
+        sections,
+        min_y,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
+        ctx.msg_endpoints,
+    );
     for y in &sep_ys {
         let _ = write!(
             out,
@@ -291,8 +297,8 @@ pub(super) fn render_sectioned_sequence_block(
             let max_w = (frame_x2 - label_box_right).max(0.0);
             write_loop_text_lines(
                 out,
-                measurer,
-                loop_text_style,
+                ctx.measurer,
+                ctx.loop_text_style,
                 main_text_x,
                 y,
                 Some(max_w),
@@ -304,8 +310,8 @@ pub(super) fn render_sectioned_sequence_block(
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
         write_loop_text_lines(
             out,
-            measurer,
-            loop_text_style,
+            ctx.measurer,
+            ctx.loop_text_style,
             center_text_x,
             y,
             None,
@@ -320,35 +326,30 @@ pub(super) fn render_sectioned_sequence_block(
 pub(super) fn render_critical_sequence_block(
     out: &mut String,
     sections: &[AltSection],
-    default_frame_x1: f64,
-    default_frame_x2: f64,
-    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
-    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    label_box_height: f64,
-    box_text_margin: f64,
-    measurer: &dyn TextMeasurer,
-    loop_text_style: &TextStyle,
+    ctx: &SequenceBlockRenderContext<'_>,
 ) {
     if sections.is_empty() {
         return;
     }
 
-    let Some((min_y, max_y)) =
-        section_message_y_range(sections, edges_by_id, nodes_by_id, msg_endpoints, false)
-    else {
+    let Some((min_y, max_y)) = section_message_y_range(
+        sections,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
+        ctx.msg_endpoints,
+        false,
+    ) else {
         return;
     };
 
     let (mut frame_x1, frame_x2, min_left) = frame_x_from_message_ids(
         sections.iter().flat_map(|s| s.message_ids.iter()),
-        msg_endpoints,
-        actor_nodes_by_id,
-        edges_by_id,
-        nodes_by_id,
+        ctx.msg_endpoints,
+        ctx.actor_nodes_by_id,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
     )
-    .unwrap_or((default_frame_x1, default_frame_x2, f64::INFINITY));
+    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
     if sections.len() > 1 && min_left.is_finite() {
         // Mermaid's `critical` w/ `option` sections widens the frame to the left.
         frame_x1 = frame_x1.min(min_left - 9.0);
@@ -358,7 +359,7 @@ pub(super) fn render_critical_sequence_block(
         .first()
         .is_some_and(|s| s.raw_label.trim().is_empty())
     {
-        (79.0 - label_box_height).max(0.0)
+        (79.0 - ctx.label_box_height).max(0.0)
     } else if sections.len() > 1 {
         // Mermaid does not apply the wrap height adjustment for multi-section
         // `critical` blocks (those with one or more `option` sections).
@@ -370,11 +371,12 @@ pub(super) fn render_critical_sequence_block(
             .unwrap_or_else(|| "\u{200B}".to_string());
         let label_box_right = frame_x1 + 50.0;
         let max_w = (frame_x2 - label_box_right).max(0.0);
-        let wrapped = wrap_svg_text_lines(&label_text, measurer, loop_text_style, Some(max_w));
+        let wrapped =
+            wrap_svg_text_lines(&label_text, ctx.measurer, ctx.loop_text_style, Some(max_w));
         let extra_lines = wrapped.len().saturating_sub(1) as f64;
         let extra_per_line =
-            (sequence_text_overrides::sequence_text_line_step_px(loop_text_style.font_size)
-                - box_text_margin)
+            (sequence_text_overrides::sequence_text_line_step_px(ctx.loop_text_style.font_size)
+                - ctx.box_text_margin)
                 .max(0.0);
         79.0 + extra_lines * extra_per_line
     };
@@ -389,7 +391,13 @@ pub(super) fn render_critical_sequence_block(
     // separators (dashed)
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(sections, min_y, edges_by_id, nodes_by_id, msg_endpoints);
+    let sep_ys = section_separator_ys(
+        sections,
+        min_y,
+        ctx.edges_by_id,
+        ctx.nodes_by_id,
+        ctx.msg_endpoints,
+    );
     for y in &sep_ys {
         let _ = write!(
             out,
@@ -416,8 +424,8 @@ pub(super) fn render_critical_sequence_block(
             let max_w = (frame_x2 - label_box_right).max(0.0);
             write_loop_text_lines(
                 out,
-                measurer,
-                loop_text_style,
+                ctx.measurer,
+                ctx.loop_text_style,
                 main_text_x,
                 y,
                 Some(max_w),
@@ -429,8 +437,8 @@ pub(super) fn render_critical_sequence_block(
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
         write_loop_text_lines(
             out,
-            measurer,
-            loop_text_style,
+            ctx.measurer,
+            ctx.loop_text_style,
             center_text_x,
             y,
             None,
