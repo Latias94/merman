@@ -72,8 +72,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Sequence status: post-migration baseline captured in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`. Kanban status:
   same-machine parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_kanban_typed_render_model.md`. Keep this item open for
-  the next typed migration.
+  `docs/performance/spotcheck_2026-05-08_kanban_typed_render_model.md`. Gantt status:
+  pre-migration JSON-fallback baseline captured in
+  `docs/performance/spotcheck_2026-05-08_gantt_json_baseline.md`. Keep this item open for the next
+  typed migration.
 
 ## P1: Text and Measurement Module Split
 
