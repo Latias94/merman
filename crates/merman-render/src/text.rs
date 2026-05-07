@@ -2092,7 +2092,7 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
             let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
 
             flush_text(&mut tokens, &mut text_buf);
-            let delim_text: String = std::iter::repeat(ch).take(run_len).collect();
+            let delim_text: String = std::iter::repeat_n(ch, run_len).collect();
 
             if can_close
                 && stack
@@ -3589,10 +3589,8 @@ impl VendoredFontMetricsTextMeasurer {
             let mut cur = String::new();
             for ch in tok.chars() {
                 cur.push(ch);
-                if is_break_after(ch) {
-                    if !cur.is_empty() {
-                        out.push(std::mem::take(&mut cur));
-                    }
+                if is_break_after(ch) && !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
                 }
             }
             if !cur.is_empty() {

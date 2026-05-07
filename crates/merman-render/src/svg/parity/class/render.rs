@@ -45,12 +45,10 @@ fn class_line_with_marker_offset_points(
         return input.to_vec();
     }
 
-    let arrow_type_start = relation
-        .map(|rel| class_arrow_type_for_relation_end(rel.relation.type1))
-        .flatten();
-    let arrow_type_end = relation
-        .map(|rel| class_arrow_type_for_relation_end(rel.relation.type2))
-        .flatten();
+    let arrow_type_start =
+        relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1));
+    let arrow_type_end =
+        relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2));
     let start = &input[0];
     let end = &input[input.len() - 1];
     let x_direction_is_left = start.x < end.x;
@@ -775,24 +773,19 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{}", escape_xml(diagram_id)));
     let aria_roledescription_attr = super::util::escape_attr(aria_roledescription);
     let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open_ex4(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        Some("classDiagram"),
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(VIEWBOX_PLACEHOLDER),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        aria_roledescription_attr.as_str(),
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
-        &[],
-        &[],
-        root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
-        false,
-        root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+        root_svg::SvgRootAttrs {
+            class: Some("classDiagram"),
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            trailing_newline: false,
+            aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+            ..root_svg::SvgRootAttrs::new(diagram_id, aria_roledescription_attr.as_str())
+        },
     );
 
     let viewbox_pos = out
@@ -3298,9 +3291,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // fixed 48px title block above the diagram content.
     const TITLE_BLOCK_HEIGHT_PX: f64 = 48.0;
     const TITLE_Y_OFFSET_FROM_VIEWBOX_TOP_PX: f64 = 23.0;
-    let has_diagram_title = diagram_title
-        .as_deref()
-        .is_some_and(|t| !t.trim().is_empty());
+    let has_diagram_title = diagram_title.is_some_and(|t| !t.trim().is_empty());
     if has_diagram_title {
         vb_min_y -= TITLE_BLOCK_HEIGHT_PX;
         vb_h += TITLE_BLOCK_HEIGHT_PX;

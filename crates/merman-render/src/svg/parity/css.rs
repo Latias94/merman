@@ -245,38 +245,6 @@ pub(super) fn architecture_css_with_config(
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn architecture_css_with_config_honors_font_and_theme_colors() {
-        let cfg = serde_json::json!({
-            "fontFamily": "\"courier new\", courier, monospace;",
-            "fontSize": 18,
-            "themeVariables": {
-                "textColor": "#112233",
-                "lineColor": "#445566",
-                "primaryBorderColor": "#778899",
-            }
-        });
-
-        let css = architecture_css_with_config("diag", &cfg);
-
-        assert!(css.contains(
-            r#"#diag{font-family:"courier new",courier,monospace;font-size:18px;fill:#112233;}"#
-        ));
-        assert!(css.contains(r#"#diag .edge{stroke-width:3;stroke:#445566;fill:none;}"#));
-        assert!(css.contains(r#"#diag .arrow{fill:#445566;}"#));
-        assert!(css.contains(
-            r#"#diag .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
-        ));
-        assert!(
-            css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#)
-        );
-    }
-}
-
 pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
@@ -723,4 +691,36 @@ pub(super) fn gantt_css(diagram_id: &str) -> String {
 
     out.push_str(&root_rule);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn architecture_css_with_config_honors_font_and_theme_colors() {
+        let cfg = serde_json::json!({
+            "fontFamily": "\"courier new\", courier, monospace;",
+            "fontSize": 18,
+            "themeVariables": {
+                "textColor": "#112233",
+                "lineColor": "#445566",
+                "primaryBorderColor": "#778899",
+            }
+        });
+
+        let css = architecture_css_with_config("diag", &cfg);
+
+        assert!(css.contains(
+            r#"#diag{font-family:"courier new",courier,monospace;font-size:18px;fill:#112233;}"#
+        ));
+        assert!(css.contains(r#"#diag .edge{stroke-width:3;stroke:#445566;fill:none;}"#));
+        assert!(css.contains(r#"#diag .arrow{fill:#445566;}"#));
+        assert!(css.contains(
+            r#"#diag .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
+        ));
+        assert!(
+            css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#)
+        );
+    }
 }

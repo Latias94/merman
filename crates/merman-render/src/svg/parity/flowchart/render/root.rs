@@ -2,17 +2,22 @@
 
 use super::super::*;
 
+pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details, 'cache> {
+    pub(in crate::svg::parity::flowchart) timing_enabled: bool,
+    pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
+    pub(in crate::svg::parity::flowchart) edge_cache:
+        Option<&'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>>,
+}
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     cluster_id: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
-    timing_enabled: bool,
-    details: &mut FlowchartRenderDetails,
-    edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
 ) {
-    details.root_calls += 1;
+    session.details.root_calls += 1;
 
     let (origin_x, origin_y, transform_attr) = if let Some(cid) = cluster_id {
         if let Some(off) = flowchart_cluster_root_offsets(ctx, cid) {
@@ -42,7 +47,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
     let content_origin_y = origin_y;
 
-    let _g_clusters = detail_guard(timing_enabled, &mut details.clusters);
+    let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = cluster_id {
         if ctx
@@ -70,7 +75,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         if ctx.recursive_clusters.contains(id) {
             continue;
         }
-        if flowchart_effective_parent(ctx, *id) == cluster_id {
+        if flowchart_effective_parent(ctx, id) == cluster_id {
             if let Some(cluster) = ctx.layout_clusters_by_id.get(*id) {
                 clusters_to_draw.push(cluster);
             }
@@ -141,11 +146,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     }
     drop(_g_clusters);
 
-    let _g_edges_select = detail_guard(timing_enabled, &mut details.edges_select);
+    let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
     let edges = flowchart_edges_for_root(ctx, cluster_id);
     drop(_g_edges_select);
 
-    let _g_edge_paths = detail_guard(timing_enabled, &mut details.edge_paths);
+    let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgePaths"/>"#);
     } else {
@@ -159,14 +164,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 origin_x,
                 content_origin_y,
                 &mut scratch,
-                edge_cache,
+                session.edge_cache,
             );
         }
         out.push_str("</g>");
     }
     drop(_g_edge_paths);
 
-    let _g_edge_labels = detail_guard(timing_enabled, &mut details.edge_labels);
+    let _g_edge_labels = detail_guard(session.timing_enabled, &mut session.details.edge_labels);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
@@ -193,7 +198,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 }
             }
             for e in &edges {
-                render_flowchart_edge_label(out, ctx, e, origin_x, content_origin_y, edge_cache);
+                render_flowchart_edge_label(
+                    out,
+                    ctx,
+                    e,
+                    origin_x,
+                    content_origin_y,
+                    session.edge_cache,
+                );
             }
         } else {
             // Upstream Mermaid inserts empty HTML edge-label wrappers before positioned labels while
@@ -206,7 +218,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                         e,
                         origin_x,
                         content_origin_y,
-                        edge_cache,
+                        session.edge_cache,
                     );
                 }
             }
@@ -218,7 +230,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                         e,
                         origin_x,
                         content_origin_y,
-                        edge_cache,
+                        session.edge_cache,
                     );
                 }
             }
@@ -231,7 +243,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
 
     // Mermaid inserts node DOM elements in `graph.nodes()` insertion order while recursively
     // rendering extracted cluster graphs. Our layout captures that order per extracted root.
-    let _g_dom_order = detail_guard(timing_enabled, &mut details.dom_order);
+    let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
     let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
         .get(cluster_id.unwrap_or(""))
@@ -280,36 +292,27 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
             // node DOM element. Recursive clusters render as nested `.root` groups.
             if ctx.recursive_clusters.contains(id) {
-                let nested_start = timing_enabled.then(std::time::Instant::now);
-                render_flowchart_root(
-                    out,
-                    ctx,
-                    Some(id),
-                    origin_x,
-                    origin_y,
-                    timing_enabled,
-                    details,
-                    edge_cache,
-                );
+                let nested_start = session.timing_enabled.then(std::time::Instant::now);
+                render_flowchart_root(out, ctx, Some(id), origin_x, origin_y, session);
                 if let Some(s) = nested_start {
-                    details.nested_roots += s.elapsed();
+                    session.details.nested_roots += s.elapsed();
                 }
             }
             continue;
         }
 
-        let node_start = timing_enabled.then(std::time::Instant::now);
+        let node_start = session.timing_enabled.then(std::time::Instant::now);
         render_flowchart_node(
             out,
             ctx,
             id,
             origin_x,
             content_origin_y,
-            timing_enabled,
-            details,
+            session.timing_enabled,
+            &mut *session.details,
         );
         if let Some(s) = node_start {
-            details.nodes += s.elapsed();
+            session.details.nodes += s.elapsed();
         }
     }
 

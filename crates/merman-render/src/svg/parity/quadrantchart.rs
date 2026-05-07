@@ -52,39 +52,30 @@ pub(super) fn render_quadrantchart_diagram_svg(
     let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
     if use_max_width {
         let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            root_svg::SvgRootWidth::Percent100,
-            None,
-            Some(style_attr.as_str()),
-            Some(viewbox_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            "quadrantChart",
-            None,
-            None,
-            false,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
+            },
         );
     } else {
         let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open_ex2(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            root_svg::SvgRootWidth::Fixed(&w_attr),
-            Some(&h_attr),
-            None,
-            Some(viewbox_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            &[],
-            "quadrantChart",
-            None,
-            None,
-            &tail_attrs,
-            root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-            false,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&w_attr),
+                height_attr: Some(&h_attr),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                tail_attrs: &tail_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
+            },
         );
     }
 

@@ -199,36 +199,31 @@ pub(super) fn render_c4_diagram_svg(
     let mut out = String::new();
     if use_max_width {
         let style_attr = format!("max-width: {root_max_w}px; background-color: white;");
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            root_svg::SvgRootWidth::Percent100,
-            None,
-            Some(style_attr.as_str()),
-            Some(root_viewbox.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            &aria_roledescription_attr,
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
-            false,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(root_viewbox.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
+            },
         );
     } else {
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            root_svg::SvgRootWidth::Fixed(&root_w_attr),
-            Some(&root_h_attr),
-            Some("background-color: white;"),
-            Some(root_viewbox.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            &aria_roledescription_attr,
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
-            false,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&root_w_attr),
+                height_attr: Some(&root_h_attr),
+                style_attr: Some("background-color: white;"),
+                viewbox_attr: Some(root_viewbox.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
+            },
         );
     }
 

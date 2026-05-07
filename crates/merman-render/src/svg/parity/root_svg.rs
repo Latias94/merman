@@ -23,97 +23,50 @@ pub(super) enum SvgRootFixedHeightPlacement {
     AfterViewBox,
 }
 
-pub(super) fn push_svg_root_open_ex(
-    out: &mut String,
-    diagram_id: &str,
-    class: Option<&str>,
-    width: SvgRootWidth<'_>,
-    height_attr: Option<&str>,
-    style_attr: Option<&str>,
-    viewbox_attr: Option<&str>,
-    style_viewbox_order: SvgRootStyleViewBoxOrder,
-    extra_attrs: &[(&str, &str)],
-    aria_roledescription: &str,
-    aria_labelledby: Option<&str>,
-    aria_describedby: Option<&str>,
-    trailing_newline: bool,
-) {
-    push_svg_root_open_ex2(
-        out,
-        diagram_id,
-        class,
-        width,
-        height_attr,
-        style_attr,
-        viewbox_attr,
-        style_viewbox_order,
-        extra_attrs,
-        aria_roledescription,
-        aria_labelledby,
-        aria_describedby,
-        &[],
-        SvgRootFixedHeightPlacement::BeforeXmlns,
-        trailing_newline,
-    );
+pub(super) struct SvgRootAttrs<'a> {
+    pub(super) diagram_id: &'a str,
+    pub(super) class: Option<&'a str>,
+    pub(super) width: SvgRootWidth<'a>,
+    pub(super) height_attr: Option<&'a str>,
+    pub(super) style_attr: Option<&'a str>,
+    pub(super) viewbox_attr: Option<&'a str>,
+    pub(super) style_viewbox_order: SvgRootStyleViewBoxOrder,
+    pub(super) extra_attrs: &'a [(&'a str, &'a str)],
+    pub(super) aria_roledescription: &'a str,
+    pub(super) aria_labelledby: Option<&'a str>,
+    pub(super) aria_describedby: Option<&'a str>,
+    pub(super) after_roledescription_attrs: &'a [(&'a str, &'a str)],
+    pub(super) tail_attrs: &'a [(&'a str, &'a str)],
+    pub(super) fixed_height_placement: SvgRootFixedHeightPlacement,
+    pub(super) trailing_newline: bool,
+    pub(super) aria_attr_order: SvgRootAriaAttrOrder,
 }
 
-pub(super) fn push_svg_root_open_ex2(
-    out: &mut String,
-    diagram_id: &str,
-    class: Option<&str>,
-    width: SvgRootWidth<'_>,
-    height_attr: Option<&str>,
-    style_attr: Option<&str>,
-    viewbox_attr: Option<&str>,
-    style_viewbox_order: SvgRootStyleViewBoxOrder,
-    extra_attrs: &[(&str, &str)],
-    aria_roledescription: &str,
-    aria_labelledby: Option<&str>,
-    aria_describedby: Option<&str>,
-    tail_attrs: &[(&str, &str)],
-    fixed_height_placement: SvgRootFixedHeightPlacement,
-    trailing_newline: bool,
-) {
-    push_svg_root_open_ex3(
-        out,
-        diagram_id,
-        class,
-        width,
-        height_attr,
-        style_attr,
-        viewbox_attr,
-        style_viewbox_order,
-        extra_attrs,
-        aria_roledescription,
-        aria_labelledby,
-        aria_describedby,
-        &[],
-        tail_attrs,
-        fixed_height_placement,
-        trailing_newline,
-    );
+impl<'a> SvgRootAttrs<'a> {
+    pub(super) fn new(diagram_id: &'a str, aria_roledescription: &'a str) -> Self {
+        Self {
+            diagram_id,
+            class: None,
+            width: SvgRootWidth::None,
+            height_attr: None,
+            style_attr: None,
+            viewbox_attr: None,
+            style_viewbox_order: SvgRootStyleViewBoxOrder::StyleThenViewBox,
+            extra_attrs: &[],
+            aria_roledescription,
+            aria_labelledby: None,
+            aria_describedby: None,
+            after_roledescription_attrs: &[],
+            tail_attrs: &[],
+            fixed_height_placement: SvgRootFixedHeightPlacement::BeforeXmlns,
+            trailing_newline: true,
+            aria_attr_order: SvgRootAriaAttrOrder::DescribedbyThenLabelledby,
+        }
+    }
 }
 
-pub(super) fn push_svg_root_open_ex3(
-    out: &mut String,
-    diagram_id: &str,
-    class: Option<&str>,
-    width: SvgRootWidth<'_>,
-    height_attr: Option<&str>,
-    style_attr: Option<&str>,
-    viewbox_attr: Option<&str>,
-    style_viewbox_order: SvgRootStyleViewBoxOrder,
-    extra_attrs: &[(&str, &str)],
-    aria_roledescription: &str,
-    aria_labelledby: Option<&str>,
-    aria_describedby: Option<&str>,
-    after_roledescription_attrs: &[(&str, &str)],
-    tail_attrs: &[(&str, &str)],
-    fixed_height_placement: SvgRootFixedHeightPlacement,
-    trailing_newline: bool,
-) {
-    push_svg_root_open_ex4(
-        out,
+pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
+    let SvgRootAttrs {
         diagram_id,
         class,
         width,
@@ -129,29 +82,9 @@ pub(super) fn push_svg_root_open_ex3(
         tail_attrs,
         fixed_height_placement,
         trailing_newline,
-        SvgRootAriaAttrOrder::DescribedbyThenLabelledby,
-    );
-}
+        aria_attr_order,
+    } = attrs;
 
-pub(super) fn push_svg_root_open_ex4(
-    out: &mut String,
-    diagram_id: &str,
-    class: Option<&str>,
-    width: SvgRootWidth<'_>,
-    height_attr: Option<&str>,
-    style_attr: Option<&str>,
-    viewbox_attr: Option<&str>,
-    style_viewbox_order: SvgRootStyleViewBoxOrder,
-    extra_attrs: &[(&str, &str)],
-    aria_roledescription: &str,
-    aria_labelledby: Option<&str>,
-    aria_describedby: Option<&str>,
-    after_roledescription_attrs: &[(&str, &str)],
-    tail_attrs: &[(&str, &str)],
-    fixed_height_placement: SvgRootFixedHeightPlacement,
-    trailing_newline: bool,
-    aria_attr_order: SvgRootAriaAttrOrder,
-) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
     // id, width/height (with configurable fixed-height placement), xmlns, class?,
     // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
@@ -319,33 +252,4 @@ pub(super) fn push_svg_root_open_ex4(
     if trailing_newline {
         out.push('\n');
     }
-}
-
-pub(super) fn push_svg_root_open(
-    out: &mut String,
-    diagram_id: &str,
-    class: &str,
-    width: SvgRootWidth<'_>,
-    height_attr: Option<&str>,
-    style_attr: &str,
-    viewbox_attr: &str,
-    aria_roledescription: &str,
-    aria_labelledby: Option<&str>,
-    aria_describedby: Option<&str>,
-) {
-    push_svg_root_open_ex(
-        out,
-        diagram_id,
-        Some(class),
-        width,
-        height_attr,
-        Some(style_attr),
-        Some(viewbox_attr),
-        SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        aria_roledescription,
-        aria_labelledby,
-        aria_describedby,
-        true,
-    );
 }

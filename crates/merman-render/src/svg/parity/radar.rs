@@ -279,22 +279,20 @@ pub(super) fn render_radar_diagram_svg(
 
     let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
     let mut out = String::new();
-    root_svg::push_svg_root_open_ex2(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Fixed(&w_attr),
-        Some(&h_attr),
-        None,
-        Some(viewbox_attr.as_str()),
-        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-        &[],
-        "radar",
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
-        &tail_attrs,
-        root_svg::SvgRootFixedHeightPlacement::AfterViewBox,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Fixed(&w_attr),
+            height_attr: Some(&h_attr),
+            viewbox_attr: Some(viewbox_attr.as_str()),
+            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            tail_attrs: &tail_attrs,
+            fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterViewBox,
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
+        },
     );
 
     if has_acc_title {

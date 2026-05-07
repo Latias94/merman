@@ -378,7 +378,7 @@ fn expand_bounds_for_node_text(
                     style.font_size,
                     line,
                 )
-                .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, &style));
+                .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style));
             *min_x = (*min_x).min(anchor_x - left);
             *max_x = (*max_x).max(anchor_x + right);
         }

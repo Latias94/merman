@@ -160,9 +160,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
 
         let mut out = String::with_capacity(s.len());
         for (idx, &line) in lines.iter().enumerate() {
-            if idx == 0 {
-                out.push_str(line);
-            } else if line.trim().is_empty() {
+            if idx == 0 || line.trim().is_empty() {
                 out.push_str(line);
             } else {
                 let mut removed = 0usize;
@@ -243,12 +241,11 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 {
                     return Some("flowchart frontmatter config.layout=elk (deferred)");
                 }
-                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                    if !fixture_text.contains("\n  look: classic")
-                        && !fixture_text.contains("\nlook: classic")
-                    {
-                        return Some("flowchart frontmatter config.look!=classic (deferred)");
-                    }
+                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
+                    && !fixture_text.contains("\n  look: classic")
+                    && !fixture_text.contains("\nlook: classic")
+                {
+                    return Some("flowchart frontmatter config.look!=classic (deferred)");
                 }
                 if fixture_text.contains("$$") {
                     return Some("flowchart math (deferred)");

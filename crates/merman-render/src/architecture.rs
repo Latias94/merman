@@ -1068,16 +1068,16 @@ fn layout_architecture_diagram_model(
 
                 horizontal_alignments
                     .entry(*y)
-                    .or_insert_with(IndexMap::new)
+                    .or_default()
                     .entry(node_group.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(id.to_string());
 
                 vertical_alignments
                     .entry(*x)
-                    .or_insert_with(IndexMap::new)
+                    .or_default()
                     .entry(node_group)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(id.to_string());
             }
 
@@ -1252,18 +1252,18 @@ fn layout_architecture_diagram_model(
                 Dir::B => manatee::Anchor::Bottom,
             });
 
-            let (label_width, label_height) =
-                match e.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-                    Some(label) => {
-                        let m = text_measurer.measure(label, &edge_text_style);
-                        let w = m.width.max(0.0);
-                        // Cytoscape edge label bounding boxes are slightly taller than the measured
-                        // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
-                        let h = (m.height + 1.0).max(0.0);
-                        (Some(w), Some(h))
-                    }
-                    None => (None, None),
-                };
+            let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty())
+            {
+                Some(label) => {
+                    let m = text_measurer.measure(label, &edge_text_style);
+                    let w = m.width.max(0.0);
+                    // Cytoscape edge label bounding boxes are slightly taller than the measured
+                    // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
+                    let h = (m.height + 1.0).max(0.0);
+                    (Some(w), Some(h))
+                }
+                None => (None, None),
+            };
             edges.push(manatee::Edge {
                 id: format!("edge-{}", edges.len()),
                 source: e.lhs_id.to_string(),
@@ -1747,17 +1747,18 @@ fn layout_architecture_diagram_model(
                 })
             }
 
-            fn group_bbox(
-                nodes: &[LayoutNode],
-                members: &[usize],
-                node_type: &FxHashMap<&str, ArchitectureNodeType>,
-                node_title: &FxHashMap<&str, &str>,
-                label_extras: &mut FxHashMap<String, LabelExtras>,
-                measurer: &dyn crate::text::TextMeasurer,
-                text_style: &crate::text::TextStyle,
+            struct GroupBBoxCtx<'a> {
+                nodes: &'a [LayoutNode],
+                node_type: &'a FxHashMap<&'a str, ArchitectureNodeType>,
+                node_title: &'a FxHashMap<&'a str, &'a str>,
+                label_extras: &'a mut FxHashMap<String, LabelExtras>,
+                measurer: &'a dyn crate::text::TextMeasurer,
+                text_style: &'a crate::text::TextStyle,
                 icon_size: f64,
                 font_size_px: f64,
-            ) -> Option<BBox> {
+            }
+
+            fn group_bbox(ctx: &mut GroupBBoxCtx<'_>, members: &[usize]) -> Option<BBox> {
                 if members.is_empty() {
                     return None;
                 }
@@ -1768,7 +1769,7 @@ fn layout_architecture_diagram_model(
                 let mut max_y = f64::NEG_INFINITY;
 
                 for &idx in members {
-                    let Some(n) = nodes.get(idx) else {
+                    let Some(n) = ctx.nodes.get(idx) else {
                         continue;
                     };
 
@@ -1779,30 +1780,31 @@ fn layout_architecture_diagram_model(
                     let mut nx2 = n.x + n.width;
                     let mut ny2 = n.y + n.height;
 
-                    let is_service = node_type.get(n.id.as_str()).copied()
+                    let is_service = ctx.node_type.get(n.id.as_str()).copied()
                         == Some(ArchitectureNodeType::Service);
                     if is_service {
-                        if let Some(title) = node_title.get(n.id.as_str()).copied() {
-                            let extras = if let Some(v) = label_extras.get(n.id.as_str()).copied() {
-                                Some(v)
-                            } else {
-                                let computed = measure_service_label_extras(
-                                    title,
-                                    icon_size * 1.5,
-                                    measurer,
-                                    text_style,
-                                    icon_size,
-                                    font_size_px,
-                                );
-                                if let Some(v) = computed {
-                                    label_extras.insert(n.id.clone(), v);
-                                }
-                                computed
-                            };
+                        if let Some(title) = ctx.node_title.get(n.id.as_str()).copied() {
+                            let extras =
+                                if let Some(v) = ctx.label_extras.get(n.id.as_str()).copied() {
+                                    Some(v)
+                                } else {
+                                    let computed = measure_service_label_extras(
+                                        title,
+                                        ctx.icon_size * 1.5,
+                                        ctx.measurer,
+                                        ctx.text_style,
+                                        ctx.icon_size,
+                                        ctx.font_size_px,
+                                    );
+                                    if let Some(v) = computed {
+                                        ctx.label_extras.insert(n.id.clone(), v);
+                                    }
+                                    computed
+                                };
                             if let Some(extras) = extras {
                                 nx1 = nx1.min(n.x + extras.left);
-                                nx2 = nx2.max(n.x + icon_size + extras.right);
-                                ny2 = ny2.max(n.y + icon_size + extras.bottom);
+                                nx2 = nx2.max(n.x + ctx.icon_size + extras.right);
+                                ny2 = ny2.max(n.y + ctx.icon_size + extras.bottom);
                             }
                         }
                     }
@@ -1821,7 +1823,7 @@ fn layout_architecture_diagram_model(
                     return None;
                 }
 
-                let pad = (icon_size / 2.0) + 2.5;
+                let pad = (ctx.icon_size / 2.0) + 2.5;
                 Some(BBox {
                     min_x: min_x - pad,
                     min_y: min_y - pad,
@@ -1835,18 +1837,18 @@ fn layout_architecture_diagram_model(
 
             let mut bboxes: FxHashMap<&str, BBox> = FxHashMap::default();
             bboxes.reserve(group_members.len().saturating_mul(2));
+            let mut group_bbox_ctx = GroupBBoxCtx {
+                nodes,
+                node_type: &node_type,
+                node_title: &node_title,
+                label_extras: &mut label_extras,
+                measurer: &measurer,
+                text_style: &text_style,
+                icon_size,
+                font_size_px,
+            };
             for (&group, members) in &group_members {
-                if let Some(bb) = group_bbox(
-                    nodes,
-                    members,
-                    &node_type,
-                    &node_title,
-                    &mut label_extras,
-                    &measurer,
-                    &text_style,
-                    icon_size,
-                    font_size_px,
-                ) {
+                if let Some(bb) = group_bbox(&mut group_bbox_ctx, members) {
                     bboxes.insert(group, bb);
                 }
             }

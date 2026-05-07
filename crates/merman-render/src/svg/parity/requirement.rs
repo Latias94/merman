@@ -519,15 +519,17 @@ pub(super) fn render_requirement_diagram_svg(
 
     root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        "requirementDiagram",
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        &format!("max-width: {max_width_style_attr}px; background-color: white;"),
-        &viewbox_attr,
-        "requirement",
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
+        root_svg::SvgRootAttrs {
+            class: Some("requirementDiagram"),
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(&format!(
+                "max-width: {max_width_style_attr}px; background-color: white;"
+            )),
+            viewbox_attr: Some(&viewbox_attr),
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
+        },
     );
 
     out.push_str(&a11y_nodes);

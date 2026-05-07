@@ -7,7 +7,7 @@ use crate::svg::parity::util;
 
 use super::super::geom::path_from_points;
 use super::super::roughjs::{
-    roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
+    RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
 };
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_no_label(
@@ -87,16 +87,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
             let line_color = util::theme_color(ctx.config.as_value(), "lineColor", "#333333");
             let (fill_d, stroke_d) =
                 super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    roughjs_paths_for_rect(
-                        -w / 2.0,
-                        -h / 2.0,
+                    roughjs_paths_for_rect(RoughRectSpec {
+                        x: -w / 2.0,
+                        y: -h / 2.0,
                         w,
                         h,
-                        &line_color,
-                        &line_color,
-                        common.stroke_width,
-                        common.hand_drawn_seed,
-                    )
+                        fill: &line_color,
+                        stroke: &line_color,
+                        stroke_width: common.stroke_width,
+                        seed: common.hand_drawn_seed,
+                    })
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(

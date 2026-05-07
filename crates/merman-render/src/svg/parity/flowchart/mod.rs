@@ -15,13 +15,16 @@ mod util;
 
 pub(super) use css::*;
 use edge::*;
-use edge_geom::flowchart_compute_edge_path_geom;
+use edge_geom::{FlowchartEdgePathGeomRequest, flowchart_compute_edge_path_geom};
 use hierarchy::*;
 pub(super) use label::*;
 pub(super) use style::*;
 
+use render::{
+    FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_node,
+    render_flowchart_root,
+};
 pub(super) use render::{render_flowchart_cluster, render_flowchart_edge_label};
-use render::{render_flowchart_edge_path, render_flowchart_node, render_flowchart_root};
 use types::*;
 use util::{OptionalStyleAttr, OptionalStyleXmlAttr};
 
@@ -44,15 +47,19 @@ pub(super) fn render_flowchart_v2_debug_svg(
 // Entry points (split from parity.rs).
 
 fn flowchart_compute_edge_path_geom_impl(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-    origin_x: f64,
-    origin_y: f64,
-    abs_top_transform: f64,
+    request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-    trace_enabled: bool,
-    viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 ) -> Option<FlowchartEdgePathGeom> {
+    let FlowchartEdgePathGeomRequest {
+        ctx,
+        edge,
+        origin_x,
+        origin_y,
+        abs_top_transform,
+        trace_enabled,
+        viewbox_current_bounds,
+    } = request;
+
     fn mermaid_round_number(num: f64, precision: i32) -> f64 {
         let factor = 10_f64.powi(precision);
         (num * factor).round() / factor
@@ -169,9 +176,7 @@ fn flowchart_compute_edge_path_geom_impl(
         false
     }
 
-    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return None;
-    };
+    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
     if le.points.len() < 2 {
         return None;
     }
@@ -187,12 +192,12 @@ fn flowchart_compute_edge_path_geom_impl(
     let local_points = scratch.local_points.as_slice();
 
     use edge_geom::{
-        TraceEndpointIntersection, boundary_for_cluster, boundary_for_node,
-        curve_path_d_and_bounds, cut_path_at_intersect_into, dedup_consecutive_points_into,
-        force_intersect_for_layout_shape, intersect_for_layout_shape,
-        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
-        maybe_collapse_straight_except_one_endpoint, maybe_fix_corners,
-        maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
+        FlowchartEdgeTraceInput, TraceEndpointIntersection, boundary_for_cluster,
+        boundary_for_node, curve_path_d_and_bounds, cut_path_at_intersect_into,
+        dedup_consecutive_points_into, force_intersect_for_layout_shape,
+        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
+        line_with_offset_for_edge_type, maybe_collapse_straight_except_one_endpoint,
+        maybe_fix_corners, maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
         maybe_override_degenerate_subgraph_edge_path_d, maybe_pad_cyclic_special_basis_route,
         maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
         maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
@@ -456,7 +461,7 @@ fn flowchart_compute_edge_path_geom_impl(
         viewbox_current_bounds,
     );
     if let Some(override_d) =
-        maybe_override_degenerate_subgraph_edge_path_d(ctx, edge, &points_for_data_points)
+        maybe_override_degenerate_subgraph_edge_path_d(ctx, edge, points_for_data_points)
     {
         d = override_d;
     }
@@ -477,20 +482,20 @@ fn flowchart_compute_edge_path_geom_impl(
     }
 
     if trace_enabled {
-        write_flowchart_edge_trace(
+        write_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
-            le,
+            layout_edge: le,
             origin_x,
             origin_y,
             base_points,
-            points_after_intersect_for_trace.as_deref(),
+            points_after_intersect_for_trace: points_after_intersect_for_trace.as_deref(),
             points_for_render,
-            trace_points_before_norm.as_deref(),
-            trace_points_after_norm.as_deref(),
-            points_for_data_points,
-            trace_endpoint,
-        );
+            points_for_data_points_before_norm: trace_points_before_norm.as_deref(),
+            points_for_data_points_after_norm: trace_points_after_norm.as_deref(),
+            points_for_data_points_final: points_for_data_points,
+            endpoint_intersection: trace_endpoint,
+        });
     }
 
     scratch.json.clear();

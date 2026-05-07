@@ -336,16 +336,31 @@ pub(in crate::svg::parity) fn roughjs_circle_path_d(diameter: f64, seed: u64) ->
     Some(out.trim_end().to_string())
 }
 
+pub(in crate::svg::parity) struct RoughRectSpec<'a> {
+    pub(in crate::svg::parity) x: f64,
+    pub(in crate::svg::parity) y: f64,
+    pub(in crate::svg::parity) w: f64,
+    pub(in crate::svg::parity) h: f64,
+    pub(in crate::svg::parity) fill: &'a str,
+    pub(in crate::svg::parity) stroke: &'a str,
+    pub(in crate::svg::parity) stroke_width: f32,
+    pub(in crate::svg::parity) seed: u64,
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_rect(
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    fill: &str,
-    stroke: &str,
-    stroke_width: f32,
-    seed: u64,
+    spec: RoughRectSpec<'_>,
 ) -> Option<(String, String)> {
+    let RoughRectSpec {
+        x,
+        y,
+        w,
+        h,
+        fill,
+        stroke,
+        stroke_width,
+        seed,
+    } = spec;
+
     // Port of Mermaid `forkJoin.ts` generation order: outline first (advancing PRNG), then fill;
     // SVG emission order is fill first, stroke second.
     let fill = parse_hex_color_to_srgba(fill)?;

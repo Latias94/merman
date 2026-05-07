@@ -658,12 +658,11 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     return Some("flowchart frontmatter config.layout=elk (deferred)");
                 }
                 // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
-                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                    if !fixture_text.contains("\n  look: classic")
-                        && !fixture_text.contains("\nlook: classic")
-                    {
-                        return Some("flowchart frontmatter config.look!=classic (deferred)");
-                    }
+                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
+                    && !fixture_text.contains("\n  look: classic")
+                    && !fixture_text.contains("\nlook: classic")
+                {
+                    return Some("flowchart frontmatter config.look!=classic (deferred)");
                 }
                 // Math rendering depends on browser KaTeX + foreignObject details.
                 if fixture_text.contains("$$") {

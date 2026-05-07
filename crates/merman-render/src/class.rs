@@ -124,7 +124,6 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
 fn prepare_graph(
     mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     depth: usize,
-    prefer_dagreish_disconnected: bool,
 ) -> Result<PreparedGraph> {
     if depth > 10 {
         return Ok(PreparedGraph {
@@ -204,7 +203,7 @@ fn prepare_graph(
         subgraph.graph_mut().marginx = 8.0;
         subgraph.graph_mut().marginy = 8.0;
 
-        let mut prepared = prepare_graph(subgraph, depth + 1, prefer_dagreish_disconnected)?;
+        let mut prepared = prepare_graph(subgraph, depth + 1)?;
         prepared.injected_cluster_root_id = Some(cluster_id.clone());
         extracted.insert(cluster_id, prepared);
     }
@@ -730,7 +729,8 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
             // *does* influence wrapping/sizing (see upstream SVG baselines:
             // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg` and
             // `fixtures/upstream-svgs/class/stress_class_svg_font_size_px_string_precedence_026.svg`).
-            let theme_px = config_string(effective_config, &["themeVariables", "fontSize"])
+
+            config_string(effective_config, &["themeVariables", "fontSize"])
                 .and_then(|raw| {
                     let t = raw.trim().trim_end_matches(';').trim();
                     let t = t.trim_end_matches("!important").trim();
@@ -739,8 +739,7 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
                     }
                     t.trim_end_matches("px").trim().parse::<f64>().ok()
                 })
-                .unwrap_or(16.0);
-            theme_px
+                .unwrap_or(16.0)
         }
     };
     TextStyle {
@@ -761,17 +760,30 @@ pub(crate) fn class_html_calculate_text_style(effective_config: &Value) -> TextS
     }
 }
 
-fn class_box_dimensions(
-    node: &ClassNode,
-    measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    html_calc_text_style: &TextStyle,
+struct ClassBoxMeasureCtx<'a> {
+    measurer: &'a dyn TextMeasurer,
+    text_style: &'a TextStyle,
+    html_calc_text_style: &'a TextStyle,
     wrap_probe_font_size: f64,
     wrap_mode: WrapMode,
     padding: f64,
     hide_empty_members_box: bool,
     capture_row_metrics: bool,
+}
+
+fn class_box_dimensions(
+    node: &ClassNode,
+    ctx: &ClassBoxMeasureCtx<'_>,
 ) -> (f64, f64, Option<ClassNodeRowMetrics>) {
+    let measurer = ctx.measurer;
+    let text_style = ctx.text_style;
+    let html_calc_text_style = ctx.html_calc_text_style;
+    let wrap_probe_font_size = ctx.wrap_probe_font_size;
+    let wrap_mode = ctx.wrap_mode;
+    let padding = ctx.padding;
+    let hide_empty_members_box = ctx.hide_empty_members_box;
+    let capture_row_metrics = ctx.capture_row_metrics;
+
     // Mermaid class nodes are sized by rendering the label groups (`textHelper(...)`) and taking
     // the resulting SVG bbox (`getBBox()`), then expanding by class padding (see upstream:
     // `rendering-elements/shapes/classBox.ts` + `diagrams/class/shapeUtil.ts`).
@@ -1866,18 +1878,19 @@ pub fn layout_class_diagram_v2_typed(
         }
     }
 
+    let class_box_measure_ctx = ClassBoxMeasureCtx {
+        measurer,
+        text_style: &text_style,
+        html_calc_text_style: &html_calc_text_style,
+        wrap_probe_font_size,
+        wrap_mode: wrap_mode_node,
+        padding: class_padding,
+        hide_empty_members_box,
+        capture_row_metrics,
+    };
+
     for c in classes_primary {
-        let (w, h, row_metrics) = class_box_dimensions(
-            c,
-            measurer,
-            &text_style,
-            &html_calc_text_style,
-            wrap_probe_font_size,
-            wrap_mode_node,
-            class_padding,
-            hide_empty_members_box,
-            capture_row_metrics,
-        );
+        let (w, h, row_metrics) = class_box_dimensions(c, &class_box_measure_ctx);
         if let Some(rm) = row_metrics {
             class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
         }
@@ -1938,17 +1951,7 @@ pub fn layout_class_diagram_v2_typed(
     // insertion-order-late vertices so Dagre's `initOrder` matches upstream in ambiguous
     // note-vs-facade ordering cases.
     for c in classes_namespace_facades {
-        let (w, h, row_metrics) = class_box_dimensions(
-            c,
-            measurer,
-            &text_style,
-            &html_calc_text_style,
-            wrap_probe_font_size,
-            wrap_mode_node,
-            class_padding,
-            hide_empty_members_box,
-            capture_row_metrics,
-        );
+        let (w, h, row_metrics) = class_box_dimensions(c, &class_box_measure_ctx);
         if let Some(rm) = row_metrics {
             class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
         }
@@ -2077,8 +2080,7 @@ pub fn layout_class_diagram_v2_typed(
         g.set_edge_named(note.id.clone(), class_id.clone(), Some(edge_id), Some(el));
     }
 
-    let prefer_dagreish_disconnected = !model.interfaces.is_empty();
-    let mut prepared = prepare_graph(g, 0, prefer_dagreish_disconnected)?;
+    let mut prepared = prepare_graph(g, 0)?;
     let (mut fragments, _bounds) = layout_prepared(&mut prepared, &node_label_metrics_by_id)?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();

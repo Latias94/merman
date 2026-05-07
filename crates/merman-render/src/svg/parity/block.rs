@@ -639,20 +639,15 @@ pub(super) fn render_block_diagram_svg(
     );
 
     let style_attr = format!("max-width: {max_w_style}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(&viewbox_attr),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "block",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(&viewbox_attr),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "block")
+        },
     );
     out.push_str(r#"<style></style><g/>"#);
 

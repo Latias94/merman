@@ -600,7 +600,7 @@ fn block_shape_size(
 
     match block_type {
         "composite" => has_label.then(|| (label_width.max(1.0), (label_height + padding).max(1.0))),
-        "group" => has_label.then(|| (rect_w, rect_h)),
+        "group" => has_label.then_some((rect_w, rect_h)),
         "space" => None,
         "circle" => Some((rect_w, rect_w)),
         "doublecircle" => {

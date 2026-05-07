@@ -39,6 +39,8 @@ type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
 type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+type StateRoughPathPair = (Arc<String>, Arc<String>);
+type StateRoughPathsCache = FxHashMap<StateRoughCacheKey, StateRoughPathPair>;
 
 struct StateRenderCtx<'a> {
     diagram_id: String,
@@ -65,8 +67,7 @@ struct StateRenderCtx<'a> {
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
     rough_circle_cache: std::cell::RefCell<FxHashMap<StateRoughCacheKey, Arc<String>>>,
-    rough_paths_cache:
-        std::cell::RefCell<FxHashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>>,
+    rough_paths_cache: std::cell::RefCell<StateRoughPathsCache>,
 }
 
 mod render;

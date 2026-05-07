@@ -1043,8 +1043,8 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                             continue;
                         }
                         at_b[i] += ci * b_em;
-                        for j in 0..n_vars {
-                            at_a[i][j] += ci * counts[j];
+                        for (j, count) in counts.iter().enumerate().take(n_vars) {
+                            at_a[i][j] += ci * *count;
                         }
                     }
                 }

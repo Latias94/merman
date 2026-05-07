@@ -10,20 +10,14 @@ pub(super) fn render_info_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some("max-width: 400px; background-color: white;"),
-        None,
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "info",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some("max-width: 400px; background-color: white;"),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "info")
+        },
     );
     let css = super::info_css_with_config(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);

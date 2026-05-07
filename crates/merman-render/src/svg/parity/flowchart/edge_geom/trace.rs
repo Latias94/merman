@@ -77,20 +77,43 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTrace {
     endpoint_intersection: Option<TraceEndpointIntersection>,
 }
 
+pub(in crate::svg::parity::flowchart) struct FlowchartEdgeTraceInput<'a> {
+    pub(in crate::svg::parity::flowchart) ctx: &'a FlowchartRenderCtx<'a>,
+    pub(in crate::svg::parity::flowchart) edge: &'a crate::flowchart::FlowEdge,
+    pub(in crate::svg::parity::flowchart) layout_edge: &'a crate::model::LayoutEdge,
+    pub(in crate::svg::parity::flowchart) origin_x: f64,
+    pub(in crate::svg::parity::flowchart) origin_y: f64,
+    pub(in crate::svg::parity::flowchart) base_points: &'a [crate::model::LayoutPoint],
+    pub(in crate::svg::parity::flowchart) points_after_intersect_for_trace:
+        Option<&'a [crate::model::LayoutPoint]>,
+    pub(in crate::svg::parity::flowchart) points_for_render: &'a [crate::model::LayoutPoint],
+    pub(in crate::svg::parity::flowchart) points_for_data_points_before_norm:
+        Option<&'a [crate::model::LayoutPoint]>,
+    pub(in crate::svg::parity::flowchart) points_for_data_points_after_norm:
+        Option<&'a [crate::model::LayoutPoint]>,
+    pub(in crate::svg::parity::flowchart) points_for_data_points_final:
+        &'a [crate::model::LayoutPoint],
+    pub(in crate::svg::parity::flowchart) endpoint_intersection: Option<TraceEndpointIntersection>,
+}
+
 pub(in crate::svg::parity::flowchart) fn write_flowchart_edge_trace(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-    layout_edge: &crate::model::LayoutEdge,
-    origin_x: f64,
-    origin_y: f64,
-    base_points: &[crate::model::LayoutPoint],
-    points_after_intersect_for_trace: Option<&[crate::model::LayoutPoint]>,
-    points_for_render: &[crate::model::LayoutPoint],
-    points_for_data_points_before_norm: Option<&[crate::model::LayoutPoint]>,
-    points_for_data_points_after_norm: Option<&[crate::model::LayoutPoint]>,
-    points_for_data_points_final: &[crate::model::LayoutPoint],
-    endpoint_intersection: Option<TraceEndpointIntersection>,
+    input: FlowchartEdgeTraceInput<'_>,
 ) {
+    let FlowchartEdgeTraceInput {
+        ctx,
+        edge,
+        layout_edge,
+        origin_x,
+        origin_y,
+        base_points,
+        points_after_intersect_for_trace,
+        points_for_render,
+        points_for_data_points_before_norm,
+        points_for_data_points_after_norm,
+        points_for_data_points_final,
+        endpoint_intersection,
+    } = input;
+
     let trace = FlowchartEdgeTrace {
         fixture_diagram_id: ctx.diagram_id.to_string(),
         edge_id: edge.id.clone(),

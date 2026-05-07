@@ -89,20 +89,16 @@ pub(super) fn render_xychart_diagram_svg(
     let h_attr = fmt(layout.height.max(1.0)).to_string();
     let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
     let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(viewbox_attr.as_str()),
-        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-        &[],
-        "xychart",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(viewbox_attr.as_str()),
+            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "xychart")
+        },
     );
 
     let css = xychart_css(diagram_id);

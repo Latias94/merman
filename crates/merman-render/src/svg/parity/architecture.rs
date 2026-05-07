@@ -304,7 +304,7 @@ impl<'a> Iterator for TypedServicesIter<'a> {
     type Item = ArchitectureServiceRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(n) = self.iter.next() {
+        for n in self.iter.by_ref() {
             if n.node_type
                 != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service
             {
@@ -330,7 +330,7 @@ impl<'a> Iterator for TypedJunctionsIter<'a> {
     type Item = ArchitectureJunctionRef<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(n) = self.iter.next() {
+        for n in self.iter.by_ref() {
             if n.node_type
                 != merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction
             {
@@ -1518,20 +1518,18 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         for (idx, line) in lines.iter().enumerate() {
             if idx == 0 {
                 out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+            } else if idx == 1 {
+                let _ = write!(
+                    out,
+                    r#"<tspan class="text-outer-tspan" x="0" y="1em" dy="1.1em">"#
+                );
             } else {
-                if idx == 1 {
-                    let _ = write!(
-                        out,
-                        r#"<tspan class="text-outer-tspan" x="0" y="1em" dy="1.1em">"#
-                    );
-                } else {
-                    let y_em = 1.0 + (idx as f64 - 1.0) * 1.1;
-                    let _ = write!(
-                        out,
-                        r#"<tspan class="text-outer-tspan" x="0" y="{:.1}em" dy="1.1em">"#,
-                        y_em
-                    );
-                }
+                let y_em = 1.0 + (idx as f64 - 1.0) * 1.1;
+                let _ = write!(
+                    out,
+                    r#"<tspan class="text-outer-tspan" x="0" y="{:.1}em" dy="1.1em">"#,
+                    y_em
+                );
             }
             for (word_idx, word) in line.iter().enumerate() {
                 let (font_style, font_weight) = match word.word_type {
@@ -2058,8 +2056,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         );
     }
 
-    let mut group_rects: Vec<GroupRect<'_>> = Vec::new();
-    group_rects.reserve(model.groups_len());
+    let mut group_rects: Vec<GroupRect<'_>> = Vec::with_capacity(model.groups_len());
     for g in model.groups() {
         if let Some(b) = group_rect_bounds.get(g.id) {
             group_rects.push(GroupRect {
@@ -2358,20 +2355,17 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         } else {
             root_svg::SvgRootWidth::None
         };
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            width,
-            None,
-            Some(style_attr.as_str()),
-            Some(viewbox_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            "architecture",
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
-            false,
+            root_svg::SvgRootAttrs {
+                width,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
+            },
         );
         out.push_str(a11y_nodes.as_str());
         let _ = write!(&mut out, "<style>{}</style>", css.as_str());
@@ -2387,20 +2381,17 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         } else {
             root_svg::SvgRootWidth::None
         };
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            None,
-            width,
-            None,
-            Some(style_attr.as_str()),
-            Some(VIEWBOX_PLACEHOLDER),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            "architecture",
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
-            false,
+            root_svg::SvgRootAttrs {
+                width,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
+            },
         );
         out.push_str(a11y_nodes.as_str());
         let _ = write!(&mut out, "<style>{}</style>", css.as_str());
@@ -2617,7 +2608,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                     let line_clamp =
                         ((icon_size_px - 2.0) / svg_font_size_px).floor().max(1.0) as i64;
                     let sanitized =
-                        merman_core::sanitize::sanitize_text(icon_text.trim(), &sanitize_config);
+                        merman_core::sanitize::sanitize_text(icon_text.trim(), sanitize_config);
                     let sanitized = normalize_xhtml_fragment_for_foreign_object(&sanitized);
                     let sanitized = escape_xml_ampersands_preserving_xml_entities(&sanitized);
                     let _ = write!(
@@ -2703,12 +2694,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 shifted_y1 += arch_font_size_px / 2.0 - 3.0;
             }
 
-            if let Some(title) = grp
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-            {
+            if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
                 let lines = wrap_svg_words_to_lines(title, w, &text_measurer, &text_style);
                 // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
                 // cannot "see" their extents. Union a conservative horizontal bbox so

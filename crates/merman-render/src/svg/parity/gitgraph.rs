@@ -102,20 +102,17 @@ pub(super) fn render_gitgraph_diagram_svg(
     let aria_describedby = acc_descr.is_some().then(|| escape_attr(&aria_desc_id));
     let aria_labelledby = acc_title.is_some().then(|| escape_attr(&aria_title_id));
     let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(VIEWBOX_PLACEHOLDER),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "gitGraph",
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "gitGraph")
+        },
     );
 
     if let Some(t) = acc_title {

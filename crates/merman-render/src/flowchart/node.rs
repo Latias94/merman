@@ -339,12 +339,13 @@ fn node_render_dimensions(
             let rw = total_width - radius;
             let tw = total_height / 4.0;
 
-            let mut points: Vec<(f64, f64)> = Vec::new();
-            points.push((rw, 0.0));
-            points.push((tw, 0.0));
-            points.push((0.0, total_height / 2.0));
-            points.push((tw, total_height));
-            points.push((rw, total_height));
+            let mut points: Vec<(f64, f64)> = vec![
+                (rw, 0.0),
+                (tw, 0.0),
+                (0.0, total_height / 2.0),
+                (tw, total_height),
+                (rw, total_height),
+            ];
             points.extend(circle_points(
                 -rw,
                 -total_height / 2.0,

@@ -129,9 +129,7 @@ fn extract_css_background_color_for_class(svg: &str, class_name: &str) -> Option
     let mut search = 0usize;
     while let Some(rel) = svg[search..].find(&needle) {
         let i = search + rel + needle.len();
-        let Some(end_rel) = svg[i..].find('}') else {
-            return None;
-        };
+        let end_rel = svg[i..].find('}')?;
         let block = &svg[i..i + end_rel];
         if let Some(k) = block.find("background-color:") {
             let after = &block[k + "background-color:".len()..];
@@ -171,18 +169,12 @@ fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String
 fn extract_inline_html_color(html: &str) -> Option<String> {
     // Look for `style="...color: <value> ..."` inside the foreignObject HTML fragment.
     let lower = html.to_ascii_lowercase();
-    let Some(style_i) = lower.find("style=\"") else {
-        return None;
-    };
+    let style_i = lower.find("style=\"")?;
     let after = &html[style_i + "style=\"".len()..];
-    let Some(end_quote) = after.find('"') else {
-        return None;
-    };
+    let end_quote = after.find('"')?;
     let style = &after[..end_quote];
     let lower_style = style.to_ascii_lowercase();
-    let Some(color_i) = lower_style.find("color:") else {
-        return None;
-    };
+    let color_i = lower_style.find("color:")?;
     let after_color = &style[color_i + "color:".len()..];
     let end = after_color.find(';').unwrap_or(after_color.len());
     let mut value = after_color[..end].trim().to_string();
@@ -230,8 +222,8 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     let mut overlays = String::new();
     let mut g_stack: Vec<GFrame> = Vec::new();
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
-    let label_bkg = extract_css_background_color_for_class(svg, "labelBkg")
-        .unwrap_or_else(|| label_bkg_default);
+    let label_bkg =
+        extract_css_background_color_for_class(svg, "labelBkg").unwrap_or(label_bkg_default);
 
     let mut i = 0usize;
     while let Some(lt_rel) = svg[i..].find('<') {

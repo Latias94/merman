@@ -5,7 +5,7 @@ use crate::svgdom;
 use crate::util::*;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
@@ -106,7 +106,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         ..Default::default()
     };
 
-    fn resolve_root(workspace_root: &PathBuf, raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
+    fn resolve_root(workspace_root: &Path, raw: Option<PathBuf>, default: PathBuf) -> PathBuf {
         let Some(raw) = raw else {
             return default;
         };
@@ -403,14 +403,16 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let is_classdiagram_v2_header = (diagram == "class")
-                .then(|| {
+            let is_classdiagram_v2_header = if diagram == "class" {
+                {
                     merman::preprocess_diagram(&text, engine.registry())
                         .ok()
                         .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
                         .unwrap_or(false)
-                })
-                .unwrap_or(false);
+                }
+            } else {
+                false
+            };
 
             let diagram_id = if diagram == "flowchart" {
                 flowchart_fixture_diagram_id(stem, &upstream_svg)

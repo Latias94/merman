@@ -561,10 +561,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 
     let _ = write!(
         out,
-        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
+        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
         escape_xml_display(&edge.id),
         escape_xml_display(&div_color_prefix),
-        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
         span_style_attr
     );
 }

@@ -28,14 +28,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         common.node_classes,
         common.node_styles,
     );
-    let has_literal_backticks = label.label_type != "markdown" && label.text.contains('`');
-    let renders_markdown_like = label.label_type == "markdown"
-        || (label.label_type != "markdown"
-            && !has_literal_backticks
-            && (label.text.contains("**")
-                || label.text.contains("__")
-                || label.text.contains('*')
-                || label.text.contains('_')));
+    let is_markdown_label = label.label_type == "markdown";
+    let has_literal_backticks = !is_markdown_label && label.text.contains('`');
+    let has_markdown_marker = label.text.contains("**")
+        || label.text.contains("__")
+        || label.text.contains('*')
+        || label.text.contains('_');
+    let renders_markdown_like =
+        is_markdown_label || (!has_literal_backticks && has_markdown_marker);
     let mut label_dy = label.dy;
     if !ctx.node_html_labels
         && renders_markdown_like

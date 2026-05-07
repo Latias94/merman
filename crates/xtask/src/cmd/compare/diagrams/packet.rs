@@ -139,18 +139,17 @@ pub(crate) fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed =
-            match futures::executor::block_on(engine.parse_diagram(&text, parse_opts.clone())) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
+        let parsed = match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
 
         let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {

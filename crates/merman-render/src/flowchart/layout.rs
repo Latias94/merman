@@ -665,8 +665,10 @@ fn layout_flowchart_v2_with_model(
         build_output: std::time::Duration,
     }
 
-    let mut timings = FlowchartLayoutTimings::default();
-    timings.deserialize = deserialize;
+    let mut timings = FlowchartLayoutTimings {
+        deserialize,
+        ..Default::default()
+    };
 
     let effective_config_value = effective_config.as_value();
 
@@ -1993,7 +1995,6 @@ fn layout_flowchart_v2_with_model(
             math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
             cluster_padding: f64,
             title_total_margin: f64,
-            node_padding: f64,
         ) -> Option<Rect> {
             if let Some(r) = pack_rects.get(id).copied() {
                 return Some(r);
@@ -2032,7 +2033,6 @@ fn layout_flowchart_v2_with_model(
                         math_renderer,
                         cluster_padding,
                         title_total_margin,
-                        node_padding,
                     )
                 } else {
                     None
@@ -2178,7 +2178,6 @@ fn layout_flowchart_v2_with_model(
                 math_renderer,
                 cluster_padding,
                 title_total_margin,
-                node_padding,
             ) else {
                 continue;
             };

@@ -157,7 +157,7 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     flowchart_effective_text_style_for_class_names(
         base,
         class_defs,
-        effective_classes.into_iter(),
+        effective_classes,
         inline_styles,
     )
 }

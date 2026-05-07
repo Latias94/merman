@@ -370,17 +370,7 @@ fn curve_monotone_path_d_impl(
         2 => emit_line_to(&mut out, x1, y1, swap_xy, bounds.as_deref_mut()),
         3 => {
             let t1 = slope2(x0, y0, x1, y1, t0);
-            hermite_segment(
-                &mut out,
-                x0,
-                y0,
-                x1,
-                y1,
-                t0,
-                t1,
-                swap_xy,
-                bounds.as_deref_mut(),
-            );
+            hermite_segment(&mut out, x0, y0, x1, y1, t0, t1, swap_xy, bounds);
         }
         _ => {}
     }
@@ -912,19 +902,7 @@ fn curve_cardinal_path_d_impl(
             emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x2, y2);
         }
         3 => {
-            cardinal_point(
-                &mut out,
-                k,
-                x0,
-                y0,
-                x1,
-                y1,
-                x2,
-                y2,
-                x1,
-                y1,
-                bounds.as_deref_mut(),
-            );
+            cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1, bounds);
         }
         _ => {}
     }
@@ -1138,7 +1116,7 @@ fn curve_catmull_rom_path_d_with_alpha_impl(
     for p in points {
         state.point(&mut out, p.x, p.y, bounds.as_deref_mut());
     }
-    state.line_end(&mut out, bounds.as_deref_mut());
+    state.line_end(&mut out, bounds);
 
     out
 }

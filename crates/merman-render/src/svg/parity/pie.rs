@@ -79,20 +79,18 @@ pub(super) fn render_pie_diagram_svg(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(viewbox_attr.as_str()),
-        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-        &[],
-        "pie",
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(viewbox_attr.as_str()),
+            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
+        },
     );
 
     if let Some(t) = model.acc_title.as_deref() {

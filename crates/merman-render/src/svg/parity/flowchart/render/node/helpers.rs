@@ -63,9 +63,7 @@ pub(super) fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::Merm
     // Mermaid's SVG output does not include `xlink:href` for unknown schemes (e.g. `notes://...`
     // or `javascript:...`). Treat any explicit scheme as unsafe unless it matched the allow-list
     // above.
-    let scheme_end = lower
-        .find(|c| matches!(c, '/' | '?' | '#'))
-        .unwrap_or(lower.len());
+    let scheme_end = lower.find(['/', '?', '#']).unwrap_or(lower.len());
     !lower[..scheme_end].contains(':')
 }
 
@@ -81,19 +79,33 @@ pub(super) fn write_class_attr(out: &mut String, base: &str, classes: &[String])
     }
 }
 
-pub(super) fn open_node_wrapper(
-    out: &mut String,
-    node_id: &str,
-    dom_idx: Option<usize>,
-    class_attr_base: &str,
-    node_classes: &[String],
-    wrapped_in_a: bool,
-    href: Option<&str>,
-    x: f64,
-    y: f64,
-    tooltip_enabled: bool,
-    tooltip: &str,
-) {
+pub(super) struct NodeWrapperAttrs<'a> {
+    pub(super) node_id: &'a str,
+    pub(super) dom_idx: Option<usize>,
+    pub(super) class_attr_base: &'a str,
+    pub(super) node_classes: &'a [String],
+    pub(super) wrapped_in_a: bool,
+    pub(super) href: Option<&'a str>,
+    pub(super) x: f64,
+    pub(super) y: f64,
+    pub(super) tooltip_enabled: bool,
+    pub(super) tooltip: &'a str,
+}
+
+pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
+    let NodeWrapperAttrs {
+        node_id,
+        dom_idx,
+        class_attr_base,
+        node_classes,
+        wrapped_in_a,
+        href,
+        x,
+        y,
+        tooltip_enabled,
+        tooltip,
+    } = attrs;
+
     if wrapped_in_a {
         if let Some(href) = href {
             out.push_str(r#"<a xlink:href=""#);

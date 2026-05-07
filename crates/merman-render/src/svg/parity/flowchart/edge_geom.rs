@@ -37,26 +37,23 @@ pub(super) use line_with_offset::{
     line_with_offset_for_edge_type, maybe_snap_shallow_basis_triplet_y_to_f32,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
-pub(super) use trace::{TraceEndpointIntersection, tb, tp, write_flowchart_edge_trace};
+pub(super) use trace::{
+    FlowchartEdgeTraceInput, TraceEndpointIntersection, tb, tp, write_flowchart_edge_trace,
+};
+
+pub(super) struct FlowchartEdgePathGeomRequest<'a> {
+    pub(super) ctx: &'a FlowchartRenderCtx<'a>,
+    pub(super) edge: &'a crate::flowchart::FlowEdge,
+    pub(super) origin_x: f64,
+    pub(super) origin_y: f64,
+    pub(super) abs_top_transform: f64,
+    pub(super) trace_enabled: bool,
+    pub(super) viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
+}
 
 pub(super) fn flowchart_compute_edge_path_geom(
-    ctx: &FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-    origin_x: f64,
-    origin_y: f64,
-    abs_top_transform: f64,
+    request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-    trace_enabled: bool,
-    viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 ) -> Option<FlowchartEdgePathGeom> {
-    super::flowchart_compute_edge_path_geom_impl(
-        ctx,
-        edge,
-        origin_x,
-        origin_y,
-        abs_top_transform,
-        scratch,
-        trace_enabled,
-        viewbox_current_bounds,
-    )
+    super::flowchart_compute_edge_path_geom_impl(request, scratch)
 }

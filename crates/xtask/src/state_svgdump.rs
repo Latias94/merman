@@ -390,13 +390,13 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
     let _ = writeln!(
         &mut report,
         "- Upstream: max-width(px)={:?}, viewBox={:?}",
-        up_max_w.map(&fmt),
+        up_max_w.map(fmt),
         up_viewbox.as_deref()
     );
     let _ = writeln!(
         &mut report,
         "- Local: max-width(px)={:?}, viewBox={:?}\n",
-        lo_max_w.map(&fmt),
+        lo_max_w.map(fmt),
         lo_viewbox.as_deref()
     );
 

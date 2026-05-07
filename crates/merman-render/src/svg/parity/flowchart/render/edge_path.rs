@@ -29,14 +29,16 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 
     let owned_geom = if cached_geom.is_none() {
         flowchart_compute_edge_path_geom(
-            ctx,
-            edge,
-            origin_x,
-            origin_y,
-            0.0,
+            FlowchartEdgePathGeomRequest {
+                ctx,
+                edge,
+                origin_x,
+                origin_y,
+                abs_top_transform: 0.0,
+                trace_enabled,
+                viewbox_current_bounds: None,
+            },
             scratch,
-            trace_enabled,
-            None,
         )
     } else {
         None

@@ -439,8 +439,7 @@ fn layout_mindmap_diagram_model(
     shift_nodes_to_positive_bounds(&mut nodes, 15.0);
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
-    let mut edges: Vec<LayoutEdge> = Vec::new();
-    edges.reserve(model.edges.len());
+    let mut edges: Vec<LayoutEdge> = Vec::with_capacity(model.edges.len());
     for (e, (sidx, tidx)) in model.edges.iter().zip(edge_indices.iter().copied()) {
         let (sx, sy) = (nodes[sidx].x, nodes[sidx].y);
         let (tx, ty) = (nodes[tidx].x, nodes[tidx].y);

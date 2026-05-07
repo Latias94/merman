@@ -795,7 +795,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
 
         fn sort_hint(n: &SvgDomNode) -> &str {
-            fn find_first_path_id<'a>(n: &'a SvgDomNode) -> Option<&'a str> {
+            fn find_first_path_id(n: &SvgDomNode) -> Option<&str> {
                 if n.name == "path" {
                     if let Some(id) = n.attrs.get("id") {
                         return Some(id.as_str());
@@ -832,7 +832,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 // on incidental content differences (e.g. label wrapping changes the `tspan`
                 // structure), causing spurious diffs. Prefer the first descendant edge path id as
                 // a stable semantic key.
-                if n.attrs.get("id").is_none() && n.attrs.get("data-id").is_none() {
+                if !n.attrs.contains_key("id") && !n.attrs.contains_key("data-id") {
                     if let Some(id) = find_first_path_id(n) {
                         return id;
                     }

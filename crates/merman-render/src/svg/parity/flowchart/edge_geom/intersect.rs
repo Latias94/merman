@@ -1105,12 +1105,13 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let rw = w - radius;
         let tw = h / 4.0;
 
-        let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
-        points.push(crate::model::LayoutPoint { x: rw, y: 0.0 });
-        points.push(crate::model::LayoutPoint { x: tw, y: 0.0 });
-        points.push(crate::model::LayoutPoint { x: 0.0, y: h / 2.0 });
-        points.push(crate::model::LayoutPoint { x: tw, y: h });
-        points.push(crate::model::LayoutPoint { x: rw, y: h });
+        let mut points: Vec<crate::model::LayoutPoint> = vec![
+            crate::model::LayoutPoint { x: rw, y: 0.0 },
+            crate::model::LayoutPoint { x: tw, y: 0.0 },
+            crate::model::LayoutPoint { x: 0.0, y: h / 2.0 },
+            crate::model::LayoutPoint { x: tw, y: h },
+            crate::model::LayoutPoint { x: rw, y: h },
+        ];
         points.extend(generate_circle_points(
             -rw,
             -h / 2.0,

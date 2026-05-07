@@ -126,8 +126,8 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         let s = s.replace("&lt;", "<").replace("&gt;", ">");
         let s = s.replace("&quot;", "\"").replace("&#39;", "'");
         let s = s.replace("&nbsp;", " ");
-        let s = s.replace("&#160;", " ").replace("&#xA0;", " ");
-        s
+
+        s.replace("&#160;", " ").replace("&#xA0;", " ")
     }
 
     fn dedent(s: &str) -> String {
@@ -187,8 +187,8 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         }
 
         let mut close_idx: Option<usize> = None;
-        for i in (first_non_empty + 1)..lines.len() {
-            if lines[i].trim() == "---" {
+        for (i, line) in lines.iter().enumerate().skip(first_non_empty + 1) {
+            if line.trim() == "---" {
                 close_idx = Some(i);
                 break;
             }

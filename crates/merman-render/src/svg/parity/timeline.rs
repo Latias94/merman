@@ -287,20 +287,15 @@ pub(super) fn render_timeline_diagram_svg(
 
     let mut out = String::new();
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(&viewbox_attr),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "timeline",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(&viewbox_attr),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
+        },
     );
     let css = timeline_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);

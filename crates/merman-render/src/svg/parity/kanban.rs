@@ -53,20 +53,15 @@ pub(super) fn render_kanban_diagram_svg(
         crate::generated::kanban_root_overrides_11_12_2::lookup_kanban_root_viewport_override,
     );
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(&viewbox_attr),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "kanban",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(&viewbox_attr),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
+        },
     );
 
     let css = kanban_css(diagram_id, effective_config);

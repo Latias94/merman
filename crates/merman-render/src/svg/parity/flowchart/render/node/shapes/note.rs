@@ -6,7 +6,7 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::util;
 use crate::svg::parity::{fmt, fmt_display};
 
-use super::super::roughjs::roughjs_paths_for_rect;
+use super::super::roughjs::{RoughRectSpec, roughjs_paths_for_rect};
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_note(
     out: &mut String,
@@ -24,16 +24,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
 
     if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-            roughjs_paths_for_rect(
+            roughjs_paths_for_rect(RoughRectSpec {
                 x,
                 y,
                 w,
                 h,
-                &note_fill,
-                &note_stroke,
-                common.stroke_width,
-                common.hand_drawn_seed,
-            )
+                fill: &note_fill,
+                stroke: &note_stroke,
+                stroke_width: common.stroke_width,
+                seed: common.hand_drawn_seed,
+            })
         })
     {
         let _ = write!(out, r#"<g class="basic label-container">"#);

@@ -301,7 +301,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     if fast_viewport {
         // In fast mode we can compute the root viewport purely from layout geometry, so we do not
         // need placeholder replacement.
-        let css = state_css(diagram_id, &model, effective_config);
+        let css = state_css(diagram_id, model, effective_config);
 
         let viewbox_svg_scan = std::time::Duration::ZERO;
         let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
@@ -391,24 +391,19 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
         let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
         let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open_ex4(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            Some("statediagram"),
-            root_svg::SvgRootWidth::Percent100,
-            None,
-            Some(style_attr.as_str()),
-            Some(view_box_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            "stateDiagram",
-            aria_labelledby_attr.as_deref(),
-            aria_describedby_attr.as_deref(),
-            &[],
-            &[],
-            root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
-            false,
-            root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+            root_svg::SvgRootAttrs {
+                class: Some("statediagram"),
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(view_box_attr.as_str()),
+                aria_labelledby: aria_labelledby_attr.as_deref(),
+                aria_describedby: aria_describedby_attr.as_deref(),
+                trailing_newline: false,
+                aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "stateDiagram")
+            },
         );
 
         if has_acc_title {
@@ -493,7 +488,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = state_css(diagram_id, &model, effective_config);
+    let css = state_css(diagram_id, model, effective_config);
 
     let estimated_svg_bytes = 2048usize
         + css.len()
@@ -505,24 +500,19 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
     let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
     let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open_ex4(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        Some("statediagram"),
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(VIEWBOX_PLACEHOLDER),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "stateDiagram",
-        aria_labelledby_attr.as_deref(),
-        aria_describedby_attr.as_deref(),
-        &[],
-        &[],
-        root_svg::SvgRootFixedHeightPlacement::BeforeXmlns,
-        false,
-        root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+        root_svg::SvgRootAttrs {
+            class: Some("statediagram"),
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
+            aria_labelledby: aria_labelledby_attr.as_deref(),
+            aria_describedby: aria_describedby_attr.as_deref(),
+            trailing_newline: false,
+            aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "stateDiagram")
+        },
     );
 
     if has_acc_title {

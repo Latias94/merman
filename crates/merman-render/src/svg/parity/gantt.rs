@@ -201,20 +201,18 @@ pub(super) fn render_gantt_diagram_svg(
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
     let viewbox_attr = format!("0 0 {} {}", fmt(w_attr), fmt(h_attr));
     let style_attr = format!("max-width: {}px; background-color: white;", fmt(w_attr));
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        None,
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(viewbox_attr.as_str()),
-        root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-        &[],
-        "gantt",
-        aria_labelledby.as_deref(),
-        aria_describedby.as_deref(),
-        false,
+        root_svg::SvgRootAttrs {
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(viewbox_attr.as_str()),
+            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "gantt")
+        },
     );
 
     if let Some(title) = acc_title {

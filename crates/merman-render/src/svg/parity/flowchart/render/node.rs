@@ -89,16 +89,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     helpers::open_node_wrapper(
         out,
-        node_id,
-        dom_idx,
-        class_attr_base,
-        node_classes_for_wrapper,
-        wrapped_in_a,
-        href,
-        x,
-        y,
-        tooltip_enabled,
-        tooltip,
+        helpers::NodeWrapperAttrs {
+            node_id,
+            dom_idx,
+            class_attr_base,
+            node_classes: node_classes_for_wrapper,
+            wrapped_in_a,
+            href,
+            x,
+            y,
+            tooltip_enabled,
+            tooltip,
+        },
     );
 
     let style_start = timing_enabled.then(std::time::Instant::now);

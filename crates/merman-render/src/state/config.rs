@@ -158,6 +158,26 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
     std::borrow::Cow::Owned(out)
 }
 
+pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
+    // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
+    // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
+    // rule applies to SVG `<text>` elements, not HTML labels.
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
+    // (`themeVariables.fontSize`, typically a `"NNpx"` string).
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
+    TextStyle {
+        font_family,
+        font_size,
+        font_weight: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -178,25 +198,5 @@ mod tests {
 
         let fallback = serde_json::json!({});
         assert_eq!(super::state_html_label_wrapping_width(&fallback), 200.0);
-    }
-}
-
-pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
-    // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
-    // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
-    // rule applies to SVG `<text>` elements, not HTML labels.
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
-    // (`themeVariables.fontSize`, typically a `"NNpx"` string).
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
     }
 }

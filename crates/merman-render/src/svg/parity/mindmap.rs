@@ -280,18 +280,29 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 
     let max_node_width_px = crate::mindmap::mindmap_max_node_width_px(config.as_value());
 
-    fn mk_label(
-        out: &mut String,
-        text: &str,
-        label_type: &str,
+    struct MindmapLabelSpec<'a> {
+        text: &'a str,
+        label_type: &'a str,
         label_bkg: bool,
         width: f64,
         height: f64,
         tx: f64,
         ty: f64,
         max_node_width_px: f64,
-        config: &merman_core::MermaidConfig,
-    ) {
+    }
+
+    fn mk_label(out: &mut String, spec: MindmapLabelSpec<'_>, config: &merman_core::MermaidConfig) {
+        let MindmapLabelSpec {
+            text,
+            label_type,
+            label_bkg,
+            width,
+            height,
+            tx,
+            ty,
+            max_node_width_px,
+        } = spec;
+
         fn is_simple_markdown(text: &str) -> bool {
             // Conservative: only fast-path labels that would render as a plain `<p>text</p>`.
             if text.contains('\n') || text.contains('\r') {
@@ -569,7 +580,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let html_out = decode_mermaid_entities_for_render_text(&html_out);
                 out.push_str(&escape_amp_preserving_entities(html_out.as_ref()));
             } else {
-                let html = markdown_to_sanitized_xhtml(&text, config);
+                let html = markdown_to_sanitized_xhtml(text, config);
                 if is_single_img_fragment(&html) {
                     let html = unwrap_single_img_p(&html);
                     let html = decode_mermaid_entities_for_render_text(&html);
@@ -982,20 +993,16 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 
     let mut out = String::new();
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open_ex(
+    root_svg::push_svg_root_open(
         &mut out,
-        diagram_id,
-        Some("mindmapDiagram"),
-        root_svg::SvgRootWidth::Percent100,
-        None,
-        Some(style_attr.as_str()),
-        Some(view_box_attr.as_str()),
-        root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-        &[],
-        "mindmap",
-        None,
-        None,
-        false,
+        root_svg::SvgRootAttrs {
+            class: Some("mindmapDiagram"),
+            width: root_svg::SvgRootWidth::Percent100,
+            style_attr: Some(style_attr.as_str()),
+            viewbox_attr: Some(view_box_attr.as_str()),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "mindmap")
+        },
     );
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
@@ -1150,15 +1157,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "rect" => {
@@ -1175,15 +1184,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "rounded" => {
@@ -1208,15 +1219,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * padding).max(1.0));
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "mindmapCircle" => {
@@ -1232,15 +1245,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * padding).max(1.0));
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "cloud" => {
@@ -1285,15 +1300,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "hexagon" => {
@@ -1334,17 +1351,21 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                     );
                 }
                 out.push_str("</g>");
+                let label_width = label_w.unwrap_or_else(|| w.max(1.0));
+                let label_height = label_h.unwrap_or_else(|| h.max(1.0));
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    label_w.unwrap_or_else(|| w.max(1.0)),
-                    label_h.unwrap_or_else(|| h.max(1.0)),
-                    -label_w.unwrap_or_else(|| w.max(1.0)) / 2.0,
-                    -label_h.unwrap_or_else(|| h.max(1.0)) / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: label_width,
+                        height: label_height,
+                        tx: -label_width / 2.0,
+                        ty: -label_height / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             "bang" => {
@@ -1386,15 +1407,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    bbox_w,
-                    bbox_h,
-                    -bbox_w / 2.0,
-                    -bbox_h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: bbox_w,
+                        height: bbox_h,
+                        tx: -bbox_w / 2.0,
+                        ty: -bbox_h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
             _ => {
@@ -1408,15 +1431,17 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 mk_label(
                     &mut out,
-                    &n.label,
-                    &n.label_type,
-                    n.icon.is_some(),
-                    w.max(1.0),
-                    h.max(1.0),
-                    -w / 2.0,
-                    -h / 2.0,
-                    max_node_width_px,
-                    &config,
+                    MindmapLabelSpec {
+                        text: &n.label,
+                        label_type: &n.label_type,
+                        label_bkg: n.icon.is_some(),
+                        width: w.max(1.0),
+                        height: h.max(1.0),
+                        tx: -w / 2.0,
+                        ty: -h / 2.0,
+                        max_node_width_px,
+                    },
+                    config,
                 );
             }
         }

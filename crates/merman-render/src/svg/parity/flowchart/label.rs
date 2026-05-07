@@ -398,7 +398,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
 
                 flush_text(&mut tokens, &mut text_buf);
 
-                let delim_text: String = std::iter::repeat(ch).take(run_len).collect();
+                let delim_text: String = std::iter::repeat_n(ch, run_len).collect();
 
                 if can_close
                     && stack

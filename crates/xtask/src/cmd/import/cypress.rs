@@ -143,8 +143,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         let s = s.replace("&lt;", "<").replace("&gt;", ">");
         let s = s.replace("&quot;", "\"").replace("&#39;", "'");
         let s = s.replace("&nbsp;", " ");
-        let s = s.replace("&#160;", " ").replace("&#xA0;", " ");
-        s
+
+        s.replace("&#160;", " ").replace("&#xA0;", " ")
     }
 
     fn dedent(s: &str) -> String {
@@ -204,8 +204,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         }
 
         let mut close_idx: Option<usize> = None;
-        for i in (first_non_empty + 1)..lines.len() {
-            if lines[i].trim() == "---" {
+        for (i, line) in lines.iter().enumerate().skip(first_non_empty + 1) {
+            if line.trim() == "---" {
                 close_idx = Some(i);
                 break;
             }
@@ -284,7 +284,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             if idx > 0 {
                 out.push('\n');
             }
-            let line = raw_line.trim_end_matches(|c| c == ' ' || c == '\t');
+            let line = raw_line.trim_end_matches([' ', '\t']);
 
             if let Some(caps) = edge_label_re.captures(line) {
                 let indent = caps.name("indent").map(|m| m.as_str()).unwrap_or_default();
@@ -887,9 +887,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             if bytes.get(i) != Some(&b'{') {
                 return None;
             }
-            let Some(end) = find_matching_brace_close(args_slice, i) else {
-                return None;
-            };
+            let end = find_matching_brace_close(args_slice, i)?;
             Some(args_slice[i..end].to_string())
         }
 
@@ -2297,9 +2295,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         }
 
         let mut pieces = s.split_inclusive('\n');
-        let Some(first_piece) = pieces.next() else {
-            return None;
-        };
+        let first_piece = pieces.next()?;
         let first_line = first_piece.trim_end_matches('\n').trim_end_matches('\r');
         if first_line.trim_end() != "---" {
             return None;
@@ -2776,12 +2772,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 {
                     return Some("class frontmatter config.layout=elk (deferred)");
                 }
-                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                    if !fixture_text.contains("\n  look: classic")
-                        && !fixture_text.contains("\nlook: classic")
-                    {
-                        return Some("class frontmatter config.look!=classic (deferred)");
-                    }
+                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
+                    && !fixture_text.contains("\n  look: classic")
+                    && !fixture_text.contains("\nlook: classic")
+                {
+                    return Some("class frontmatter config.look!=classic (deferred)");
                 }
             }
             "flowchart" => {
@@ -2796,12 +2791,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // Non-classic looks (e.g. `handDrawn`) are currently out of scope for parity-gated
                 // headless rendering. Keep upstream SVG baselines for traceability but move these
                 // fixtures under `_deferred` so `verify` remains green.
-                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                    if !fixture_text.contains("\n  look: classic")
-                        && !fixture_text.contains("\nlook: classic")
-                    {
-                        return Some("flowchart frontmatter config.look!=classic (deferred)");
-                    }
+                if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
+                    && !fixture_text.contains("\n  look: classic")
+                    && !fixture_text.contains("\nlook: classic")
+                {
+                    return Some("flowchart frontmatter config.look!=classic (deferred)");
                 }
 
                 // Mermaid also has a dedicated `flowchart-elk` diagram type.

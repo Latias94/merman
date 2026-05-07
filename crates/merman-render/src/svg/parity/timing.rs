@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
 fn parse_env_bool(v: &str) -> bool {
-    match v.trim().to_ascii_lowercase().as_str() {
-        "" | "0" | "false" | "no" | "off" => false,
-        _ => true,
-    }
+    !matches!(
+        v.trim().to_ascii_lowercase().as_str(),
+        "" | "0" | "false" | "no" | "off"
+    )
 }
 
 pub(crate) fn render_timing_enabled() -> bool {

@@ -15,8 +15,8 @@ pub(super) fn contains_ascii_case_insensitive(haystack: &str, needle_lower_ascii
         let mut ok = true;
         for j in 0..n.len() {
             let mut b = h[i + j];
-            if b'A' <= b && b <= b'Z' {
-                b = b + (b'a' - b'A');
+            if b.is_ascii_uppercase() {
+                b += b'a' - b'A';
             }
             if b != n[j] {
                 ok = false;

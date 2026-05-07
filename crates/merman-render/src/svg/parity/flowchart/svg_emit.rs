@@ -252,9 +252,11 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
         diagram_title,
         measurer,
         options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        FlowchartSvgTiming {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
 }
 
@@ -282,10 +284,18 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         diagram_title,
         measurer,
         options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        FlowchartSvgTiming {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
+}
+
+struct FlowchartSvgTiming<'a> {
+    enabled: bool,
+    timings: &'a mut super::super::timing::RenderTimings,
+    total_start: std::time::Instant,
 }
 
 fn render_flowchart_v2_svg_with_config_inner(
@@ -295,10 +305,12 @@ fn render_flowchart_v2_svg_with_config_inner(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
-    timing_enabled: bool,
-    timings: &mut super::super::timing::RenderTimings,
-    total_start: std::time::Instant,
+    timing: FlowchartSvgTiming<'_>,
 ) -> Result<String> {
+    let timing_enabled = timing.enabled;
+    let timings = timing.timings;
+    let total_start = timing.total_start;
+
     let effective_config_value = effective_config.as_value();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -499,7 +511,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     let tx = 0.0;
     let ty = 0.0;
 
-    let node_dom_index = flowchart_node_dom_indices(&model);
+    let node_dom_index = flowchart_node_dom_indices(model);
 
     let cfg_curve = config_string(effective_config_value, &["flowchart", "curve"]);
     let default_edge_interpolate = model
@@ -633,7 +645,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
         let mut cur = effective_parent_for_id(b);
         while let Some(p) = cur {
-            if scratch.iter().any(|&v| v == p) {
+            if scratch.contains(&p) {
                 return Some(p);
             }
             cur = effective_parent_for_id(p);
@@ -1212,14 +1224,18 @@ fn render_flowchart_v2_svg_with_config_inner(
                 detail.viewbox_edge_curve_geom_calls += 1;
                 let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_geom);
                 flowchart_compute_edge_path_geom(
-                    &ctx,
-                    e,
-                    off.origin_x,
-                    off.origin_y,
-                    off.abs_top_transform,
+                    FlowchartEdgePathGeomRequest {
+                        ctx: &ctx,
+                        edge: e,
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
+                        trace_enabled: false,
+                        viewbox_current_bounds: Some((
+                            bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y,
+                        )),
+                    },
                     &mut scratch,
-                    false,
-                    Some((bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y)),
                 )
             }) else {
                 continue;
@@ -1354,41 +1370,37 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     if use_max_width {
         let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open_ex(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            Some("flowchart"),
-            root_svg::SvgRootWidth::Percent100,
-            None,
-            Some(style_attr.as_str()),
-            Some(viewbox_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::StyleThenViewBox,
-            &[],
-            diagram_type,
-            aria_labelledby_attr.as_deref(),
-            aria_describedby_attr.as_deref(),
-            false,
+            root_svg::SvgRootAttrs {
+                class: Some("flowchart"),
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby_attr.as_deref(),
+                aria_describedby: aria_describedby_attr.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
+            },
         );
     } else {
         let after_roledescription_attrs: [(&str, &str); 1] =
             [("style", "background-color: white;")];
-        root_svg::push_svg_root_open_ex3(
+        root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            Some("flowchart"),
-            root_svg::SvgRootWidth::Fixed(w_attr.as_str()),
-            Some(h_attr.as_str()),
-            None,
-            Some(viewbox_attr.as_str()),
-            root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            &[],
-            diagram_type,
-            aria_labelledby_attr.as_deref(),
-            aria_describedby_attr.as_deref(),
-            &after_roledescription_attrs,
-            &[],
-            root_svg::SvgRootFixedHeightPlacement::AfterClass,
-            false,
+            root_svg::SvgRootAttrs {
+                class: Some("flowchart"),
+                width: root_svg::SvgRootWidth::Fixed(w_attr.as_str()),
+                height_attr: Some(h_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                aria_labelledby: aria_labelledby_attr.as_deref(),
+                aria_describedby: aria_describedby_attr.as_deref(),
+                after_roledescription_attrs: &after_roledescription_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterClass,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
+            },
         );
     }
 
@@ -1414,16 +1426,12 @@ fn render_flowchart_v2_svg_with_config_inner(
     flowchart_markers(&mut out, diagram_id);
 
     let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
-    render_flowchart_root(
-        &mut out,
-        &ctx,
-        None,
-        0.0,
-        0.0,
+    let mut root_session = FlowchartRootRenderSession {
         timing_enabled,
-        &mut detail,
-        Some(&edge_path_cache),
-    );
+        details: &mut detail,
+        edge_cache: Some(&edge_path_cache),
+    };
+    render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session);
 
     flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");

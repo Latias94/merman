@@ -137,14 +137,14 @@ fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
 
 pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
     if !v.is_finite() || v.abs() < 0.0005 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
     let scaled = v * 1000.0;
     let k = scaled.round() as i64;
     if k == 0 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
@@ -195,7 +195,7 @@ pub(super) fn fmt_into(out: &mut String, v: f64) {
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
     // but avoid `-0` and tiny float noise from our own calculations.
     if !v.is_finite() {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
@@ -222,7 +222,7 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     // Upstream Mermaid fixtures match a `toFixed(3)`-like rounding behavior: round to nearest with
     // ties away from zero (not `Math.round`, which rounds negative halves toward +∞).
     if !v.is_finite() || v.abs() < 0.0005 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
@@ -233,7 +233,7 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
         (scaled + 0.5).floor() as i64
     };
     if k == 0 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
     append_fixed_3dp_trimmed(out, k);
@@ -241,14 +241,14 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
 
 fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
     if k == 0 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
     let neg = k.is_negative();
     let abs = k.unsigned_abs();
-    let int_part = (abs / 1000) as u64;
-    let frac = (abs % 1000) as u64;
+    let int_part = abs / 1000;
+    let frac = abs % 1000;
 
     if neg {
         out.push('-');
@@ -351,7 +351,7 @@ pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
     // Mermaid's `max-width: ...px` strings are effectively rendered with ~6 significant digits,
     // trimming trailing zeros (see upstream fixtures: `1184.88`, `432.812`, `85.4375`, `2019.2`).
     if !v.is_finite() || v.abs() < 0.0005 {
-        out.push_str("0");
+        out.push('0');
         return;
     }
 
@@ -393,7 +393,7 @@ pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
     }
     if out.len() == start + 2 && &out[start..] == "-0" {
         out.truncate(start);
-        out.push_str("0");
+        out.push('0');
     }
 }
 
@@ -559,8 +559,7 @@ pub(super) fn replace_placeholders_once(out: &str, replacements: &[(&str, &str)]
         return out.to_string();
     }
 
-    let mut hits: Vec<(usize, &str, &str)> = Vec::new();
-    hits.reserve(replacements.len());
+    let mut hits: Vec<(usize, &str, &str)> = Vec::with_capacity(replacements.len());
     for (needle, value) in replacements {
         let Some(pos) = out.find(needle) else {
             continue;

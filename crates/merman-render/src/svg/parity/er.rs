@@ -562,28 +562,31 @@ pub(super) fn render_er_diagram_svg(
     if use_max_width {
         root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            "erDiagram",
-            root_svg::SvgRootWidth::Percent100,
-            None,
-            &format!("max-width: {max_w_style}px; background-color: white;"),
-            &viewbox_attr,
-            diagram_type,
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
+            root_svg::SvgRootAttrs {
+                class: Some("erDiagram"),
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(&format!(
+                    "max-width: {max_w_style}px; background-color: white;"
+                )),
+                viewbox_attr: Some(&viewbox_attr),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
+            },
         );
     } else {
         root_svg::push_svg_root_open(
             &mut out,
-            diagram_id,
-            "erDiagram",
-            root_svg::SvgRootWidth::Fixed(&w_attr),
-            Some(&h_attr),
-            "background-color: white;",
-            &viewbox_attr,
-            diagram_type,
-            aria_labelledby.as_deref(),
-            aria_describedby.as_deref(),
+            root_svg::SvgRootAttrs {
+                class: Some("erDiagram"),
+                width: root_svg::SvgRootWidth::Fixed(&w_attr),
+                height_attr: Some(&h_attr),
+                style_attr: Some("background-color: white;"),
+                viewbox_attr: Some(&viewbox_attr),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
+            },
         );
     }
 
