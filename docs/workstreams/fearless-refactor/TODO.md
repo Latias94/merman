@@ -35,8 +35,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 - [ ] Inventory all diagrams by render model mode.
   Output: table of `typed`, `JSON-for-render`, and `JSON-only` diagrams.
-- [ ] Remove duplicate error-diagram construction paths in `Engine`.
+- [x] Remove duplicate error-diagram construction paths in `Engine`.
   Direction: centralize suppressed-error model construction for JSON and typed render models.
+  Evidence: `error_diagram` now owns suppressed-error construction and
+  `parse_lenient_failures_use_error_diagram_across_engine_entrypoints` covers all four Engine
+  entrypoints.
 - [ ] Decide the future of `parse_diagram_for_render_sync`.
   Options:
   - Keep as compatibility-only and route all new render code through typed models.

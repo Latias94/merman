@@ -144,6 +144,43 @@ fn parse_can_suppress_unknown_diagram_errors() {
 }
 
 #[test]
+fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
+    let engine = Engine::new();
+    let input = "flowchart TD\nA -->";
+    let options = ParseOptions::lenient();
+
+    let parsed = engine.parse_diagram_sync(input, options).unwrap().unwrap();
+    assert_suppressed_error_diagram(&parsed);
+
+    let parsed = engine
+        .parse_diagram_for_render_sync(input, options)
+        .unwrap()
+        .unwrap();
+    assert_suppressed_error_diagram(&parsed);
+
+    let parsed = engine
+        .parse_diagram_as_sync("flowchart-v2", input, options)
+        .unwrap()
+        .unwrap();
+    assert_suppressed_error_diagram(&parsed);
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, options)
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.meta.diagram_type, "error");
+    let RenderSemanticModel::Json(model) = parsed.model else {
+        panic!("suppressed parse failures must render through a JSON error model");
+    };
+    assert_eq!(model["type"], json!("error"));
+}
+
+fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
+    assert_eq!(parsed.meta.diagram_type, "error");
+    assert_eq!(parsed.model["type"], json!("error"));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

@@ -260,13 +260,6 @@ impl Engine {
                     return Err(err);
                 }
 
-                let mut error_meta = meta.clone();
-                error_meta.diagram_type = "error".to_string();
-                let mut error_model = serde_json::json!({ "type": "error" });
-                common_db::apply_common_db_sanitization(
-                    &mut error_model,
-                    &error_meta.effective_config,
-                );
                 if let Some(start) = total_start {
                     let parse = parse_start.map(|s| s.elapsed()).unwrap_or_default();
                     eprintln!(
@@ -278,10 +271,9 @@ impl Engine {
                         text.len(),
                     );
                 }
-                return Ok(Some(ParsedDiagram {
-                    meta: error_meta,
-                    model: error_model,
-                }));
+                return Ok(Some(
+                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
+                ));
             }
         };
         let parse = parse_start.map(|s| s.elapsed());
@@ -347,17 +339,9 @@ impl Engine {
                     return Err(err);
                 }
 
-                let mut error_meta = meta.clone();
-                error_meta.diagram_type = "error".to_string();
-                let mut error_model = serde_json::json!({ "type": "error" });
-                common_db::apply_common_db_sanitization(
-                    &mut error_model,
-                    &error_meta.effective_config,
-                );
-                return Ok(Some(ParsedDiagram {
-                    meta: error_meta,
-                    model: error_model,
-                }));
+                return Ok(Some(
+                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
+                ));
             }
         };
 
@@ -443,13 +427,6 @@ impl Engine {
                     return Err(err);
                 }
 
-                let mut error_meta = meta.clone();
-                error_meta.diagram_type = "error".to_string();
-                let mut error_model = serde_json::json!({ "type": "error" });
-                common_db::apply_common_db_sanitization(
-                    &mut error_model,
-                    &error_meta.effective_config,
-                );
                 if let Some(start) = total_start {
                     eprintln!(
                         "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -460,10 +437,9 @@ impl Engine {
                         text.len(),
                     );
                 }
-                return Ok(Some(ParsedDiagramRender {
-                    meta: error_meta,
-                    model: RenderSemanticModel::Json(error_model),
-                }));
+                return Ok(Some(
+                    crate::diagrams::error_diagram::suppressed_error_render_diagram(&meta),
+                ));
             }
         };
 
@@ -630,17 +606,9 @@ impl Engine {
                     return Err(err);
                 }
 
-                let mut error_meta = meta.clone();
-                error_meta.diagram_type = "error".to_string();
-                let mut error_model = serde_json::json!({ "type": "error" });
-                common_db::apply_common_db_sanitization(
-                    &mut error_model,
-                    &error_meta.effective_config,
-                );
-                return Ok(Some(ParsedDiagram {
-                    meta: error_meta,
-                    model: error_model,
-                }));
+                return Ok(Some(
+                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
+                ));
             }
         };
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
