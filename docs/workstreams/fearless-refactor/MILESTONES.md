@@ -155,6 +155,8 @@ Progress:
 - Extracted sequence activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.
+- Extracted sequence message-prelude interaction overlay orchestration for notes, activations, and
+  block frames into `svg/parity/sequence/interactions.rs`.
 - Extracted sequence loop/alt/par/critical block collection into
   `svg/parity/sequence/blocks.rs`.
 - Extracted sequence block label wrapping, loop text emission, and block frame range helpers into

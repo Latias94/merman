@@ -9,6 +9,7 @@ mod css;
 mod debug;
 mod frames;
 mod geometry;
+mod interactions;
 mod messages;
 mod model;
 mod notes;

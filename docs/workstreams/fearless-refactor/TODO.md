@@ -134,6 +134,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     emission owns a dedicated helper for its Mermaid-specific layout quirks)
   - activation rendering (precomputation and group emission now live in
     `sequence/activation.rs`)
+  - interaction overlay orchestration (message-prelude notes, activations, and block frames now
+    live in `sequence/interactions.rs`)
   - viewport/bounds (root SVG opening, accessibility title/description, and sequence viewport
     override handling now live in `sequence/root.rs`)
 - [ ] Split `svg/parity/architecture.rs`.
