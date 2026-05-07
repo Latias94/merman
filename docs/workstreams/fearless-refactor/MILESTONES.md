@@ -116,6 +116,7 @@ Progress:
 - Introduced `text/overrides.rs` as the text override lookup boundary and moved flowchart text
   override lookup tests next to that owner.
 - Moved timeline long-word override lookup and regression tests next to `timeline.rs`.
+- Override lookup tests are now colocated with the text override boundary or their diagram owners.
 
 Exit criteria:
 

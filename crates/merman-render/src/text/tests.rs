@@ -408,7 +408,7 @@ fn default_font_extra_html_override_table_keeps_special_characters_stable() {
 }
 
 #[test]
-fn generated_html_override_paths_cover_pruned_block_and_flowchart_literals() {
+fn html_width_pruned_literals_use_font_metrics_fallback() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),

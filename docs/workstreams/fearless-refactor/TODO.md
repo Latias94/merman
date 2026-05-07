@@ -88,10 +88,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Move markdown-only tests next to markdown code.
   Evidence: tokenization and HTML/XHTML fragment tests now live in `text/markdown.rs` and
   `text/markdown_label.rs`; measurement/layout-spanning Markdown tests remain in `text/tests.rs`.
-- [ ] Move override lookup tests next to override code.
-  Progress: flowchart text override lookup tests now live in `text/overrides.rs`; timeline override
-  tests live in `timeline.rs`; remaining diagram-specific generated override tests still need the
-  same treatment near their owners.
+- [x] Move override lookup tests next to override code.
+  Evidence: flowchart text override lookup tests now live in `text/overrides.rs`; timeline override
+  tests live in `timeline.rs`; existing diagram-specific generated override tests are colocated
+  with their diagram owners.
 - [x] Separate "browser compatibility measurement" from "deterministic fallback measurement".
   Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
   compatibility measurement lives behind `VendoredFontMetricsTextMeasurer` in
