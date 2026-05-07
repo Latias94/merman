@@ -60,7 +60,13 @@ pub(super) fn render_sequence_messages(
             let line_step =
                 sequence_text_overrides::sequence_text_line_step_px(actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
-            let raw_lines: Vec<String> = if msg.wrap && !text.is_empty() {
+            // Mermaid aligns message label text based on `sequence.messageAlign`.
+            let (label_x, label_anchor) = match message_align {
+                "right" => (p1.x - 10.0, "end"),
+                "left" => (p0.x + 10.0, "start"),
+                _ => (lbl.x, "middle"),
+            };
+            if msg.wrap && !text.is_empty() {
                 // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
                 // vendored metrics are close but can be slightly more conservative in some edge
                 // cases; give message wrapping a bit of extra horizontal slack so line breaks match
@@ -68,41 +74,30 @@ pub(super) fn render_sequence_messages(
                 let wrap_w = (bounded_width + 4.5 * wrap_padding)
                     .max(sequence_width)
                     .max(1.0);
-                crate::text::wrap_label_like_mermaid_lines_floored_bbox(
+                let raw_lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                     text,
                     measurer,
                     loop_text_style,
                     wrap_w,
-                )
-            } else {
-                crate::text::split_html_br_lines(text)
-                    .into_iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            };
-
-            // Mermaid aligns message label text based on `sequence.messageAlign`.
-            let (label_x, label_anchor) = match message_align {
-                "right" => (p1.x - 10.0, "end"),
-                "left" => (p0.x + 10.0, "start"),
-                _ => (lbl.x, "middle"),
-            };
-            for (i, raw) in raw_lines.into_iter().enumerate() {
-                let y = lbl.y + (i as f64) * line_step;
-                let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(&raw);
-                let line = if decoded.as_ref().is_empty() {
-                    "\u{200B}".to_string()
-                } else {
-                    decoded.as_ref().to_string()
-                };
-                let _ = write!(
+                );
+                render_sequence_message_text_lines(
                     out,
-                    r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
-                    x = fmt(label_x.round()),
-                    y = fmt(y),
-                    anchor = label_anchor,
-                    fs = fmt(actor_label_font_size),
-                    text = escape_xml(&line)
+                    raw_lines.iter().map(String::as_str),
+                    lbl.y,
+                    label_x,
+                    label_anchor,
+                    line_step,
+                    actor_label_font_size,
+                );
+            } else {
+                render_sequence_message_text_lines(
+                    out,
+                    crate::text::split_html_br_lines(text),
+                    lbl.y,
+                    label_x,
+                    label_anchor,
+                    line_step,
+                    actor_label_font_size,
                 );
             }
         }
@@ -215,5 +210,34 @@ pub(super) fn render_sequence_messages(
         }
 
         let _ = (from, to);
+    }
+}
+
+fn render_sequence_message_text_lines<'a>(
+    out: &mut String,
+    raw_lines: impl IntoIterator<Item = &'a str>,
+    label_y: f64,
+    label_x: f64,
+    label_anchor: &str,
+    line_step: f64,
+    actor_label_font_size: f64,
+) {
+    for (i, raw) in raw_lines.into_iter().enumerate() {
+        let y = label_y + (i as f64) * line_step;
+        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+        let line = if decoded.as_ref().is_empty() {
+            "\u{200B}"
+        } else {
+            decoded.as_ref()
+        };
+        let _ = write!(
+            out,
+            r#"<text x="{x}" y="{y}" text-anchor="{anchor}" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+            x = fmt(label_x.round()),
+            y = fmt(y),
+            anchor = label_anchor,
+            fs = fmt(actor_label_font_size),
+            text = escape_xml(line)
+        );
     }
 }

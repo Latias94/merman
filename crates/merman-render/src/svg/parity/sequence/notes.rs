@@ -36,7 +36,7 @@ pub(super) fn render_sequence_note(
         w = fmt(n.width),
         h = fmt(n.height)
     );
-    let lines: Vec<String> = if msg.wrap {
+    if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
         //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
         //
@@ -45,19 +45,42 @@ pub(super) fn render_sequence_note(
         let wrap_w = (n.width - 2.0 * wrap_padding
             + sequence_text_overrides::sequence_note_wrap_slack_px())
         .max(1.0);
-        crate::text::wrap_label_like_mermaid_lines_floored_bbox(
+        let lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
             raw,
             measurer,
             note_text_style,
             wrap_w,
-        )
+        );
+        render_sequence_note_lines(
+            out,
+            lines.iter().map(String::as_str),
+            cx,
+            text_y,
+            line_step,
+            actor_label_font_size,
+        );
     } else {
-        crate::text::split_html_br_lines(raw)
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect()
-    };
-    for (i, line) in lines.iter().enumerate() {
+        render_sequence_note_lines(
+            out,
+            crate::text::split_html_br_lines(raw),
+            cx,
+            text_y,
+            line_step,
+            actor_label_font_size,
+        );
+    }
+    out.push_str("</g>");
+}
+
+fn render_sequence_note_lines<'a>(
+    out: &mut String,
+    lines: impl IntoIterator<Item = &'a str>,
+    cx: f64,
+    text_y: f64,
+    line_step: f64,
+    actor_label_font_size: f64,
+) {
+    for (i, line) in lines.into_iter().enumerate() {
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
         let y = text_y + (i as f64) * line_step;
         let _ = write!(
@@ -69,5 +92,4 @@ pub(super) fn render_sequence_note(
             text = escape_xml(decoded.as_ref())
         );
     }
-    out.push_str("</g>");
 }

@@ -63,6 +63,23 @@ Result:
 - Activation plan construction no longer clones message ids for group lookup.
 - Activation stack lookup no longer allocates actor id strings.
 
+## Sequence Label Line Rendering
+
+Sequence actor, message, and note labels use owned `String` lines only when Mermaid-style wrapping
+creates new text. Plain `<br>` splitting already returns borrowed `&str` slices.
+
+Decision:
+
+- Keep owned wrapped lines because wrapping can create new line contents.
+- Render non-wrapped split lines through borrowed iterators.
+- Avoid allocating a zero-width fallback `String` for empty message label lines.
+
+Result:
+
+- Non-wrapped actor labels, message labels, and notes no longer collect split lines into
+  `Vec<String>`.
+- Empty message label fallback now uses the static zero-width string directly.
+
 ## Class Edge Rendering
 
 Class edge SVG rendering is a hot path for namespace/relation-heavy diagrams. Before this pass it

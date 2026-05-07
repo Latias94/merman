@@ -270,17 +270,35 @@ fn write_actor_label(
 ) {
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
-    let raw_lines: Vec<String> = if wrap {
-        crate::text::wrap_label_like_mermaid_lines(label, measurer, style, wrap_width_px)
+    if wrap {
+        let raw_lines =
+            crate::text::wrap_label_like_mermaid_lines(label, measurer, style, wrap_width_px);
+        write_actor_label_lines(
+            out,
+            cx,
+            cy,
+            raw_lines.iter().map(String::as_str),
+            raw_lines.len(),
+            style,
+        );
     } else {
-        crate::text::split_html_br_lines(label)
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect()
-    };
-    let n = raw_lines.len().max(1) as f64;
+        let raw_lines = crate::text::split_html_br_lines(label);
+        let line_count = raw_lines.len();
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, style);
+    }
+}
+
+fn write_actor_label_lines<'a>(
+    out: &mut String,
+    cx: f64,
+    cy: f64,
+    raw_lines: impl IntoIterator<Item = &'a str>,
+    line_count: usize,
+    style: &TextStyle,
+) {
+    let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(&raw);
+        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
         let dy = if n <= 1.0 {
             0.0
         } else {
