@@ -163,6 +163,8 @@ Progress:
   `svg/parity/sequence/block_collection.rs`.
 - Extracted sequence block label wrapping, loop text emission, and block frame range helpers into
   `svg/parity/sequence/blocks.rs`.
+- Split sequence block label wrapping and loop text emission into
+  `svg/parity/sequence/block_text.rs`.
 - Extracted sequence message label/line emission and autonumber handling into
   `svg/parity/sequence/messages.rs`.
 - Shared sequence block frame and label-box emission helpers across loop/alt/par/critical
