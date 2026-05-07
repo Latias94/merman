@@ -27,8 +27,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like
   Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
   HTML parity helpers into dedicated `text/*` modules, and move the `TextMeasurer` trait plus the
-  deterministic fallback measurer into dedicated measurement boundaries while keeping existing
-  `crate::text::*` callers stable.
+  deterministic fallback and vendored browser/font measurers into dedicated measurement boundaries
+  while keeping existing `crate::text::*` callers stable.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

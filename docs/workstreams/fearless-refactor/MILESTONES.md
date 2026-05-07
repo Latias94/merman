@@ -109,6 +109,8 @@ Progress:
 - Extracted the `TextMeasurer` trait boundary into `text/measure.rs`.
 - Extracted deterministic fallback text measurement and wrapping into `text/deterministic.rs`,
   leaving browser/font compatibility measurement behind the vendored measurer boundary.
+- Extracted vendored browser/font measurement into `text/font_metrics.rs` while keeping
+  `VendoredFontMetricsTextMeasurer` re-exported from `crate::text`.
 
 Exit criteria:
 

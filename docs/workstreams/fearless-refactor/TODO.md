@@ -82,7 +82,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/html_label.rs`
   - `text/svg_text.rs`
   - `text/overrides.rs`
-  - `text/font_metrics.rs`
+  - `text/font_metrics.rs` (vendored browser/font measurer done)
 - [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
   Evidence: first text split keeps existing `crate::text::*` callers unchanged.
 - [x] Move markdown-only tests next to markdown code.
@@ -91,7 +91,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [ ] Move override lookup tests next to override code.
 - [x] Separate "browser compatibility measurement" from "deterministic fallback measurement".
   Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
-  compatibility measurement remains isolated behind `VendoredFontMetricsTextMeasurer`.
+  compatibility measurement lives behind `VendoredFontMetricsTextMeasurer` in
+  `text/font_metrics.rs`.
 - [ ] Document when a text width override is allowed.
   Rule: override only after a fixture/probe proves upstream browser/font behavior.
 
