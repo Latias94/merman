@@ -18,6 +18,8 @@ pub(super) fn render_class_diagram_v2_debug_svg(
 mod defs;
 use defs::{class_marker_name, class_markers};
 
+mod edge;
+
 mod label;
 use label::{class_apply_inline_styles, render_class_html_label};
 

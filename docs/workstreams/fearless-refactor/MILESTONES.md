@@ -133,6 +133,10 @@ Scope:
 - Introduce render context structs where long parameter lists obscure ownership.
 - Delete obsolete debug-only code after replacing it with `xtask` tooling or tests.
 
+Progress:
+
+- Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
+
 Exit criteria:
 
 - No single parity renderer file remains difficult to navigate because of unrelated concerns.

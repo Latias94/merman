@@ -108,7 +108,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Proposed boundaries:
   - render context and ids
   - class box geometry
-  - relation paths and labels
+  - relation paths and labels (edge geometry/order helpers started in `class/edge.rs`)
   - note rendering
   - namespace/subgraph rendering
   - debug SVG helpers
