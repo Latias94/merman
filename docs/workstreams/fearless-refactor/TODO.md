@@ -72,11 +72,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Proposed modules:
   - `text/types.rs` (done)
   - `text/heuristic.rs` (done)
+  - `text/markdown.rs` (tokenization done)
   - `text/svg_metrics.rs` (done)
   - `text/flowchart_parity.rs` (done)
   - `text/metrics.rs`
   - `text/html_label.rs`
-  - `text/markdown.rs`
   - `text/svg_text.rs`
   - `text/overrides.rs`
   - `text/font_metrics.rs`

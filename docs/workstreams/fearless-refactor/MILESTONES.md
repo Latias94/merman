@@ -102,6 +102,8 @@ Progress:
   `text/types.rs`, `text/svg_metrics.rs`, and `text/flowchart_parity.rs` while preserving
   `crate::text::*` re-exports.
 - Extracted deterministic fallback width heuristics into `text/heuristic.rs`.
+- Extracted Mermaid-like Markdown tokenization into `text/markdown.rs`; HTML/XHTML label fragment
+  rendering still remains in `text.rs`.
 
 Exit criteria:
 
