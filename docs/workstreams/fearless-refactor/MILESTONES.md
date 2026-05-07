@@ -88,6 +88,8 @@ Progress:
   semantic JSON parsing remains stable for the compatibility API.
 - `requirement` now has a typed render model consumed by render-layout and SVG render-model
   dispatch; semantic JSON parsing remains stable for the compatibility API.
+- `sankey` now has a typed render model consumed by render-layout dispatch; SVG render-model
+  dispatch reuses the layout-only sankey SVG path.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Kanban parent-vs-typed timing evidence is recorded in
@@ -106,6 +108,8 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_journey_typed_render_model.md`.
 - Requirement parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_requirement_typed_render_model.md`.
+- Sankey parent-vs-typed timing evidence is recorded in
+  `docs/performance/spotcheck_2026-05-08_sankey_typed_render_model.md`.
 - Same-machine baseline capture remains a process requirement for the next typed migration.
 
 Exit criteria:

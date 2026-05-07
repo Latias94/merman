@@ -576,6 +576,59 @@ req_login - verifies -> api
 }
 
 #[test]
+fn parse_sankey_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+sankey-beta
+Source,Target,10
+Target,Done,2.5
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "sankey");
+    match parsed.model {
+        RenderSemanticModel::Sankey(model) => {
+            assert_eq!(model.graph.nodes.len(), 3);
+            assert_eq!(model.graph.nodes[0].id, "Source");
+            assert_eq!(model.graph.nodes[1].id, "Target");
+            assert_eq!(model.graph.nodes[2].id, "Done");
+            assert_eq!(model.graph.links.len(), 2);
+            assert_eq!(model.graph.links[0].source, "Source");
+            assert_eq!(model.graph.links[0].target, "Target");
+            assert_eq!(model.graph.links[0].value, json!(10));
+            assert_eq!(model.graph.links[1].source, "Target");
+            assert_eq!(model.graph.links[1].target, "Done");
+            assert_eq!(model.graph.links[1].value, json!(2.5));
+        }
+        other => panic!("sankey render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("sankey"));
+    assert_eq!(
+        parsed_json.model["graph"]["nodes"][0]["id"],
+        json!("Source")
+    );
+    assert_eq!(
+        parsed_json.model["graph"]["links"][0],
+        json!({
+            "source": "Source",
+            "target": "Target",
+            "value": 10,
+        })
+    );
+    assert_eq!(parsed_json.model["graph"]["links"][1]["value"], json!(2.5));
+    assert!(parsed_json.model.get("config").is_some());
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

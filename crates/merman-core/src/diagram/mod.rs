@@ -96,6 +96,7 @@ pub enum RenderSemanticModel {
     Timeline(crate::diagrams::timeline::TimelineDiagramRenderModel),
     Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
     Requirement(crate::diagrams::requirement::RequirementDiagramRenderModel),
+    Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

@@ -38,7 +38,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `pie` | `typed-first` | typed layout + typed SVG | Small typed migration; keep as a simple-diagram pattern. |
 | `xychart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `quadrantChart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
-| `sankey` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `sankey` | `typed-first` | typed layout + layout-only SVG | CSV graph now shares the core render model. |
 | `c4` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `error` | `json-fallback` | JSON layout + JSON SVG | Keep JSON; this is the fallback payload for suppressed parse errors. |
 

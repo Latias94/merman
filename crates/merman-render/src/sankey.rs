@@ -5,35 +5,10 @@ use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use serde::Deserialize;
+use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-
-#[derive(Debug, Clone, Deserialize)]
-struct SankeySemanticModel {
-    graph: SankeySemanticGraph,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SankeySemanticGraph {
-    #[serde(default)]
-    nodes: Vec<SankeySemanticNode>,
-    #[serde(default)]
-    links: Vec<SankeySemanticLink>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SankeySemanticNode {
-    id: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SankeySemanticLink {
-    source: String,
-    target: String,
-    value: Value,
-}
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -116,8 +91,15 @@ pub fn layout_sankey_diagram(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<SankeyDiagramLayout> {
-    let model: SankeySemanticModel = from_value_ref(semantic)?;
+    let model: SankeyDiagramRenderModel = from_value_ref(semantic)?;
+    layout_sankey_diagram_typed(&model, effective_config, _text_measurer)
+}
 
+pub fn layout_sankey_diagram_typed(
+    model: &SankeyDiagramRenderModel,
+    effective_config: &Value,
+    _text_measurer: &dyn TextMeasurer,
+) -> Result<SankeyDiagramLayout> {
     let width = config_f64(effective_config, &["sankey", "width"]).unwrap_or(600.0);
     let height = config_f64(effective_config, &["sankey", "height"]).unwrap_or(400.0);
 

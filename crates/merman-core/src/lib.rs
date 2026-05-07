@@ -450,6 +450,8 @@ impl Engine {
                 crate::diagrams::requirement::parse_requirement_model_for_render(code, meta)
                     .map(RenderSemanticModel::Requirement)
             }
+            "sankey" => crate::diagrams::sankey::parse_sankey_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sankey),
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -572,6 +574,7 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Sankey(_) => {}
         }
     }
 
@@ -591,6 +594,7 @@ impl Engine {
             RenderSemanticModel::Timeline(_) => "timeline",
             RenderSemanticModel::Journey(_) => "journey",
             RenderSemanticModel::Requirement(_) => "requirement",
+            RenderSemanticModel::Sankey(_) => "sankey",
         }
     }
 

@@ -3,23 +3,37 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-struct SankeyNode {
-    id: String,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SankeyRenderNode {
+    pub id: String,
 }
 
-#[derive(Debug, Clone)]
-struct SankeyLink {
-    source: String,
-    target: String,
-    value: Value,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SankeyRenderLink {
+    pub source: String,
+    pub target: String,
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct SankeyRenderGraph {
+    #[serde(default)]
+    pub nodes: Vec<SankeyRenderNode>,
+    #[serde(default)]
+    pub links: Vec<SankeyRenderLink>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct SankeyDiagramRenderModel {
+    #[serde(default)]
+    pub graph: SankeyRenderGraph,
 }
 
 #[derive(Debug, Default, Clone)]
 struct SankeyDb {
-    nodes: Vec<SankeyNode>,
+    nodes: Vec<SankeyRenderNode>,
     nodes_map: HashMap<String, usize>,
-    links: Vec<SankeyLink>,
+    links: Vec<SankeyRenderLink>,
 }
 
 impl SankeyDb {
@@ -29,19 +43,20 @@ impl SankeyDb {
             return id;
         }
         let idx = self.nodes.len();
-        self.nodes.push(SankeyNode { id: id.clone() });
+        self.nodes.push(SankeyRenderNode { id: id.clone() });
         self.nodes_map.insert(id.clone(), idx);
         id
     }
 
     fn add_link(&mut self, source: String, target: String, value: Value) {
-        self.links.push(SankeyLink {
+        self.links.push(SankeyRenderLink {
             source,
             target,
             value,
         });
     }
 
+    #[inline]
     fn graph_value(&self) -> Value {
         json!({
             "nodes": self.nodes.iter().map(|n| json!({"id": n.id})).collect::<Vec<_>>(),
@@ -54,9 +69,36 @@ impl SankeyDb {
             }).collect::<Vec<_>>(),
         })
     }
+
+    #[inline]
+    fn into_render_model(self) -> SankeyDiagramRenderModel {
+        SankeyDiagramRenderModel {
+            graph: SankeyRenderGraph {
+                nodes: self.nodes,
+                links: self.links,
+            },
+        }
+    }
 }
 
 pub fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let db = parse_sankey_db(code, meta)?;
+    Ok(json!({
+        "type": meta.diagram_type,
+        "graph": db.graph_value(),
+        "config": meta.effective_config.as_value().clone(),
+    }))
+}
+
+pub fn parse_sankey_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<SankeyDiagramRenderModel> {
+    parse_sankey_db(code, meta).map(SankeyDb::into_render_model)
+}
+
+#[inline]
+fn parse_sankey_db(code: &str, meta: &ParseMetadata) -> Result<SankeyDb> {
     let prepared = prepare_text_for_parsing(code);
 
     let (header, rest) = prepared
@@ -97,11 +139,7 @@ pub fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
         db.add_link(source, target, value);
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "graph": db.graph_value(),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    Ok(db)
 }
 
 fn is_sankey_header(header: &str) -> bool {
