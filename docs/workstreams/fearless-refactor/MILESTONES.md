@@ -140,6 +140,8 @@ Progress:
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
 - Moved class HTML label metrics/styles into `svg/parity/class/label.rs`.
+- Extracted class interface node emission into `svg/parity/class/interface.rs`, sharing node
+  position data through `svg/parity/class/node.rs`.
 - Extracted class note node emission into `svg/parity/class/note.rs`.
 
 Exit criteria:

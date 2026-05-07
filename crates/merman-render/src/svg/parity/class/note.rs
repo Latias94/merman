@@ -8,6 +8,7 @@ use super::super::{escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgNote;
 use super::bounds::{include_path_bounds, include_xywh};
 use super::label::class_note_html_div_style;
+use super::node::ClassNodeRenderPosition;
 use super::rough::{class_rough_rect_stroke_path_and_bounds, class_rough_seed};
 
 pub(super) struct ClassNoteRenderContext<'a> {
@@ -31,14 +32,6 @@ pub(super) struct ClassNoteRenderStats {
     pub notes_sanitize: Duration,
     pub path_bounds: Duration,
     pub path_bounds_calls: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct ClassNodeRenderPosition {
-    pub node_tx: f64,
-    pub node_ty: f64,
-    pub node_bounds_tx: f64,
-    pub node_bounds_ty: f64,
 }
 
 pub(super) fn render_class_note_node(

@@ -8,9 +8,11 @@ use super::edge::{
     class_note_edge_pattern, class_terminal_box_size, render_class_edge_label_group,
     render_class_edge_terminal_group,
 };
-use super::note::{
-    ClassNodeRenderPosition, ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node,
+use super::interface::{
+    ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
+use super::node::ClassNodeRenderPosition;
+use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
 use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
@@ -1139,65 +1141,25 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         }
 
         if let Some(iface) = iface_by_id.get(n.id.as_str()).copied() {
-            let label_text = decode_entities_minimal_cow(iface.label.trim());
-            let (fo_w_raw, fo_h_raw) = match (n.label_width, n.label_height) {
-                (Some(w), Some(h)) => (w, h),
-                _ => {
-                    let metrics = measurer.measure_wrapped(
-                        &label_text,
-                        &text_style,
-                        None,
-                        WrapMode::HtmlLike,
-                    );
-                    (metrics.width, metrics.height)
-                }
-            };
-            let fo_w = fo_w_raw.max(1.0);
-            let fo_h = fo_h_raw.max(line_height).max(1.0);
-
-            let w = fo_w;
-            let h = fo_h;
-            let left = -w / 2.0;
-            let top = -h / 2.0;
-
-            include_xywh(
-                &mut content_bounds,
-                node_bounds_tx + left,
-                node_bounds_ty + top,
-                w,
-                h,
+            render_class_interface_node(
+                ClassInterfaceRenderState {
+                    out: &mut out,
+                    content_bounds: &mut content_bounds,
+                },
+                iface,
+                n,
+                ClassNodeRenderPosition {
+                    node_tx,
+                    node_ty,
+                    node_bounds_tx,
+                    node_bounds_ty,
+                },
+                &ClassInterfaceRenderContext {
+                    measurer,
+                    text_style: &text_style,
+                    line_height,
+                },
             );
-            include_xywh(
-                &mut content_bounds,
-                node_bounds_tx + left,
-                node_bounds_ty + top,
-                fo_w,
-                fo_h,
-            );
-
-            let _ = write!(
-                &mut out,
-                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>"#,
-                escape_attr_display(&iface.id),
-                fmt(node_tx),
-                fmt(node_ty),
-                fmt(left),
-                fmt(top),
-                fmt(w),
-                fmt(h),
-                fmt(left),
-                fmt(top),
-                fmt(fo_w),
-                fmt(fo_h),
-                class_text_overrides::class_html_label_max_width_px(),
-            );
-            for (idx, line) in label_text.split('\n').enumerate() {
-                if idx > 0 {
-                    out.push_str("<br />");
-                }
-                escape_xml_into(&mut out, line);
-            }
-            out.push_str("</p></span></div></foreignObject></g></g>");
             continue;
         }
 
