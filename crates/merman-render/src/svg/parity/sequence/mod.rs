@@ -3,6 +3,8 @@
 use super::*;
 
 mod activation;
+mod actor_man;
+mod actor_popup;
 mod actors;
 mod blocks;
 mod css;

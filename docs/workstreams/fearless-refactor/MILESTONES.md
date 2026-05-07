@@ -146,6 +146,8 @@ Progress:
   node geometry into `svg/parity/sequence/geometry.rs`.
 - Extracted sequence actor-man top/bottom variant emission into
   `svg/parity/sequence/actors.rs`.
+- Split sequence actor popup menu emission and actor-man variants into
+  `svg/parity/sequence/actor_popup.rs` and `svg/parity/sequence/actor_man.rs`.
 - Extracted sequence top/bottom actor box and lifeline emission into
   `svg/parity/sequence/actors.rs`.
 - Extracted sequence SVG render settings/config parsing into

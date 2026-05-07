@@ -1,9 +1,7 @@
 use super::super::*;
-use super::actors::{
-    render_sequence_actor_man_bottoms, render_sequence_actor_man_tops,
-    render_sequence_actor_popup_menus, render_sequence_bottom_actors,
-    render_sequence_top_actors_and_lifelines,
-};
+use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
+use super::actor_popup::render_sequence_actor_popup_menus;
+use super::actors::{render_sequence_bottom_actors, render_sequence_top_actors_and_lifelines};
 use super::frames::render_sequence_box_frames_and_rect_blocks;
 use super::interactions::render_sequence_interaction_overlays;
 use super::messages::render_sequence_messages;

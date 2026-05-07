@@ -49,6 +49,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   sequence node geometry helpers through `svg/parity/sequence/geometry.rs`.
 - Sequence renderer: move actor-man top/bottom variant emission into
   `svg/parity/sequence/actors.rs`.
+- Sequence renderer: split actor popup menu emission and actor-man variants into
+  `svg/parity/sequence/actor_popup.rs` and `svg/parity/sequence/actor_man.rs`.
 - Sequence renderer: move top/bottom actor box and lifeline emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move SVG render settings/config parsing into
