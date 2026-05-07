@@ -24,9 +24,10 @@ mod edge;
 mod label;
 use label::{
     class_apply_inline_styles, class_html_div_style, class_html_label_max_width_px,
-    class_html_label_metrics, class_html_title_metrics, class_note_html_div_style,
-    render_class_html_label,
+    class_html_label_metrics, class_html_title_metrics, render_class_html_label,
 };
+
+mod note;
 
 mod rough;
 use rough::{

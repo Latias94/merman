@@ -8,69 +8,13 @@ use super::edge::{
     class_note_edge_pattern, class_terminal_box_size, render_class_edge_label_group,
     render_class_edge_terminal_group,
 };
+use super::note::{
+    ClassNodeRenderPosition, ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node,
+};
 use super::*;
 use crate::entities::{decode_entities_minimal, decode_entities_minimal_cow};
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use rustc_hash::{FxHashMap, FxHashSet};
-
-fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, style: &str) {
-    let markdown = markdown
-        .strip_prefix('`')
-        .and_then(|s| s.strip_suffix('`'))
-        .unwrap_or(markdown);
-    let _ = write!(
-        out,
-        r#"<text y="-10.1" style="{}">"#,
-        escape_attr_display(style)
-    );
-
-    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
-    if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
-        out.push_str("</text>");
-        return;
-    }
-
-    for (idx, words) in lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
-
-        for (word_idx, (word, ty)) in words.iter().enumerate() {
-            let is_strong = *ty == crate::text::MermaidMarkdownWordType::Strong;
-            let is_em = *ty == crate::text::MermaidMarkdownWordType::Em;
-            let font_style = if is_em { "italic" } else { "normal" };
-            let font_weight = if is_strong { "bold" } else { "normal" };
-            let _ = write!(
-                out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
-                font_style, font_weight
-            );
-            if word_idx == 0 {
-                escape_xml_into(out, word);
-            } else {
-                out.push(' ');
-                escape_xml_into(out, word);
-            }
-            out.push_str("</tspan>");
-        }
-
-        out.push_str("</tspan>");
-    }
-
-    out.push_str("</text>");
-}
 
 pub(super) fn render_class_diagram_v2_svg_impl(
     layout: &ClassDiagramV2Layout,
@@ -1164,146 +1108,33 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         let node_bounds_ty = node_ty + active_namespace_root_dy + active_nodes_root_dy;
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
-            let note_src = note.text.trim();
-            let note_text = decode_entities_minimal_cow(note_src);
-            let note_use_html_labels = diagram_use_html_labels;
-            let (label_w_raw, label_h_raw) = if note_use_html_labels {
-                match (n.label_width, n.label_height) {
-                    (Some(w), Some(h)) => (w, h),
-                    _ => {
-                        let note_html_config = sanitize_config.get_or_insert_with(|| {
-                            merman_core::MermaidConfig::from_value(effective_config.clone())
-                        });
-                        let metrics = crate::class::class_html_measure_note_metrics(
-                            measurer,
-                            &text_style,
-                            note_src,
-                            note_html_config,
-                        );
-                        (metrics.width, metrics.height)
-                    }
-                }
-            } else {
-                let mut metrics =
-                    measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::SvgLike);
-                if let Some(width) = crate::class::class_svg_single_line_plain_label_width_px(
-                    note_text.as_ref(),
+            let stats = render_class_note_node(
+                ClassNoteRenderState {
+                    out: &mut out,
+                    content_bounds: &mut content_bounds,
+                    sanitize_config: &mut sanitize_config,
+                },
+                note,
+                n,
+                ClassNodeRenderPosition {
+                    node_tx,
+                    node_ty,
+                    node_bounds_tx,
+                    node_bounds_ty,
+                },
+                &ClassNoteRenderContext {
+                    diagram_id,
+                    effective_config,
                     measurer,
-                    &text_style,
-                ) {
-                    metrics.width = width;
-                }
-                (metrics.width, metrics.height)
-            };
-            let label_w = label_w_raw.max(1.0);
-            let label_h = if note_use_html_labels {
-                label_h_raw.max(line_height).max(1.0)
-            } else {
-                label_h_raw.max(1.0)
-            };
-            let w = n.width.max(1.0);
-            let h = n.height.max(1.0);
-            let left = -w / 2.0;
-            let top = -h / 2.0;
-            let label_x = -label_w / 2.0;
-            let label_y = if note_use_html_labels {
-                -label_h / 2.0
-            } else {
-                -label_h / 2.0 - crate::class::class_svg_create_text_bbox_y_offset_px(&text_style)
-            };
-            let (note_stroke_d, note_stroke_pb) = class_rough_rect_stroke_path_and_bounds(
-                left,
-                top,
-                w,
-                h,
-                class_rough_seed(diagram_id, &note.id),
+                    text_style: &text_style,
+                    line_height,
+                    use_html_labels: diagram_use_html_labels,
+                    timing_enabled,
+                },
             );
-            include_xywh(
-                &mut content_bounds,
-                node_bounds_tx + left,
-                node_bounds_ty + top,
-                w,
-                h,
-            );
-            include_xywh(
-                &mut content_bounds,
-                node_bounds_tx + label_x,
-                node_bounds_ty + label_y,
-                label_w,
-                label_h,
-            );
-            let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-            include_path_bounds(
-                &mut content_bounds,
-                &note_stroke_pb,
-                node_bounds_tx,
-                node_bounds_ty,
-            );
-            if let Some(s) = path_bounds_start {
-                detail.path_bounds += s.elapsed();
-                detail.path_bounds_calls += 1;
-            }
-            if note_use_html_labels {
-                let note_div_style = class_note_html_div_style(label_w, 200);
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
-                    escape_attr_display(&note.id),
-                    fmt(node_tx),
-                    fmt(node_ty),
-                    fmt(left),
-                    fmt(top),
-                    fmt(left + w),
-                    fmt(top),
-                    fmt(left + w),
-                    fmt(top + h),
-                    fmt(left),
-                    fmt(top + h),
-                    escape_attr_display(&note_stroke_d),
-                    fmt(label_x),
-                    fmt(label_y),
-                    fmt(label_w),
-                    fmt(label_h),
-                    escape_attr_display(&note_div_style),
-                );
-                let sanitize_start = timing_enabled.then(std::time::Instant::now);
-                let note_html_config = sanitize_config.get_or_insert_with(|| {
-                    merman_core::MermaidConfig::from_value(effective_config.clone())
-                });
-                let note_html = crate::class::class_note_html_fragment(note_src, note_html_config);
-                if let Some(s) = sanitize_start {
-                    detail.notes_sanitize += s.elapsed();
-                }
-                out.push_str(&note_html);
-                out.push_str("</p></span></div></foreignObject></g></g>");
-            } else {
-                let note_label_style = "text-align:left !important;white-space:nowrap !important";
-                let _ = write!(
-                    &mut out,
-                    r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
-                    escape_attr_display(&note.id),
-                    fmt(node_tx),
-                    fmt(node_ty),
-                    fmt(left),
-                    fmt(top),
-                    fmt(left + w),
-                    fmt(top),
-                    fmt(left + w),
-                    fmt(top + h),
-                    fmt(left),
-                    fmt(top + h),
-                    escape_attr_display(&note_stroke_d),
-                    escape_attr_display(note_label_style),
-                    fmt(label_x),
-                    fmt(label_y),
-                );
-                write_class_svg_text_markdown_with_style(
-                    &mut out,
-                    note_text.as_ref(),
-                    note_label_style,
-                );
-                out.push_str("</g></g></g>");
-            }
+            detail.notes_sanitize += stats.notes_sanitize;
+            detail.path_bounds += stats.path_bounds;
+            detail.path_bounds_calls += stats.path_bounds_calls;
             continue;
         }
 

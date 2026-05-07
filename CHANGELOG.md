@@ -38,6 +38,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   HTML label helpers out of `svg/parity/class/render.rs`.
 - Class renderer: move SVG content-bounds accumulation helpers into
   `svg/parity/class/bounds.rs`.
+- Class renderer: move note node emission and note-specific render timing accounting into
+  `svg/parity/class/note.rs`.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

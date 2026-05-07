@@ -110,7 +110,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - class box geometry (bounds accumulation helpers now live in `class/bounds.rs`)
   - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
     now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`)
-  - note rendering
+  - note rendering (note node emission now lives in `class/note.rs`)
   - namespace/subgraph rendering
   - debug SVG helpers
 - [ ] Split `svg/parity/sequence/render.rs`.
