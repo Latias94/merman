@@ -68,6 +68,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   into `svg/parity/sequence/blocks.rs`.
 - Sequence renderer: split block label wrapping and loop text emission into
   `svg/parity/sequence/block_text.rs`.
+- Sequence renderer: split block frame/message range geometry into
+  `svg/parity/sequence/block_geometry.rs`.
 - Sequence renderer: move message label/line emission and autonumber handling into
   `svg/parity/sequence/messages.rs`.
 - Sequence renderer: share block frame and label-box emission helpers across

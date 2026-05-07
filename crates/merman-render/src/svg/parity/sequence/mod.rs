@@ -7,6 +7,7 @@ mod actor_man;
 mod actor_popup;
 mod actors;
 mod block_collection;
+mod block_geometry;
 mod block_text;
 mod blocks;
 mod css;
