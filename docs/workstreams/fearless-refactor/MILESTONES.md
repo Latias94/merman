@@ -195,6 +195,8 @@ Progress:
   `svg/parity/class/label.rs`.
 - Moved class render lookup maps, small config helpers, and timing detail emission into
   `svg/parity/class/context.rs`.
+- Extracted class SVG render setting derivation for htmlLabels, font sizing, padding, viewport
+  padding, and theme defaults into `svg/parity/class/settings.rs`.
 - Moved HTML class node body emission into `svg/parity/class/node.rs`.
 - Moved SVG class node body emission into `svg/parity/class/node.rs`.
 - Removed the duplicate class namespace-subgraph edge path/label emitter and routed it through

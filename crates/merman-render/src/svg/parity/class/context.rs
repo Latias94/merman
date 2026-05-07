@@ -67,16 +67,6 @@ impl<'a> ClassRenderLookups<'a> {
     }
 }
 
-pub(super) fn theme_font_size_px_string_only(effective_config: &serde_json::Value) -> Option<f64> {
-    let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
-    let t = raw.trim().trim_end_matches(';').trim();
-    let t = t.trim_end_matches("!important").trim();
-    if !t.ends_with("px") {
-        return None;
-    }
-    t.trim_end_matches("px").trim().parse::<f64>().ok()
-}
-
 pub(super) fn parse_viewbox_min_xy(view_box: &str) -> Option<(f64, f64)> {
     let mut it = view_box.split_whitespace();
     let min_x = it.next()?.parse::<f64>().ok()?;

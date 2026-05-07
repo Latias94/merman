@@ -20,6 +20,7 @@ use super::node::{
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_root_open};
+use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox_attrs};
 use super::*;
 
@@ -61,58 +62,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
+    let settings = ClassRenderSettings::from_config(effective_config);
 
-    let diagram_use_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
-    let edge_use_html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"])
-        .or_else(|| config_bool(effective_config, &["htmlLabels"]))
-        .unwrap_or(true);
-    let font_size = if diagram_use_html_labels {
-        // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI
-        // baselines show that those HTML labels do not reliably inherit the surrounding SVG-root
-        // `font-size` rules, so they effectively render at the browser default (16px) even when
-        // users override `fontSize` / `themeVariables.fontSize`.
-        16.0
-    } else {
-        // Mermaid injects `themeVariables.fontSize` into CSS as `font-size: ${fontSize};` without
-        // forcing a unit. A unitless `font-size: 24` is invalid CSS and gets ignored (falling back
-        // to the browser default 16px), while a value like `"24px"` works and *does* influence
-        // wrapping/sizing (see:
-        // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg` and
-        // `fixtures/upstream-svgs/class/stress_class_svg_font_size_px_string_precedence_026.svg`).
-        theme_font_size_px_string_only(effective_config).unwrap_or(16.0)
-    }
-    .max(1.0);
-    let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
-        .unwrap_or(16.0)
-        .max(1.0);
-    let html_calc_text_style = crate::class::class_html_calculate_text_style(effective_config);
-    let line_height = font_size * 1.5;
-    // Mermaid defaults `config.class.padding` to 12 (used for node sizing, not SVG viewport padding).
-    let _class_padding = effective_config
-        .get("class")
-        .and_then(|v| v.get("padding"))
-        .and_then(|v| v.as_f64())
-        .unwrap_or(12.0)
-        .max(0.0);
-    let text_style = TextStyle {
-        font_family: config_string(effective_config, &["fontFamily"])
-            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
-        font_size,
-        font_weight: None,
-    };
-
-    // Mermaid uses `setupGraphViewbox(..., conf.diagramPadding)` (v2) / `setupViewPortForSVG(..., 8)` (v3),
-    // both of which expand the root viewBox/max-width by 2 * padding around the rendered content bbox.
-    //
-    // Keep the config lookup compatible with Mermaid's classRenderer-v2 quirk that reads `flowchart ?? class`.
-    let conf = effective_config
-        .get("flowchart")
-        .or_else(|| effective_config.get("class"))
-        .unwrap_or(effective_config);
-    let viewport_padding = config_f64(conf, &["diagramPadding"])
-        .unwrap_or(8.0)
-        .max(0.0);
     // Mermaid's class renderer uses Dagre with fixed `marginx/marginy=8`, then calls
     // `setupGraphViewbox(svg, padding=conf.diagramPadding)` which computes the final SVG viewBox
     // from `svg.getBBox()`.
@@ -121,17 +72,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // match upstream SVG coordinates and viewport sizing.
     let content_tx = CLASS_GRAPH_MARGIN_PX;
     let content_ty = CLASS_GRAPH_MARGIN_PX;
-
-    let hide_empty_members_box =
-        config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
-
-    // Theme-derived defaults. Mermaid's class renderer applies `themeVariables.*` values to node
-    // fills/strokes when no explicit `style` overrides exist on the node.
-    let default_node_fill = config_string(effective_config, &["themeVariables", "primaryColor"])
-        .unwrap_or_else(|| "#ECECFF".to_string());
-    let default_node_stroke =
-        config_string(effective_config, &["themeVariables", "primaryBorderColor"])
-            .unwrap_or_else(|| "#9370DB".to_string());
 
     // Mermaid derives the final viewport using `svg.getBBox()` (after rendering). We don't have a
     // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
@@ -237,7 +177,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     content_ty,
                     bounds_dx,
                     bounds_dy,
-                    edge_use_html_labels,
+                    edge_use_html_labels: settings.edge_use_html_labels,
                     timing_enabled,
                 },
             );
@@ -360,9 +300,9 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     diagram_id,
                     effective_config,
                     measurer,
-                    text_style: &text_style,
-                    line_height,
-                    use_html_labels: diagram_use_html_labels,
+                    text_style: &settings.text_style,
+                    line_height: settings.line_height,
+                    use_html_labels: settings.diagram_use_html_labels,
                     timing_enabled,
                 },
             );
@@ -388,8 +328,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 },
                 &ClassInterfaceRenderContext {
                     measurer,
-                    text_style: &text_style,
-                    line_height,
+                    text_style: &settings.text_style,
+                    line_height: settings.line_height,
                 },
             );
             continue;
@@ -403,10 +343,10 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         let node_style_attr = node_inline_styles.style_attr.as_str();
         let node_fill = node_inline_styles
             .fill
-            .unwrap_or(default_node_fill.as_str());
+            .unwrap_or(settings.default_node_fill.as_str());
         let node_stroke = node_inline_styles
             .stroke
-            .unwrap_or(default_node_stroke.as_str());
+            .unwrap_or(settings.default_node_stroke.as_str());
         let node_stroke_width = node_inline_styles
             .stroke_width
             .unwrap_or("1.3")
@@ -450,7 +390,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         detail.path_bounds += basic_container.stats.path_bounds;
         detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
 
-        if diagram_use_html_labels {
+        if settings.diagram_use_html_labels {
             let html_stats = render_class_html_node_body(
                 ClassNodeRenderState {
                     out: &mut out,
@@ -470,11 +410,11 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     .map(|rows| rows.as_ref()),
                 &ClassHtmlNodeBodyContext {
                     measurer,
-                    text_style: &text_style,
-                    html_calc_text_style: &html_calc_text_style,
-                    line_height,
-                    class_padding: _class_padding,
-                    hide_empty_members_box,
+                    text_style: &settings.text_style,
+                    html_calc_text_style: &settings.html_calc_text_style,
+                    line_height: settings.line_height,
+                    class_padding: settings.class_padding,
+                    hide_empty_members_box: settings.hide_empty_members_box,
                     node_style_attr,
                     node_stroke,
                     node_stroke_width,
@@ -500,11 +440,11 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 basic_container.geometry,
                 &ClassSvgNodeBodyContext {
                     measurer,
-                    text_style: &text_style,
-                    font_size,
-                    wrap_probe_font_size,
-                    class_padding: _class_padding,
-                    hide_empty_members_box,
+                    text_style: &settings.text_style,
+                    font_size: settings.font_size,
+                    wrap_probe_font_size: settings.wrap_probe_font_size,
+                    class_padding: settings.class_padding,
+                    hide_empty_members_box: settings.hide_empty_members_box,
                     node_style_attr,
                     node_stroke,
                     node_stroke_width,
@@ -544,7 +484,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         diagram_id,
         model,
         content_bounds,
-        viewport_padding,
+        viewport_padding: settings.viewport_padding,
         diagram_title,
         has_acc_title: root_open.has_acc_title,
         has_acc_descr: root_open.has_acc_descr,
