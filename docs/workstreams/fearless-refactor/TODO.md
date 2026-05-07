@@ -121,8 +121,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - root viewport
   - raw SVG/path precision
   - temporary parity bridge
-  Status: `OVERRIDE_FOOTPRINT.md` has initial categories; keep open until `xtask
-  report-overrides` covers all generated tables and temporary bridges have removal criteria.
+  Status: `xtask report-overrides` now scans all generated override modules by category; keep open
+  until temporary raw SVG/path bridges have owners and removal criteria.
 - [ ] Add comments or metadata for temporary overrides with removal criteria.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
 - [ ] Prevent override tables from becoming the default fix for model bugs.

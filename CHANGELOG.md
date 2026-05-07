@@ -24,6 +24,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   entrypoint; semantic JSON callers should continue using `parse_diagram_sync`.
 - Sequence render pipeline: add a typed render model for layout/SVG render-model dispatch while
   keeping the semantic JSON parse API stable.
+- `xtask report-overrides`: scan all generated override modules by category instead of relying on
+  a hand-maintained file list.
 
 ### Removed
 

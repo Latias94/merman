@@ -127,8 +127,8 @@ Scope:
 
 Progress:
 
-- `OVERRIDE_FOOTPRINT.md` records the first `xtask report-overrides` snapshot and current
-  reporting gaps.
+- `OVERRIDE_FOOTPRINT.md` records the first generated-module-wide `xtask report-overrides`
+  snapshot and the remaining temporary bridge reporting gaps.
 
 Exit criteria:
 
