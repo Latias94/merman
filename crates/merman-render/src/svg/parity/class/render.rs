@@ -2,8 +2,9 @@
 
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::edge::{
-    class_edge_label_center, class_edge_path_style, class_edge_render_order,
-    class_line_with_marker_offset_points, class_terminal_box_size, render_class_edge_label_group,
+    class_edge_dom_id, class_edge_dom_id_into, class_edge_label_center, class_edge_path_style,
+    class_edge_pattern, class_edge_render_order, class_line_with_marker_offset_points,
+    class_note_edge_pattern, class_terminal_box_size, render_class_edge_label_group,
     render_class_edge_terminal_group,
 };
 use super::*;

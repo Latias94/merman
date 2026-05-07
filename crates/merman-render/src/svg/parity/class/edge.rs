@@ -369,6 +369,61 @@ pub(super) fn render_class_edge_terminal_group(
     }
 }
 
+pub(super) fn class_edge_dom_id(
+    edge: &LayoutEdge,
+    relation_index_by_id: &FxHashMap<&str, usize>,
+) -> String {
+    let mut out = String::new();
+    class_edge_dom_id_into(&mut out, edge, relation_index_by_id);
+    out
+}
+
+pub(super) fn class_edge_dom_id_into(
+    out: &mut String,
+    edge: &LayoutEdge,
+    relation_index_by_id: &FxHashMap<&str, usize>,
+) {
+    out.clear();
+    if edge.id.starts_with("edgeNote") {
+        // Mermaid numbers note edges as `edgeNote<N>` where `<N>` follows the `note<N-1>` id.
+        // (This is independent from the relation edge counter.)
+        if let Some(note_idx) = edge
+            .from
+            .strip_prefix("note")
+            .and_then(|rest| rest.parse::<usize>().ok())
+        {
+            let _ = write!(out, "edgeNote{}", note_idx + 1);
+            return;
+        }
+        out.push_str(edge.id.as_str());
+        return;
+    }
+    // Mermaid uses `getEdgeId` with prefix `id`.
+    let idx = relation_index_by_id
+        .get(edge.id.as_str())
+        .copied()
+        .unwrap_or(1);
+    out.push_str("id_");
+    out.push_str(edge.from.as_str());
+    out.push('_');
+    out.push_str(edge.to.as_str());
+    out.push('_');
+    let _ = write!(out, "{idx}");
+}
+
+pub(super) fn class_edge_pattern(line_type: i32) -> &'static str {
+    // Mermaid class diagram `lineType` uses "dottedLine" for `..` which maps to the dashed pattern.
+    if line_type == 1 {
+        "edge-pattern-dashed"
+    } else {
+        "edge-pattern-solid"
+    }
+}
+
+pub(super) fn class_note_edge_pattern() -> &'static str {
+    "edge-pattern-dotted"
+}
+
 pub(super) fn class_edge_path_style(edge_id: &str) -> &'static str {
     if edge_id.starts_with("edgeNote") {
         "fill: none;;;fill: none"

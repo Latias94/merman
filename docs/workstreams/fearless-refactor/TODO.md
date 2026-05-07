@@ -108,8 +108,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Proposed boundaries:
   - render context and ids
   - class box geometry
-  - relation paths and labels (edge geometry/order plus edge label/terminal emission now live in
-    `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`)
+  - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
+    now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`)
   - note rendering
   - namespace/subgraph rendering
   - debug SVG helpers
