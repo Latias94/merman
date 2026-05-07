@@ -59,6 +59,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `edgeLabels` into `svg/parity/class/groups.rs`.
 - Class renderer: move node traversal, namespace-subgraph transitions, note/interface dispatch, and
   class node body orchestration into `svg/parity/class/nodes.rs`.
+- Architecture renderer: move JSON/typed render-model access into
+  `svg/parity/architecture/model.rs` and foreignObject XHTML normalization into
+  `svg/parity/architecture/foreign_object.rs`.
 - Sequence renderer: start the actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into

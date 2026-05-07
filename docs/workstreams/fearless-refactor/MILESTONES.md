@@ -220,6 +220,10 @@ Progress:
   viewBox/max-width placeholders, and graph-margin constant into `svg/parity/class/root.rs`.
 - Extracted class root viewBox/max-width calibration and class diagram title positioning into
   `svg/parity/class/viewbox.rs`.
+- Extracted architecture JSON/typed render-model access into
+  `svg/parity/architecture/model.rs`.
+- Extracted architecture foreignObject XHTML normalization and entity-safe ampersand escaping into
+  `svg/parity/architecture/foreign_object.rs`, with its normalization tests colocated there.
 
 Exit criteria:
 

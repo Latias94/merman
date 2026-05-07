@@ -166,10 +166,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     override handling now live in `sequence/root.rs`)
 - [ ] Split `svg/parity/architecture.rs`.
   Proposed boundaries:
-  - typed model extraction
+  - typed model extraction (JSON and typed render-model access now live in
+    `architecture/model.rs`)
   - service/group layout emission
   - edge rendering
-  - icon/text XHTML normalization
+  - icon/text XHTML normalization (foreignObject XHTML normalization and entity-safe ampersand
+    escaping now live in `architecture/foreign_object.rs`)
   - CSS/theme emission
 - [ ] Prefer small render context structs over long parameter lists.
   Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for
