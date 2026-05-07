@@ -671,13 +671,15 @@ fn layout_flowchart_v2_with_model(
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
     let expand_self_loops_start = timing_enabled.then(std::time::Instant::now);
-    let mut render_edges: Vec<FlowEdge> = Vec::new();
+    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
+    let mut render_edges: Vec<std::borrow::Cow<'_, FlowEdge>> =
+        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for e in &model.edges {
         if e.from != e.to {
-            render_edges.push(e.clone());
+            render_edges.push(std::borrow::Cow::Borrowed(e));
             continue;
         }
 
@@ -714,9 +716,9 @@ fn layout_flowchart_v2_with_model(
         edge1.label = Some(String::new());
         edge2.label = Some(String::new());
 
-        render_edges.push(edge1);
-        render_edges.push(edge_mid);
-        render_edges.push(edge2);
+        render_edges.push(std::borrow::Cow::Owned(edge1));
+        render_edges.push(std::borrow::Cow::Owned(edge_mid));
+        render_edges.push(std::borrow::Cow::Owned(edge2));
     }
     if let Some(s) = expand_self_loops_start {
         timings.expand_self_loops = s.elapsed();

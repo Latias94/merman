@@ -221,6 +221,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   title fallback. Remaining clones are mostly legacy `&Value` compatibility bridges or
   diagram-specific sanitize/config wrappers that still need ownership review.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
+  Progress: `HOT_LOOP_CLONE_AUDIT.md` records the first pass. Flowchart layout now borrows normal
+  edges in the self-loop expansion stage and only owns generated helper edges.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
 ## P3: Public API and CLI Cleanup
