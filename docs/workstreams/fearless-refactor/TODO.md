@@ -115,8 +115,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     `class/interface.rs`)
   - relation paths and labels (edge ids/classes, geometry/order, and edge label/terminal emission
     now live in `class/edge.rs`; shared HTML label metrics/styles now live in `class/label.rs`;
-    the namespace-subgraph branch now reuses the shared optimized edge group path instead of a
-    duplicate edge emitter)
+    edge paths, labels, terminals, data-point encoding, and timing accumulation now live in
+    `class/edge.rs`; the namespace-subgraph branch now reuses the shared optimized edge group path
+    instead of a duplicate edge emitter)
   - SVG text labels (wrapping, label bbox, and bold-width compensation helpers now live in
     `class/label.rs`)
   - note rendering (note node emission now lives in `class/note.rs`)

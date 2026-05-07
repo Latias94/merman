@@ -23,7 +23,7 @@ pub(super) fn render_class_diagram_v2_debug_svg(
 }
 
 mod defs;
-use defs::{class_marker_name, class_markers};
+use defs::class_markers;
 
 mod edge;
 

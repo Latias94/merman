@@ -1,11 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
-use super::bounds::{include_path_bounds, include_path_d, include_xywh};
 use super::edge::{
-    class_edge_dom_id_into, class_edge_label_center, class_edge_path_style, class_edge_pattern,
-    class_edge_render_order, class_line_with_marker_offset_points, class_note_edge_pattern,
-    class_terminal_box_size, render_class_edge_label_group, render_class_edge_terminal_group,
+    ClassEdgeGroupsRenderContext, ClassEdgeGroupsRenderState, render_class_edge_groups,
 };
 use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
@@ -23,7 +20,6 @@ use super::node::{
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
-use rustc_hash::FxHashMap;
 
 pub(super) fn render_class_diagram_v2_svg_impl(
     layout: &ClassDiagramV2Layout,
@@ -261,14 +257,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         out
     };
 
-    let mut edge_points_json_buf = String::new();
-    let mut edge_points_json_ryu = ryu_js::Buffer::new();
-    let mut edge_points_b64_buf: String = String::new();
-    let mut edge_raw_points: Vec<crate::model::LayoutPoint> = Vec::new();
-    let mut edge_curve_points: Vec<crate::model::LayoutPoint> = Vec::new();
-    let mut edge_class_buf = String::with_capacity(64);
-    let mut edge_dom_id_buf = String::with_capacity(64);
-
     let mut render_clusters_edges_and_labels =
         |out: &mut String,
          content_bounds: &mut Option<Bounds>,
@@ -290,257 +278,25 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 );
             }
 
-            // Edge paths.
-            let edge_paths_start = timing_enabled.then(std::time::Instant::now);
-            let mut edge_label_centers: FxHashMap<String, crate::model::LayoutPoint> =
-                FxHashMap::default();
-            out.push_str(r#"<g class="edgePaths">"#);
-            for e in class_edge_render_order(&layout.edges, &relation_index_by_id) {
-                if e.points.len() < 2 {
-                    continue;
-                }
-
-                class_edge_dom_id_into(&mut edge_dom_id_buf, e, &relation_index_by_id);
-
-                edge_raw_points.clear();
-                edge_raw_points.reserve(e.points.len());
-                for p in &e.points {
-                    edge_raw_points.push(crate::model::LayoutPoint {
-                        x: p.x + content_tx,
-                        y: p.y + content_ty,
-                    });
-                }
-
-                let curve_start = timing_enabled.then(std::time::Instant::now);
-                let relation = if e.id.starts_with("edgeNote") {
-                    None
-                } else {
-                    relations_by_id.get(e.id.as_str()).copied()
-                };
-                let edge_curve_source =
-                    class_line_with_marker_offset_points(&edge_raw_points, relation);
-                let (d, d_pb) = if edge_curve_source.len() == 2 {
-                    edge_curve_points.clear();
-                    let a = &edge_curve_source[0];
-                    let b = &edge_curve_source[1];
-                    edge_curve_points.push(a.clone());
-                    edge_curve_points.push(crate::model::LayoutPoint {
-                        x: (a.x + b.x) / 2.0,
-                        y: (a.y + b.y) / 2.0,
-                    });
-                    edge_curve_points.push(b.clone());
-                    super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
-                } else {
-                    super::curve::curve_basis_path_d_and_bounds(&edge_curve_source)
-                };
-                if let Some(lbl) = e.label.as_ref() {
-                    edge_label_centers.insert(
-                        e.id.clone(),
-                        class_edge_label_center(&edge_raw_points, &d, lbl, content_tx, content_ty),
-                    );
-                }
-                if let Some(s) = curve_start {
-                    detail.edge_curve += s.elapsed();
-                }
-                let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                if let Some(pb) = d_pb.as_ref() {
-                    include_path_bounds(content_bounds, pb, bounds_dx, bounds_dy);
-                } else {
-                    include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
-                }
-                if let Some(s) = path_bounds_start {
-                    detail.path_bounds += s.elapsed();
-                    detail.path_bounds_calls += 1;
-                }
-
-                let json_start = timing_enabled.then(std::time::Instant::now);
-                edge_points_json_buf.clear();
-                json_stringify_points_into(
-                    &mut edge_points_json_buf,
-                    &edge_raw_points,
-                    &mut edge_points_json_ryu,
-                );
-                if let Some(s) = json_start {
-                    detail.edge_points_json += s.elapsed();
-                }
-
-                let b64_start = timing_enabled.then(std::time::Instant::now);
-                edge_points_b64_buf.clear();
-                base64::engine::general_purpose::STANDARD
-                    .encode_string(edge_points_json_buf.as_bytes(), &mut edge_points_b64_buf);
-                if let Some(s) = b64_start {
-                    detail.edge_points_b64 += s.elapsed();
-                }
-
-                edge_class_buf.clear();
-                edge_class_buf.push_str("edge-thickness-normal ");
-                if e.id.starts_with("edgeNote") {
-                    edge_class_buf.push_str(class_note_edge_pattern());
-                } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                    edge_class_buf.push_str(class_edge_pattern(rel.relation.line_type));
-                } else {
-                    edge_class_buf.push_str("edge-pattern-solid");
-                }
-                edge_class_buf.push_str(" relation");
-
-                let _ = write!(
+            render_class_edge_groups(
+                ClassEdgeGroupsRenderState {
                     out,
-                    r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-                    escape_attr_display(&d),
-                    escape_attr_display(&edge_dom_id_buf),
-                    escape_attr_display(&edge_class_buf),
-                    escape_attr_display(&edge_dom_id_buf),
-                    escape_attr_display(&edge_points_b64_buf),
-                );
-                if !e.id.starts_with("edgeNote") {
-                    if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                        if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                            out.push_str(r#" marker-start="url(#"#);
-                            out.push_str(&marker_url_prefix);
-                            out.push_str(name);
-                            out.push_str(r#")""#);
-                        }
-                        if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                            out.push_str(r#" marker-end="url(#"#);
-                            out.push_str(&marker_url_prefix);
-                            out.push_str(name);
-                            out.push_str(r#")""#);
-                        }
-                    }
-                }
-                let _ = write!(out, r#" style="{}""#, class_edge_path_style(e.id.as_str()));
-                out.push_str("/>");
-            }
-            out.push_str("</g>");
-            if let Some(s) = edge_paths_start {
-                detail.edge_paths += s.elapsed();
-            }
-
-            // Edge labels + terminals.
-            let edge_labels_start = timing_enabled.then(std::time::Instant::now);
-            out.push_str(r#"<g class="edgeLabels">"#);
-            // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
-            let ordered_edges = class_edge_render_order(&layout.edges, &relation_index_by_id);
-            for e in ordered_edges.iter().copied() {
-                class_edge_dom_id_into(&mut edge_dom_id_buf, e, &relation_index_by_id);
-                let label_text = if e.id.starts_with("edgeNote") {
-                    ""
-                } else {
-                    relations_by_id
-                        .get(e.id.as_str())
-                        .map(|r| r.title.as_str())
-                        .unwrap_or("")
-                };
-
-                let label_center = e.label.as_ref().map(|lbl| {
-                    edge_label_centers.get(e.id.as_str()).cloned().unwrap_or(
-                        crate::model::LayoutPoint {
-                            x: lbl.x + content_tx,
-                            y: lbl.y + content_ty,
-                        },
-                    )
-                });
-                if !label_text.trim().is_empty() {
-                    if let (Some(lbl), Some(center)) = (e.label.as_ref(), label_center.as_ref()) {
-                        include_xywh(
-                            content_bounds,
-                            center.x - lbl.width / 2.0 + bounds_dx,
-                            center.y - lbl.height / 2.0 + bounds_dy,
-                            lbl.width.max(0.0),
-                            lbl.height.max(0.0),
-                        );
-                    }
-                }
-                render_class_edge_label_group(
-                    out,
-                    edge_dom_id_buf.as_str(),
-                    label_text,
-                    e.label.as_ref(),
-                    label_center.as_ref().map(|center| center.x).unwrap_or(0.0),
-                    label_center.as_ref().map(|center| center.y).unwrap_or(0.0),
+                    content_bounds,
+                    detail: &mut detail,
+                },
+                &ClassEdgeGroupsRenderContext {
+                    edges: &layout.edges,
+                    relations_by_id: &relations_by_id,
+                    relation_index_by_id: &relation_index_by_id,
+                    marker_url_prefix: &marker_url_prefix,
+                    content_tx,
+                    content_ty,
+                    bounds_dx,
+                    bounds_dy,
                     edge_use_html_labels,
-                );
-            }
-            for e in ordered_edges.iter().copied() {
-                let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
-                    continue;
-                };
-                let start_text = if rel.relation_title_1 == "none" {
-                    ""
-                } else {
-                    rel.relation_title_1.as_str()
-                };
-                for lbl in [&e.start_label_left, &e.start_label_right] {
-                    if let Some(lbl) = lbl.as_ref() {
-                        let (terminal_w, terminal_h) = class_terminal_box_size(start_text);
-                        if terminal_w > 0.0 && terminal_h > 0.0 {
-                            include_xywh(
-                                content_bounds,
-                                lbl.x + content_tx + bounds_dx,
-                                lbl.y + content_ty + bounds_dy,
-                                terminal_w,
-                                terminal_h,
-                            );
-                            render_class_edge_terminal_group(
-                                out,
-                                lbl.x + content_tx,
-                                lbl.y + content_ty,
-                                start_text,
-                                true,
-                            );
-                        }
-                    }
-                }
-            }
-            let mut ordered_end_edges = ordered_edges
-                .iter()
-                .copied()
-                .enumerate()
-                .collect::<Vec<_>>();
-            // Mermaid inserts terminal labels asynchronously. End-only cardinalities regularly
-            // land in front of two-sided edges once the DOM settles, so prefer edges without a
-            // start terminal before preserving the original render order.
-            ordered_end_edges.sort_by_key(|(idx, edge)| {
-                (
-                    edge.start_label_left.is_some() || edge.start_label_right.is_some(),
-                    *idx,
-                )
-            });
-            for (_, e) in ordered_end_edges {
-                let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
-                    continue;
-                };
-                let end_text = if rel.relation_title_2 == "none" {
-                    ""
-                } else {
-                    rel.relation_title_2.as_str()
-                };
-                for lbl in [&e.end_label_left, &e.end_label_right] {
-                    if let Some(lbl) = lbl.as_ref() {
-                        let (terminal_w, terminal_h) = class_terminal_box_size(end_text);
-                        if terminal_w > 0.0 && terminal_h > 0.0 {
-                            include_xywh(
-                                content_bounds,
-                                lbl.x + content_tx + bounds_dx,
-                                lbl.y + content_ty + bounds_dy,
-                                terminal_w,
-                                terminal_h,
-                            );
-                            render_class_edge_terminal_group(
-                                out,
-                                lbl.x + content_tx,
-                                lbl.y + content_ty,
-                                end_text,
-                                false,
-                            );
-                        }
-                    }
-                }
-            }
-            out.push_str("</g>");
-            if let Some(s) = edge_labels_start {
-                detail.edge_labels += s.elapsed();
-            }
+                    timing_enabled,
+                },
+            );
         };
 
     if wrap_nodes_root {

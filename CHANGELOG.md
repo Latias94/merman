@@ -36,6 +36,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   layout owner.
 - Class renderer: split edge ids/classes, geometry/order, edge label/terminal emission, and shared
   HTML label helpers out of `svg/parity/class/render.rs`.
+- Class renderer: move class edge paths, edge labels, terminals, edge data-point encoding, and
+  edge timing accumulation into `svg/parity/class/edge.rs`.
 - Class renderer: move SVG content-bounds accumulation helpers into
   `svg/parity/class/bounds.rs`.
 - Class renderer: move class node shell, basic-container emission, HTML row measurement, HTML
