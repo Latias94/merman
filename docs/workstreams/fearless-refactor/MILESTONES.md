@@ -106,6 +106,7 @@ Progress:
 - Extracted Mermaid HTML/XHTML label fragment rendering into `text/markdown_label.rs`.
 - Moved markdown-only tests next to the split Markdown modules; cross-boundary measurement tests
   stay in the shared text test module.
+- Extracted the `TextMeasurer` trait boundary into `text/measure.rs`.
 
 Exit criteria:
 
