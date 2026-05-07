@@ -246,9 +246,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P3: Public API and CLI Cleanup
 
-- [ ] Review public `merman::render` API after typed render migration.
-- [ ] Keep synchronous executor-free API as the default path.
-- [ ] Decide whether async wrappers should remain simple aliases or be feature-gated later.
+- [x] Review public `merman::render` API after typed render migration.
+  Evidence: `PUBLIC_API_CLI_REVIEW.md`.
+- [x] Keep synchronous executor-free API as the default path.
+  Decision: `render_svg_sync`, `layout_diagram_sync`, and `HeadlessRenderer` remain the primary
+  render integration surface.
+- [x] Decide whether async wrappers should remain simple aliases or be feature-gated later.
+  Decision: keep async wrappers as runtime-agnostic aliases for now; revisit near a public release
+  boundary instead of creating preemptive churn.
 - [x] Audit CLI option parsing for duplicated raster branches.
   Evidence: CLI layout options and SVG rasterization output handling now share small helpers across
   Mermaid-input render and direct SVG-input rasterization flows.

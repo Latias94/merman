@@ -17,6 +17,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   flowchart/architecture/mindmap stress benches.
 - Docs: add a gantt JSON baseline and typed render-model performance spot-check.
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
+- Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.
