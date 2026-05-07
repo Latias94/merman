@@ -104,6 +104,8 @@ Progress:
 - Extracted deterministic fallback width heuristics into `text/heuristic.rs`.
 - Extracted Mermaid-like Markdown tokenization into `text/markdown.rs`.
 - Extracted Mermaid HTML/XHTML label fragment rendering into `text/markdown_label.rs`.
+- Moved markdown-only tests next to the split Markdown modules; cross-boundary measurement tests
+  stay in the shared text test module.
 
 Exit criteria:
 

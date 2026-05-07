@@ -83,7 +83,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/font_metrics.rs`
 - [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
   Evidence: first text split keeps existing `crate::text::*` callers unchanged.
-- [ ] Move markdown-only tests next to markdown code.
+- [x] Move markdown-only tests next to markdown code.
+  Evidence: tokenization and HTML/XHTML fragment tests now live in `text/markdown.rs` and
+  `text/markdown_label.rs`; measurement/layout-spanning Markdown tests remain in `text/tests.rs`.
 - [ ] Move override lookup tests next to override code.
 - [ ] Separate "browser compatibility measurement" from "deterministic fallback measurement".
 - [ ] Document when a text width override is allowed.

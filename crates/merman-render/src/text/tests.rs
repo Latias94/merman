@@ -612,44 +612,6 @@ fn wrap_label_like_mermaid_does_not_split_escaped_br() {
 }
 
 #[test]
-fn markdown_underscore_delimiters_match_mermaid() {
-    use MermaidMarkdownWordType::*;
-
-    assert_eq!(
-        mermaid_markdown_to_lines("`a__b`", true),
-        vec![vec![("a__b".to_string(), Normal)]]
-    );
-    assert_eq!(
-        mermaid_markdown_to_lines("`_a_b_`", true),
-        vec![vec![("a_b".to_string(), Em)]]
-    );
-    assert_eq!(
-        mermaid_markdown_to_lines("`_a__b_`", true),
-        vec![vec![("a__b".to_string(), Em)]]
-    );
-    assert_eq!(
-        mermaid_markdown_to_lines("`__a__`", true),
-        vec![vec![("a".to_string(), Strong)]]
-    );
-}
-
-#[test]
-fn markdown_inline_code_suppresses_emphasis_delimiters() {
-    use MermaidMarkdownWordType::*;
-
-    // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not interpret
-    // `**...**` inside them as strong/emphasis.
-    assert_eq!(
-        mermaid_markdown_to_lines("inline: `**not bold**`", true),
-        vec![vec![
-            ("inline:".to_string(), Normal),
-            ("`**not".to_string(), Normal),
-            ("bold**`".to_string(), Normal),
-        ]]
-    );
-}
-
-#[test]
 fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -721,69 +683,5 @@ fn markdown_svg_wrapping_keeps_raw_html_tags_literal_but_wraps_like_mermaid() {
             ],
             vec![("</strong>".to_string(), Normal)],
         ]
-    );
-}
-
-#[test]
-fn markdown_html_label_fragment_collapses_mixed_list_blocks_like_browser_dom() {
-    let input = "Hello\n  - l1\n  - l2";
-    assert!(mermaid_markdown_contains_raw_blocks(input));
-    assert_eq!(
-        mermaid_markdown_to_html_label_fragment(input, true),
-        "<p>Hello</p>- l1 - l2"
-    );
-}
-
-#[test]
-fn markdown_xhtml_label_fragment_preserves_inline_br_listish_continuations() {
-    let input = "Hello<br/>- l1<br/>- l2";
-    assert_eq!(
-        mermaid_markdown_to_xhtml_label_fragment(input, true),
-        "<p>Hello<br/>- l1<br/>- l2</p>"
-    );
-}
-
-#[test]
-fn markdown_xhtml_label_fragment_normalizes_raw_br_variants() {
-    let input = "Hello<br>world";
-    assert_eq!(
-        mermaid_markdown_to_xhtml_label_fragment(input, true),
-        "<p>Hello<br/>world</p>"
-    );
-}
-
-#[test]
-fn markdown_html_label_fragment_preserves_inline_code_literals() {
-    let input = "inline: `**not bold**`";
-    assert_eq!(
-        mermaid_markdown_to_html_label_fragment(input, true),
-        "<p>inline: `**not bold**`</p>"
-    );
-}
-
-#[test]
-fn markdown_xhtml_label_fragment_preserves_inline_code_literals() {
-    let input = "inline: `**not bold**`";
-    assert_eq!(
-        mermaid_markdown_to_xhtml_label_fragment(input, true),
-        "<p>inline: `**not bold**`</p>"
-    );
-}
-
-#[test]
-fn markdown_html_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
-    let input = "+inline: **bold*";
-    assert_eq!(
-        mermaid_markdown_to_html_label_fragment(input, true),
-        "<p>+inline: *<em>bold</em></p>"
-    );
-}
-
-#[test]
-fn markdown_xhtml_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
-    let input = "+inline: **bold*";
-    assert_eq!(
-        mermaid_markdown_to_xhtml_label_fragment(input, true),
-        "<p>+inline: *<em>bold</em></p>"
     );
 }

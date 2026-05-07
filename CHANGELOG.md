@@ -28,6 +28,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
   HTML parity helpers into dedicated `text/*` modules while keeping existing `crate::text::*`
   callers stable.
+- Render text tests: move markdown-only tokenization and label-fragment tests next to the split
+  Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on
   a hand-maintained file list.
 

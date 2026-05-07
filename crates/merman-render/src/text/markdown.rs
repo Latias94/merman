@@ -309,3 +309,46 @@ pub(crate) fn mermaid_markdown_contains_html_tags(markdown: &str) -> bool {
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn underscore_delimiters_match_mermaid() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("`a__b`", true),
+            vec![vec![("a__b".to_string(), Normal)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`_a_b_`", true),
+            vec![vec![("a_b".to_string(), Em)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`_a__b_`", true),
+            vec![vec![("a__b".to_string(), Em)]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("`__a__`", true),
+            vec![vec![("a".to_string(), Strong)]]
+        );
+    }
+
+    #[test]
+    fn inline_code_suppresses_emphasis_delimiters() {
+        use MermaidMarkdownWordType::*;
+
+        // Mermaid CLI baselines (class diagram HTML labels) preserve backticks and do not
+        // interpret `**...**` inside them as strong/emphasis.
+        assert_eq!(
+            mermaid_markdown_to_lines("inline: `**not bold**`", true),
+            vec![vec![
+                ("inline:".to_string(), Normal),
+                ("`**not".to_string(), Normal),
+                ("bold**`".to_string(), Normal),
+            ]]
+        );
+    }
+}

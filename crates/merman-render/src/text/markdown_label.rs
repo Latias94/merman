@@ -759,3 +759,72 @@ pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
     let line = s.lines().next().unwrap_or(s).trim_end();
     !mermaid_markdown_line_starts_raw_block(line)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_label_fragment_collapses_mixed_list_blocks_like_browser_dom() {
+        let input = "Hello\n  - l1\n  - l2";
+        assert!(mermaid_markdown_contains_raw_blocks(input));
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, true),
+            "<p>Hello</p>- l1 - l2"
+        );
+    }
+
+    #[test]
+    fn xhtml_label_fragment_preserves_inline_br_listish_continuations() {
+        let input = "Hello<br/>- l1<br/>- l2";
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, true),
+            "<p>Hello<br/>- l1<br/>- l2</p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_label_fragment_normalizes_raw_br_variants() {
+        let input = "Hello<br>world";
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, true),
+            "<p>Hello<br/>world</p>"
+        );
+    }
+
+    #[test]
+    fn html_label_fragment_preserves_inline_code_literals() {
+        let input = "inline: `**not bold**`";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, true),
+            "<p>inline: `**not bold**`</p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_label_fragment_preserves_inline_code_literals() {
+        let input = "inline: `**not bold**`";
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, true),
+            "<p>inline: `**not bold**`</p>"
+        );
+    }
+
+    #[test]
+    fn html_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
+        let input = "+inline: **bold*";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, true),
+            "<p>+inline: *<em>bold</em></p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_label_fragment_reinterprets_partial_star_strong_like_mermaid() {
+        let input = "+inline: **bold*";
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, true),
+            "<p>+inline: *<em>bold</em></p>"
+        );
+    }
+}
