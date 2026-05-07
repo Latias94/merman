@@ -539,6 +539,76 @@ pub(super) fn item_y_range(
     Some((top, bottom))
 }
 
+pub(super) fn message_ids_y_range<'a>(
+    message_ids: impl IntoIterator<Item = &'a String>,
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    is_separator: bool,
+) -> Option<(f64, f64)> {
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for msg_id in message_ids {
+        if let Some((y0, y1)) = item_y_range(
+            edges_by_id,
+            nodes_by_id,
+            msg_endpoints,
+            msg_id,
+            is_separator,
+        ) {
+            min_y = min_y.min(y0);
+            max_y = max_y.max(y1);
+        }
+    }
+    if !min_y.is_finite() || !max_y.is_finite() {
+        return None;
+    }
+    Some((min_y, max_y))
+}
+
+pub(super) fn section_message_y_range(
+    sections: &[AltSection],
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    is_separator: bool,
+) -> Option<(f64, f64)> {
+    message_ids_y_range(
+        sections.iter().flat_map(|s| s.message_ids.iter()),
+        edges_by_id,
+        nodes_by_id,
+        msg_endpoints,
+        is_separator,
+    )
+}
+
+pub(super) fn section_separator_ys(
+    sections: &[AltSection],
+    min_y: f64,
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+) -> Vec<f64> {
+    let mut section_max_ys: Vec<f64> = Vec::new();
+    for sec in sections {
+        let sec_max_y = message_ids_y_range(
+            sec.message_ids.iter(),
+            edges_by_id,
+            nodes_by_id,
+            msg_endpoints,
+            true,
+        )
+        .map(|(_y0, y1)| y1)
+        .unwrap_or(min_y);
+        section_max_ys.push(sec_max_y);
+    }
+    section_max_ys
+        .iter()
+        .take(section_max_ys.len().saturating_sub(1))
+        .map(|sec_max_y| *sec_max_y + 15.0)
+        .collect()
+}
+
 fn bracketize(s: &str) -> String {
     let t = s.trim();
     if t.is_empty() {

@@ -159,6 +159,8 @@ Progress:
   `svg/parity/sequence/messages.rs`.
 - Shared sequence block frame and label-box emission helpers across loop/alt/par/critical
   variants.
+- Shared sequence block message y-range and separator y-position helpers across
+  loop/alt/par/critical variants.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
