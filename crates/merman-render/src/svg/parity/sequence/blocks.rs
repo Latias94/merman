@@ -1,4 +1,6 @@
+use super::super::*;
 use super::model::SequenceSvgModel;
+use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -254,6 +256,422 @@ pub(super) fn collect_sequence_blocks(
     }
 
     (blocks_by_end_id, blocks)
+}
+
+pub(super) fn display_block_label(raw_label: &str, always_show: bool) -> Option<String> {
+    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw_label);
+    let t = decoded.as_ref().trim();
+    if t.is_empty() {
+        if always_show {
+            // Mermaid renders empty block labels as a zero-width space inside `<tspan>`.
+            Some("\u{200B}".to_string())
+        } else {
+            None
+        }
+    } else {
+        Some(bracketize(t))
+    }
+}
+
+pub(super) fn wrap_svg_text_lines(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width: Option<f64>,
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for line in crate::text::split_html_br_lines(text) {
+        if let Some(w) = max_width {
+            lines.extend(wrap_svg_text_line(line, measurer, style, w));
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if lines.is_empty() {
+        vec!["".to_string()]
+    } else {
+        lines
+    }
+}
+
+pub(super) fn write_loop_text_lines(
+    out: &mut String,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    x: f64,
+    y0: f64,
+    max_width: Option<f64>,
+    text: &str,
+    use_tspan: bool,
+) {
+    let line_step = sequence_text_overrides::sequence_text_line_step_px(style.font_size);
+    let lines = wrap_svg_text_lines(text, measurer, style, max_width);
+    for (i, line) in lines.into_iter().enumerate() {
+        let y = y0 + (i as f64) * line_step;
+        if use_tspan {
+            let _ = write!(
+                out,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+                x = fmt(x),
+                y = fmt(y),
+                fs = fmt(style.font_size),
+                text = escape_xml(&line)
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+                x = fmt(x),
+                y = fmt(y),
+                fs = fmt(style.font_size),
+                text = escape_xml(&line)
+            );
+        }
+    }
+}
+
+pub(super) fn frame_x_from_actors(
+    model: &SequenceSvgModel,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+) -> Option<(f64, f64)> {
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    for actor_id in &model.actor_order {
+        let node_id = format!("actor-top-{actor_id}");
+        let n = nodes_by_id.get(node_id.as_str()).copied()?;
+        min_x = min_x.min(n.x);
+        max_x = max_x.max(n.x);
+    }
+    if !min_x.is_finite() || !max_x.is_finite() {
+        return None;
+    }
+    Some((
+        min_x - sequence_text_overrides::sequence_frame_side_pad_px(),
+        max_x + sequence_text_overrides::sequence_frame_side_pad_px(),
+    ))
+}
+
+pub(super) fn frame_x_from_message_ids<'a>(
+    message_ids: impl IntoIterator<Item = &'a String>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+) -> Option<(f64, f64, f64)> {
+    // For single-actor frames containing only self-messages, upstream Mermaid expands the
+    // frame to cover at least the actor box width (plus a small asymmetric pad that leaves
+    // room for the self-arrow loop on the right). Our deterministic layout edge points can
+    // be too narrow for short self-message labels, which would over-wrap frame titles.
+    let mut min_left = f64::INFINITY;
+    let mut geom_min_x = f64::INFINITY;
+    let mut geom_max_x = f64::NEG_INFINITY;
+    let mut min_cx = f64::INFINITY;
+    let mut max_cx = f64::NEG_INFINITY;
+    let mut self_only_actor: Option<&str> = None;
+
+    for msg_id in message_ids {
+        // Notes are nodes (not edges); include their bounding boxes in frame extents.
+        let note_node_id = format!("note-{msg_id}");
+        if let Some(n) = nodes_by_id.get(note_node_id.as_str()).copied() {
+            geom_min_x = geom_min_x
+                .min(n.x - n.width / 2.0 - sequence_text_overrides::sequence_frame_geom_pad_px());
+            geom_max_x = geom_max_x
+                .max(n.x + n.width / 2.0 + sequence_text_overrides::sequence_frame_geom_pad_px());
+        }
+
+        let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
+            continue;
+        };
+        if from == to {
+            self_only_actor = match self_only_actor {
+                None => Some(from),
+                Some(prev) if prev == from => Some(prev),
+                _ => Some(""),
+            };
+        } else {
+            self_only_actor = Some("");
+        }
+
+        // Expand frames to cover message geometry and label overflow (especially important
+        // for single-actor blocks containing long self-message labels).
+        let edge_id = format!("msg-{msg_id}");
+        if let Some(e) = edges_by_id.get(edge_id.as_str()).copied() {
+            for p in &e.points {
+                geom_min_x = geom_min_x.min(p.x);
+                geom_max_x = geom_max_x.max(p.x);
+            }
+            if let Some(label) = e.label.as_ref() {
+                geom_min_x = geom_min_x.min(
+                    label.x
+                        - (label.width / 2.0)
+                        - sequence_text_overrides::sequence_frame_geom_pad_px(),
+                );
+                geom_max_x = geom_max_x.max(
+                    label.x
+                        + (label.width / 2.0)
+                        + sequence_text_overrides::sequence_frame_geom_pad_px(),
+                );
+            }
+        }
+        for actor_id in [from, to] {
+            let Some(n) = actor_nodes_by_id.get(actor_id).copied() else {
+                continue;
+            };
+            min_cx = min_cx.min(n.x);
+            max_cx = max_cx.max(n.x);
+            min_left = min_left.min(n.x - n.width / 2.0);
+        }
+    }
+
+    if !min_cx.is_finite() || !max_cx.is_finite() {
+        return None;
+    }
+    let mut x1 = min_cx - sequence_text_overrides::sequence_frame_side_pad_px();
+    let mut x2 = max_cx + sequence_text_overrides::sequence_frame_side_pad_px();
+    if geom_min_x.is_finite() {
+        x1 = x1.min(geom_min_x);
+    }
+    if geom_max_x.is_finite() {
+        x2 = x2.max(geom_max_x);
+    }
+    if matches!(self_only_actor, Some(a) if !a.is_empty()) {
+        if let Some(n) = actor_nodes_by_id.get(self_only_actor.unwrap()).copied() {
+            let left = n.x - n.width / 2.0;
+            let right = n.x + n.width / 2.0;
+            let min_x1 = left - sequence_text_overrides::sequence_self_only_frame_min_pad_left_px();
+            let min_x2 =
+                right + sequence_text_overrides::sequence_self_only_frame_min_pad_right_px();
+            // Only widen when the computed geometry is suspiciously narrow; avoid shifting
+            // frames that already match upstream due to message label geometry.
+            if (x2 - x1) < (min_x2 - min_x1) - 1.0 {
+                x1 = x1.min(min_x1);
+                x2 = x2.max(min_x2);
+            }
+        }
+    }
+    Some((x1, x2, min_left))
+}
+
+pub(super) fn item_y_range(
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    item_id: &str,
+    is_separator: bool,
+) -> Option<(f64, f64)> {
+    let msg_range = if is_separator {
+        msg_y_range_for_separators(edges_by_id, msg_endpoints, item_id)
+    } else {
+        msg_y_range_for_frame(edges_by_id, msg_endpoints, item_id)
+    };
+    if let Some((y0, y1)) = msg_range {
+        return Some((y0, y1));
+    }
+    let note_node_id = format!("note-{item_id}");
+    let n = nodes_by_id.get(note_node_id.as_str()).copied()?;
+    let top = n.y - n.height / 2.0;
+    let bottom = n.y + n.height / 2.0;
+    Some((top, bottom))
+}
+
+fn bracketize(s: &str) -> String {
+    let t = s.trim();
+    if t.is_empty() {
+        return "\u{200B}".to_string();
+    }
+    if t.starts_with('[') && t.ends_with(']') {
+        return t.to_string();
+    }
+    format!("[{t}]")
+}
+
+fn split_line_to_words(text: &str) -> Vec<String> {
+    let parts = text.split(' ').collect::<Vec<_>>();
+    let mut out: Vec<String> = Vec::new();
+    for part in parts {
+        if !part.is_empty() {
+            out.push(part.to_string());
+        }
+        out.push(" ".to_string());
+    }
+    while out.last().is_some_and(|s| s == " ") {
+        out.pop();
+    }
+    out
+}
+
+fn wrap_svg_text_line(
+    line: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width: f64,
+) -> Vec<String> {
+    use std::collections::VecDeque;
+
+    if !max_width.is_finite() || max_width <= 0.0 {
+        return vec![line.to_string()];
+    }
+
+    // Mermaid's frame-label wrapping behaves as if the available width were slightly smaller
+    // than the raw `frame_x2 - (frame_x1 + label_box_width)` span, especially for narrow
+    // (single-actor-ish) frames. Apply a small pad only in that regime to avoid over-wrapping
+    // wide frames like `critical` headers.
+    let pad = if max_width <= 160.0 {
+        15.0
+    } else if max_width <= 230.0 {
+        8.0
+    } else {
+        0.0
+    };
+    let max_width = (max_width - pad).max(1.0);
+
+    fn svg_bbox_width_px(measurer: &dyn TextMeasurer, style: &TextStyle, text: &str) -> f64 {
+        let (l, r) = measurer.measure_svg_text_bbox_x(text, style);
+        (l + r).max(0.0)
+    }
+
+    let mut tokens = VecDeque::from(split_line_to_words(line));
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut force_break_after_next_non_space: bool = false;
+
+    while let Some(tok) = tokens.pop_front() {
+        if cur.is_empty() && tok == " " {
+            continue;
+        }
+
+        let candidate = format!("{cur}{tok}");
+        if svg_bbox_width_px(measurer, style, &candidate) <= max_width {
+            cur = candidate;
+            if force_break_after_next_non_space && tok != " " {
+                out.push(cur.trim_end().to_string());
+                cur.clear();
+                force_break_after_next_non_space = false;
+            }
+            continue;
+        }
+
+        if !cur.trim().is_empty() {
+            out.push(cur.trim_end().to_string());
+            cur.clear();
+            tokens.push_front(tok);
+            continue;
+        }
+
+        if tok == " " {
+            continue;
+        }
+
+        // `tok` itself does not fit on an empty line; split by characters.
+        let chars = tok.chars().collect::<Vec<_>>();
+        let mut cut = 1usize;
+        while cut < chars.len() {
+            let mut head: String = chars[..cut].iter().collect();
+            let tail_len = chars.len().saturating_sub(cut);
+            let should_hyphenate = tail_len > 0
+                && !head.ends_with('-')
+                && head
+                    .chars()
+                    .last()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric());
+            if should_hyphenate {
+                head.push('-');
+            }
+            if svg_bbox_width_px(measurer, style, &head) > max_width {
+                break;
+            }
+            cut += 1;
+        }
+        cut = cut.saturating_sub(1).max(1);
+        let mut head: String = chars[..cut].iter().collect();
+        let tail: String = chars[cut..].iter().collect();
+        let mut hyphenated = false;
+        if !tail.is_empty()
+            && !head.ends_with('-')
+            && head
+                .chars()
+                .last()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric())
+            && svg_bbox_width_px(measurer, style, &(head.clone() + "-")) <= max_width
+        {
+            head.push('-');
+            hyphenated = true;
+        }
+        out.push(head);
+        if !tail.is_empty() {
+            tokens.push_front(tail);
+            if hyphenated {
+                force_break_after_next_non_space = true;
+            }
+        }
+    }
+
+    if !cur.trim().is_empty() {
+        out.push(cur.trim_end().to_string());
+    }
+
+    if out.is_empty() {
+        vec!["".to_string()]
+    } else {
+        out
+    }
+}
+
+fn msg_line_y(
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    msg_id: &str,
+) -> Option<f64> {
+    let edge_id = format!("msg-{msg_id}");
+    let e = edges_by_id.get(edge_id.as_str()).copied()?;
+    Some(e.points.first()?.y)
+}
+
+fn msg_y_range_with_self_extra(
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    msg_id: &str,
+    self_extra_y: f64,
+) -> Option<(f64, f64)> {
+    let y = msg_line_y(edges_by_id, msg_id)?;
+    let extra = msg_endpoints
+        .get(msg_id)
+        .copied()
+        .filter(|(from, to)| from == to)
+        .map(|_| self_extra_y)
+        .unwrap_or(0.0);
+    Some((y, y + extra))
+}
+
+fn msg_y_range_for_frame(
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    msg_id: &str,
+) -> Option<(f64, f64)> {
+    // Mermaid's `boundMessage(...)` self-message branch expands the inserted bounds by 60px
+    // below `lineStartY` (see the `+ 30 + totalOffset` bottom coordinate, where `totalOffset`
+    // already includes a `+30` bump).
+    msg_y_range_with_self_extra(
+        edges_by_id,
+        msg_endpoints,
+        msg_id,
+        sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
+    )
+}
+
+fn msg_y_range_for_separators(
+    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+    msg_id: &str,
+) -> Option<(f64, f64)> {
+    // The self-message loop curve itself extends ~30px below the message line.
+    // Mermaid's dashed section separators follow the curve geometry, not the full `bounds.insert(...)`
+    // envelope used for frame sizing.
+    msg_y_range_with_self_extra(
+        edges_by_id,
+        msg_endpoints,
+        msg_id,
+        sequence_text_overrides::sequence_self_message_separator_extra_y_px(),
+    )
 }
 
 fn push_block(

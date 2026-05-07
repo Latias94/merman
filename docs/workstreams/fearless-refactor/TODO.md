@@ -125,8 +125,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     `sequence/geometry.rs`)
   - messages
   - notes (note emission now lives in `sequence/notes.rs`)
-  - loops/alt/par/rect blocks (loop/alt/par/critical block collection now lives in
-    `sequence/blocks.rs`)
+  - loops/alt/par/rect blocks (loop/alt/par/critical block collection, label wrapping,
+    loop text emission, and frame range helpers now live in `sequence/blocks.rs`)
   - activation rendering (precomputation and group emission now live in
     `sequence/activation.rs`)
   - viewport/bounds

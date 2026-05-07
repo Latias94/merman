@@ -56,6 +56,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: move note emission into `svg/parity/sequence/notes.rs`.
 - Sequence renderer: move loop/alt/par/critical block collection into
   `svg/parity/sequence/blocks.rs`.
+- Sequence renderer: move block label wrapping, loop text emission, and block frame range helpers
+  into `svg/parity/sequence/blocks.rs`.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.
