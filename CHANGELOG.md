@@ -51,6 +51,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/class/namespace.rs`.
 - Class renderer: move root viewBox/max-width calibration and class diagram title positioning into
   `svg/parity/class/viewbox.rs`.
+- Class renderer: move SVG root opening, accessibility title/description emission, root
+  viewBox/max-width placeholders, and graph-margin constant into `svg/parity/class/root.rs`.
 - Sequence renderer: start the actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into

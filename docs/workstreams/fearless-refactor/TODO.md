@@ -129,8 +129,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     `class/namespace.rs`; class node render-order/index construction and namespace
     wrapper/subgraph mode selection now also live there; namespace cluster group emission now
     lives there)
-  - root/viewBox handling (root viewBox/max-width calibration and class diagram title positioning
-    now live in `class/viewbox.rs`)
+  - root/viewBox handling (SVG root opening, accessibility title/description emission, root
+    viewBox/max-width placeholders, and graph-margin constant now live in `class/root.rs`; root
+    viewBox/max-width calibration and class diagram title positioning now live in
+    `class/viewbox.rs`)
   - debug SVG helpers
 - [ ] Split `svg/parity/sequence/render.rs`.
   Proposed boundaries:

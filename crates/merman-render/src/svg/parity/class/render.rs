@@ -19,6 +19,7 @@ use super::node::{
     render_class_node_basic_container, render_class_node_shell_open, render_class_svg_node_body,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
+use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_root_open};
 use super::viewbox::{ClassViewBoxContext, class_viewbox_attrs};
 use super::*;
 
@@ -101,15 +102,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         font_weight: None,
     };
 
-    let has_acc_title = model
-        .acc_title
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_acc_descr = model
-        .acc_descr
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-
     // Mermaid uses `setupGraphViewbox(..., conf.diagramPadding)` (v2) / `setupViewPortForSVG(..., 8)` (v3),
     // both of which expand the root viewBox/max-width by 2 * padding around the rendered content bbox.
     //
@@ -127,9 +119,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     //
     // Our headless layout output is margin-free, so re-introduce Dagre's margin at render time to
     // match upstream SVG coordinates and viewport sizing.
-    const GRAPH_MARGIN_PX: f64 = 8.0;
-    let content_tx = GRAPH_MARGIN_PX;
-    let content_ty = GRAPH_MARGIN_PX;
+    let content_tx = CLASS_GRAPH_MARGIN_PX;
+    let content_ty = CLASS_GRAPH_MARGIN_PX;
 
     let hide_empty_members_box =
         config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
@@ -147,9 +138,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // emit (using the exact same `d` strings we output for paths).
     let mut content_bounds: Option<Bounds> = None;
 
-    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
-    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
-
     let render_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.render_svg));
     let estimated_svg_bytes = 2048usize
         + model.classes.len().saturating_mul(512)
@@ -157,52 +145,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         + model.notes.len().saturating_mul(256)
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{}", escape_xml(diagram_id)));
-    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{}", escape_xml(diagram_id)));
-    let aria_roledescription_attr = super::util::escape_attr(aria_roledescription);
-    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("classDiagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
-            ..root_svg::SvgRootAttrs::new(diagram_id, aria_roledescription_attr.as_str())
-        },
-    );
-
-    let viewbox_pos = out
-        .find(VIEWBOX_PLACEHOLDER)
-        .expect("class svg root must contain viewBox placeholder");
-    let viewbox_placeholder_range = viewbox_pos..(viewbox_pos + VIEWBOX_PLACEHOLDER.len());
-    let max_width_pos = out
-        .find(MAX_WIDTH_PLACEHOLDER)
-        .expect("class svg root must contain max-width placeholder");
-    let max_width_placeholder_range = max_width_pos..(max_width_pos + MAX_WIDTH_PLACEHOLDER.len());
-
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#"<title id="chart-title-{}">{}"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
-        );
-        out.push_str("</title>");
-    }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
-        );
-        out.push_str("</desc>");
-    }
+    let root_open = write_class_svg_root_open(&mut out, model, diagram_id, aria_roledescription);
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style></style>");
@@ -244,7 +187,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         model,
         &class_nodes_by_id,
         viewbox_override_min_xy,
-        GRAPH_MARGIN_PX,
+        CLASS_GRAPH_MARGIN_PX,
     );
 
     drop(build_ctx_guard);
@@ -603,8 +546,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         content_bounds,
         viewport_padding,
         diagram_title,
-        has_acc_title,
-        has_acc_descr,
+        has_acc_title: root_open.has_acc_title,
+        has_acc_descr: root_open.has_acc_descr,
     });
 
     // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),
@@ -625,11 +568,11 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     // Avoid a full-string scan + allocation for placeholder replacement by patching the initial
     // `<svg ...>` attributes in-place.
     out.replace_range(
-        viewbox_placeholder_range,
+        root_open.viewbox_placeholder_range,
         viewbox_attrs.view_box_attr.as_str(),
     );
     out.replace_range(
-        max_width_placeholder_range,
+        root_open.max_width_placeholder_range,
         viewbox_attrs.max_w_attr.as_str(),
     );
 

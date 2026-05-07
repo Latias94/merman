@@ -210,6 +210,8 @@ Progress:
   `svg/parity/class/namespace.rs`.
 - Extracted class namespace cluster group emission into
   `svg/parity/class/namespace.rs`.
+- Extracted class SVG root opening, accessibility title/description emission, root
+  viewBox/max-width placeholders, and graph-margin constant into `svg/parity/class/root.rs`.
 - Extracted class root viewBox/max-width calibration and class diagram title positioning into
   `svg/parity/class/viewbox.rs`.
 
