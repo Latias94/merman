@@ -70,13 +70,18 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 - [ ] Split `crates/merman-render/src/text.rs` by responsibility.
   Proposed modules:
+  - `text/types.rs` (done)
+  - `text/heuristic.rs` (done)
+  - `text/svg_metrics.rs` (done)
+  - `text/flowchart_parity.rs` (done)
   - `text/metrics.rs`
   - `text/html_label.rs`
   - `text/markdown.rs`
   - `text/svg_text.rs`
   - `text/overrides.rs`
   - `text/font_metrics.rs`
-- [ ] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
+- [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
+  Evidence: first text split keeps existing `crate::text::*` callers unchanged.
 - [ ] Move markdown-only tests next to markdown code.
 - [ ] Move override lookup tests next to override code.
 - [ ] Separate "browser compatibility measurement" from "deterministic fallback measurement".

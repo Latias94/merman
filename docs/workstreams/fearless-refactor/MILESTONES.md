@@ -88,11 +88,20 @@ Exit criteria:
 
 ## M3: Text System Modularization
 
+Status: in progress.
+
 Scope:
 
 - Split `merman-render` text handling by responsibility.
 - Separate markdown, HTML label, SVG text, font metrics, wrapping, and override lookup code.
 - Keep public text APIs stable through re-exports.
+
+Progress:
+
+- Extracted shared text types, SVG/font bbox helpers, and flowchart HTML parity helpers into
+  `text/types.rs`, `text/svg_metrics.rs`, and `text/flowchart_parity.rs` while preserving
+  `crate::text::*` re-exports.
+- Extracted deterministic fallback width heuristics into `text/heuristic.rs`.
 
 Exit criteria:
 
