@@ -229,6 +229,9 @@ Progress:
   `svg/parity/architecture/labels.rs`.
 - Extracted architecture edge direction/arrow helpers, shared bounds helpers, and recursive group
   rectangle computation into `svg/parity/architecture/geometry.rs`.
+- Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
+  fallback sizing, and root viewBox/max-width placeholders into
+  `svg/parity/architecture/root.rs`.
 
 Exit criteria:
 

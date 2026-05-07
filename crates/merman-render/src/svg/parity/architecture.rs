@@ -8,6 +8,7 @@ mod geometry;
 mod icons;
 mod labels;
 mod model;
+mod root;
 
 use self::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
@@ -22,6 +23,10 @@ use self::labels::{
     write_svg_text_lines,
 };
 use self::model::{ArchitectureEdgeRef, ArchitectureModel, ArchitectureModelAccess};
+use self::root::{
+    ArchitectureRootOpenContext, MAX_WIDTH_PLACEHOLDER, VIEWBOX_PLACEHOLDER,
+    architecture_a11y_nodes, push_architecture_root_open,
+};
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
 
@@ -146,7 +151,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
-    let diagram_id_esc = escape_xml(diagram_id);
     let css = super::css::architecture_css_with_config(diagram_id, effective_config);
 
     let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
@@ -196,33 +200,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         font_weight: None,
     };
 
-    let aria_labelledby = model
-        .acc_title()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = model
-        .acc_descr()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let mut a11y_nodes = String::new();
-    if let Some(t) = model.acc_title().map(str::trim).filter(|t| !t.is_empty()) {
-        let _ = write!(
-            &mut a11y_nodes,
-            r#"<title id="chart-title-{}">{}</title>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(t)
-        );
-    }
-    if let Some(d) = model.acc_descr().map(str::trim).filter(|t| !t.is_empty()) {
-        let _ = write!(
-            &mut a11y_nodes,
-            r#"<desc id="chart-desc-{}">{}</desc>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(d)
-        );
-    }
+    let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
 
     // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
     // SVG's `getBBox()` plus `architecture.padding`. We approximate the effective `getBBox()` by
@@ -703,82 +681,22 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         }
     }
 
-    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
-    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
-
     let is_empty = service_count == 0
         && junction_count == 0
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
     let mut out = String::new();
-    if is_empty {
-        // Preserve Mermaid's "empty diagram" fallback sizing behavior (no getBBox-derived padding).
-        let vb_min_x = -half_icon;
-        let vb_min_y = -half_icon;
-        let vb_w = icon_size_px.max(1.0);
-        let vb_h = icon_size_px.max(1.0);
-        // Mermaid Architecture sets `max-width` directly from the computed `viewBox` width.
-        let max_width_style = fmt(vb_w);
-        let style_attr = if use_max_width {
-            format!("max-width: {max_width_style}px; background-color: white;")
-        } else {
-            "background-color: white;".to_string()
-        };
-        let viewbox_attr = format!(
-            "{} {} {} {}",
-            fmt(vb_min_x),
-            fmt(vb_min_y),
-            fmt(vb_w),
-            fmt(vb_h)
-        );
-        let width = if use_max_width {
-            root_svg::SvgRootWidth::Percent100
-        } else {
-            root_svg::SvgRootWidth::None
-        };
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
-            },
-        );
-        out.push_str(a11y_nodes.as_str());
-        let _ = write!(&mut out, "<style>{}</style>", css.as_str());
-        out.push_str("<g/><g class=\"architecture-edges\">");
-    } else {
-        let style_attr = if use_max_width {
-            format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;")
-        } else {
-            "background-color: white;".to_string()
-        };
-        let width = if use_max_width {
-            root_svg::SvgRootWidth::Percent100
-        } else {
-            root_svg::SvgRootWidth::None
-        };
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
-            },
-        );
-        out.push_str(a11y_nodes.as_str());
-        let _ = write!(&mut out, "<style>{}</style>", css.as_str());
-        out.push_str("<g/><g class=\"architecture-edges\">");
-    }
+    push_architecture_root_open(ArchitectureRootOpenContext {
+        out: &mut out,
+        diagram_id,
+        css: css.as_str(),
+        a11y: &a11y,
+        is_empty,
+        use_max_width,
+        half_icon,
+        icon_size_px,
+    });
 
     // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
     if model.edges_len() != 0 {

@@ -175,6 +175,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     escaping now live in `architecture/foreign_object.rs`; built-in icon SVG bodies now live in
     `architecture/icons.rs`; SVG label wrapping/text emission now lives in
     `architecture/labels.rs`)
+  - root/viewBox handling (SVG root opening, accessibility title/description emission, empty
+    diagram fallback sizing, and root viewBox/max-width placeholders now live in
+    `architecture/root.rs`; root viewport calibration still needs a dedicated owner)
   - CSS/theme emission
 - [ ] Prefer small render context structs over long parameter lists.
   Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for
