@@ -1,4 +1,5 @@
 use super::super::*;
+use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
@@ -11,10 +12,6 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     box_margin: f64,
     box_text_margin: f64,
 ) {
-    fn node_left_top(n: &LayoutNode) -> (f64, f64) {
-        (n.x - n.width / 2.0, n.y - n.height / 2.0)
-    }
-
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
     let has_box_titles = model

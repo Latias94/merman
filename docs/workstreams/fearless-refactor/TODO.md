@@ -119,8 +119,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - debug SVG helpers
 - [ ] Split `svg/parity/sequence/render.rs`.
   Proposed boundaries:
-  - actors and participants (actor label emission now lives in `sequence/actors.rs`; pre-actor
-    box/rect frame emission now lives in `sequence/frames.rs`)
+  - actors and participants (actor label and popup menu emission now live in `sequence/actors.rs`;
+    pre-actor box/rect frame emission now lives in `sequence/frames.rs`; shared node geometry now
+    lives in `sequence/geometry.rs`)
   - messages
   - notes
   - loops/alt/par/rect blocks

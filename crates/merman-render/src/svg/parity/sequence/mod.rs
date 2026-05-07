@@ -6,6 +6,7 @@ mod actors;
 mod css;
 mod debug;
 mod frames;
+mod geometry;
 mod model;
 mod render;
 

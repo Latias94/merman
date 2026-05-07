@@ -45,6 +45,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into
   `svg/parity/sequence/frames.rs`.
+- Sequence renderer: move actor popup menu emission into `svg/parity/sequence/actors.rs` and share
+  sequence node geometry helpers through `svg/parity/sequence/geometry.rs`.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.
