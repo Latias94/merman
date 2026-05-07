@@ -73,6 +73,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/types.rs` (done)
   - `text/heuristic.rs` (done)
   - `text/markdown.rs` (tokenization done)
+  - `text/markdown_label.rs` (HTML/XHTML fragment rendering done)
   - `text/svg_metrics.rs` (done)
   - `text/flowchart_parity.rs` (done)
   - `text/metrics.rs`

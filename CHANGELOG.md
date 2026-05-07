@@ -25,8 +25,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence render pipeline: add a typed render model for layout/SVG render-model dispatch while
   keeping the semantic JSON parse API stable.
 - Render text subsystem: split shared text types, deterministic width heuristics, Mermaid-like
-  Markdown tokenization, SVG/font bbox helpers, and flowchart HTML parity helpers into dedicated
-  `text/*` modules while keeping existing `crate::text::*` callers stable.
+  Markdown tokenization, Markdown HTML/XHTML label fragments, SVG/font bbox helpers, and flowchart
+  HTML parity helpers into dedicated `text/*` modules while keeping existing `crate::text::*`
+  callers stable.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on
   a hand-maintained file list.
 
