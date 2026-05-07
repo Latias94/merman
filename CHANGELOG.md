@@ -97,6 +97,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/class/label.rs`.
 - Class renderer: move render lookup maps, small config helpers, and timing detail emission into
   `svg/parity/class/context.rs`.
+- Class renderer: move HTML class node body emission into `svg/parity/class/node.rs`.
 - Render text tests: move markdown-only tokenization and label-fragment tests next to the split
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on

@@ -15,12 +15,10 @@ use super::namespace::{
     close_class_namespace_subgraph, transition_class_namespace_subgraph,
 };
 use super::node::{
-    ClassHtmlNodeLabelGroupSpec, ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext,
-    ClassNodeDividerContext, ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
-    measure_class_html_node_rows, render_class_html_node_label_group,
-    render_class_html_node_rows_group, render_class_node_basic_container,
-    render_class_node_dividers, render_class_node_shell_open, render_class_svg_node_runs_group,
-    render_class_svg_title_group,
+    ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeDividerContext,
+    ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
+    render_class_html_node_body, render_class_node_basic_container, render_class_node_dividers,
+    render_class_node_shell_open, render_class_svg_node_runs_group, render_class_svg_title_group,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -886,283 +884,44 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
         detail.path_bounds += basic_container.stats.path_bounds;
         detail.path_bounds_calls += basic_container.stats.path_bounds_calls;
         let w = basic_container.geometry.w;
-        let h = basic_container.geometry.h;
         let left = basic_container.geometry.left;
         let rough_seed = basic_container.geometry.rough_seed;
 
         let use_html_labels = diagram_use_html_labels;
         if use_html_labels {
-            let padding = _class_padding.max(0.0);
-            let gap = padding;
-            let members_rows = node.members.len();
-            let methods_rows = node.methods.len();
-            let render_extra_box =
-                members_rows == 0 && methods_rows == 0 && !hide_empty_members_box;
-            let content_bbox_height = if render_extra_box {
-                (h - 4.0 * padding).max(0.0)
-            } else if members_rows == 0 && methods_rows == 0 {
-                (h - padding).max(0.0)
-            } else {
-                (h - 2.0 * padding).max(0.0)
-            };
-            let content_top = -content_bbox_height / 2.0;
-            let text_translate_y = if render_extra_box {
-                content_top
-            } else if members_rows == 0 && methods_rows == 0 {
-                content_top + padding * 1.5
-            } else {
-                content_top + padding
-            };
-            let class_row_metrics = layout.class_row_metrics_by_id.get(n.id.as_str());
-
-            let title_text = decode_entities_minimal_cow(node.text.trim());
-            let mut title_max_width_px = crate::class::class_html_create_text_width_px(
-                title_text.as_ref(),
-                measurer,
-                &html_calc_text_style,
-            );
-            let title_calc_max_width_px = title_max_width_px;
-            let mut title_metrics = class_html_title_metrics(
-                measurer,
-                &text_style,
-                title_text.as_ref(),
-                title_max_width_px,
-            );
-            if title_text.chars().count() > 4 && title_metrics.width > 0.0 {
-                title_metrics.width =
-                    crate::text::round_to_1_64_px((title_metrics.width - (1.0 / 64.0)).max(0.0));
-            }
-            if let Some(width) = crate::class::class_html_known_rendered_width_override_px(
-                title_text.as_ref(),
-                &text_style,
-                true,
-            ) {
-                title_metrics.width = width;
-            }
-            if title_text.chars().count() == 1
-                && !(title_text.contains('*')
-                    || title_text.contains('_')
-                    || title_text.contains('`'))
-            {
-                let rendered_title_max_width_px =
-                    class_html_label_max_width_px(title_metrics.width, true);
-                title_max_width_px = if crate::class::class_html_known_calc_text_width_override_px(
-                    title_text.as_ref(),
-                    &html_calc_text_style,
-                )
-                .is_some()
-                {
-                    title_calc_max_width_px.min(rendered_title_max_width_px)
-                } else {
-                    rendered_title_max_width_px
-                };
-            }
-            let title_width = title_metrics.width.max(1.0);
-            let title_height = title_metrics.height.max(line_height).max(1.0);
-            let title_x = -title_width / 2.0;
-
-            let annotation_text = node.annotations.first().map(|annotation| {
-                let decoded = decode_entities_minimal_cow(annotation.trim());
-                let mut label = String::new();
-                label.push('«');
-                label.push_str(decoded.as_ref());
-                label.push('»');
-                label
-            });
-            let annotation_metrics = annotation_text.as_deref().map(|text| {
-                let max_width_px = crate::class::class_html_create_text_width_px(
-                    text,
+            let html_stats = render_class_html_node_body(
+                ClassNodeRenderState {
+                    out: &mut out,
+                    content_bounds: &mut content_bounds,
+                },
+                ClassNodeRenderPosition {
+                    node_tx,
+                    node_ty,
+                    node_bounds_tx,
+                    node_bounds_ty,
+                },
+                node,
+                basic_container.geometry,
+                layout
+                    .class_row_metrics_by_id
+                    .get(n.id.as_str())
+                    .map(|rows| rows.as_ref()),
+                &ClassHtmlNodeBodyContext {
                     measurer,
-                    &html_calc_text_style,
-                );
-                class_html_label_metrics(measurer, &text_style, text, max_width_px, "")
-            });
-            let annotation_width = annotation_metrics
-                .as_ref()
-                .map(|metrics| metrics.width.max(1.0))
-                .unwrap_or(0.0);
-            let annotation_height = annotation_metrics
-                .as_ref()
-                .map(|metrics| metrics.height.max(line_height).max(1.0))
-                .unwrap_or(0.0);
-            let annotation_group_x = if annotation_width > 0.0 {
-                -annotation_width / 2.0
-            } else {
-                0.0
-            };
-            let annotation_group_y = text_translate_y;
-            let title_y = annotation_height + text_translate_y;
-
-            let html_rows_ctx = ClassHtmlNodeRowsContext {
-                measurer,
-                text_style: &text_style,
-                html_calc_text_style: &html_calc_text_style,
-                line_height,
-            };
-            let members_rows_rendered = measure_class_html_node_rows(
-                &node.members,
-                class_row_metrics.map(|rows| rows.members.as_slice()),
-                &html_rows_ctx,
-            );
-            let members_group_raw_height = members_rows_rendered.raw_height;
-            let members_group_y = annotation_height + title_height + gap * 2.0 + text_translate_y;
-
-            let methods_offset_base = if members_group_raw_height > 0.0 {
-                members_group_raw_height + gap * 4.0
-            } else {
-                gap / 2.0 + gap * 4.0
-            };
-            let methods_rows_rendered = measure_class_html_node_rows(
-                &node.methods,
-                class_row_metrics.map(|rows| rows.methods.as_slice()),
-                &html_rows_ctx,
-            );
-            let methods_group_y =
-                annotation_height + title_height + methods_offset_base + text_translate_y;
-
-            let members_group_width = members_rows_rendered
-                .rows
-                .iter()
-                .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
-            let methods_group_width = methods_rows_rendered
-                .rows
-                .iter()
-                .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
-            let mut content_bbox_min_x = 0.0_f64;
-            let mut content_bbox_max_x = 0.0_f64;
-            for centered_width in [annotation_width, title_width] {
-                if centered_width > 0.0 {
-                    content_bbox_min_x = content_bbox_min_x.min(-centered_width / 2.0);
-                    content_bbox_max_x = content_bbox_max_x.max(centered_width / 2.0);
-                }
-            }
-            for left_aligned_width in [members_group_width, methods_group_width] {
-                if left_aligned_width > 0.0 {
-                    content_bbox_max_x = content_bbox_max_x.max(left_aligned_width);
-                }
-            }
-            let content_bbox_width = (content_bbox_max_x - content_bbox_min_x).max(0.0);
-            let members_x = -content_bbox_width / 2.0;
-
-            let divider_adjust = if render_extra_box { padding / 2.0 } else { 0.0 };
-            let divider1_y = (annotation_height - divider_adjust)
-                + (title_height - divider_adjust)
-                + content_top
-                + padding;
-            let divider2_y = (annotation_height - divider_adjust)
-                + (title_height - divider_adjust)
-                + (members_group_raw_height - divider_adjust)
-                + content_top
-                + padding
-                + gap * 2.0;
-
-            if let Some(annotation_text) = annotation_text.as_deref() {
-                let annotation_max_width_px = crate::class::class_html_create_text_width_px(
-                    annotation_text,
-                    measurer,
-                    &html_calc_text_style,
-                );
-                let annotation_div_style =
-                    class_html_div_style(annotation_width.max(1.0), annotation_max_width_px);
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="annotation-group text" transform="translate({}, {})">"#,
-                    fmt(annotation_group_x),
-                    fmt(annotation_group_y)
-                );
-                render_class_html_node_label_group(
-                    &mut out,
-                    &ClassHtmlNodeLabelGroupSpec {
-                        label_style: "",
-                        translate_y: -annotation_height / 2.0,
-                        width: annotation_width.max(1.0),
-                        height: annotation_height.max(1.0),
-                        div_style: annotation_div_style.as_str(),
-                        text: annotation_text,
-                        include_p: true,
-                        extra_span_class: Some("markdown-node-label"),
-                        span_style: Some(node_style_attr),
-                    },
-                );
-                out.push_str("</g>");
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
-                    fmt(annotation_group_y)
-                );
-            }
-
-            let title_div_style = class_html_div_style(title_width, title_max_width_px);
-            let _ = write!(
-                &mut out,
-                r#"<g class="label-group text" transform="translate({}, {})">"#,
-                fmt(title_x),
-                fmt(title_y)
-            );
-            render_class_html_node_label_group(
-                &mut out,
-                &ClassHtmlNodeLabelGroupSpec {
-                    label_style: "font-weight: bolder",
-                    translate_y: -12.0,
-                    width: title_width,
-                    height: title_height,
-                    div_style: title_div_style.as_str(),
-                    text: title_text.as_ref(),
-                    include_p: true,
-                    extra_span_class: Some("markdown-node-label"),
-                    span_style: Some(node_style_attr),
+                    text_style: &text_style,
+                    html_calc_text_style: &html_calc_text_style,
+                    line_height,
+                    class_padding: _class_padding,
+                    hide_empty_members_box,
+                    node_style_attr,
+                    node_stroke,
+                    node_stroke_width,
+                    node_stroke_dasharray,
+                    timing_enabled,
                 },
             );
-            out.push_str("</g>");
-
-            render_class_html_node_rows_group(
-                &mut out,
-                "members-group text",
-                members_x,
-                members_group_y,
-                &members_rows_rendered,
-                line_height,
-                node_style_attr,
-            );
-
-            render_class_html_node_rows_group(
-                &mut out,
-                "methods-group text",
-                members_x,
-                methods_group_y,
-                &methods_rows_rendered,
-                line_height,
-                node_style_attr,
-            );
-
-            if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
-                let divider_stats = render_class_node_dividers(
-                    ClassNodeRenderState {
-                        out: &mut out,
-                        content_bounds: &mut content_bounds,
-                    },
-                    ClassNodeRenderPosition {
-                        node_tx,
-                        node_ty,
-                        node_bounds_tx,
-                        node_bounds_ty,
-                    },
-                    left,
-                    left + w,
-                    [divider1_y, divider2_y],
-                    rough_seed,
-                    &ClassNodeDividerContext {
-                        node_style_attr,
-                        node_stroke,
-                        node_stroke_width,
-                        node_stroke_dasharray,
-                        timing_enabled,
-                    },
-                );
-                detail.path_bounds += divider_stats.path_bounds;
-                detail.path_bounds_calls += divider_stats.path_bounds_calls;
-            }
+            detail.path_bounds += html_stats.path_bounds;
+            detail.path_bounds_calls += html_stats.path_bounds_calls;
         } else {
             let padding = _class_padding.max(0.0);
             let gap = padding;

@@ -1,5 +1,5 @@
 use crate::entities::decode_entities_minimal_cow;
-use crate::model::{Bounds, LayoutNode};
+use crate::model::{Bounds, ClassNodeRowMetrics, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
@@ -10,7 +10,7 @@ use super::ClassSvgNode;
 use super::bounds::{include_path_bounds, include_xywh};
 use super::label::{
     class_html_div_style, class_html_label_max_width_px, class_html_label_metrics,
-    render_class_html_label,
+    class_html_title_metrics, render_class_html_label,
 };
 use super::rough::{
     class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
@@ -104,6 +104,20 @@ pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub include_p: bool,
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
+}
+
+pub(super) struct ClassHtmlNodeBodyContext<'a> {
+    pub measurer: &'a dyn TextMeasurer,
+    pub text_style: &'a TextStyle,
+    pub html_calc_text_style: &'a TextStyle,
+    pub line_height: f64,
+    pub class_padding: f64,
+    pub hide_empty_members_box: bool,
+    pub node_style_attr: &'a str,
+    pub node_stroke: &'a str,
+    pub node_stroke_width: &'a str,
+    pub node_stroke_dasharray: &'a str,
+    pub timing_enabled: bool,
 }
 
 pub(super) fn render_class_node_shell_open(
@@ -282,6 +296,278 @@ pub(super) fn render_class_node_dividers(
     }
 
     stats
+}
+
+pub(super) fn render_class_html_node_body(
+    state: ClassNodeRenderState<'_>,
+    position: ClassNodeRenderPosition,
+    node: &ClassSvgNode,
+    geometry: ClassNodeBoxGeometry,
+    class_row_metrics: Option<&ClassNodeRowMetrics>,
+    ctx: &ClassHtmlNodeBodyContext<'_>,
+) -> ClassNodeRenderStats {
+    let out = &mut *state.out;
+    let content_bounds = &mut *state.content_bounds;
+    let padding = ctx.class_padding.max(0.0);
+    let gap = padding;
+    let members_rows = node.members.len();
+    let methods_rows = node.methods.len();
+    let render_extra_box = members_rows == 0 && methods_rows == 0 && !ctx.hide_empty_members_box;
+    let content_bbox_height = if render_extra_box {
+        (geometry.h - 4.0 * padding).max(0.0)
+    } else if members_rows == 0 && methods_rows == 0 {
+        (geometry.h - padding).max(0.0)
+    } else {
+        (geometry.h - 2.0 * padding).max(0.0)
+    };
+    let content_top = -content_bbox_height / 2.0;
+    let text_translate_y = if render_extra_box {
+        content_top
+    } else if members_rows == 0 && methods_rows == 0 {
+        content_top + padding * 1.5
+    } else {
+        content_top + padding
+    };
+
+    let title_text = decode_entities_minimal_cow(node.text.trim());
+    let mut title_max_width_px = crate::class::class_html_create_text_width_px(
+        title_text.as_ref(),
+        ctx.measurer,
+        ctx.html_calc_text_style,
+    );
+    let title_calc_max_width_px = title_max_width_px;
+    let mut title_metrics = class_html_title_metrics(
+        ctx.measurer,
+        ctx.text_style,
+        title_text.as_ref(),
+        title_max_width_px,
+    );
+    if title_text.chars().count() > 4 && title_metrics.width > 0.0 {
+        title_metrics.width =
+            crate::text::round_to_1_64_px((title_metrics.width - (1.0 / 64.0)).max(0.0));
+    }
+    if let Some(width) = crate::class::class_html_known_rendered_width_override_px(
+        title_text.as_ref(),
+        ctx.text_style,
+        true,
+    ) {
+        title_metrics.width = width;
+    }
+    if title_text.chars().count() == 1
+        && !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`'))
+    {
+        let rendered_title_max_width_px = class_html_label_max_width_px(title_metrics.width, true);
+        title_max_width_px = if crate::class::class_html_known_calc_text_width_override_px(
+            title_text.as_ref(),
+            ctx.html_calc_text_style,
+        )
+        .is_some()
+        {
+            title_calc_max_width_px.min(rendered_title_max_width_px)
+        } else {
+            rendered_title_max_width_px
+        };
+    }
+    let title_width = title_metrics.width.max(1.0);
+    let title_height = title_metrics.height.max(ctx.line_height).max(1.0);
+    let title_x = -title_width / 2.0;
+
+    let annotation_text = node.annotations.first().map(|annotation| {
+        let decoded = decode_entities_minimal_cow(annotation.trim());
+        let mut label = String::new();
+        label.push('\u{00AB}');
+        label.push_str(decoded.as_ref());
+        label.push('\u{00BB}');
+        label
+    });
+    let annotation_metrics = annotation_text.as_deref().map(|text| {
+        let max_width_px = crate::class::class_html_create_text_width_px(
+            text,
+            ctx.measurer,
+            ctx.html_calc_text_style,
+        );
+        class_html_label_metrics(ctx.measurer, ctx.text_style, text, max_width_px, "")
+    });
+    let annotation_width = annotation_metrics
+        .as_ref()
+        .map(|metrics| metrics.width.max(1.0))
+        .unwrap_or(0.0);
+    let annotation_height = annotation_metrics
+        .as_ref()
+        .map(|metrics| metrics.height.max(ctx.line_height).max(1.0))
+        .unwrap_or(0.0);
+    let annotation_group_x = if annotation_width > 0.0 {
+        -annotation_width / 2.0
+    } else {
+        0.0
+    };
+    let annotation_group_y = text_translate_y;
+    let title_y = annotation_height + text_translate_y;
+
+    let html_rows_ctx = ClassHtmlNodeRowsContext {
+        measurer: ctx.measurer,
+        text_style: ctx.text_style,
+        html_calc_text_style: ctx.html_calc_text_style,
+        line_height: ctx.line_height,
+    };
+    let members_rows_rendered = measure_class_html_node_rows(
+        &node.members,
+        class_row_metrics.map(|rows| rows.members.as_slice()),
+        &html_rows_ctx,
+    );
+    let members_group_raw_height = members_rows_rendered.raw_height;
+    let members_group_y = annotation_height + title_height + gap * 2.0 + text_translate_y;
+
+    let methods_offset_base = if members_group_raw_height > 0.0 {
+        members_group_raw_height + gap * 4.0
+    } else {
+        gap / 2.0 + gap * 4.0
+    };
+    let methods_rows_rendered = measure_class_html_node_rows(
+        &node.methods,
+        class_row_metrics.map(|rows| rows.methods.as_slice()),
+        &html_rows_ctx,
+    );
+    let methods_group_y = annotation_height + title_height + methods_offset_base + text_translate_y;
+
+    let members_group_width = members_rows_rendered
+        .rows
+        .iter()
+        .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
+    let methods_group_width = methods_rows_rendered
+        .rows
+        .iter()
+        .fold(0.0_f64, |acc, row| acc.max(row.metrics.width.max(1.0)));
+    let mut content_bbox_min_x = 0.0_f64;
+    let mut content_bbox_max_x = 0.0_f64;
+    for centered_width in [annotation_width, title_width] {
+        if centered_width > 0.0 {
+            content_bbox_min_x = content_bbox_min_x.min(-centered_width / 2.0);
+            content_bbox_max_x = content_bbox_max_x.max(centered_width / 2.0);
+        }
+    }
+    for left_aligned_width in [members_group_width, methods_group_width] {
+        if left_aligned_width > 0.0 {
+            content_bbox_max_x = content_bbox_max_x.max(left_aligned_width);
+        }
+    }
+    let content_bbox_width = (content_bbox_max_x - content_bbox_min_x).max(0.0);
+    let members_x = -content_bbox_width / 2.0;
+
+    let divider_adjust = if render_extra_box { padding / 2.0 } else { 0.0 };
+    let divider1_y = (annotation_height - divider_adjust)
+        + (title_height - divider_adjust)
+        + content_top
+        + padding;
+    let divider2_y = (annotation_height - divider_adjust)
+        + (title_height - divider_adjust)
+        + (members_group_raw_height - divider_adjust)
+        + content_top
+        + padding
+        + gap * 2.0;
+
+    if let Some(annotation_text) = annotation_text.as_deref() {
+        let annotation_max_width_px = crate::class::class_html_create_text_width_px(
+            annotation_text,
+            ctx.measurer,
+            ctx.html_calc_text_style,
+        );
+        let annotation_div_style =
+            class_html_div_style(annotation_width.max(1.0), annotation_max_width_px);
+        let _ = write!(
+            out,
+            r#"<g class="annotation-group text" transform="translate({}, {})">"#,
+            fmt(annotation_group_x),
+            fmt(annotation_group_y)
+        );
+        render_class_html_node_label_group(
+            out,
+            &ClassHtmlNodeLabelGroupSpec {
+                label_style: "",
+                translate_y: -annotation_height / 2.0,
+                width: annotation_width.max(1.0),
+                height: annotation_height.max(1.0),
+                div_style: annotation_div_style.as_str(),
+                text: annotation_text,
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: Some(ctx.node_style_attr),
+            },
+        );
+        out.push_str("</g>");
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
+            fmt(annotation_group_y)
+        );
+    }
+
+    let title_div_style = class_html_div_style(title_width, title_max_width_px);
+    let _ = write!(
+        out,
+        r#"<g class="label-group text" transform="translate({}, {})">"#,
+        fmt(title_x),
+        fmt(title_y)
+    );
+    render_class_html_node_label_group(
+        out,
+        &ClassHtmlNodeLabelGroupSpec {
+            label_style: "font-weight: bolder",
+            translate_y: -12.0,
+            width: title_width,
+            height: title_height,
+            div_style: title_div_style.as_str(),
+            text: title_text.as_ref(),
+            include_p: true,
+            extra_span_class: Some("markdown-node-label"),
+            span_style: Some(ctx.node_style_attr),
+        },
+    );
+    out.push_str("</g>");
+
+    render_class_html_node_rows_group(
+        out,
+        "members-group text",
+        members_x,
+        members_group_y,
+        &members_rows_rendered,
+        ctx.line_height,
+        ctx.node_style_attr,
+    );
+
+    render_class_html_node_rows_group(
+        out,
+        "methods-group text",
+        members_x,
+        methods_group_y,
+        &methods_rows_rendered,
+        ctx.line_height,
+        ctx.node_style_attr,
+    );
+
+    if ctx.hide_empty_members_box && members_rows == 0 && methods_rows == 0 {
+        ClassNodeRenderStats::default()
+    } else {
+        render_class_node_dividers(
+            ClassNodeRenderState {
+                out,
+                content_bounds,
+            },
+            position,
+            geometry.left,
+            geometry.left + geometry.w,
+            [divider1_y, divider2_y],
+            geometry.rough_seed,
+            &ClassNodeDividerContext {
+                node_style_attr: ctx.node_style_attr,
+                node_stroke: ctx.node_stroke,
+                node_stroke_width: ctx.node_stroke_width,
+                node_stroke_dasharray: ctx.node_stroke_dasharray,
+                timing_enabled: ctx.timing_enabled,
+            },
+        )
+    }
 }
 
 pub(super) fn measure_class_html_node_rows(
