@@ -25,8 +25,9 @@ mod interface;
 
 mod label;
 use label::{
-    class_apply_inline_styles, class_html_div_style, class_html_label_max_width_px,
-    class_html_label_metrics, class_html_title_metrics,
+    bolder_delta_scale_for_svg, class_apply_inline_styles, class_html_div_style,
+    class_html_label_max_width_px, class_html_label_metrics, class_html_title_metrics,
+    class_svg_label_rect, round_to_1_1024_px_ties_to_even, wrap_class_svg_text_like_mermaid,
 };
 
 mod namespace;

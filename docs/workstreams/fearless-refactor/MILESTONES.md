@@ -187,6 +187,8 @@ Progress:
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
 - Moved class HTML label metrics/styles into `svg/parity/class/label.rs`.
+- Moved class SVG text wrapping, label bbox, and bold-width compensation helpers into
+  `svg/parity/class/label.rs`.
 - Removed the duplicate class namespace-subgraph edge path/label emitter and routed it through
   the shared optimized edge group path.
 - Extracted class interface node emission into `svg/parity/class/interface.rs`, sharing node

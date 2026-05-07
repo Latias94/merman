@@ -1214,200 +1214,9 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 detail.path_bounds_calls += divider_stats.path_bounds_calls;
             }
         } else {
-            fn label_rect(m: &crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
-                if !(m.width.is_finite() && m.height.is_finite()) {
-                    return None;
-                }
-                let w = m.width.max(0.0);
-                let h = m.height.max(0.0);
-                if w <= 0.0 || h <= 0.0 {
-                    return None;
-                }
-                let lines = m.line_count.max(1) as f64;
-                let y = y_offset - (h / (2.0 * lines));
-                Some(Rect::from_min_max(0.0, y, w, y + h))
-            }
-
             let padding = _class_padding.max(0.0);
             let gap = padding;
             let text_padding = 3.0;
-
-            fn mermaid_class_svg_create_text_width_px(
-                measurer: &dyn TextMeasurer,
-                text: &str,
-                style: &TextStyle,
-                wrap_probe_font_size: f64,
-            ) -> Option<f64> {
-                let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
-                // Mermaid `calculateTextWidth(...)` selects between `sans-serif` and the configured
-                // font family using `calculateTextDimensions(...)` (it does *not* always take the
-                // max width). Replicate that selection logic so our SVG-label wrapping matches
-                // upstream fixtures.
-                #[derive(Clone, Copy)]
-                struct Dim {
-                    width: f64,
-                    height: f64,
-                    line_height: f64,
-                }
-                fn dim_for(measurer: &dyn TextMeasurer, text: &str, style: &TextStyle) -> Dim {
-                    let width = measurer
-                        .measure_svg_simple_text_bbox_width_px(text, style)
-                        .max(0.0)
-                        .round();
-                    let height = measurer
-                        .measure_wrapped(text, style, None, WrapMode::SvgLike)
-                        .height
-                        .max(0.0)
-                        .round();
-                    Dim {
-                        width,
-                        height,
-                        line_height: height,
-                    }
-                }
-
-                let wrap_probe_style = TextStyle {
-                    font_family: style
-                        .font_family
-                        .clone()
-                        .or_else(|| Some("Arial".to_string())),
-                    font_size: wrap_probe_font_size,
-                    font_weight: None,
-                };
-                let sans_probe_style = TextStyle {
-                    font_family: Some("sans-serif".to_string()),
-                    font_size: wrap_probe_font_size,
-                    font_weight: None,
-                };
-                let dims = [
-                    dim_for(measurer, text, &sans_probe_style),
-                    dim_for(measurer, text, &wrap_probe_style),
-                ];
-                let pick_sans = dims[1].height.is_nan()
-                    || dims[1].width.is_nan()
-                    || dims[1].line_height.is_nan()
-                    || (dims[0].height > dims[1].height
-                        && dims[0].width > dims[1].width
-                        && dims[0].line_height > dims[1].line_height);
-                let w = dims[if pick_sans { 0 } else { 1 }].width + 50.0;
-                if w.is_finite() && w > 0.0 {
-                    Some(w)
-                } else {
-                    None
-                }
-            }
-
-            fn wrap_class_svg_text_like_mermaid(
-                text: &str,
-                measurer: &dyn TextMeasurer,
-                style: &TextStyle,
-                wrap_probe_font_size: f64,
-                bold: bool,
-            ) -> String {
-                let Some(wrap_width_px) = mermaid_class_svg_create_text_width_px(
-                    measurer,
-                    text,
-                    style,
-                    wrap_probe_font_size,
-                ) else {
-                    return text.to_string();
-                };
-
-                // Vendored font metrics under-estimate Chromium's `getComputedTextLength()` slightly
-                // for the default Mermaid font stack, which can shift character-level wrapping
-                // boundaries. Inflate non-bold computed-length checks so our deterministic wrapping
-                // matches upstream class SVG fixtures.
-                let computed_len_fudge = if bold {
-                    1.0
-                } else if style.font_size >= 20.0 {
-                    1.035
-                } else {
-                    1.02
-                };
-
-                let mut lines: Vec<String> = Vec::new();
-                for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
-                    let mut tokens = std::collections::VecDeque::from(
-                        crate::text::DeterministicTextMeasurer::split_line_to_words(&line),
-                    );
-                    let mut cur = String::new();
-
-                    while let Some(tok) = tokens.pop_front() {
-                        if cur.is_empty() && tok == " " {
-                            continue;
-                        }
-
-                        let candidate = format!("{cur}{tok}");
-                        let candidate_w = if bold {
-                            let bold_style = TextStyle {
-                                font_family: style.font_family.clone(),
-                                font_size: style.font_size,
-                                font_weight: Some("bolder".to_string()),
-                            };
-                            measurer.measure_svg_text_computed_length_px(
-                                candidate.trim_end(),
-                                &bold_style,
-                            )
-                        } else {
-                            measurer
-                                .measure_svg_text_computed_length_px(candidate.trim_end(), style)
-                        } * computed_len_fudge;
-                        if candidate_w <= wrap_width_px {
-                            cur = candidate;
-                            continue;
-                        }
-
-                        if !cur.trim().is_empty() {
-                            lines.push(cur.trim_end().to_string());
-                            cur.clear();
-                            tokens.push_front(tok);
-                            continue;
-                        }
-
-                        if tok == " " {
-                            continue;
-                        }
-
-                        let chars = tok.chars().collect::<Vec<_>>();
-                        let mut cut = 1usize;
-                        while cut < chars.len() {
-                            let head: String = chars[..cut].iter().collect();
-                            let head_w = if bold {
-                                let bold_style = TextStyle {
-                                    font_family: style.font_family.clone(),
-                                    font_size: style.font_size,
-                                    font_weight: Some("bolder".to_string()),
-                                };
-                                measurer
-                                    .measure_svg_text_computed_length_px(head.as_str(), &bold_style)
-                            } else {
-                                measurer.measure_svg_text_computed_length_px(head.as_str(), style)
-                            } * computed_len_fudge;
-                            if head_w > wrap_width_px {
-                                break;
-                            }
-                            cut += 1;
-                        }
-                        cut = cut.saturating_sub(1).max(1);
-                        let head: String = chars[..cut].iter().collect();
-                        let tail: String = chars[cut..].iter().collect();
-                        lines.push(head);
-                        if !tail.is_empty() {
-                            tokens.push_front(tail);
-                        }
-                    }
-
-                    if !cur.trim().is_empty() {
-                        lines.push(cur.trim_end().to_string());
-                    }
-                }
-
-                if lines.len() <= 1 {
-                    text.to_string()
-                } else {
-                    lines.join("\n")
-                }
-            }
 
             let mut title_text = decode_entities_minimal_cow(node.text.trim()).into_owned();
             if title_text.starts_with('\\') {
@@ -1445,36 +1254,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     WrapMode::SvgLike,
                 )
             } else {
-                fn round_to_1_1024_px_ties_to_even(v: f64) -> f64 {
-                    if !(v.is_finite() && v >= 0.0) {
-                        return 0.0;
-                    }
-                    let x = v * 1024.0;
-                    let f = x.floor();
-                    let frac = x - f;
-                    let i = if frac < 0.5 {
-                        f
-                    } else if frac > 0.5 {
-                        f + 1.0
-                    } else {
-                        let fi = f as i64;
-                        if fi % 2 == 0 { f } else { f + 1.0 }
-                    };
-                    let out = i / 1024.0;
-                    if out == -0.0 { 0.0 } else { out }
-                }
-
-                fn bolder_delta_scale_for_svg(font_size: f64) -> f64 {
-                    let fs = font_size.max(1.0);
-                    if fs <= 16.0 {
-                        1.0
-                    } else if fs >= 24.0 {
-                        0.6
-                    } else {
-                        1.0 - (fs - 16.0) * (0.4 / 8.0)
-                    }
-                }
-
                 let mut m = measurer.measure_wrapped(
                     &wrapped_title_text,
                     &text_style,
@@ -1555,7 +1334,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     WrapMode::SvgLike,
                 );
                 annotation_group_width = metrics.width.max(0.0);
-                if let Some(r) = label_rect(&metrics, 0.0) {
+                if let Some(r) = class_svg_label_rect(&metrics, 0.0) {
                     annotation_group_height = r.height().max(0.0);
                     annotation_rect = Some(r);
                 }
@@ -1567,7 +1346,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 });
             }
 
-            let title_rect = label_rect(&title_metrics, 0.0);
+            let title_rect = class_svg_label_rect(&title_metrics, 0.0);
             let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
             let label_group_width = title_metrics.width.max(0.0);
 
@@ -1624,7 +1403,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                         }
                     }
                     members_group_width = members_group_width.max(metrics.width.max(0.0));
-                    if let Some(r) = label_rect(&metrics, y_offset) {
+                    if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                         if let Some(cur) = members_rect.as_mut() {
                             cur.union(r);
                         } else {
@@ -1713,7 +1492,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                         metrics.width = 241.625;
                     }
                     methods_group_width = methods_group_width.max(metrics.width.max(0.0));
-                    if let Some(r) = label_rect(&metrics, y_offset) {
+                    if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                         if let Some(cur) = methods_rect.as_mut() {
                             cur.union(r);
                         } else {
