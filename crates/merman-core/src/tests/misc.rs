@@ -470,6 +470,112 @@ Drive: bad-score: Dad, Mum
 }
 
 #[test]
+fn parse_requirement_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r##"
+requirementDiagram
+accTitle: Requirement accTitle
+accDescr: Requirement accDescription
+direction LR
+requirement req_login:::critical {
+  id: REQ-1
+  text: "Login must work"
+  risk: high
+  verifymethod: test
+}
+element api {
+  type: service
+  docRef: docs/api.md
+}
+class api external
+classDef critical fill:#f9f,stroke:#333,color:#111
+classDef external stroke:#0f0
+req_login - verifies -> api
+"##;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "requirement");
+    match parsed.model {
+        RenderSemanticModel::Requirement(model) => {
+            assert_eq!(model.acc_title.as_deref(), Some("Requirement accTitle"));
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("Requirement accDescription")
+            );
+            assert_eq!(model.direction, "LR");
+            assert_eq!(model.requirements.len(), 1);
+            assert_eq!(model.requirements[0].name, "req_login");
+            assert_eq!(model.requirements[0].node_type, "Requirement");
+            assert_eq!(model.requirements[0].requirement_id, "REQ-1");
+            assert_eq!(model.requirements[0].text, "Login must work");
+            assert_eq!(model.requirements[0].risk, "High");
+            assert_eq!(model.requirements[0].verify_method, "Test");
+            assert!(
+                model.requirements[0]
+                    .classes
+                    .iter()
+                    .any(|c| c == "critical")
+            );
+            assert!(
+                model.requirements[0]
+                    .css_styles
+                    .iter()
+                    .any(|s| s == "fill:#f9f")
+            );
+            assert_eq!(model.elements.len(), 1);
+            assert_eq!(model.elements[0].name, "api");
+            assert_eq!(model.elements[0].element_type, "service");
+            assert_eq!(model.elements[0].doc_ref, "docs/api.md");
+            assert!(model.elements[0].classes.iter().any(|c| c == "external"));
+            assert_eq!(model.relationships.len(), 1);
+            assert_eq!(model.relationships[0].rel_type, "verifies");
+            assert_eq!(model.relationships[0].src, "req_login");
+            assert_eq!(model.relationships[0].dst, "api");
+            assert!(model.classes.contains_key("critical"));
+            assert!(model.classes.contains_key("external"));
+        }
+        other => panic!("requirement render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("requirement"));
+    assert_eq!(parsed_json.model["accTitle"], json!("Requirement accTitle"));
+    assert_eq!(
+        parsed_json.model["accDescr"],
+        json!("Requirement accDescription")
+    );
+    assert_eq!(parsed_json.model["direction"], json!("LR"));
+    assert_eq!(
+        parsed_json.model["requirements"][0]["name"],
+        json!("req_login")
+    );
+    assert_eq!(
+        parsed_json.model["requirements"][0]["requirementId"],
+        json!("REQ-1")
+    );
+    assert_eq!(
+        parsed_json.model["requirements"][0]["verifyMethod"],
+        json!("Test")
+    );
+    assert_eq!(
+        parsed_json.model["elements"][0]["docRef"],
+        json!("docs/api.md")
+    );
+    assert_eq!(
+        parsed_json.model["relationships"][0]["type"],
+        json!("verifies")
+    );
+    assert!(parsed_json.model.get("config").is_some());
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

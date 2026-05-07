@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
@@ -11,63 +12,17 @@ pub(super) fn render_requirement_diagram_svg(
     diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RequirementSemanticNode {
-        name: String,
-        #[serde(rename = "type")]
-        node_type: String,
-        #[serde(default)]
-        classes: Vec<String>,
-        #[serde(default)]
-        css_styles: Vec<String>,
-        #[serde(default, rename = "requirementId")]
-        requirement_id: String,
-        #[serde(default)]
-        text: String,
-        #[serde(default)]
-        risk: String,
-        #[serde(default, rename = "verifyMethod")]
-        verify_method: String,
-    }
+    let model: RequirementDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_requirement_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
+}
 
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RequirementSemanticElement {
-        name: String,
-        #[serde(rename = "type")]
-        element_type: String,
-        #[serde(default)]
-        classes: Vec<String>,
-        #[serde(default)]
-        css_styles: Vec<String>,
-        #[serde(default, rename = "docRef")]
-        doc_ref: String,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    struct RequirementSemanticRelationship {
-        #[serde(rename = "type")]
-        rel_type: String,
-        src: String,
-        dst: String,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct RequirementSemanticModel {
-        #[serde(default)]
-        acc_title: Option<String>,
-        #[serde(default)]
-        acc_descr: Option<String>,
-        #[serde(default)]
-        requirements: Vec<RequirementSemanticNode>,
-        #[serde(default)]
-        elements: Vec<RequirementSemanticElement>,
-        #[serde(default)]
-        relationships: Vec<RequirementSemanticRelationship>,
-    }
-
+pub(super) fn render_requirement_diagram_svg_model(
+    layout: &RequirementDiagramLayout,
+    model: &RequirementDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
     }
@@ -282,17 +237,16 @@ pub(super) fn render_requirement_diagram_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
 
-    let model: RequirementSemanticModel = crate::json::from_value_ref(semantic)?;
-    let relationships = model.relationships.clone();
-    let req_by_id: std::collections::BTreeMap<String, RequirementSemanticNode> = model
+    let relationships = &model.relationships;
+    let req_by_id: std::collections::HashMap<&str, _> = model
         .requirements
-        .into_iter()
-        .map(|n| (n.name.clone(), n))
+        .iter()
+        .map(|n| (n.name.as_str(), n))
         .collect();
-    let el_by_id: std::collections::BTreeMap<String, RequirementSemanticElement> = model
+    let el_by_id: std::collections::HashMap<&str, _> = model
         .elements
-        .into_iter()
-        .map(|n| (n.name.clone(), n))
+        .iter()
+        .map(|n| (n.name.as_str(), n))
         .collect();
 
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
@@ -427,12 +381,12 @@ pub(super) fn render_requirement_diagram_svg(
         format!("{src}-{dst}-{idx}")
     }
 
-    let mut edge_rel_type_by_id: std::collections::HashMap<String, String> =
+    let mut edge_rel_type_by_id: std::collections::HashMap<String, &str> =
         std::collections::HashMap::new();
-    for rel in &relationships {
+    for rel in relationships {
         // Match upstream edge id collisions (counter is always 0).
         let edge_id = requirement_edge_id(&rel.src, &rel.dst, 0);
-        edge_rel_type_by_id.insert(edge_id, rel.rel_type.clone());
+        edge_rel_type_by_id.insert(edge_id, rel.rel_type.as_str());
     }
 
     let bounds = layout.bounds.clone().unwrap_or_else(|| {
@@ -561,10 +515,7 @@ pub(super) fn render_requirement_diagram_svg(
 
     out.push_str(r#"<g class="edgePaths">"#);
     for e in &layout.edges {
-        let rel_type = edge_rel_type_by_id
-            .get(&e.id)
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let rel_type = edge_rel_type_by_id.get(&e.id).copied().unwrap_or("");
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
         let class = format!("edge-pattern-{pattern} edge-thickness-normal relationshipLine");
@@ -602,10 +553,7 @@ pub(super) fn render_requirement_diagram_svg(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     for e in &layout.edges {
-        let rel_type = edge_rel_type_by_id
-            .get(&e.id)
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let rel_type = edge_rel_type_by_id.get(&e.id).copied().unwrap_or("");
         if rel_type.trim().is_empty() {
             continue;
         }
@@ -667,15 +615,15 @@ pub(super) fn render_requirement_diagram_svg(
         let cx = n.x + n.width / 2.0;
         let cy = n.y + n.height / 2.0;
 
-        let mut node_classes: Vec<String> = Vec::new();
-        let mut css_styles: Vec<String> = Vec::new();
+        let mut node_classes: Vec<&str> = Vec::new();
+        let mut css_styles: &[String] = &[];
         let mut label_lines: Vec<RequirementNodeLabelLine> = Vec::new();
         let mut type_height = 0.0;
         let mut name_height = 0.0;
         let mut has_body = false;
-        if let Some(req) = req_by_id.get(&n.id) {
-            node_classes = req.classes.clone();
-            css_styles = req.css_styles.clone();
+        if let Some(req) = req_by_id.get(n.id.as_str()) {
+            node_classes = req.classes.iter().map(String::as_str).collect();
+            css_styles = &req.css_styles;
 
             let type_display = format!("<<{}>>", req.node_type);
             let type_calc = format!("&lt;&lt;{}&gt;&gt;", req.node_type);
@@ -835,9 +783,9 @@ pub(super) fn render_requirement_diagram_svg(
                     has_body = true;
                 }
             }
-        } else if let Some(el) = el_by_id.get(&n.id) {
-            node_classes = el.classes.clone();
-            css_styles = el.css_styles.clone();
+        } else if let Some(el) = el_by_id.get(n.id.as_str()) {
+            node_classes = el.classes.iter().map(String::as_str).collect();
+            css_styles = &el.css_styles;
 
             let type_display = "<<Element>>".to_string();
             let type_calc = "&lt;&lt;Element&gt;&gt;".to_string();
@@ -947,8 +895,8 @@ pub(super) fn render_requirement_diagram_svg(
             }
         }
 
-        if !node_classes.iter().any(|c| c == "default") {
-            node_classes.insert(0, "default".to_string());
+        if !node_classes.contains(&"default") {
+            node_classes.insert(0, "default");
         }
         let classes_str = if node_classes.is_empty() {
             "default node".to_string()
@@ -977,7 +925,7 @@ pub(super) fn render_requirement_diagram_svg(
             fill_override,
             stroke_override,
             stroke_width_override,
-        ) = parse_node_style_overrides(&css_styles);
+        ) = parse_node_style_overrides(css_styles);
         let fill_color = fill_override.as_deref().unwrap_or("#ECECFF");
         let stroke_color = stroke_override.as_deref().unwrap_or("#9370DB");
         let stroke_width = stroke_width_override.unwrap_or(1.3);

@@ -6,55 +6,8 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use serde::Deserialize;
+use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 use serde_json::Value;
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RequirementNodeModel {
-    name: String,
-    #[serde(rename = "type")]
-    node_type: String,
-    #[serde(default)]
-    requirement_id: Option<String>,
-    #[serde(default)]
-    text: Option<String>,
-    #[serde(default)]
-    risk: Option<String>,
-    #[serde(default)]
-    verify_method: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ElementNodeModel {
-    name: String,
-    #[serde(rename = "type")]
-    node_type: String,
-    #[serde(default)]
-    doc_ref: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RequirementRelationshipModel {
-    #[serde(rename = "type")]
-    rel_type: String,
-    src: String,
-    dst: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RequirementDiagramModel {
-    #[serde(default)]
-    direction: Option<String>,
-    #[serde(default)]
-    requirements: Vec<RequirementNodeModel>,
-    #[serde(default)]
-    elements: Vec<ElementNodeModel>,
-    #[serde(default)]
-    relationships: Vec<RequirementRelationshipModel>,
-}
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64().or_else(|| v.as_i64().map(|n| n as f64))
@@ -300,14 +253,35 @@ fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
     format!("{src}-{dst}-{idx}")
 }
 
+fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}{value}")
+    }
+}
+
 pub fn layout_requirement_diagram(
     model: &Value,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<RequirementDiagramLayout> {
-    let model: RequirementDiagramModel = from_value_ref(model)?;
+    let model: RequirementDiagramRenderModel = from_value_ref(model)?;
+    layout_requirement_diagram_typed(&model, effective_config, text_measurer)
+}
 
-    let direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
+pub fn layout_requirement_diagram_typed(
+    model: &RequirementDiagramRenderModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+) -> Result<RequirementDiagramLayout> {
+    let direction = if model.direction.trim().is_empty() {
+        normalize_dir("TB")
+    } else {
+        normalize_dir(&model.direction)
+    };
+
     let nodesep = config_f64(effective_config, &["nodeSpacing"])
         .or_else(|| config_f64(effective_config, &["flowchart", "nodeSpacing"]))
         .unwrap_or(50.0);
@@ -368,40 +342,16 @@ pub fn layout_requirement_diagram(
         lines.push((type_disp, type_calc, false));
         lines.push((r.name.clone(), r.name.clone(), true));
 
-        let id_line = r
-            .requirement_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("ID: {s}"))
-            .unwrap_or_default();
+        let id_line = prefixed_nonempty_line("ID: ", &r.requirement_id);
         lines.push((id_line.clone(), id_line, false));
 
-        let text_line = r
-            .text
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Text: {s}"))
-            .unwrap_or_default();
+        let text_line = prefixed_nonempty_line("Text: ", &r.text);
         lines.push((text_line.clone(), text_line, false));
 
-        let risk_line = r
-            .risk
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Risk: {s}"))
-            .unwrap_or_default();
+        let risk_line = prefixed_nonempty_line("Risk: ", &r.risk);
         lines.push((risk_line.clone(), risk_line, false));
 
-        let verify_line = r
-            .verify_method
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Verification: {s}"))
-            .unwrap_or_default();
+        let verify_line = prefixed_nonempty_line("Verification: ", &r.verify_method);
         lines.push((verify_line.clone(), verify_line, false));
 
         let box_layout = requirement_box_layout(
@@ -434,7 +384,7 @@ pub fn layout_requirement_diagram(
         lines.push((type_disp, type_calc, false));
         lines.push((e.name.clone(), e.name.clone(), true));
 
-        let type_line = e.node_type.trim().to_string();
+        let type_line = e.element_type.trim().to_string();
         let type_line = if type_line.is_empty() {
             String::new()
         } else {
@@ -442,13 +392,7 @@ pub fn layout_requirement_diagram(
         };
         lines.push((type_line.clone(), type_line, false));
 
-        let doc_line = e
-            .doc_ref
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|s| format!("Doc Ref: {s}"))
-            .unwrap_or_default();
+        let doc_line = prefixed_nonempty_line("Doc Ref: ", &e.doc_ref);
         lines.push((doc_line.clone(), doc_line, false));
 
         let box_layout = requirement_box_layout(

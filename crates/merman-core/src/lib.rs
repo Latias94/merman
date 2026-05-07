@@ -446,6 +446,10 @@ impl Engine {
                 .map(RenderSemanticModel::Timeline),
             "journey" => crate::diagrams::journey::parse_journey_model_for_render(code, meta)
                 .map(RenderSemanticModel::Journey),
+            "requirement" => {
+                crate::diagrams::requirement::parse_requirement_model_for_render(code, meta)
+                    .map(RenderSemanticModel::Requirement)
+            }
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -560,6 +564,14 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Requirement(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
         }
     }
 
@@ -578,6 +590,7 @@ impl Engine {
             RenderSemanticModel::Packet(_) => "packet",
             RenderSemanticModel::Timeline(_) => "timeline",
             RenderSemanticModel::Journey(_) => "journey",
+            RenderSemanticModel::Requirement(_) => "requirement",
         }
     }
 

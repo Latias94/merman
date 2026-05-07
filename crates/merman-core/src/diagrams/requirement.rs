@@ -1,42 +1,78 @@
 use crate::{Error, ParseMetadata, Result};
-use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, HashMap};
 use std::iter::Peekable;
 use std::str::Lines;
 
-#[derive(Debug, Clone)]
-struct Requirement {
-    name: String,
-    requirement_type: String,
-    requirement_id: String,
-    text: String,
-    risk: String,
-    verify_method: String,
-    css_styles: Vec<String>,
-    classes: Vec<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequirementRenderNode {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    #[serde(default, rename = "requirementId")]
+    pub requirement_id: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub risk: String,
+    #[serde(default, rename = "verifyMethod")]
+    pub verify_method: String,
+    #[serde(default)]
+    pub css_styles: Vec<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-struct Element {
-    name: String,
-    element_type: String,
-    doc_ref: String,
-    css_styles: Vec<String>,
-    classes: Vec<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequirementRenderElement {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub element_type: String,
+    #[serde(default, rename = "docRef")]
+    pub doc_ref: String,
+    #[serde(default)]
+    pub css_styles: Vec<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
-struct Relation {
-    relationship_type: String,
-    src: String,
-    dst: String,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RequirementRenderRelationship {
+    #[serde(rename = "type")]
+    pub rel_type: String,
+    pub src: String,
+    pub dst: String,
 }
 
-#[derive(Debug, Clone)]
-struct RequirementClass {
-    id: String,
-    styles: Vec<String>,
-    text_styles: Vec<String>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequirementRenderClass {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequirementDiagramRenderModel {
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub direction: String,
+    #[serde(default)]
+    pub requirements: Vec<RequirementRenderNode>,
+    #[serde(default)]
+    pub elements: Vec<RequirementRenderElement>,
+    #[serde(default)]
+    pub relationships: Vec<RequirementRenderRelationship>,
+    #[serde(default)]
+    pub classes: BTreeMap<String, RequirementRenderClass>,
 }
 
 #[derive(Debug, Clone)]
@@ -76,15 +112,15 @@ impl ElementBuilder {
 #[derive(Debug, Default, Clone)]
 struct RequirementDb {
     direction: String,
-    relations: Vec<Relation>,
+    relations: Vec<RequirementRenderRelationship>,
 
-    requirements: HashMap<String, Requirement>,
+    requirements: HashMap<String, RequirementRenderNode>,
     requirement_order: Vec<String>,
 
-    elements: HashMap<String, Element>,
+    elements: HashMap<String, RequirementRenderElement>,
     element_order: Vec<String>,
 
-    classes: HashMap<String, RequirementClass>,
+    classes: HashMap<String, RequirementRenderClass>,
 }
 
 impl RequirementDb {
@@ -111,9 +147,9 @@ impl RequirementDb {
         self.requirement_order.push(name.to_string());
         self.requirements.insert(
             name.to_string(),
-            Requirement {
+            RequirementRenderNode {
                 name: name.to_string(),
-                requirement_type: requirement_type.to_string(),
+                node_type: requirement_type.to_string(),
                 requirement_id: b.requirement_id,
                 text: b.text,
                 risk: b.risk,
@@ -131,7 +167,7 @@ impl RequirementDb {
         self.element_order.push(name.to_string());
         self.elements.insert(
             name.to_string(),
-            Element {
+            RequirementRenderElement {
                 name: name.to_string(),
                 element_type: b.element_type,
                 doc_ref: b.doc_ref,
@@ -142,8 +178,8 @@ impl RequirementDb {
     }
 
     fn add_relationship(&mut self, relationship_type: &str, src: &str, dst: &str) {
-        self.relations.push(Relation {
-            relationship_type: relationship_type.to_string(),
+        self.relations.push(RequirementRenderRelationship {
+            rel_type: relationship_type.to_string(),
             src: src.to_string(),
             dst: dst.to_string(),
         });
@@ -191,7 +227,7 @@ impl RequirementDb {
             let style_class =
                 self.classes
                     .entry(id.to_string())
-                    .or_insert_with(|| RequirementClass {
+                    .or_insert_with(|| RequirementRenderClass {
                         id: id.to_string(),
                         styles: Vec::new(),
                         text_styles: Vec::new(),
@@ -232,80 +268,39 @@ impl RequirementDb {
         }
     }
 
-    fn to_model(
+    fn to_render_model(
         &self,
-        meta: &ParseMetadata,
         acc_title: Option<String>,
         acc_descr: Option<String>,
-    ) -> Value {
+    ) -> RequirementDiagramRenderModel {
         let requirements = self
             .requirement_order
             .iter()
             .filter_map(|k| self.requirements.get(k))
-            .map(|r| {
-                json!({
-                    "name": r.name,
-                    "type": r.requirement_type,
-                    "requirementId": r.requirement_id,
-                    "text": r.text,
-                    "risk": r.risk,
-                    "verifyMethod": r.verify_method,
-                    "cssStyles": r.css_styles,
-                    "classes": r.classes,
-                })
-            })
+            .cloned()
             .collect::<Vec<_>>();
 
         let elements = self
             .element_order
             .iter()
             .filter_map(|k| self.elements.get(k))
-            .map(|e| {
-                json!({
-                    "name": e.name,
-                    "type": e.element_type,
-                    "docRef": e.doc_ref,
-                    "cssStyles": e.css_styles,
-                    "classes": e.classes,
-                })
-            })
+            .cloned()
             .collect::<Vec<_>>();
 
-        let relationships = self
-            .relations
-            .iter()
-            .map(|r| {
-                json!({
-                    "type": r.relationship_type,
-                    "src": r.src,
-                    "dst": r.dst,
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut classes = Map::new();
+        let mut classes = BTreeMap::new();
         for (k, c) in &self.classes {
-            classes.insert(
-                k.clone(),
-                json!({
-                    "id": c.id,
-                    "styles": c.styles,
-                    "textStyles": c.text_styles,
-                }),
-            );
+            classes.insert(k.clone(), c.clone());
         }
 
-        json!({
-            "type": meta.diagram_type,
-            "accTitle": acc_title,
-            "accDescr": acc_descr,
-            "direction": self.direction,
-            "requirements": requirements,
-            "elements": elements,
-            "relationships": relationships,
-            "classes": Value::Object(classes),
-            "config": meta.effective_config.as_value().clone(),
-        })
+        RequirementDiagramRenderModel {
+            acc_title,
+            acc_descr,
+            direction: self.direction.clone(),
+            requirements,
+            elements,
+            relationships: self.relations.clone(),
+            classes,
+        }
     }
 }
 
@@ -320,10 +315,35 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
 }
 
 pub fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_requirement_impl(code, meta)
+    let model = parse_requirement_model(code, meta)?;
+    Ok(requirement_model_to_value(model, meta))
 }
 
-fn parse_requirement_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
+pub fn parse_requirement_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RequirementDiagramRenderModel> {
+    parse_requirement_model(code, meta)
+}
+
+fn requirement_model_to_value(model: RequirementDiagramRenderModel, meta: &ParseMetadata) -> Value {
+    json!({
+        "type": meta.diagram_type,
+        "accTitle": model.acc_title,
+        "accDescr": model.acc_descr,
+        "direction": model.direction,
+        "requirements": model.requirements,
+        "elements": model.elements,
+        "relationships": model.relationships,
+        "classes": model.classes,
+        "config": meta.effective_config.as_value().clone(),
+    })
+}
+
+fn parse_requirement_model(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RequirementDiagramRenderModel> {
     let mut db = RequirementDb::new();
 
     let mut acc_title: Option<String> = None;
@@ -419,7 +439,7 @@ fn parse_requirement_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    Ok(db.to_model(meta, acc_title, acc_descr))
+    Ok(db.to_render_model(acc_title, acc_descr))
 }
 
 fn strip_inline_comment(line: &str) -> String {

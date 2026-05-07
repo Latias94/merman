@@ -27,7 +27,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `kanban` | `typed-first` | typed layout + layout-only SVG | Migrated after sequence; keep as the small-diagram typed model pattern. |
 | `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |
 | `block` | `json-fallback` | JSON layout + JSON SVG | Defer unless profiling shows JSON cost. |
-| `requirement` | `json-fallback` | JSON layout + JSON SVG | Defer unless renderer cleanup requires typed data. |
+| `requirement` | `typed-first` | typed layout + typed SVG | Requirements/relations/classes now share the core render model. |
 | `radar` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `treemap` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `info` | `json-fallback` | JSON layout + JSON SVG | Defer. |
