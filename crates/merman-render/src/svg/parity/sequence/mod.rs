@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod activation;
 mod actors;
 mod css;
 mod debug;

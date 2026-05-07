@@ -148,6 +148,8 @@ Progress:
   `svg/parity/sequence/actors.rs`.
 - Extracted sequence top/bottom actor box and lifeline emission into
   `svg/parity/sequence/actors.rs`.
+- Extracted sequence activation precomputation and group emission into
+  `svg/parity/sequence/activation.rs`.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

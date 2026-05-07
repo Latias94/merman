@@ -51,6 +51,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move top/bottom actor box and lifeline emission into
   `svg/parity/sequence/actors.rs`.
+- Sequence renderer: move activation precomputation and group emission into
+  `svg/parity/sequence/activation.rs`.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.

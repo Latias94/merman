@@ -1,4 +1,5 @@
 use super::super::*;
+use super::activation::{build_sequence_activation_plan, render_sequence_activation_group};
 use super::actors::{
     render_sequence_actor_man_bottoms, render_sequence_actor_man_tops,
     render_sequence_actor_popup_menus, render_sequence_bottom_actors,
@@ -309,156 +310,16 @@ fn render_sequence_diagram_svg_inner(
 
     render_sequence_actor_man_tops(&mut out, &model, &nodes_by_id, actor_height);
 
-    // Mermaid draws activation boxes by creating an anchored `<g>` at ACTIVE_START and inserting the
-    // `<rect class="activation{0..2}">` when the corresponding ACTIVE_END is encountered.
-    //
-    // Important DOM detail: if an activation is started but never closed, Mermaid still creates the
-    // anchored `<g/>` but never inserts a `<rect>`. Preserve that behavior for DOM parity.
-    #[derive(Debug, Clone)]
-    struct SequenceActivationStart {
-        startx: f64,
-        starty: f64,
-        start_index: usize,
-        group_index: usize,
-    }
-
-    #[derive(Debug, Clone)]
-    struct SequenceActivationRect {
-        startx: f64,
-        starty: f64,
-        width: f64,
-        height: f64,
-        class_idx: usize,
-        #[allow(dead_code)]
-        start_index: usize,
-    }
-
-    fn actor_center_x(nodes_by_id: &FxHashMap<&str, &LayoutNode>, actor_id: &str) -> Option<f64> {
-        let node_id = format!("actor-top-{actor_id}");
-        nodes_by_id.get(node_id.as_str()).copied().map(|n| n.x)
-    }
-
-    fn lifeline_y(
-        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-        actor_id: &str,
-    ) -> Option<(f64, f64)> {
-        let edge_id = format!("lifeline-{actor_id}");
-        let e = edges_by_id.get(edge_id.as_str()).copied()?;
-        let y0 = e.points.first()?.y;
-        let y1 = e.points.last()?.y;
-        Some((y0, y1))
-    }
-
-    let activation_width = seq_cfg
-        .get("activationWidth")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(10.0)
-        .max(1.0);
-    let activation_fill = effective_config
-        .get("themeVariables")
-        .and_then(|v| {
-            v.get("activationBkgColor")
-                .or_else(|| v.get("noteBkgColor"))
-        })
-        .and_then(|v| v.as_str())
-        .unwrap_or("#EDF2AE");
-    let activation_stroke = effective_config
-        .get("themeVariables")
-        .and_then(|v| {
-            v.get("activationBorderColor")
-                .or_else(|| v.get("noteBorderColor"))
-        })
-        .and_then(|v| v.as_str())
-        .unwrap_or("#666");
-
-    let mut last_line_y: Option<f64> = None;
-    let mut activation_counter: usize = 0;
-    let mut activation_stacks: std::collections::BTreeMap<String, Vec<SequenceActivationStart>> =
-        std::collections::BTreeMap::new();
-    let mut activation_groups: Vec<Option<SequenceActivationRect>> = Vec::new();
-
     // Mermaid creates activation placeholders at ACTIVE_START and inserts the `<rect>` once the
     // corresponding ACTIVE_END is encountered. We store the final rect geometry during this
     // first pass and remember which message id should emit which activation group.
-    let mut activation_group_by_start_id: FxHashMap<String, usize> =
-        FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
-
-    for msg in &model.messages {
-        if let Some(y) = msg_line_y(&edges_by_id, &msg.id) {
-            last_line_y = Some(y);
-        }
-
-        match msg.message_type {
-            // ACTIVE_START
-            17 => {
-                let Some(actor_id) = msg.from.as_deref() else {
-                    continue;
-                };
-                let Some(cx) = actor_center_x(&nodes_by_id, actor_id) else {
-                    continue;
-                };
-                let has_any_activation = !activation_stacks.is_empty();
-                let stack = activation_stacks.entry(actor_id.to_string()).or_default();
-                let stacked_size = stack.len();
-                let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
-
-                let starty = last_line_y
-                    .or_else(|| lifeline_y(&edges_by_id, actor_id).map(|(y0, _y1)| y0))
-                    .unwrap_or(0.0);
-                let starty = if last_line_y.is_some() && has_any_activation {
-                    starty + 2.0
-                } else {
-                    starty
-                };
-
-                let group_index = activation_groups.len();
-                activation_groups.push(None);
-                activation_group_by_start_id.insert(msg.id.clone(), group_index);
-                stack.push(SequenceActivationStart {
-                    startx,
-                    starty,
-                    start_index: activation_counter,
-                    group_index,
-                });
-                activation_counter += 1;
-            }
-            // ACTIVE_END
-            18 => {
-                let Some(actor_id) = msg.from.as_deref() else {
-                    continue;
-                };
-                let Some(stack) = activation_stacks.get_mut(actor_id) else {
-                    continue;
-                };
-                let Some(start) = stack.pop() else {
-                    continue;
-                };
-
-                let mut starty = start.starty;
-                let mut vertical_pos = last_line_y.unwrap_or(starty);
-                if starty + 18.0 > vertical_pos {
-                    starty = vertical_pos - 6.0;
-                    vertical_pos += 12.0;
-                }
-
-                let class_idx = stack.len() % 3;
-                let rect = SequenceActivationRect {
-                    startx: start.startx,
-                    starty,
-                    width: activation_width,
-                    height: (vertical_pos - starty).max(0.0),
-                    class_idx,
-                    start_index: start.start_index,
-                };
-                if let Some(slot) = activation_groups.get_mut(start.group_index) {
-                    *slot = Some(rect);
-                }
-            }
-            _ => {}
-        }
-
-        let _ = msg.activate;
-    }
+    let activation_plan = build_sequence_activation_plan(
+        &model,
+        &nodes_by_id,
+        &edges_by_id,
+        seq_cfg,
+        effective_config,
+    );
 
     #[derive(Debug, Clone)]
     struct AltSection {
@@ -1260,25 +1121,7 @@ fn render_sequence_diagram_svg_inner(
                 out.push_str("</g>");
             }
 
-            if let Some(group_index) = activation_group_by_start_id.get(&msg.id).copied() {
-                // Mermaid creates a `<g>` placeholder at ACTIVE_START time and inserts the
-                // `<rect class="activation{0..2}">` once ACTIVE_END is encountered.
-                out.push_str("<g>");
-                if let Some(Some(a)) = activation_groups.get(group_index) {
-                    let _ = write!(
-                        &mut out,
-                        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
-                        x = fmt(a.startx),
-                        y = fmt(a.starty),
-                        w = fmt(a.width),
-                        h = fmt(a.height),
-                        idx = a.class_idx,
-                        fill = escape_xml(activation_fill),
-                        stroke = escape_xml(activation_stroke),
-                    );
-                }
-                out.push_str("</g>");
-            }
+            render_sequence_activation_group(&mut out, &activation_plan, &msg.id);
 
             let Some(idxs) = blocks_by_end_id.get(&msg.id) else {
                 continue;

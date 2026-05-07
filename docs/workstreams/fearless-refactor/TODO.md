@@ -126,7 +126,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - messages
   - notes
   - loops/alt/par/rect blocks
-  - activation rendering
+  - activation rendering (precomputation and group emission now live in
+    `sequence/activation.rs`)
   - viewport/bounds
 - [ ] Split `svg/parity/architecture.rs`.
   Proposed boundaries:
