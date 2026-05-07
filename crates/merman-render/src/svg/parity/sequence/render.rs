@@ -14,9 +14,10 @@ pub(super) fn render_sequence_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     render_sequence_diagram_svg_inner(
         layout,
-        semantic,
+        model,
         effective_config,
         &sanitize_config,
         diagram_title,
@@ -33,9 +34,28 @@ pub(super) fn render_sequence_diagram_svg_with_config(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
+    render_sequence_diagram_svg_model_with_config(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_sequence_diagram_svg_model_with_config(
+    layout: &SequenceDiagramLayout,
+    model: &SequenceSvgModel,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     render_sequence_diagram_svg_inner(
         layout,
-        semantic,
+        model.clone(),
         effective_config.as_value(),
         effective_config,
         diagram_title,
@@ -46,14 +66,13 @@ pub(super) fn render_sequence_diagram_svg_with_config(
 
 fn render_sequence_diagram_svg_inner(
     layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
+    mut model: SequenceSvgModel,
     effective_config: &serde_json::Value,
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let mut model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     if model.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
         if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
             model.title = Some(title.to_string());
@@ -396,7 +415,7 @@ fn render_sequence_diagram_svg_inner(
             if msg.message_type != 22 {
                 continue;
             }
-            let fill = msg.message.as_str().unwrap_or_default();
+            let fill = msg.message_text();
             let node_id = format!("rect-{}", msg.id);
             let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
                 continue;
@@ -1450,7 +1469,7 @@ fn render_sequence_diagram_svg_inner(
 
     let mut stack: Vec<BlockStackEntry> = Vec::new();
     for msg in &model.messages {
-        let raw_label = msg.message.as_str().unwrap_or_default();
+        let raw_label = msg.message_text();
         match msg.message_type {
             // notes
             2 => {
@@ -1849,7 +1868,7 @@ fn render_sequence_diagram_svg_inner(
         for msg in &model.messages {
             if msg.message_type == 2 {
                 let id = &msg.id;
-                let raw = msg.message.as_str().unwrap_or_default();
+                let raw = msg.message_text();
                 let node_id = format!("note-{id}");
                 let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
                     continue;
@@ -2863,24 +2882,14 @@ fn render_sequence_diagram_svg_inner(
         match msg.message_type {
             // AUTONUMBER
             26 => {
-                let obj = msg.message.as_object();
-                if let Some(visible) = obj.and_then(|o| o.get("visible")).and_then(|v| v.as_bool())
-                {
-                    sequence_number_visible = visible;
-                } else {
-                    sequence_number_visible = true;
-                }
-                if let Some(start) = obj
-                    .and_then(|o| o.get("start"))
-                    .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
-                {
-                    sequence_number = start;
-                }
-                if let Some(step) = obj
-                    .and_then(|o| o.get("step"))
-                    .and_then(|v| v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)))
-                {
-                    sequence_number_step = step;
+                if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
+                    sequence_number_visible = autonumber.visible;
+                    if let Some(start) = autonumber.start {
+                        sequence_number = start;
+                    }
+                    if let Some(step) = autonumber.step {
+                        sequence_number_step = step;
+                    }
                 }
                 continue;
             }
@@ -2903,7 +2912,7 @@ fn render_sequence_diagram_svg_inner(
         let p0 = &edge.points[0];
         let p1 = &edge.points[1];
 
-        let text = msg.message.as_str().unwrap_or_default();
+        let text = msg.message_text();
         if let Some(lbl) = &edge.label {
             let line_step =
                 sequence_text_overrides::sequence_text_line_step_px(actor_label_font_size);

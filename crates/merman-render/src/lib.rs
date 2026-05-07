@@ -176,6 +176,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?),
         ),
+        (RenderSemanticModel::Sequence(model), "sequence") => Ok(LayoutDiagram::SequenceDiagram(
+            sequence::layout_sequence_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        )),
         (RenderSemanticModel::Class(model), "classDiagram" | "class") => Ok(
             LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2_typed(
                 model,

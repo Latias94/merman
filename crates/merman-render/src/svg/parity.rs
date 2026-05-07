@@ -429,6 +429,17 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::SequenceDiagram(layout), RenderSemanticModel::Sequence(model)) => {
+            let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+            sequence::render_sequence_diagram_svg_model_with_config(
+                layout,
+                model,
+                &effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -491,6 +502,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 layout,
                 model,
                 effective_config.as_value(),
+                title,
+                measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::SequenceDiagram(layout), RenderSemanticModel::Sequence(model)) => {
+            sequence::render_sequence_diagram_svg_model_with_config(
+                layout,
+                model,
+                effective_config,
                 title,
                 measurer,
                 options,

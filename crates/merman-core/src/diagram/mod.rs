@@ -85,6 +85,7 @@ pub enum RenderSemanticModel {
     Json(Value),
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
     State(crate::diagrams::state::StateDiagramRenderModel),
+    Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
     Flowchart(crate::diagrams::flowchart::FlowchartV2Model),
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
     Class(crate::models::class_diagram::ClassDiagram),

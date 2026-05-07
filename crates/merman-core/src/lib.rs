@@ -423,6 +423,8 @@ impl Engine {
                 crate::diagrams::state::parse_state_model_for_render(code, meta)
                     .map(RenderSemanticModel::State)
             }
+            "sequence" => crate::diagrams::sequence::parse_sequence_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sequence),
             "flowchart-v2" | "flowchart" | "flowchart-elk" => {
                 crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
                     .map(RenderSemanticModel::Flowchart)
@@ -459,6 +461,17 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Sequence(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
             RenderSemanticModel::Mindmap(_) => {}
             RenderSemanticModel::Flowchart(_) => {}
             RenderSemanticModel::Class(v) => {
@@ -487,6 +500,7 @@ impl Engine {
         match model {
             RenderSemanticModel::Json(_) => "json",
             RenderSemanticModel::State(_) => "state",
+            RenderSemanticModel::Sequence(_) => "sequence",
             RenderSemanticModel::Mindmap(_) => "mindmap",
             RenderSemanticModel::Flowchart(_) => "flowchart",
             RenderSemanticModel::Architecture(_) => "architecture",

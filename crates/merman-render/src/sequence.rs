@@ -9,62 +9,8 @@ use crate::text::{
     wrap_label_like_mermaid_lines_floored_bbox,
 };
 use crate::{Error, Result};
-use serde::Deserialize;
+use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use serde_json::Value;
-
-#[derive(Debug, Clone, Deserialize)]
-struct SequenceActor {
-    #[allow(dead_code)]
-    name: String,
-    description: String,
-    #[serde(rename = "type")]
-    actor_type: String,
-    #[allow(dead_code)]
-    wrap: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SequenceMessage {
-    id: String,
-    #[serde(default)]
-    from: Option<String>,
-    #[serde(default)]
-    to: Option<String>,
-    #[serde(rename = "type")]
-    message_type: i32,
-    message: Value,
-    #[allow(dead_code)]
-    wrap: bool,
-    activate: bool,
-    #[serde(default)]
-    placement: Option<i32>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SequenceBox {
-    #[serde(rename = "actorKeys")]
-    actor_keys: Vec<String>,
-    #[allow(dead_code)]
-    fill: String,
-    name: Option<String>,
-    #[allow(dead_code)]
-    wrap: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SequenceModel {
-    #[serde(rename = "actorOrder")]
-    actor_order: Vec<String>,
-    actors: std::collections::BTreeMap<String, SequenceActor>,
-    #[serde(default)]
-    boxes: Vec<SequenceBox>,
-    messages: Vec<SequenceMessage>,
-    title: Option<String>,
-    #[serde(rename = "createdActors", default)]
-    created_actors: std::collections::BTreeMap<String, usize>,
-    #[serde(rename = "destroyedActors", default)]
-    destroyed_actors: std::collections::BTreeMap<String, usize>,
-}
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -158,8 +104,15 @@ pub fn layout_sequence_diagram(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<SequenceDiagramLayout> {
-    let model: SequenceModel = crate::json::from_value_ref(semantic)?;
+    let model: SequenceDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_sequence_diagram_typed(&model, effective_config, measurer)
+}
 
+pub fn layout_sequence_diagram_typed(
+    model: &SequenceDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<SequenceDiagramLayout> {
     let seq_cfg = effective_config.get("sequence").unwrap_or(&Value::Null);
     let diagram_margin_x = config_f64(seq_cfg, &["diagramMarginX"]).unwrap_or(50.0);
     let diagram_margin_y = config_f64(seq_cfg, &["diagramMarginY"]).unwrap_or(10.0);
@@ -326,7 +279,7 @@ pub fn layout_sequence_diagram(
         } else {
             &msg_text_style
         };
-        let text = msg.message.as_str().unwrap_or_default();
+        let text = msg.message_text();
         if text.is_empty() {
             continue;
         }
@@ -600,7 +553,7 @@ pub fn layout_sequence_diagram(
         let x2 = if from == to { x1 } else { to_x - sign * 4.0 };
         let cx = (x1 + x2) / 2.0;
 
-        let text = msg.message.as_str().unwrap_or_default();
+        let text = msg.message_text();
         let w = if text.is_empty() {
             1.0
         } else {
@@ -719,7 +672,7 @@ pub fn layout_sequence_diagram(
         std::collections::HashMap::new();
     let mut stack: Vec<BlockStackEntry> = Vec::new();
     for msg in &model.messages {
-        let raw_label = msg.message.as_str().unwrap_or_default();
+        let raw_label = msg.message_text();
         match msg.message_type {
             // loop start/end
             10 => stack.push(BlockStackEntry::Loop {
@@ -1328,7 +1281,7 @@ pub fn layout_sequence_diagram(
                 }
             };
 
-            let text = msg.message.as_str().unwrap_or_default();
+            let text = msg.message_text();
             let (text_w, h) = if msg.wrap {
                 // Mermaid Sequence notes are wrapped via `wrapLabel(...)`, then measured via SVG
                 // bbox probes (not HTML wrapping). Model this by producing wrapped `<br/>` lines
@@ -1515,7 +1468,7 @@ pub fn layout_sequence_diagram(
             }
         }
 
-        let text = msg.message.as_str().unwrap_or_default();
+        let text = msg.message_text();
         let bounded_width = (startx - stopx).abs().max(0.0);
         let wrapped_text = if !text.is_empty() && msg.wrap {
             // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
@@ -2165,7 +2118,7 @@ pub fn layout_sequence_diagram(
             continue;
         };
         let center_x = actor_centers_x[i] + 1.0;
-        let text = msg.message.as_str().unwrap_or_default();
+        let text = msg.message_text();
         let (text_w, _text_h) = if text.is_empty() {
             (1.0, 1.0)
         } else {

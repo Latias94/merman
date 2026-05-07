@@ -21,7 +21,8 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `classDiagram`, `class` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
 | `mindmap` | `typed-first` | typed layout + typed SVG | Obsolete JSON-for-render compatibility helpers removed. |
 | `architecture` | `typed-first` | typed layout + typed SVG | Keep typed model stable while splitting renderer modules. |
-| `sequence`, `zenuml` | `json-fallback` | JSON layout + JSON SVG | Highest next migration candidate; large renderer and frequent layout/render coupling. |
+| `sequence` | `typed-first` | typed layout + typed SVG | First large JSON-render migration; keep parity gates tight while splitting renderer modules. |
+| `zenuml` | `json-fallback` | JSON layout + JSON SVG via sequence renderer | Shares the sequence renderer but still enters through semantic JSON. |
 | `gantt` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence; date semantics need careful parity gates. |
 | `kanban` | `json-fallback` | JSON layout + JSON SVG | Candidate after sequence if coverage remains easier than Gantt. |
 | `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |

@@ -63,11 +63,18 @@ Exit criteria:
 
 ## M2: Typed Model Expansion
 
+Status: in progress.
+
 Scope:
 
 - Move one large remaining JSON-render diagram to a typed render model.
 - Use the first migration to define the repeatable pattern.
 - Prefer sequence first unless profiling points elsewhere.
+
+Progress:
+
+- `sequence` now has a typed render model consumed by layout and SVG render-model dispatch.
+- Timing and benchmark evidence still need to be captured before closing M2.
 
 Exit criteria:
 

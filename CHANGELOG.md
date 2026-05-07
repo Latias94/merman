@@ -20,6 +20,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse
   entrypoint; semantic JSON callers should continue using `parse_diagram_sync`.
+- Sequence render pipeline: add a typed render model for layout/SVG render-model dispatch while
+  keeping the semantic JSON parse API stable.
 
 ### Removed
 

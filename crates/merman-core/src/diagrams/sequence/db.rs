@@ -1,8 +1,13 @@
 use crate::ParseMetadata;
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 use super::Action;
+use super::render_model::{
+    SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceMessagePayload, SequenceNote,
+};
 use super::{
     LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_NOTE,
     PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF,
@@ -30,7 +35,7 @@ struct Message {
     id: String,
     from: Option<String>,
     to: Option<String>,
-    message: Value,
+    message: SequenceMessagePayload,
     wrap: bool,
     message_type: i32,
     activate: bool,
@@ -249,7 +254,7 @@ impl SequenceDb {
             id: self.messages.len().to_string(),
             from,
             to,
-            message: Value::String(msg_text.text),
+            message: SequenceMessagePayload::Text(msg_text.text),
             wrap,
             message_type,
             activate,
@@ -278,20 +283,15 @@ impl SequenceDb {
     }
 
     fn add_autonumber(&mut self, start: Option<i64>, step: Option<i64>, visible: bool) {
-        let mut msg = serde_json::Map::new();
-        if let Some(s) = start {
-            msg.insert("start".to_string(), Value::Number(s.into()));
-        }
-        if let Some(s) = step {
-            msg.insert("step".to_string(), Value::Number(s.into()));
-        }
-        msg.insert("visible".to_string(), Value::Bool(visible));
-
         self.messages.push(Message {
             id: self.messages.len().to_string(),
             from: None,
             to: None,
-            message: Value::Object(msg),
+            message: SequenceMessagePayload::Autonumber(SequenceAutonumber {
+                start,
+                step,
+                visible,
+            }),
             wrap: false,
             message_type: LINETYPE_AUTONUMBER,
             activate: false,
@@ -329,7 +329,7 @@ impl SequenceDb {
             id: self.messages.len().to_string(),
             from,
             to,
-            message: Value::String(parsed.text),
+            message: SequenceMessagePayload::Text(parsed.text),
             wrap,
             message_type: LINETYPE_NOTE,
             activate: false,
@@ -613,7 +613,7 @@ impl SequenceDb {
                     "to".to_string(),
                     m.to.map(Value::String).unwrap_or(Value::Null),
                 );
-                obj.insert("message".to_string(), m.message);
+                obj.insert("message".to_string(), m.message.into_value());
                 obj.insert("wrap".to_string(), Value::Bool(m.wrap));
                 obj.insert("type".to_string(), Value::Number(m.message_type.into()));
                 obj.insert("activate".to_string(), Value::Bool(m.activate));
@@ -691,13 +691,83 @@ impl SequenceDb {
 
         Value::Object(root)
     }
+
+    pub(super) fn into_render_model(mut self) -> SequenceDiagramRenderModel {
+        let mut actors = std::mem::take(&mut self.actors);
+        let mut actors_typed = BTreeMap::new();
+        for id in &self.actor_order {
+            if let Some(a) = actors.remove(id) {
+                actors_typed.insert(
+                    id.clone(),
+                    SequenceActor {
+                        name: a.name,
+                        description: a.description,
+                        wrap: a.wrap,
+                        actor_type: a.actor_type,
+                        links: a.links,
+                        properties: a.properties,
+                    },
+                );
+            }
+        }
+
+        let messages = std::mem::take(&mut self.messages)
+            .into_iter()
+            .map(|m| SequenceMessage {
+                id: m.id,
+                from: m.from,
+                to: m.to,
+                message: m.message,
+                wrap: m.wrap,
+                message_type: m.message_type,
+                activate: m.activate,
+                placement: m.placement,
+            })
+            .collect();
+
+        let notes = std::mem::take(&mut self.notes)
+            .into_iter()
+            .map(|n| SequenceNote {
+                actor: n.actor,
+                placement: n.placement,
+                message: n.message,
+                wrap: n.wrap,
+            })
+            .collect();
+
+        let boxes = std::mem::take(&mut self.boxes)
+            .into_iter()
+            .map(|b| SequenceBox {
+                name: b.name,
+                wrap: b.wrap,
+                fill: b.fill,
+                actor_keys: b.actor_keys,
+            })
+            .collect();
+
+        SequenceDiagramRenderModel {
+            title: self.title,
+            acc_title: self.acc_title,
+            acc_descr: self.acc_descr,
+            actor_order: std::mem::take(&mut self.actor_order),
+            actors: actors_typed,
+            messages,
+            notes,
+            boxes,
+            created_actors: std::mem::take(&mut self.created_actors)
+                .into_iter()
+                .collect(),
+            destroyed_actors: std::mem::take(&mut self.destroyed_actors)
+                .into_iter()
+                .collect(),
+        }
+    }
 }
 
-pub(super) fn fast_parse_sequence_signals_only(
+pub(super) fn fast_parse_sequence_signals_only_db(
     code: &str,
     wrap_enabled: Option<bool>,
-    meta: &ParseMetadata,
-) -> Option<Value> {
+) -> Option<SequenceDb> {
     // Fast-path for very small sequence diagrams that only contain signal statements.
     //
     // This avoids the LALRPOP parser + token stream overhead for tiny inputs, while preserving
@@ -920,7 +990,7 @@ pub(super) fn fast_parse_sequence_signals_only(
         }
     }
 
-    Some(db.into_model(meta))
+    Some(db)
 }
 
 #[derive(Debug, Clone)]

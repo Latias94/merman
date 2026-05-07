@@ -185,6 +185,33 @@ fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
 }
 
 #[test]
+fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = "sequenceDiagram\nAlice->>Bob: Hi";
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "sequence");
+    match parsed.model {
+        RenderSemanticModel::Sequence(model) => {
+            assert_eq!(model.actor_order, ["Alice", "Bob"]);
+            assert_eq!(model.messages[0].message_text(), "Hi");
+        }
+        other => panic!("sequence render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("sequence"));
+    assert_eq!(parsed_json.model["messages"][0]["message"], json!("Hi"));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

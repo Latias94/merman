@@ -53,8 +53,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Remove obsolete `parse_diagram_for_render_sync` compatibility API.
   Scope: remove the async alias and the `mindmap` / `stateDiagram` JSON-for-render helpers.
   Evidence: `parse_diagram_for_render_model_sync` is now the only render-optimized parse API.
-- [ ] Move sequence diagram render path toward a typed render model.
+- [x] Move sequence diagram render path toward a typed render model.
   Rationale: sequence has a large renderer and frequent layout/render coupling.
+  Evidence: `parse_sequence_model_for_render` now returns `SequenceDiagramRenderModel`, and
+  layout/SVG render-model dispatch consumes that typed model directly while `parse_diagram_sync`
+  keeps the semantic JSON payload stable.
 - [ ] Move gantt or kanban render path toward a typed render model after sequence.
   Selection rule: choose the diagram with better test coverage and less parser churn.
 - [ ] Add parse/render timing samples before and after each typed migration.
