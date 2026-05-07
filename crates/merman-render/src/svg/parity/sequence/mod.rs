@@ -6,6 +6,7 @@ mod activation;
 mod actor_man;
 mod actor_popup;
 mod actors;
+mod block_collection;
 mod blocks;
 mod css;
 mod debug;

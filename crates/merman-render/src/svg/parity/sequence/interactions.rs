@@ -1,8 +1,9 @@
 use super::super::*;
 use super::activation::{build_sequence_activation_plan, render_sequence_activation_group};
+use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::blocks::{
-    SequenceBlock, collect_sequence_blocks, frame_x_from_actors, render_critical_sequence_block,
-    render_sectioned_sequence_block, render_simple_sequence_block,
+    frame_x_from_actors, render_critical_sequence_block, render_sectioned_sequence_block,
+    render_simple_sequence_block,
 };
 use super::model::*;
 use super::notes::render_sequence_notes;

@@ -62,8 +62,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: move note emission into `svg/parity/sequence/notes.rs`.
 - Sequence renderer: move message-prelude interaction overlay orchestration for notes,
   activations, and block frames into `svg/parity/sequence/interactions.rs`.
-- Sequence renderer: move loop/alt/par/critical block collection into
-  `svg/parity/sequence/blocks.rs`.
+- Sequence renderer: move loop/alt/par/critical block model collection into
+  `svg/parity/sequence/block_collection.rs`.
 - Sequence renderer: move block label wrapping, loop text emission, and block frame range helpers
   into `svg/parity/sequence/blocks.rs`.
 - Sequence renderer: move message label/line emission and autonumber handling into
