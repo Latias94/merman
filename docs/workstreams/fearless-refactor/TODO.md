@@ -223,7 +223,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
   Progress: `HOT_LOOP_CLONE_AUDIT.md` records the first pass. Flowchart layout now borrows normal
   edges in the self-loop expansion stage, and layout/SVG render share an explicit helper-edge
-  constructor that clones only retained source fields.
+  constructor that clones only retained source fields. Sequence block collection now borrows block
+  labels and message ids from the typed render model.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
 ## P3: Public API and CLI Cleanup

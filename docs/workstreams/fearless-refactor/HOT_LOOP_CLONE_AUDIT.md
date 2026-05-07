@@ -29,11 +29,27 @@ Result:
 - Layout and SVG rendering now share one helper-edge constructor without flattening their
   Mermaid-specific output differences.
 
+## Sequence Block Collection
+
+Sequence block collection (`alt`, `loop`, `critical`, etc.) is consumed immediately during SVG
+rendering while the typed render model is still borrowed. It does not need to own block labels or
+message ids.
+
+Decision:
+
+- Keep labels and message ids borrowed from `SequenceDiagramRenderModel`.
+- Keep owned vectors for block/section structure because the stack needs to move completed block
+  scopes into the render list.
+- Keep DOM-order-sensitive block rendering unchanged; only the storage ownership changed.
+
+Result:
+
+- `collect_sequence_blocks` no longer copies each block label and message id into `String`.
+- Block geometry helpers now consume `&str` iterators directly.
+
 ## Remaining Candidates
 
-1. Sequence block/message label assembly still has several `String` clones around block collection
-   and label wrapping. Audit only after isolating DOM-order-sensitive paths.
-2. Class namespace/relation lookup construction still clones ids heavily because graphlib-style
+1. Class namespace/relation lookup construction still clones ids heavily because graphlib-style
    graph APIs own node and edge keys. Only optimize after API boundaries are clearer.
 
 ## Verification
@@ -43,3 +59,5 @@ Result:
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
 - `cargo nextest run -p merman-render flowchart`
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run -p merman-render sequence`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`

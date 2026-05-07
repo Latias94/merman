@@ -89,11 +89,11 @@ pub(super) fn render_simple_sequence_block(
     out: &mut String,
     block_label: &str,
     raw_label: &str,
-    message_ids: &[String],
+    message_ids: &[&str],
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
     let Some((min_y, max_y)) = message_ids_y_range(
-        message_ids.iter(),
+        message_ids.iter().copied(),
         ctx.edges_by_id,
         ctx.nodes_by_id,
         ctx.msg_endpoints,
@@ -103,7 +103,7 @@ pub(super) fn render_simple_sequence_block(
     };
 
     let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        message_ids.iter(),
+        message_ids.iter().copied(),
         ctx.msg_endpoints,
         ctx.actor_nodes_by_id,
         ctx.edges_by_id,
@@ -145,7 +145,7 @@ pub(super) fn render_simple_sequence_block(
 pub(super) fn render_sectioned_sequence_block(
     out: &mut String,
     block_label: &str,
-    sections: &[AltSection],
+    sections: &[AltSection<'_>],
     adjust_header_for_wrap: bool,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
@@ -164,7 +164,7 @@ pub(super) fn render_sectioned_sequence_block(
     };
 
     let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter()),
+        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
         ctx.msg_endpoints,
         ctx.actor_nodes_by_id,
         ctx.edges_by_id,
@@ -220,7 +220,7 @@ pub(super) fn render_sectioned_sequence_block(
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
-        let Some(label_text) = display_block_label(&sec.raw_label, i == 0) else {
+        let Some(label_text) = display_block_label(sec.raw_label, i == 0) else {
             continue;
         };
         if i == 0 {
@@ -256,7 +256,7 @@ pub(super) fn render_sectioned_sequence_block(
 
 pub(super) fn render_critical_sequence_block(
     out: &mut String,
-    sections: &[AltSection],
+    sections: &[AltSection<'_>],
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
     if sections.is_empty() {
@@ -274,7 +274,7 @@ pub(super) fn render_critical_sequence_block(
     };
 
     let (mut frame_x1, frame_x2, min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter()),
+        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
         ctx.msg_endpoints,
         ctx.actor_nodes_by_id,
         ctx.edges_by_id,
@@ -298,7 +298,7 @@ pub(super) fn render_critical_sequence_block(
     } else {
         // Mermaid's `adjustLoopHeightForWrap(...)` expands the header height when the
         // section label wraps to multiple lines. This affects the frame's top y.
-        let label_text = display_block_label(&sections[0].raw_label, true)
+        let label_text = display_block_label(sections[0].raw_label, true)
             .unwrap_or_else(|| "\u{200B}".to_string());
         let label_box_right = frame_x1 + 50.0;
         let max_w = (frame_x2 - label_box_right).max(0.0);
@@ -347,7 +347,7 @@ pub(super) fn render_critical_sequence_block(
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
-        let Some(label_text) = display_block_label(&sec.raw_label, i == 0) else {
+        let Some(label_text) = display_block_label(sec.raw_label, i == 0) else {
             continue;
         };
         if i == 0 {
@@ -382,7 +382,7 @@ pub(super) fn render_critical_sequence_block(
 }
 
 fn section_header_offset(
-    sections: &[AltSection],
+    sections: &[AltSection<'_>],
     frame_x1: f64,
     frame_x2: f64,
     adjust_header_for_wrap: bool,
@@ -405,7 +405,7 @@ fn section_header_offset(
     let label_box_right = frame_x1 + 50.0;
     let max_w = (frame_x2 - label_box_right).max(0.0);
     let label =
-        display_block_label(&sections[0].raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
+        display_block_label(sections[0].raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let wrapped = wrap_svg_text_lines(&label, measurer, loop_text_style, Some(max_w));
     let extra_lines = wrapped.len().saturating_sub(1) as f64;
     let extra_per_line =

@@ -2,71 +2,71 @@ use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
-pub(super) struct AltSection {
-    pub(super) raw_label: String,
-    pub(super) message_ids: Vec<String>,
+pub(super) struct AltSection<'a> {
+    pub(super) raw_label: &'a str,
+    pub(super) message_ids: Vec<&'a str>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) enum SequenceBlock {
+pub(super) enum SequenceBlock<'a> {
     Alt {
-        sections: Vec<AltSection>,
+        sections: Vec<AltSection<'a>>,
     },
     Opt {
-        raw_label: String,
-        message_ids: Vec<String>,
+        raw_label: &'a str,
+        message_ids: Vec<&'a str>,
     },
     Break {
-        raw_label: String,
-        message_ids: Vec<String>,
+        raw_label: &'a str,
+        message_ids: Vec<&'a str>,
     },
     Par {
-        sections: Vec<AltSection>,
+        sections: Vec<AltSection<'a>>,
     },
     Loop {
-        raw_label: String,
-        message_ids: Vec<String>,
+        raw_label: &'a str,
+        message_ids: Vec<&'a str>,
     },
     Critical {
-        sections: Vec<AltSection>,
+        sections: Vec<AltSection<'a>>,
     },
 }
 
 #[derive(Debug, Clone)]
-enum BlockStackEntry {
+enum BlockStackEntry<'a> {
     Alt {
-        raw_labels: Vec<String>,
-        sections: Vec<Vec<String>>,
+        raw_labels: Vec<&'a str>,
+        sections: Vec<Vec<&'a str>>,
     },
     Loop {
-        raw_label: String,
-        messages: Vec<String>,
+        raw_label: &'a str,
+        messages: Vec<&'a str>,
     },
     Opt {
-        raw_label: String,
-        messages: Vec<String>,
+        raw_label: &'a str,
+        messages: Vec<&'a str>,
     },
     Break {
-        raw_label: String,
-        messages: Vec<String>,
+        raw_label: &'a str,
+        messages: Vec<&'a str>,
     },
     Par {
-        raw_labels: Vec<String>,
-        sections: Vec<Vec<String>>,
+        raw_labels: Vec<&'a str>,
+        sections: Vec<Vec<&'a str>>,
     },
     Critical {
-        raw_labels: Vec<String>,
-        sections: Vec<Vec<String>>,
+        raw_labels: Vec<&'a str>,
+        sections: Vec<Vec<&'a str>>,
     },
 }
 
-pub(super) fn collect_sequence_blocks(
-    model: &SequenceSvgModel,
-) -> (FxHashMap<String, Vec<usize>>, Vec<SequenceBlock>) {
+pub(super) fn collect_sequence_blocks<'a>(
+    model: &'a SequenceSvgModel,
+) -> (FxHashMap<&'a str, Vec<usize>>, Vec<SequenceBlock<'a>>) {
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
     // Use layout-derived message y-coordinates for separator placement to avoid visual artifacts
     // like dashed lines ending in a gap right before the frame border.
-    let mut blocks_by_end_id: FxHashMap<String, Vec<usize>> =
+    let mut blocks_by_end_id: FxHashMap<&str, Vec<usize>> =
         FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
     let mut blocks: Vec<SequenceBlock> = Vec::new();
     let mut stack: Vec<BlockStackEntry> = Vec::new();
@@ -85,7 +85,7 @@ pub(super) fn collect_sequence_blocks(
             }
             // loop start/end
             10 => stack.push(BlockStackEntry::Loop {
-                raw_label: raw_label.to_string(),
+                raw_label,
                 messages: Vec::new(),
             }),
             11 => {
@@ -97,7 +97,7 @@ pub(super) fn collect_sequence_blocks(
                     push_block(
                         &mut blocks_by_end_id,
                         &mut blocks,
-                        msg.id.clone(),
+                        msg.id.as_str(),
                         SequenceBlock::Loop {
                             raw_label,
                             message_ids: messages,
@@ -107,7 +107,7 @@ pub(super) fn collect_sequence_blocks(
             }
             // opt start/end
             15 => stack.push(BlockStackEntry::Opt {
-                raw_label: raw_label.to_string(),
+                raw_label,
                 messages: Vec::new(),
             }),
             16 => {
@@ -119,7 +119,7 @@ pub(super) fn collect_sequence_blocks(
                     push_block(
                         &mut blocks_by_end_id,
                         &mut blocks,
-                        msg.id.clone(),
+                        msg.id.as_str(),
                         SequenceBlock::Opt {
                             raw_label,
                             message_ids: messages,
@@ -129,7 +129,7 @@ pub(super) fn collect_sequence_blocks(
             }
             // break start/end
             30 => stack.push(BlockStackEntry::Break {
-                raw_label: raw_label.to_string(),
+                raw_label,
                 messages: Vec::new(),
             }),
             31 => {
@@ -141,7 +141,7 @@ pub(super) fn collect_sequence_blocks(
                     push_block(
                         &mut blocks_by_end_id,
                         &mut blocks,
-                        msg.id.clone(),
+                        msg.id.as_str(),
                         SequenceBlock::Break {
                             raw_label,
                             message_ids: messages,
@@ -151,7 +151,7 @@ pub(super) fn collect_sequence_blocks(
             }
             // alt start/else/end
             12 => stack.push(BlockStackEntry::Alt {
-                raw_labels: vec![raw_label.to_string()],
+                raw_labels: vec![raw_label],
                 sections: vec![Vec::new()],
             }),
             13 => {
@@ -160,7 +160,7 @@ pub(super) fn collect_sequence_blocks(
                     sections,
                 }) = stack.last_mut()
                 {
-                    raw_labels.push(raw_label.to_string());
+                    raw_labels.push(raw_label);
                     sections.push(Vec::new());
                 }
             }
@@ -175,14 +175,14 @@ pub(super) fn collect_sequence_blocks(
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id
-                        .entry(msg.id.clone())
+                        .entry(msg.id.as_str())
                         .or_default()
                         .push(idx);
                 }
             }
             // par start/and/end
             19 | 32 => stack.push(BlockStackEntry::Par {
-                raw_labels: vec![raw_label.to_string()],
+                raw_labels: vec![raw_label],
                 sections: vec![Vec::new()],
             }),
             20 => {
@@ -191,7 +191,7 @@ pub(super) fn collect_sequence_blocks(
                     sections,
                 }) = stack.last_mut()
                 {
-                    raw_labels.push(raw_label.to_string());
+                    raw_labels.push(raw_label);
                     sections.push(Vec::new());
                 }
             }
@@ -206,14 +206,14 @@ pub(super) fn collect_sequence_blocks(
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id
-                        .entry(msg.id.clone())
+                        .entry(msg.id.as_str())
                         .or_default()
                         .push(idx);
                 }
             }
             // critical start/option/end
             27 => stack.push(BlockStackEntry::Critical {
-                raw_labels: vec![raw_label.to_string()],
+                raw_labels: vec![raw_label],
                 sections: vec![Vec::new()],
             }),
             28 => {
@@ -222,7 +222,7 @@ pub(super) fn collect_sequence_blocks(
                     sections,
                 }) = stack.last_mut()
                 {
-                    raw_labels.push(raw_label.to_string());
+                    raw_labels.push(raw_label);
                     sections.push(Vec::new());
                 }
             }
@@ -237,7 +237,7 @@ pub(super) fn collect_sequence_blocks(
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id
-                        .entry(msg.id.clone())
+                        .entry(msg.id.as_str())
                         .or_default()
                         .push(idx);
                 }
@@ -256,38 +256,42 @@ pub(super) fn collect_sequence_blocks(
     (blocks_by_end_id, blocks)
 }
 
-fn push_block(
-    blocks_by_end_id: &mut FxHashMap<String, Vec<usize>>,
-    blocks: &mut Vec<SequenceBlock>,
-    end_id: String,
-    block: SequenceBlock,
+fn push_block<'a>(
+    blocks_by_end_id: &mut FxHashMap<&'a str, Vec<usize>>,
+    blocks: &mut Vec<SequenceBlock<'a>>,
+    end_id: &'a str,
+    block: SequenceBlock<'a>,
 ) {
     let idx = blocks.len();
     blocks.push(block);
     blocks_by_end_id.entry(end_id).or_default().push(idx);
 }
 
-fn push_item_to_block_stack_entry(entry: &mut BlockStackEntry, item_id: &str) {
+fn push_item_to_block_stack_entry<'a>(entry: &mut BlockStackEntry<'a>, item_id: &'a str) {
     match entry {
         BlockStackEntry::Alt { sections, .. }
         | BlockStackEntry::Par { sections, .. }
         | BlockStackEntry::Critical { sections, .. } => {
             if let Some(cur) = sections.last_mut() {
-                cur.push(item_id.to_string());
+                cur.push(item_id);
             }
         }
         BlockStackEntry::Loop { messages, .. }
         | BlockStackEntry::Opt { messages, .. }
         | BlockStackEntry::Break { messages, .. } => {
-            messages.push(item_id.to_string());
+            messages.push(item_id);
         }
     }
 }
 
-fn into_alt_sections(raw_labels: Vec<String>, sections: Vec<Vec<String>>) -> Vec<AltSection> {
+fn into_alt_sections<'a>(
+    raw_labels: Vec<&'a str>,
+    sections: Vec<Vec<&'a str>>,
+) -> Vec<AltSection<'a>> {
     let mut out_sections = Vec::new();
-    for (i, raw_label) in raw_labels.into_iter().enumerate() {
-        let message_ids = sections.get(i).cloned().unwrap_or_default();
+    let mut sections = sections.into_iter();
+    for raw_label in raw_labels {
+        let message_ids = sections.next().unwrap_or_default();
         out_sections.push(AltSection {
             raw_label,
             message_ids,

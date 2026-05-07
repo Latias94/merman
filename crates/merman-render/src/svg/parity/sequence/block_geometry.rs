@@ -26,7 +26,7 @@ pub(super) fn frame_x_from_actors(
 }
 
 pub(super) fn frame_x_from_message_ids<'a>(
-    message_ids: impl IntoIterator<Item = &'a String>,
+    message_ids: impl IntoIterator<Item = &'a str>,
     msg_endpoints: &FxHashMap<&str, (&str, &str)>,
     actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
@@ -53,7 +53,7 @@ pub(super) fn frame_x_from_message_ids<'a>(
                 .max(n.x + n.width / 2.0 + sequence_text_overrides::sequence_frame_geom_pad_px());
         }
 
-        let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
+        let Some((from, to)) = msg_endpoints.get(msg_id).copied() else {
             continue;
         };
         if from == to {
@@ -149,7 +149,7 @@ pub(super) fn item_y_range(
 }
 
 pub(super) fn message_ids_y_range<'a>(
-    message_ids: impl IntoIterator<Item = &'a String>,
+    message_ids: impl IntoIterator<Item = &'a str>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     msg_endpoints: &FxHashMap<&str, (&str, &str)>,
@@ -176,14 +176,14 @@ pub(super) fn message_ids_y_range<'a>(
 }
 
 pub(super) fn section_message_y_range(
-    sections: &[AltSection],
+    sections: &[AltSection<'_>],
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     msg_endpoints: &FxHashMap<&str, (&str, &str)>,
     is_separator: bool,
 ) -> Option<(f64, f64)> {
     message_ids_y_range(
-        sections.iter().flat_map(|s| s.message_ids.iter()),
+        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
         edges_by_id,
         nodes_by_id,
         msg_endpoints,
@@ -192,7 +192,7 @@ pub(super) fn section_message_y_range(
 }
 
 pub(super) fn section_separator_ys(
-    sections: &[AltSection],
+    sections: &[AltSection<'_>],
     min_y: f64,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
@@ -201,7 +201,7 @@ pub(super) fn section_separator_ys(
     let mut section_max_ys: Vec<f64> = Vec::new();
     for sec in sections {
         let sec_max_y = message_ids_y_range(
-            sec.message_ids.iter(),
+            sec.message_ids.iter().copied(),
             edges_by_id,
             nodes_by_id,
             msg_endpoints,

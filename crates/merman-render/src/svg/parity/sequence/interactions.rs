@@ -77,7 +77,7 @@ pub(super) fn render_sequence_interaction_overlays(
             &settings.note_text_style,
         );
 
-        let Some(idxs) = blocks_by_end_id.get(&msg.id) else {
+        let Some(idxs) = blocks_by_end_id.get(msg.id.as_str()) else {
             continue;
         };
         for idx in idxs {
