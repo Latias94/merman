@@ -4,7 +4,9 @@ use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
-use super::super::{escape_attr, escape_xml, fmt, fmt_into};
+use super::super::{
+    escape_attr, escape_attr_display, escape_xml, escape_xml_display, fmt, fmt_into,
+};
 use super::bounds::include_xywh;
 use super::{ClassSvgModel, ClassSvgNode};
 
@@ -54,6 +56,15 @@ pub(super) struct ClassNamespaceRenderMode<'a> {
     pub nodes_root_dx: f64,
     pub nodes_root_dy: f64,
     pub render_namespaces_as_subgraphs: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ClassNamespaceClusterGroupContext {
+    pub content_tx: f64,
+    pub content_ty: f64,
+    pub bounds_dx: f64,
+    pub bounds_dy: f64,
+    pub timing_enabled: bool,
 }
 
 pub(super) fn class_namespace_render_mode<'a>(
@@ -116,6 +127,60 @@ pub(super) fn class_namespace_render_mode<'a>(
         nodes_root_dy,
         render_namespaces_as_subgraphs,
     }
+}
+
+pub(super) fn render_class_namespace_cluster_group(
+    out: &mut String,
+    content_bounds: &mut Option<Bounds>,
+    clusters: &[LayoutCluster],
+    ctx: ClassNamespaceClusterGroupContext,
+) -> std::time::Duration {
+    let clusters_start = ctx.timing_enabled.then(std::time::Instant::now);
+    out.push_str(r#"<g class="clusters">"#);
+    for c in clusters {
+        let w = c.width.max(1.0);
+        let h = c.height.max(1.0);
+        let left = c.x - w / 2.0 + ctx.content_tx;
+        let top = c.y - h / 2.0 + ctx.content_ty;
+        include_xywh(
+            content_bounds,
+            left + ctx.bounds_dx,
+            top + ctx.bounds_dy,
+            w,
+            h,
+        );
+
+        let label_w = c.title_label.width.max(0.0);
+        let label_h = 24.0;
+        let label_x = left + (w - label_w) / 2.0;
+        let label_y = top + c.title_margin_top;
+        include_xywh(
+            content_bounds,
+            label_x + ctx.bounds_dx,
+            label_y + ctx.bounds_dy,
+            label_w,
+            label_h,
+        );
+
+        let _ = write!(
+            out,
+            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr_display(&c.id),
+            fmt(left),
+            fmt(top),
+            fmt(w),
+            fmt(h),
+            fmt(label_x),
+            fmt(label_y),
+            fmt(label_w),
+            class_text_overrides::class_html_label_max_width_px(),
+            escape_xml_display(&c.title)
+        );
+    }
+    out.push_str("</g>");
+    clusters_start
+        .map(|start| start.elapsed())
+        .unwrap_or_default()
 }
 
 fn has_namespace_root_viewbox_hint(

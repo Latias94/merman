@@ -122,7 +122,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - note rendering (note node emission now lives in `class/note.rs`)
   - namespace/subgraph rendering (ordering and subgraph open/close emission now live in
     `class/namespace.rs`; class node render-order/index construction and namespace
-    wrapper/subgraph mode selection now also live there)
+    wrapper/subgraph mode selection now also live there; namespace cluster group emission now
+    lives there)
   - debug SVG helpers
 - [ ] Split `svg/parity/sequence/render.rs`.
   Proposed boundaries:

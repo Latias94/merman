@@ -204,6 +204,8 @@ Progress:
   `svg/parity/class/namespace.rs`.
 - Extracted class namespace wrapper/subgraph mode selection into
   `svg/parity/class/namespace.rs`.
+- Extracted class namespace cluster group emission into
+  `svg/parity/class/namespace.rs`.
 
 Exit criteria:
 

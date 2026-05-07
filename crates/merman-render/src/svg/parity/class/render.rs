@@ -11,8 +11,9 @@ use super::interface::{
     ClassInterfaceRenderContext, ClassInterfaceRenderState, render_class_interface_node,
 };
 use super::namespace::{
-    ClassNamespaceRenderMode, ClassNamespaceSubgraphState, ClassNodeRenderOrder,
-    build_class_node_render_order, class_namespace_render_mode, close_class_namespace_subgraph,
+    ClassNamespaceClusterGroupContext, ClassNamespaceRenderMode, ClassNamespaceSubgraphState,
+    ClassNodeRenderOrder, build_class_node_render_order, class_namespace_render_mode,
+    close_class_namespace_subgraph, render_class_namespace_cluster_group,
     transition_class_namespace_subgraph,
 };
 use super::node::{
@@ -22,7 +23,6 @@ use super::node::{
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
-use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_class_diagram_v2_svg_impl(
@@ -276,47 +276,18 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
          bounds_dy: f64,
          emit_clusters: bool| {
             if emit_clusters {
-                // Clusters (namespaces).
-                let clusters_start = timing_enabled.then(std::time::Instant::now);
-                out.push_str(r#"<g class="clusters">"#);
-                for c in &layout.clusters {
-                    let w = c.width.max(1.0);
-                    let h = c.height.max(1.0);
-                    let left = c.x - w / 2.0 + content_tx;
-                    let top = c.y - h / 2.0 + content_ty;
-                    include_xywh(content_bounds, left + bounds_dx, top + bounds_dy, w, h);
-
-                    let label_w = c.title_label.width.max(0.0);
-                    let label_h = 24.0;
-                    let label_x = left + (w - label_w) / 2.0;
-                    let label_y = top + c.title_margin_top;
-                    include_xywh(
-                        content_bounds,
-                        label_x + bounds_dx,
-                        label_y + bounds_dy,
-                        label_w,
-                        label_h,
-                    );
-
-                    let _ = write!(
-                        out,
-                        r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
-                        escape_attr_display(&c.id),
-                        fmt(left),
-                        fmt(top),
-                        fmt(w),
-                        fmt(h),
-                        fmt(label_x),
-                        fmt(label_y),
-                        fmt(label_w),
-                        class_text_overrides::class_html_label_max_width_px(),
-                        escape_xml_display(&c.title)
-                    );
-                }
-                out.push_str("</g>");
-                if let Some(s) = clusters_start {
-                    detail.clusters += s.elapsed();
-                }
+                detail.clusters += render_class_namespace_cluster_group(
+                    out,
+                    content_bounds,
+                    &layout.clusters,
+                    ClassNamespaceClusterGroupContext {
+                        content_tx,
+                        content_ty,
+                        bounds_dx,
+                        bounds_dy,
+                        timing_enabled,
+                    },
+                );
             }
 
             // Edge paths.
