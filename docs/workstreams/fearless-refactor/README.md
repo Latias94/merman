@@ -125,3 +125,4 @@ Use this order when choosing work:
 - `MILESTONES.md`: staged roadmap and exit criteria.
 - `RENDER_MODEL_INVENTORY.md`: current typed-vs-JSON render pipeline inventory and API decision.
 - `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
+- `OVERRIDE_POLICY.md`: rules for adding, reviewing, and removing text/render overrides.

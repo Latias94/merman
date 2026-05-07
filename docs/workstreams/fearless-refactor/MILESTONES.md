@@ -149,6 +149,8 @@ Progress:
 
 - `OVERRIDE_FOOTPRINT.md` records the first generated-module-wide `xtask report-overrides`
   snapshot and the remaining temporary bridge reporting gaps.
+- `OVERRIDE_POLICY.md` documents when text/render overrides are allowed, where they belong, and
+  what evidence reviewers should require.
 
 Exit criteria:
 

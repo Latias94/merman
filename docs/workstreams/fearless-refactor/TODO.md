@@ -93,8 +93,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
   compatibility measurement lives behind `VendoredFontMetricsTextMeasurer` in
   `text/font_metrics.rs`.
-- [ ] Document when a text width override is allowed.
-  Rule: override only after a fixture/probe proves upstream browser/font behavior.
+- [x] Document when a text width override is allowed.
+  Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
+  evidence checklist, and review questions.
 
 ## P1: Renderer Boundary Cleanup
 
