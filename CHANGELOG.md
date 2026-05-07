@@ -96,6 +96,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   its Mermaid-specific multi-section frame widening and header-height behavior.
 - Sequence renderer: add a block render context so loop/alt/par/critical frame helpers share one
   explicit parameter bundle instead of repeated long argument lists.
+- Sequence renderer: render notes inline with the message-prelude interaction stream so note DOM
+  groups stay ordered relative to completed loop/alt/par/critical block frames.
 - Class renderer: move note node emission and note-specific render timing accounting into
   `svg/parity/class/note.rs`.
 - Class renderer: move interface node emission into `svg/parity/class/interface.rs`.

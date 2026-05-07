@@ -159,6 +159,8 @@ Progress:
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.
 - Extracted sequence message-prelude interaction overlay orchestration for notes, activations, and
   block frames into `svg/parity/sequence/interactions.rs`.
+- Adjusted sequence interaction overlay ordering so note groups render inline with the message
+  stream, keeping them in Mermaid DOM order relative to completed block frames.
 - Extracted sequence loop/alt/par/critical block model collection into
   `svg/parity/sequence/block_collection.rs`.
 - Extracted sequence block label wrapping, loop text emission, and block frame range helpers into

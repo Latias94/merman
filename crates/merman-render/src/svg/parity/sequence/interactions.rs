@@ -7,7 +7,7 @@ use super::blocks::{
     render_simple_sequence_block,
 };
 use super::model::*;
-use super::notes::render_sequence_notes;
+use super::notes::render_sequence_note;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
@@ -52,16 +52,6 @@ pub(super) fn render_sequence_interaction_overlays(
         msg_endpoints.insert(msg.id.as_str(), (from, to));
     }
 
-    render_sequence_notes(
-        out,
-        model,
-        nodes_by_id,
-        measurer,
-        settings.actor_label_font_size,
-        settings.wrap_padding,
-        &settings.note_text_style,
-    );
-
     let block_ctx = SequenceBlockRenderContext {
         default_frame_x1: frame_x1,
         default_frame_x2: frame_x2,
@@ -77,6 +67,15 @@ pub(super) fn render_sequence_interaction_overlays(
 
     for msg in &model.messages {
         render_sequence_activation_group(out, &activation_plan, &msg.id);
+        render_sequence_note(
+            out,
+            msg,
+            nodes_by_id,
+            measurer,
+            settings.actor_label_font_size,
+            settings.wrap_padding,
+            &settings.note_text_style,
+        );
 
         let Some(idxs) = blocks_by_end_id.get(&msg.id) else {
             continue;

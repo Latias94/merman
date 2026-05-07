@@ -198,6 +198,28 @@ fn sequence_nested_rect_blocks_render_in_start_order() {
 }
 
 #[test]
+fn sequence_notes_render_inline_with_block_frames() {
+    let svg = render_sequence_svg_from_fixture("stress_end_in_labels_025.mmd");
+
+    let loop_pos = svg
+        .find("[health(end)check]")
+        .expect("expected loop frame label");
+    let note_pos = svg.find(r#"class="note""#).expect("expected note group");
+    let alt_pos = svg
+        .find("[should continue]")
+        .expect("expected alt frame label");
+
+    assert!(
+        loop_pos < note_pos,
+        "expected completed loop frame to render before the later note"
+    );
+    assert!(
+        note_pos < alt_pos,
+        "expected note to render before its enclosing alt frame closes"
+    );
+}
+
+#[test]
 fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
     let svg = render_sequence_svg_from_fixture("notes_placements.mmd");
     assert!(

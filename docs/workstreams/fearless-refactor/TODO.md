@@ -33,6 +33,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Audit feature flags and remove or document stale experimental flags.
   Evidence: `flowchart_root_pack` was removed; remaining feature flags are documented in
   `README.md`.
+- [x] Restore sequence DOM parity after the renderer split exposed note/block ordering drift.
+  Evidence: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` passes after rendering notes inline with the message-prelude interaction
+  stream.
 
 ## P1: Typed Render Pipeline Cleanup
 
@@ -151,7 +155,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - activation rendering (precomputation and group emission now live in
     `sequence/activation.rs`)
   - interaction overlay orchestration (message-prelude notes, activations, and block frames now
-    live in `sequence/interactions.rs`)
+    live in `sequence/interactions.rs`; notes now render inline with the message stream instead of
+    being emitted as a pre-pass, preserving Mermaid DOM order around completed block frames)
   - viewport/bounds (root SVG opening, accessibility title/description, and sequence viewport
     override handling now live in `sequence/root.rs`)
 - [ ] Split `svg/parity/architecture.rs`.
