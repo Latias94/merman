@@ -227,6 +227,8 @@ Progress:
 - Extracted architecture built-in icon SVG bodies into `svg/parity/architecture/icons.rs`.
 - Extracted architecture SVG label wrapping and text/tspan emission into
   `svg/parity/architecture/labels.rs`.
+- Extracted architecture edge direction/arrow helpers, shared bounds helpers, and recursive group
+  rectangle computation into `svg/parity/architecture/geometry.rs`.
 
 Exit criteria:
 

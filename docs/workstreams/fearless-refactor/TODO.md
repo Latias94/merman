@@ -168,8 +168,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Proposed boundaries:
   - typed model extraction (JSON and typed render-model access now live in
     `architecture/model.rs`)
-  - service/group layout emission
-  - edge rendering
+  - service/group layout emission (group rectangle recursion and shared bounds helpers now live in
+    `architecture/geometry.rs`)
+  - edge rendering (direction, arrow, and edge-id helpers now live in `architecture/geometry.rs`)
   - icon/text XHTML normalization (foreignObject XHTML normalization and entity-safe ampersand
     escaping now live in `architecture/foreign_object.rs`; built-in icon SVG bodies now live in
     `architecture/icons.rs`; SVG label wrapping/text emission now lives in
