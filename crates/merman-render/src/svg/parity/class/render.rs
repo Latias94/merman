@@ -17,9 +17,10 @@ use super::namespace::{
 };
 use super::node::{
     ClassHtmlNodeLabelGroupSpec, ClassHtmlNodeRowsContext, ClassNodeBasicContainerContext,
-    ClassNodeRenderPosition, ClassNodeRenderState, measure_class_html_node_rows,
-    render_class_html_node_label_group, render_class_html_node_rows_group,
-    render_class_node_basic_container, render_class_node_shell_open,
+    ClassNodeRenderPosition, ClassNodeRenderState, ClassSvgNodeLabelRun,
+    measure_class_html_node_rows, render_class_html_node_label_group,
+    render_class_html_node_rows_group, render_class_node_basic_container,
+    render_class_node_shell_open, render_class_svg_node_runs_group,
 };
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::*;
@@ -1427,14 +1428,6 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 }
             }
         } else {
-            #[derive(Debug, Clone)]
-            struct LabelRun {
-                text: String,
-                style: String,
-                metrics: crate::text::TextMetrics,
-                y_offset: f64,
-            }
-
             fn label_rect(m: &crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
                 if !(m.width.is_finite() && m.height.is_finite()) {
                     return None;
@@ -1752,7 +1745,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             }
 
             // Annotation group: Mermaid only renders the first annotation.
-            let mut annotation_runs: Vec<LabelRun> = Vec::new();
+            let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
             let mut annotation_rect: Option<Rect> = None;
             let mut annotation_group_height: f64 = 0.0;
             let mut annotation_group_width: f64 = 0.0;
@@ -1780,7 +1773,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                     annotation_group_height = r.height().max(0.0);
                     annotation_rect = Some(r);
                 }
-                annotation_runs.push(LabelRun {
+                annotation_runs.push(ClassSvgNodeLabelRun {
                     text,
                     style: String::new(),
                     metrics,
@@ -1792,7 +1785,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             let label_group_height = title_rect.as_ref().map(|r| r.height()).unwrap_or(0.0);
             let label_group_width = title_metrics.width.max(0.0);
 
-            let mut members_runs: Vec<LabelRun> = Vec::new();
+            let mut members_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
             let mut members_rect: Option<Rect> = None;
             let mut members_group_width: f64 = 0.0;
             {
@@ -1852,7 +1845,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                             members_rect = Some(r);
                         }
                     }
-                    members_runs.push(LabelRun {
+                    members_runs.push(ClassSvgNodeLabelRun {
                         text: t,
                         style: m.css_style.trim().to_string(),
                         metrics,
@@ -1867,7 +1860,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 members_group_height = (gap / 2.0).max(0.0);
             }
 
-            let mut methods_runs: Vec<LabelRun> = Vec::new();
+            let mut methods_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
             let mut methods_rect: Option<Rect> = None;
             let mut methods_group_width: f64 = 0.0;
             {
@@ -1941,7 +1934,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                             methods_rect = Some(r);
                         }
                     }
-                    methods_runs.push(LabelRun {
+                    methods_runs.push(ClassSvgNodeLabelRun {
                         text: t,
                         style: m.css_style.trim().to_string(),
                         metrics,
@@ -2054,39 +2047,13 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
                 adjusted_annotation_group_x
             };
             let ann_new_y = adjust_y(ann_ty);
-            if annotation_runs.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="annotation-group text" transform="translate({}, {})"/>"#,
-                    fmt(ann_new_x),
-                    fmt(ann_new_y)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="annotation-group text" transform="translate({}, {})">"#,
-                    fmt(ann_new_x),
-                    fmt(ann_new_y)
-                );
-                for run in &annotation_runs {
-                    let t_y = -run.metrics.height.max(0.0)
-                        / (2.0 * run.metrics.line_count.max(1) as f64)
-                        + run.y_offset;
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
-                        escape_attr_display(run.style.as_str()),
-                        fmt(t_y)
-                    );
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
-                        &mut out,
-                        run.text.as_str(),
-                        true,
-                    );
-                    out.push_str("</g></g>");
-                }
-                out.push_str("</g>");
-            }
+            render_class_svg_node_runs_group(
+                &mut out,
+                "annotation-group text",
+                ann_new_x,
+                ann_new_y,
+                &annotation_runs,
+            );
 
             let label_new_y = adjust_y(label_ty);
             let _ = write!(
@@ -2129,74 +2096,22 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
             out.push_str("</g>");
 
             let members_new_y = adjust_y(members_ty);
-            if members_runs.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="members-group text" transform="translate({}, {})"/>"#,
-                    fmt(adjusted_text_group_x),
-                    fmt(members_new_y)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="members-group text" transform="translate({}, {})">"#,
-                    fmt(adjusted_text_group_x),
-                    fmt(members_new_y)
-                );
-                for run in &members_runs {
-                    let t_y = -run.metrics.height.max(0.0)
-                        / (2.0 * run.metrics.line_count.max(1) as f64)
-                        + run.y_offset;
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
-                        escape_attr_display(run.style.as_str()),
-                        fmt(t_y)
-                    );
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
-                        &mut out,
-                        run.text.as_str(),
-                        true,
-                    );
-                    out.push_str("</g></g>");
-                }
-                out.push_str("</g>");
-            }
+            render_class_svg_node_runs_group(
+                &mut out,
+                "members-group text",
+                adjusted_text_group_x,
+                members_new_y,
+                &members_runs,
+            );
 
             let methods_new_y = adjust_y(methods_ty);
-            if methods_runs.is_empty() {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
-                    fmt(adjusted_text_group_x),
-                    fmt(methods_new_y)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="methods-group text" transform="translate({}, {})">"#,
-                    fmt(adjusted_text_group_x),
-                    fmt(methods_new_y)
-                );
-                for run in &methods_runs {
-                    let t_y = -run.metrics.height.max(0.0)
-                        / (2.0 * run.metrics.line_count.max(1) as f64)
-                        + run.y_offset;
-                    let _ = write!(
-                        &mut out,
-                        r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
-                        escape_attr_display(run.style.as_str()),
-                        fmt(t_y)
-                    );
-                    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
-                        &mut out,
-                        run.text.as_str(),
-                        true,
-                    );
-                    out.push_str("</g></g>");
-                }
-                out.push_str("</g>");
-            }
+            render_class_svg_node_runs_group(
+                &mut out,
+                "methods-group text",
+                adjusted_text_group_x,
+                methods_new_y,
+                &methods_runs,
+            );
 
             // Dividers (classBox.ts uses group bbox heights).
             if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {

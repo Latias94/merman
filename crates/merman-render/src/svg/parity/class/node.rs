@@ -76,6 +76,13 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
     pub line_height: f64,
 }
 
+pub(super) struct ClassSvgNodeLabelRun {
+    pub text: String,
+    pub style: String,
+    pub metrics: crate::text::TextMetrics,
+    pub y_offset: f64,
+}
+
 pub(super) struct ClassHtmlNodeLabelGroupSpec<'a> {
     pub label_style: &'a str,
     pub translate_y: f64,
@@ -339,6 +346,50 @@ pub(super) fn render_class_html_node_rows_group(
                 span_style: Some(node_style_attr),
             },
         );
+    }
+    out.push_str("</g>");
+}
+
+pub(super) fn render_class_svg_node_runs_group(
+    out: &mut String,
+    group_class: &str,
+    group_x: f64,
+    group_y: f64,
+    runs: &[ClassSvgNodeLabelRun],
+) {
+    if runs.is_empty() {
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({}, {})"/>"#,
+            group_class,
+            fmt(group_x),
+            fmt(group_y)
+        );
+        return;
+    }
+
+    let _ = write!(
+        out,
+        r#"<g class="{}" transform="translate({}, {})">"#,
+        group_class,
+        fmt(group_x),
+        fmt(group_y)
+    );
+    for run in runs {
+        let t_y = -run.metrics.height.max(0.0) / (2.0 * run.metrics.line_count.max(1) as f64)
+            + run.y_offset;
+        let _ = write!(
+            out,
+            r#"<g class="label" style="{}" transform="translate(0,{})"><g><rect class="background" style="stroke: none"/>"#,
+            escape_attr_display(run.style.as_str()),
+            fmt(t_y)
+        );
+        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
+            out,
+            run.text.as_str(),
+            true,
+        );
+        out.push_str("</g></g>");
     }
     out.push_str("</g>");
 }
