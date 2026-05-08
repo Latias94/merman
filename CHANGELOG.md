@@ -49,6 +49,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture renderer: move render settings/CSS derivation, service/group node emission, edge
   bounds/DOM emission, and root viewport finalization into dedicated modules while preserving SVG
   parity.
+- Architecture renderer: dedupe edge label wrap/bbox/transform calculation so bounds accumulation
+  and DOM emission reuse the same local plan.
 - Flowchart layout: borrow normal edges during self-loop expansion and keep ownership only for
   generated helper edges.
 - Flowchart self-loops: share explicit helper-edge construction between layout and SVG rendering

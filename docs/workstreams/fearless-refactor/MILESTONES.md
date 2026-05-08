@@ -301,6 +301,8 @@ Progress:
   rectangle computation into `svg/parity/architecture/geometry.rs`.
 - Extracted architecture edge bounds accumulation and DOM emission into
   `svg/parity/architecture/edges.rs`.
+- Refactored architecture edge label wrapping, bbox projection, and transform derivation into one
+  local render plan so bounds accumulation and DOM emission share the same computation.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.

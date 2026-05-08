@@ -25,6 +25,124 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
 }
 
+struct ArchitectureEdgeLabelPlan {
+    lines: Vec<super::labels::SvgLine>,
+    aabb_w: f64,
+    aabb_h: f64,
+    dominant_baseline: &'static str,
+    transform: String,
+}
+
+fn architecture_edge_label_plan(
+    edge: super::model::ArchitectureEdgeRef<'_>,
+    start_x: f64,
+    start_y: f64,
+    mid_x: f64,
+    mid_y: f64,
+    end_x: f64,
+    end_y: f64,
+    settings: &ArchitectureRenderSettings,
+    text_measurer: &VendoredFontMetricsTextMeasurer,
+) -> Option<ArchitectureEdgeLabelPlan> {
+    let label = edge.title.map(str::trim).filter(|t| !t.is_empty())?;
+    let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
+        (true, true) => "X",
+        (false, false) => "Y",
+        _ => "XY",
+    };
+
+    let wrap_width = match axis {
+        "X" => (start_x - end_x).abs(),
+        "Y" => (start_y - end_y).abs() / 1.5,
+        _ => (start_x - end_x).abs() / 2.0,
+    };
+    let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
+        wrap_width
+    } else {
+        architecture_text_overrides::architecture_create_text_default_wrap_width_px()
+    };
+    let lines = wrap_svg_words_to_lines(label, wrap_width, text_measurer, &settings.text_style);
+
+    let mut bbox_w = 0.0f64;
+    for line in &lines {
+        let s = svg_line_plain_text(line);
+        let m = text_measurer.measure_wrapped(
+            s.as_str(),
+            &settings.text_style,
+            None,
+            crate::text::WrapMode::SvgLike,
+        );
+        bbox_w = bbox_w.max(m.width);
+    }
+    let line_count = lines.len().max(1);
+    let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
+        settings.svg_font_size_px,
+        line_count,
+    );
+    let half_bbox_h = bbox_h / 2.0;
+
+    let (dominant_baseline, transform) = match axis {
+        "Y" => (
+            "middle",
+            format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
+        ),
+        "XY" => {
+            let pair = format!("{}{}", edge.lhs_dir, edge.rhs_dir);
+            let (xf, yf): (f64, f64) = match pair.as_str() {
+                "LT" | "TL" => (1.0, 1.0),
+                "BL" | "LB" => (1.0, -1.0),
+                "BR" | "RB" => (-1.0, -1.0),
+                _ => (-1.0, 1.0),
+            };
+            let angle = (-xf * yf * 45.0f64).round() as i64;
+
+            // Rotated bbox at 45° (w' == h' == (w+h)*sqrt(2)/2).
+            let diag = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
+            let t2x = xf * diag / 2.0;
+            let t2y = yf * diag / 2.0;
+            // Mermaid CLI serializes newline characters inside attribute values as XML entities
+            // (`&#10;`). Emit those explicitly so our SVG matches the upstream baselines.
+            let sep = "&#10;";
+
+            (
+                "auto",
+                format!(
+                    "translate({}, {}){sep}                translate({}, {}){sep}                rotate({}, 0, {})",
+                    fmt(mid_x),
+                    fmt(mid_y - half_bbox_h),
+                    fmt(t2x),
+                    fmt(t2y),
+                    angle,
+                    fmt(half_bbox_h),
+                    sep = sep
+                ),
+            )
+        }
+        _ => (
+            "middle",
+            format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
+        ),
+    };
+
+    let (aabb_w, aabb_h) = match axis {
+        "X" => (bbox_w, bbox_h),
+        "Y" => (bbox_h, bbox_w),
+        _ => {
+            // |cos(45°)| == |sin(45°)| == sqrt(1/2)
+            let a = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
+            (a, a)
+        }
+    };
+
+    Some(ArchitectureEdgeLabelPlan {
+        lines,
+        aabb_w: aabb_w.max(1.0),
+        aabb_h: aabb_h.max(1.0),
+        dominant_baseline,
+        transform,
+    })
+}
+
 pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, M>,
 ) {
@@ -221,60 +339,26 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
                 );
             }
 
-            if let Some(label) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
-                let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
-                    (true, true) => "X",
-                    (false, false) => "Y",
-                    _ => "XY",
-                };
-
-                let wrap_width = match axis {
-                    "X" => (start_x - end_x).abs(),
-                    "Y" => (start_y - end_y).abs() / 1.5,
-                    _ => (start_x - end_x).abs() / 2.0,
-                };
-                let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
-                    wrap_width
-                } else {
-                    architecture_text_overrides::architecture_create_text_default_wrap_width_px()
-                };
-                let lines =
-                    wrap_svg_words_to_lines(label, wrap_width, text_measurer, &settings.text_style);
-
-                let mut bbox_w = 0.0f64;
-                for line in &lines {
-                    let s = svg_line_plain_text(line);
-                    let m = text_measurer.measure_wrapped(
-                        s.as_str(),
-                        &settings.text_style,
-                        None,
-                        crate::text::WrapMode::SvgLike,
-                    );
-                    bbox_w = bbox_w.max(m.width);
-                }
-                let line_count = lines.len().max(1);
-                let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
-                    settings.svg_font_size_px,
-                    line_count,
-                );
-
-                // AABB for rotated labels (90°/45° variants). Mermaid rotates Architecture edge
-                // labels depending on the edge direction; mimic Chromium `getBBox()`-like bounds
-                // by projecting the (w,h) label box into the axes.
-                let (aabb_w, aabb_h) = match axis {
-                    "X" => (bbox_w, bbox_h),
-                    "Y" => (bbox_h, bbox_w),
-                    _ => {
-                        // |cos(45°)| == |sin(45°)| == sqrt(1/2)
-                        let a = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
-                        (a, a)
-                    }
-                };
-                let aabb_w = aabb_w.max(1.0);
-                let aabb_h = aabb_h.max(1.0);
+            let label_plan = architecture_edge_label_plan(
+                edge,
+                start_x,
+                start_y,
+                mid_x,
+                mid_y,
+                end_x,
+                end_y,
+                settings,
+                text_measurer,
+            );
+            if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(
                     content_bounds,
-                    bounds_from_rect(mid_x - aabb_w / 2.0, mid_y - aabb_h / 2.0, aabb_w, aabb_h),
+                    bounds_from_rect(
+                        mid_x - label_plan.aabb_w / 2.0,
+                        mid_y - label_plan.aabb_h / 2.0,
+                        label_plan.aabb_w,
+                        label_plan.aabb_h,
+                    ),
                 );
             }
 
@@ -332,101 +416,15 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
                 );
             }
 
-            if let Some(label) = edge.title.map(str::trim).filter(|t| !t.is_empty()) {
-                let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
-                    (true, true) => "X",
-                    (false, false) => "Y",
-                    _ => "XY",
-                };
-
-                // Mermaid@11.12.2 sets the label wrapping width based on the edge axis.
-                let wrap_width = match axis {
-                    "X" => (start_x - end_x).abs(),
-                    "Y" => (start_y - end_y).abs() / 1.5,
-                    _ => (start_x - end_x).abs() / 2.0,
-                };
-                let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
-                    wrap_width
-                } else {
-                    architecture_text_overrides::architecture_create_text_default_wrap_width_px()
-                };
-                let lines =
-                    wrap_svg_words_to_lines(label, wrap_width, text_measurer, &settings.text_style);
-
-                // Mermaid's XY label placement uses `getBoundingClientRect()` in the browser and
-                // composes a multi-step transform. Approximate the bbox headlessly so the DOM
-                // structure matches the upstream SVG baseline.
-                let mut bbox_w = 0.0f64;
-                for line in &lines {
-                    let s = svg_line_plain_text(line);
-                    let w = text_measurer.measure_wrapped(
-                        s.as_str(),
-                        &settings.text_style,
-                        None,
-                        crate::text::WrapMode::SvgLike,
-                    );
-                    bbox_w = bbox_w.max(w.width);
-                }
-                // Mirror Chromium `getBBox()`-like label height for parity-driven transforms.
-                let line_count = lines.len().max(1);
-                let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
-                    settings.text_style.font_size,
-                    line_count,
-                );
-                let half_bbox_h = bbox_h / 2.0;
-
-                let (dominant_baseline, transform) = match axis {
-                    "Y" => (
-                        "middle",
-                        format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
-                    ),
-                    "XY" => {
-                        let pair = format!("{}{}", edge.lhs_dir, edge.rhs_dir);
-                        let (xf, yf): (f64, f64) = match pair.as_str() {
-                            "LT" | "TL" => (1.0, 1.0),
-                            "BL" | "LB" => (1.0, -1.0),
-                            "BR" | "RB" => (-1.0, -1.0),
-                            _ => (-1.0, 1.0),
-                        };
-                        let angle = (-xf * yf * 45.0f64).round() as i64;
-
-                        // Rotated bbox at 45° (w' == h' == (w+h)*sqrt(2)/2).
-                        let diag = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
-                        let t2x = xf * diag / 2.0;
-                        let t2y = yf * diag / 2.0;
-                        // Mermaid CLI serializes newline characters inside attribute values as
-                        // XML entities (`&#10;`). Emit those explicitly so our SVG matches the
-                        // upstream baselines.
-                        let sep = "&#10;";
-
-                        (
-                            "auto",
-                            format!(
-                                "translate({}, {}){sep}                translate({}, {}){sep}                rotate({}, 0, {})",
-                                fmt(mid_x),
-                                fmt(mid_y - half_bbox_h),
-                                fmt(t2x),
-                                fmt(t2y),
-                                angle,
-                                fmt(half_bbox_h),
-                                sep = sep
-                            ),
-                        )
-                    }
-                    _ => (
-                        "middle",
-                        format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
-                    ),
-                };
-
+            if let Some(label_plan) = label_plan {
                 let _ = write!(
                     out,
                     r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="{baseline}" text-anchor="middle" transform="{transform}">"#,
-                    baseline = dominant_baseline,
-                    transform = transform
+                    baseline = label_plan.dominant_baseline,
+                    transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                write_svg_text_lines(out, &lines);
+                write_svg_text_lines(out, &label_plan.lines);
                 out.push_str("</g></g>");
             }
 
