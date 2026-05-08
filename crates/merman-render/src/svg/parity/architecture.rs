@@ -49,32 +49,6 @@ struct ArchitectureTimingState<'a> {
     total_start: std::time::Instant,
 }
 
-pub(super) fn render_architecture_diagram_svg_typed(
-    layout: &ArchitectureDiagramLayout,
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::timing::render_timing_enabled();
-    let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
-
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model,
-            effective_config,
-            sanitize_config_opt: None,
-            options,
-        },
-        ArchitectureTimingState {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
 pub(super) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,

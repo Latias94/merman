@@ -72,24 +72,6 @@ pub(super) fn render_class_diagram_v2_svg(
     )
 }
 
-pub(super) fn render_class_diagram_v2_svg_model(
-    layout: &ClassDiagramV2Layout,
-    model: &ClassSvgModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render::render_class_diagram_v2_svg_model_impl(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_class_diagram_v2_svg_model_with_config(
     layout: &ClassDiagramV2Layout,
     model: &ClassSvgModel,

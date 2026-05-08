@@ -194,25 +194,6 @@ fn prepare_render_edges_and_extra_nodes<'a>(
     (render_edges, extra_nodes)
 }
 
-pub(super) fn render_flowchart_v2_svg_model(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    render_flowchart_v2_svg_model_with_config(
-        layout,
-        model,
-        &config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_flowchart_v2_svg_model_with_config(
     layout: &FlowchartV2Layout,
     model: &crate::flowchart::FlowchartV2Model,

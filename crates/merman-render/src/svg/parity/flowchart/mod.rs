@@ -538,24 +538,6 @@ pub(super) fn render_flowchart_v2_svg(
     )
 }
 
-pub(super) fn render_flowchart_v2_svg_model(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg_model(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_flowchart_v2_svg_model_with_config(
     layout: &FlowchartV2Layout,
     model: &crate::flowchart::FlowchartV2Model,

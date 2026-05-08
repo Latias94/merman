@@ -418,6 +418,9 @@ Progress:
 - Core flowchart/state context cleanup spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_core_context_cleanup.md`, covering the touched
   `flowchart_medium` and `state_medium` pipeline fixtures.
+- Removed the obsolete `render_layout_svg_parts_for_render_model` compat dispatcher and the
+  no-config typed wrappers it served, so typed render-model dispatch now stays on the
+  `*_with_config` path.
 
 Exit criteria:
 

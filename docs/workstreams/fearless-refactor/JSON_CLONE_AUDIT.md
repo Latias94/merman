@@ -18,13 +18,15 @@ to keep render-only paths typed/config-borrowed.
 - `layout_parsed_render_layout_only` does not construct an owned semantic JSON payload. It only
   borrows `parsed.meta.effective_config.as_value()` except for diagram-specific typed layout APIs
   that already take `&MermaidConfig`.
+- The obsolete `render_layout_svg_parts_for_render_model` compat shim has been removed, so the
+  typed render-model dispatch surface now goes through the `*_with_config` entrypoints only.
 
 ## Clone Taxonomy
 
 | Category | Owner | Status | Decision |
 | --- | --- | --- | --- |
 | Owned semantic compatibility payload | `layout_parsed` | Intentional | Keep until a future borrowed/typed `LayoutedRenderModel` API replaces this surface. |
-| Value-to-`MermaidConfig` bridge in legacy JSON render entrypoints | `render_layout_svg_parts`, `render_layout_svg_parts_for_render_model` | Compatibility cost | Keep for callers that only provide `&Value`; prefer `*_with_config` for public wrappers. |
+| Value-to-`MermaidConfig` bridge in legacy JSON render entrypoints | `render_layout_svg_parts` | Compatibility cost | Keep for callers that only provide `&Value`; prefer `*_with_config` for public wrappers. |
 | Rebuilding `MermaidConfig` inside class typed layout/render paths | class note HTML layout metrics and rendering | Removed for class typed/config path | Pass the existing `&MermaidConfig` through class layout/render state and only allocate on legacy `&Value` entrypoints. |
 | Cloning typed render models for local title fallback | sequence SVG rendering | Removed | Keep model borrowed and compute an effective title override at emission time. |
 
@@ -38,6 +40,8 @@ to keep render-only paths typed/config-borrowed.
   path instead of degrading to `effective_config.as_value()`.
 - Sequence SVG rendering no longer clones `SequenceDiagramRenderModel` just to fill a fallback
   diagram title; it borrows the model and computes the fallback title lazily.
+- The obsolete non-`*_with_config` render-model compat path and its no-config typed wrappers were
+  removed, leaving the typed render-model dispatch surface on the `*_with_config` entrypoints.
 
 ## Remaining Work
 
@@ -57,3 +61,6 @@ to keep render-only paths typed/config-borrowed.
 
 - `cargo fmt --check`
 - `cargo check -p merman-render --all-targets --all-features`
+- `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
+- `cargo nextest run -p merman-render`
+- `cargo run -p xtask -- verify --strict`

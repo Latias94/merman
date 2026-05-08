@@ -37,6 +37,9 @@ This note records the P3 review after the sequence, kanban, and gantt typed rend
 - CLI layout commands and render commands now share `layout_options`.
 - CLI Mermaid-input raster output and direct SVG-input raster output now share `write_rasterized_svg`.
 - CLI raster options and default output extension selection now have one owner.
+- The obsolete `merman_render::svg::render_layout_svg_parts_for_render_model` compat dispatcher was
+  removed; render-model SVG dispatch now uses the `*_with_config` surface so callers do not rebuild
+  `MermaidConfig` from JSON.
 
 ## Follow-up
 
