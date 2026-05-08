@@ -178,12 +178,18 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parity compare still passes via `cargo run -p xtask -- compare-c4-svgs --check-dom
   --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
   open for a historical before/after pair, but `c4_medium` now has a current pipeline bench smoke
-  in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`. XyChart status:
+  in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`, with cross-repo
+  end-to-end comparison evidence in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`. XyChart status:
   post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
   --dom-mode parity --dom-decimals 3`, and the repaired `xychart_medium` fixture now has a current
-  pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
+  pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`,
+  with cross-repo end-to-end comparison evidence in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 
@@ -425,7 +431,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Add generated metadata for generated overrides with expected removal criteria.
   Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
   metadata for every generated override category and manual raw SVG/path bridge category, with a
-  regression test guarding generated category removal metadata.
+  regression test guarding generated category removal metadata. The last manual raw bridge was
+  removed and `xtask report-overrides` now reports zero manual bridge files.
 - [x] Count restricted-visibility helper functions in helper footprint.
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.

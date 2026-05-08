@@ -131,11 +131,9 @@ Total helper functions reported by `xtask`: `67`.
 
 ### Manual Raw SVG/Path Bridges
 
-Total bridge functions reported by `xtask`: `1`.
+Total bridge functions reported by `xtask`: `0`.
 
-| file | bridge functions |
-| --- | ---: |
-| `svg/parity/flowchart/edge_geom/degenerate_path.rs` | 1 |
+No manual raw SVG/path bridges remain.
 
 ### Counting Notes
 
@@ -163,15 +161,15 @@ Counts are inventory units and should not be compared directly across categories
 
 ## Known Gaps
 
-- Manual bridge scanning is intentionally naming-based today: hand-authored bridge functions must
-  use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
+- Manual bridge scanning is intentionally naming-based today: any future hand-authored bridge
+  functions must use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
 - Generated override metadata is category-level. Per-entry fixture/probe provenance still lives in
   generator inputs, generated comments, tests, and upstream fixture names.
 
 ## Next Actions
 
-- Keep temporary raw SVG/path bridge functions named `maybe_override_*` and documented with
-  owner/removal notes.
+- Keep any future temporary raw SVG/path bridge functions named `maybe_override_*` and documented
+  with owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
   `gitgraph`, `sequence`, and `class`.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.

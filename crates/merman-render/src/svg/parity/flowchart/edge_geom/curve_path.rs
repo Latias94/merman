@@ -30,6 +30,7 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     if curve_is_basis {
         let _ = (origin_x, abs_top_transform, viewbox_current_bounds);
         let (d, raw_pb) = crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data);
+        let d = maybe_close_single_point_path(d, line_data);
         let pb = svg_path_bounds_from_d(&d).or(raw_pb);
         (d, pb, false)
     } else {
@@ -58,7 +59,50 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
         };
 
+        let d = maybe_close_single_point_path(d, line_data);
         let pb = svg_path_bounds_from_d(&d).or(pb);
         (d, pb, false)
+    }
+}
+
+fn maybe_close_single_point_path(d: String, line_data: &[crate::model::LayoutPoint]) -> String {
+    if line_data.len() == 1 && !d.ends_with('Z') {
+        let mut d = d;
+        d.push('Z');
+        d
+    } else {
+        d
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maybe_close_single_point_path_appends_z_once() {
+        let line_data = vec![crate::model::LayoutPoint { x: 1.0, y: 2.0 }];
+
+        assert_eq!(
+            maybe_close_single_point_path("M1,2".to_string(), &line_data),
+            "M1,2Z"
+        );
+        assert_eq!(
+            maybe_close_single_point_path("M1,2Z".to_string(), &line_data),
+            "M1,2Z"
+        );
+    }
+
+    #[test]
+    fn maybe_close_single_point_path_preserves_multi_point_paths() {
+        let line_data = vec![
+            crate::model::LayoutPoint { x: 1.0, y: 2.0 },
+            crate::model::LayoutPoint { x: 3.0, y: 4.0 },
+        ];
+
+        assert_eq!(
+            maybe_close_single_point_path("M1,2L3,4".to_string(), &line_data),
+            "M1,2L3,4"
+        );
     }
 }

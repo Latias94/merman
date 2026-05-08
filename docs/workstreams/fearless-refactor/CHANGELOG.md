@@ -5,6 +5,18 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Fixed the benchmark comparison scripts so the local `mermaid-rs-renderer` checkout runs its
+  Criterion benches under `MMDR_RUN_CRITERION_BENCHES=1` instead of falling back to smoke
+  validation.
+- Refreshed the rolling `docs/performance/COMPARISON.md` baseline with current flowchart, class,
+  mindmap, architecture, C4, and XYChart end-to-end comparisons against `mermaid-rs-renderer`.
+- Added dedicated C4/XYChart cross-repo end-to-end and stage spotcheck reports at
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
+- Removed the final manual raw SVG/path bridge by collapsing the flowchart degenerate
+  subgraph-descendant route into generic single-point path emission; `xtask report-overrides` now
+  reports zero manual bridge files.
+
 - Replaced the remaining 7 generated `kanban` root viewport pins with profile-based root height
   calibration, removing the generated Kanban root table while keeping `parity-root` green.
 - Pruned 4 obsolete `kanban` root viewport entries from the generated table after confirming the

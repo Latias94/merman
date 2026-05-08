@@ -153,6 +153,11 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`.
 - XYChart typed render-path spotcheck is recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`.
+- C4/XYChart cross-repo end-to-end comparison evidence is recorded in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md`, and stage attribution is
+  recorded in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
+- The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero
+  manual bridge files.
 - Same-machine baseline capture remains a process requirement for future typed migrations.
 
 Exit criteria:
