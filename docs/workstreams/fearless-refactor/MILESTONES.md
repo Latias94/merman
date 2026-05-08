@@ -364,6 +364,9 @@ Progress:
   `sequence/render.rs` are thin orchestration boundaries over dedicated owner modules.
 - Architecture renderer split is now complete for the current scope; keep any follow-up cleanup
   under M5 if future profiling or navigation reveals new dead code.
+- Removed the remaining dead xtask debug helpers and stale scratch structs after equivalent
+  commands existed; the state SVG analyzer, font-metrics generator, and SVG override generator no
+  longer keep dead helper code around.
 
 Exit criteria:
 

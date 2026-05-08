@@ -8,6 +8,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Added category-level owner/source/allowed-use/expected-removal metadata to `xtask
   report-overrides`, plus a regression test so generated override categories keep explicit removal
   criteria.
+- Removed dead xtask debug/generator helpers, including unused state analyzer geometry, an obsolete
+  font-metrics browser char-width helper, a stale flowchart width estimator, and an unused SVG
+  override scratch struct.
 - Expanded `xtask report-overrides` to inventory hand-authored `maybe_override_*` raw SVG/path
   bridge functions under `svg/parity`, with stable `/` paths in report output.
 - Fixed override helper-function counting in `xtask report-overrides` and added regression tests

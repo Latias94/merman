@@ -132,14 +132,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
             .any(|a| a.has_tag_name("defs"))
     }
 
-    #[allow(dead_code)]
-    #[derive(Debug, Clone)]
-    struct SampleKey {
-        font_key: String,
-        font_family_raw: String,
-        size_key: usize,
-    }
-
     let Ok(entries) = fs::read_dir(&in_dir) else {
         return Err(XtaskError::ReadFile {
             path: in_dir.display().to_string(),

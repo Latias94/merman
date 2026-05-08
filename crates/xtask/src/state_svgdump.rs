@@ -20,16 +20,6 @@ struct Rect {
     h: f64,
 }
 
-impl Rect {
-    #[allow(dead_code)]
-    fn center(self) -> Point {
-        Point {
-            x: self.x + self.w / 2.0,
-            y: self.y + self.h / 2.0,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 struct ClusterInfo {
     outer: Rect,
@@ -44,8 +34,6 @@ struct NodeInfo {
 
 #[derive(Debug, Clone)]
 struct RootScope {
-    #[allow(dead_code)]
-    index: usize,
     translate: Point,
     is_nested: bool,
     nested_root_id: Option<String>,
@@ -83,15 +71,11 @@ fn parse_svg_scopes(svg: &str) -> Result<Vec<RootScope>, XtaskError> {
         .map_err(|e| XtaskError::SvgCompareFailed(format!("failed to parse svg xml: {e}")))?;
 
     let mut scopes: Vec<RootScope> = Vec::new();
-    for (idx, root) in doc
-        .descendants()
-        .filter(|n| {
-            n.is_element()
-                && n.tag_name().name() == "g"
-                && class_has_token(n.attribute("class"), "root")
-        })
-        .enumerate()
-    {
+    for root in doc.descendants().filter(|n| {
+        n.is_element()
+            && n.tag_name().name() == "g"
+            && class_has_token(n.attribute("class"), "root")
+    }) {
         let translate = root
             .attribute("transform")
             .and_then(parse_translate_attr)
@@ -192,7 +176,6 @@ fn parse_svg_scopes(svg: &str) -> Result<Vec<RootScope>, XtaskError> {
         };
 
         scopes.push(RootScope {
-            index: idx,
             translate,
             is_nested,
             nested_root_id,

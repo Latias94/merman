@@ -388,7 +388,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   merman-core`, `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3`, and
   `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3`, plus
   `cargo run -p xtask -- verify --strict`.
-- [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
+- [x] Remove dead debug helpers once equivalent `xtask` commands exist.
+  Evidence: `crates/xtask/src/state_svgdump.rs` no longer carries dead `center()` or unused scope
+  index fields; `crates/xtask/src/cmd/overrides/font_metrics.rs` removed unused browser/debug
+  helpers and the old flowchart width estimator; `crates/xtask/src/cmd/overrides/svg.rs` dropped
+  an unused `SampleKey`. `cargo nextest run -p xtask` and `cargo clippy -p xtask --all-targets
+  --all-features -- -D warnings` passed afterward.
 
 ## P2: Override Hygiene
 
