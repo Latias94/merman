@@ -9,20 +9,25 @@ pub(super) fn render_xychart_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{HashMap, hash_map::Entry};
 
-    #[derive(Debug, Clone)]
     struct Node {
-        tag: String,
-        attrs: BTreeMap<String, String>,
+        tag: &'static str,
+        attrs: Vec<(&'static str, String)>,
         text: Option<String>,
         children: Vec<usize>,
     }
 
-    fn node(tag: &str) -> Node {
+    impl Node {
+        fn attr(&mut self, name: &'static str, value: impl Into<String>) {
+            self.attrs.push((name, value.into()));
+        }
+    }
+
+    fn node(tag: &'static str) -> Node {
         Node {
-            tag: tag.to_string(),
-            attrs: BTreeMap::new(),
+            tag,
+            attrs: Vec::new(),
             text: None,
             children: Vec::new(),
         }
@@ -38,7 +43,7 @@ pub(super) fn render_xychart_diagram_svg(
     fn render_node(out: &mut String, arena: &[Node], id: usize) {
         let n = &arena[id];
         out.push('<');
-        out.push_str(&n.tag);
+        out.push_str(n.tag);
         for (k, v) in &n.attrs {
             let _ = write!(out, r#" {k}="{v}""#);
         }
@@ -62,6 +67,28 @@ pub(super) fn render_xychart_diagram_svg(
             "right" => "end",
             _ => "middle",
         }
+    }
+
+    fn ensure_group_path(
+        arena: &mut Vec<Node>,
+        groups_by_path: &mut HashMap<(usize, String), usize>,
+        group_texts: &[String],
+    ) -> usize {
+        let mut parent = 0usize;
+        for seg in group_texts {
+            let gid = match groups_by_path.entry((parent, seg.clone())) {
+                Entry::Occupied(entry) => *entry.get(),
+                Entry::Vacant(entry) => {
+                    let mut g = node("g");
+                    g.attr("class", seg.as_str());
+                    let id = push_child(arena, parent, g);
+                    entry.insert(id);
+                    id
+                }
+            };
+            parent = gid;
+        }
+        parent
     }
 
     fn dominant_baseline(vertical_pos: &str) -> &'static str {
@@ -101,8 +128,9 @@ pub(super) fn render_xychart_diagram_svg(
         },
     );
 
-    let css = xychart_css(diagram_id);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str("<style>");
+    push_xychart_css(&mut out, diagram_id);
+    out.push_str("</style>");
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.
     out.push_str(r#"<g/>"#);
@@ -110,21 +138,17 @@ pub(super) fn render_xychart_diagram_svg(
     // Build the `.main` group as an ordered DOM tree, matching Mermaid's D3 `getGroup()` behavior.
     let mut arena: Vec<Node> = Vec::new();
     arena.push(node("g"));
-    arena[0]
-        .attrs
-        .insert("class".to_string(), "main".to_string());
+    arena[0].attr("class", "main");
 
     // Background rectangle.
     let mut bg = node("rect");
-    bg.attrs.insert("width".to_string(), fmt_xy(layout.width));
-    bg.attrs.insert("height".to_string(), fmt_xy(layout.height));
-    bg.attrs
-        .insert("class".to_string(), "background".to_string());
-    bg.attrs
-        .insert("fill".to_string(), escape_xml(&layout.background_color));
+    bg.attr("width", fmt_xy(layout.width));
+    bg.attr("height", fmt_xy(layout.height));
+    bg.attr("class", "background");
+    bg.attr("fill", escape_xml(&layout.background_color));
     push_child(&mut arena, 0, bg);
 
-    let mut groups_by_prefix: HashMap<String, usize> = HashMap::new();
+    let mut groups_by_path: HashMap<(usize, String), usize> = HashMap::new();
 
     for shape in &layout.drawables {
         match shape {
@@ -132,42 +156,20 @@ pub(super) fn render_xychart_diagram_svg(
                 if data.is_empty() {
                     continue;
                 }
-                let mut prefix = String::new();
-                let mut parent = 0usize;
-                for (i, seg) in group_texts.iter().enumerate() {
-                    let cur_parent = if i > 0 {
-                        groups_by_prefix.get(&prefix).copied().unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    parent = cur_parent;
-                    prefix.push_str(seg);
-                    let gid = if let Some(existing) = groups_by_prefix.get(&prefix).copied() {
-                        existing
-                    } else {
-                        let mut g = node("g");
-                        g.attrs.insert("class".to_string(), seg.clone());
-                        let id = push_child(&mut arena, parent, g);
-                        groups_by_prefix.insert(prefix.clone(), id);
-                        id
-                    };
-                    parent = gid;
-                }
+                let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
 
                 // Append rect elements.
                 for r in data {
                     let mut n = node("rect");
-                    n.attrs.insert("x".to_string(), fmt_xy(r.x));
+                    n.attr("x", fmt_xy(r.x));
                     if !r.y.is_nan() {
-                        n.attrs.insert("y".to_string(), fmt_xy(r.y));
+                        n.attr("y", fmt_xy(r.y));
                     }
-                    n.attrs.insert("width".to_string(), fmt_xy(r.width));
-                    n.attrs.insert("height".to_string(), fmt_xy(r.height));
-                    n.attrs.insert("fill".to_string(), escape_xml(&r.fill));
-                    n.attrs
-                        .insert("stroke".to_string(), escape_xml(&r.stroke_fill));
-                    n.attrs
-                        .insert("stroke-width".to_string(), fmt_xy(r.stroke_width));
+                    n.attr("width", fmt_xy(r.width));
+                    n.attr("height", fmt_xy(r.height));
+                    n.attr("fill", escape_xml(&r.fill));
+                    n.attr("stroke", escape_xml(&r.stroke_fill));
+                    n.attr("stroke-width", fmt_xy(r.stroke_width));
                     push_child(&mut arena, parent, n);
                 }
 
@@ -225,22 +227,15 @@ pub(super) fn render_xychart_diagram_svg(
                             let uniform = min_font.floor().max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
-                                t.attrs.insert(
-                                    "x".to_string(),
+                                t.attr(
+                                    "x",
                                     fmt_xy(item.rect.x + item.rect.width - bar_data_label_inset_px),
                                 );
-                                t.attrs.insert(
-                                    "y".to_string(),
-                                    fmt_xy(item.rect.y + item.rect.height / 2.0),
-                                );
-                                t.attrs.insert("text-anchor".to_string(), "end".to_string());
-                                t.attrs
-                                    .insert("dominant-baseline".to_string(), "middle".to_string());
-                                t.attrs.insert("fill".to_string(), "black".to_string());
-                                t.attrs.insert(
-                                    "font-size".to_string(),
-                                    format!("{}px", fmt_xy(uniform)),
-                                );
+                                t.attr("y", fmt_xy(item.rect.y + item.rect.height / 2.0));
+                                t.attr("text-anchor", "end");
+                                t.attr("dominant-baseline", "middle");
+                                t.attr("fill", "black");
+                                t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
                             }
@@ -284,21 +279,12 @@ pub(super) fn render_xychart_diagram_svg(
                             let uniform = min_font.floor().max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
-                                t.attrs.insert(
-                                    "x".to_string(),
-                                    fmt_xy(item.rect.x + item.rect.width / 2.0),
-                                );
-                                t.attrs
-                                    .insert("y".to_string(), fmt_xy(item.rect.y + y_offset));
-                                t.attrs
-                                    .insert("text-anchor".to_string(), "middle".to_string());
-                                t.attrs
-                                    .insert("dominant-baseline".to_string(), "hanging".to_string());
-                                t.attrs.insert("fill".to_string(), "black".to_string());
-                                t.attrs.insert(
-                                    "font-size".to_string(),
-                                    format!("{}px", fmt_xy(uniform)),
-                                );
+                                t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
+                                t.attr("y", fmt_xy(item.rect.y + y_offset));
+                                t.attr("text-anchor", "middle");
+                                t.attr("dominant-baseline", "hanging");
+                                t.attr("fill", "black");
+                                t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
                             }
@@ -310,46 +296,19 @@ pub(super) fn render_xychart_diagram_svg(
                 if data.is_empty() {
                     continue;
                 }
-                let mut prefix = String::new();
-                let mut parent = 0usize;
-                for (i, seg) in group_texts.iter().enumerate() {
-                    let cur_parent = if i > 0 {
-                        groups_by_prefix.get(&prefix).copied().unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    parent = cur_parent;
-                    prefix.push_str(seg);
-                    let gid = if let Some(existing) = groups_by_prefix.get(&prefix).copied() {
-                        existing
-                    } else {
-                        let mut g = node("g");
-                        g.attrs.insert("class".to_string(), seg.clone());
-                        let id = push_child(&mut arena, parent, g);
-                        groups_by_prefix.insert(prefix.clone(), id);
-                        id
-                    };
-                    parent = gid;
-                }
+                let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
 
                 for t in data {
                     let mut n = node("text");
-                    n.attrs.insert("x".to_string(), "0".to_string());
-                    n.attrs.insert("y".to_string(), "0".to_string());
-                    n.attrs.insert("fill".to_string(), escape_xml(&t.fill));
-                    n.attrs
-                        .insert("font-size".to_string(), fmt_string(t.font_size));
-                    n.attrs.insert(
-                        "dominant-baseline".to_string(),
-                        dominant_baseline(&t.vertical_pos).to_string(),
-                    );
-                    n.attrs.insert(
-                        "text-anchor".to_string(),
-                        text_anchor(&t.horizontal_pos).to_string(),
-                    );
+                    n.attr("x", "0");
+                    n.attr("y", "0");
+                    n.attr("fill", escape_xml(&t.fill));
+                    n.attr("font-size", fmt_string(t.font_size));
+                    n.attr("dominant-baseline", dominant_baseline(&t.vertical_pos));
+                    n.attr("text-anchor", text_anchor(&t.horizontal_pos));
                     let rot = t.rotation;
-                    n.attrs.insert(
-                        "transform".to_string(),
+                    n.attr(
+                        "transform",
                         format!(
                             "translate({}, {}) rotate({})",
                             fmt_xy(t.x),
@@ -365,39 +324,14 @@ pub(super) fn render_xychart_diagram_svg(
                 if data.is_empty() {
                     continue;
                 }
-                let mut prefix = String::new();
-                let mut parent = 0usize;
-                for (i, seg) in group_texts.iter().enumerate() {
-                    let cur_parent = if i > 0 {
-                        groups_by_prefix.get(&prefix).copied().unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    parent = cur_parent;
-                    prefix.push_str(seg);
-                    let gid = if let Some(existing) = groups_by_prefix.get(&prefix).copied() {
-                        existing
-                    } else {
-                        let mut g = node("g");
-                        g.attrs.insert("class".to_string(), seg.clone());
-                        let id = push_child(&mut arena, parent, g);
-                        groups_by_prefix.insert(prefix.clone(), id);
-                        id
-                    };
-                    parent = gid;
-                }
+                let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
 
                 for p in data {
                     let mut n = node("path");
-                    n.attrs.insert("d".to_string(), escape_xml(&p.path));
-                    n.attrs.insert(
-                        "fill".to_string(),
-                        escape_xml(p.fill.as_deref().unwrap_or("none")),
-                    );
-                    n.attrs
-                        .insert("stroke".to_string(), escape_xml(&p.stroke_fill));
-                    n.attrs
-                        .insert("stroke-width".to_string(), fmt_xy(p.stroke_width));
+                    n.attr("d", escape_xml(&p.path));
+                    n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
+                    n.attr("stroke", escape_xml(&p.stroke_fill));
+                    n.attr("stroke-width", fmt_xy(p.stroke_width));
                     push_child(&mut arena, parent, n);
                 }
             }

@@ -494,6 +494,10 @@ Progress:
   parser's borrowed `MermaidConfig` on the typed path.
 - Completed the flowchart/class/sequence hot-loop clone audit; the remaining clone sites are now
   documented as compatibility, debug, or graphlib key ownership boundaries.
+- Recorded the XYChart render allocation cleanup in
+  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`; the local
+  Criterion smoke shows `render/xychart_medium` at `113.74-122.92 us` after the SVG renderer
+  stopped building per-node `BTreeMap` tables and temporary CSS strings.
 
 Exit criteria:
 

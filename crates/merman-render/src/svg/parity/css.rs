@@ -4,12 +4,11 @@ use super::*;
 //
 // Keep Mermaid@11.12.2 ordering quirks to preserve DOM parity.
 
-pub(super) fn info_css(diagram_id: &str) -> String {
+pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let mut out = String::new();
     let _ = write!(
-        &mut out,
+        out,
         r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
         id, font
     );
@@ -17,30 +16,35 @@ pub(super) fn info_css(diagram_id: &str) -> String {
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
         id, id
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
         id, id
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
         id, id, id, id, id, id
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
         id, id
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} :root{{--mermaid-font-family:{};}}"#,
         id, font, id, id, font
     );
+}
+
+pub(super) fn info_css(diagram_id: &str) -> String {
+    let mut out = String::new();
+    info_css_into(&mut out, diagram_id);
     out
 }
 
@@ -548,11 +552,11 @@ pub(super) fn treemap_css(diagram_id: &str) -> String {
     out
 }
 
-pub(super) fn xychart_css(diagram_id: &str) -> String {
+pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
     // Mermaid does not ship dedicated XYChart styles at 11.12.2 (it relies on theme variables and
     // inline attributes). Keep the shared base stylesheet for consistency with upstream SVG
     // baselines. The compare tooling ignores `<style>` content in parity mode.
-    info_css(diagram_id)
+    info_css_into(out, diagram_id);
 }
 
 pub(super) fn gantt_css(diagram_id: &str) -> String {

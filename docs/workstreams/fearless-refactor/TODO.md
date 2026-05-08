@@ -191,7 +191,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`,
   with cross-repo end-to-end comparison evidence in
   `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`. The follow-up render
+  allocation cleanup is recorded in
+  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 
@@ -509,6 +511,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `text_measure_stress` now covers vendored font computed-length and SVG-like wrapped
   label measurement with default and bold Mermaid flowchart font styles. Same-machine spotcheck:
   `docs/performance/spotcheck_2026-05-08_text_measure_stress.md`.
+- [x] Reduce XYChart SVG render allocation overhead.
+  Evidence: `svg/parity/xychart.rs` now uses static node tags, insertion-order attribute vectors,
+  one group-path helper, and direct CSS writes into the output buffer. The follow-up smoke is
+  recorded in `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`, with
+  `render/xychart_medium` at `113.74-122.92 us` and a `-14.810%` midpoint change in the local
+  Criterion analysis.
 
 ## P3: Public API and CLI Cleanup
 

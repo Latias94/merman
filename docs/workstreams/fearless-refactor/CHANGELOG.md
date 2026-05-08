@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Reduced XYChart SVG render allocation overhead by replacing the temporary DOM arena's
+  per-node `BTreeMap` attribute tables with static tags and insertion-order attribute vectors,
+  centralizing nested group creation, and writing shared XYChart CSS directly into the output
+  buffer. The follow-up pipeline smoke records `render/xychart_medium` at `113.74-122.92 us` in
+  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`.
 - Fixed the benchmark comparison scripts so the local `mermaid-rs-renderer` checkout runs its
   Criterion benches under `MMDR_RUN_CRITERION_BENCHES=1` instead of falling back to smoke
   validation.
