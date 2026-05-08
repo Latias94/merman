@@ -376,6 +376,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p merman-render text`, and `cargo run -p xtask -- compare-flowchart-svgs
   --check-dom --dom-decimals 3`.
+  Flowchart layout/label helpers now use request and context structs (`FlowchartLabelMetricsRequest`,
+  `NodeLayoutDimensionsRequest`, recursive layout context/state, place-graph inputs/outputs, and
+  cluster rect context/state), so `flowchart/mod.rs` no longer needs a module-level allow.
+  Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render flowchart`, and `cargo run -p xtask -- compare-flowchart-svgs
+  --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

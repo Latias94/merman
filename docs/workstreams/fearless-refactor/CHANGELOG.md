@@ -45,6 +45,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   renderer call site to the same spec shape.
 - Replaced vendored font-metric table argument lists with `FontMetricProfile`, removing the
   `text.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced flowchart label, node layout, recursive layout, place-graph, and cluster rect argument
+  bundles with request/context structs, removing the `flowchart/mod.rs` module-level
+  `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

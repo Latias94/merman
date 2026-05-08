@@ -66,14 +66,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         let y = -height / 2.0;
 
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-            ctx.measurer,
-            label.text,
-            label.label_type,
-            &ctx.text_style,
-            Some(ctx.wrapping_width),
-            ctx.node_wrap_mode,
-            ctx.config,
-            ctx.math_renderer,
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: label.text,
+                label_type: label.label_type,
+                style: &ctx.text_style,
+                max_width_px: Some(ctx.wrapping_width),
+                wrap_mode: ctx.node_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
         );
         if !has_label {
             metrics.width = 0.0;

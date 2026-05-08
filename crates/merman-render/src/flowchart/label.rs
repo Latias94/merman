@@ -3,16 +3,31 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
 
+pub(crate) struct FlowchartLabelMetricsRequest<'a> {
+    pub(crate) measurer: &'a dyn TextMeasurer,
+    pub(crate) raw_label: &'a str,
+    pub(crate) label_type: &'a str,
+    pub(crate) style: &'a TextStyle,
+    pub(crate) max_width_px: Option<f64>,
+    pub(crate) wrap_mode: WrapMode,
+    pub(crate) config: &'a MermaidConfig,
+    pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
 pub(crate) fn flowchart_label_metrics_for_layout(
-    measurer: &dyn TextMeasurer,
-    raw_label: &str,
-    label_type: &str,
-    style: &TextStyle,
-    max_width_px: Option<f64>,
-    wrap_mode: WrapMode,
-    config: &MermaidConfig,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    req: FlowchartLabelMetricsRequest<'_>,
 ) -> crate::text::TextMetrics {
+    let FlowchartLabelMetricsRequest {
+        measurer,
+        raw_label,
+        label_type,
+        style,
+        max_width_px,
+        wrap_mode,
+        config,
+        math_renderer,
+    } = req;
+
     let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
         // Upstream Mermaid measures KaTeX-rendered HTML labels via DOM. Keep pure-Rust as the
         // default behavior, but allow an optional backend to override label metrics.

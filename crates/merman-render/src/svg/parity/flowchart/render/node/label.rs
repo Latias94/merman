@@ -81,14 +81,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
     } else {
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-            ctx.measurer,
-            label.text,
-            label.label_type,
-            &node_text_style,
-            Some(ctx.wrapping_width),
-            ctx.node_wrap_mode,
-            ctx.config,
-            ctx.math_renderer,
+            crate::flowchart::FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: label.text,
+                label_type: label.label_type,
+                style: &node_text_style,
+                max_width_px: Some(ctx.wrapping_width),
+                wrap_mode: ctx.node_wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+            },
         );
         let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
             ctx.class_defs,

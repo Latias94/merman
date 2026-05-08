@@ -110,14 +110,16 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
     let cfg = merman_core::MermaidConfig::default();
 
     let m = crate::flowchart::flowchart_label_metrics_for_layout(
-        &measurer,
-        "fa:fa-car Car",
-        "text",
-        &style,
-        Some(200.0),
-        WrapMode::HtmlLike,
-        &cfg,
-        None,
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "fa:fa-car Car",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+        },
     );
     assert_eq!(m.width, 45.015625);
     assert_eq!(m.height, 24.0);
@@ -311,16 +313,16 @@ fn flowchart_svg_node_label_width_overrides_match_repeat_offenders() {
     assert_eq!(node_label_b.width, 94.0);
 
     let cfg = merman_core::MermaidConfig::default();
-    let b = flowchart_label_metrics_for_layout(
-        &measurer,
-        "b",
-        "text",
-        &style,
-        Some(200.0),
-        WrapMode::SvgLike,
-        &cfg,
-        None,
-    );
+    let b = flowchart_label_metrics_for_layout(crate::flowchart::FlowchartLabelMetricsRequest {
+        measurer: &measurer,
+        raw_label: "b",
+        label_type: "text",
+        style: &style,
+        max_width_px: Some(200.0),
+        wrap_mode: WrapMode::SvgLike,
+        config: &cfg,
+        math_renderer: None,
+    });
     assert_eq!(b.width, 8.921875);
 }
 
@@ -499,14 +501,16 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
     assert_eq!(html_metrics.line_count, 2);
 
     let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-        &measurer,
-        markdown,
-        "markdown",
-        &style,
-        Some(200.0),
-        WrapMode::HtmlLike,
-        &cfg,
-        None,
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: markdown,
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+        },
     );
     assert_eq!(metrics.width, 82.125);
     assert_eq!(metrics.height, 48.0);

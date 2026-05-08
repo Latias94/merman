@@ -774,14 +774,16 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         &flow_node.styles,
                                     );
                                 let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                                    ctx.measurer,
-                                    label,
-                                    label_type,
-                                    &node_text_style,
-                                    Some(ctx.wrapping_width),
-                                    ctx.node_wrap_mode,
-                                    ctx.config,
-                                    ctx.math_renderer,
+                                    crate::flowchart::FlowchartLabelMetricsRequest {
+                                        measurer: ctx.measurer,
+                                        raw_label: label,
+                                        label_type,
+                                        style: &node_text_style,
+                                        max_width_px: Some(ctx.wrapping_width),
+                                        wrap_mode: ctx.node_wrap_mode,
+                                        config: ctx.config,
+                                        math_renderer: ctx.math_renderer,
+                                    },
                                 );
                                 let pre_w = if shape == "delay" {
                                     (metrics.width + 2.0 * node_padding).max(80.0)
@@ -816,14 +818,16 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         &flow_node.styles,
                                     );
                                 let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                                    ctx.measurer,
-                                    label,
-                                    label_type,
-                                    &node_text_style,
-                                    Some(ctx.wrapping_width),
-                                    ctx.node_wrap_mode,
-                                    ctx.config,
-                                    ctx.math_renderer,
+                                    crate::flowchart::FlowchartLabelMetricsRequest {
+                                        measurer: ctx.measurer,
+                                        raw_label: label,
+                                        label_type,
+                                        style: &node_text_style,
+                                        max_width_px: Some(ctx.wrapping_width),
+                                        wrap_mode: ctx.node_wrap_mode,
+                                        config: ctx.config,
+                                        math_renderer: ctx.math_renderer,
+                                    },
                                 );
                                 (metrics.width, metrics.height)
                             } else {
@@ -879,14 +883,16 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         &flow_node.styles,
                                     );
                                 let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                                    ctx.measurer,
-                                    label,
-                                    label_type,
-                                    &node_text_style,
-                                    Some(ctx.wrapping_width),
-                                    ctx.node_wrap_mode,
-                                    ctx.config,
-                                    ctx.math_renderer,
+                                    crate::flowchart::FlowchartLabelMetricsRequest {
+                                        measurer: ctx.measurer,
+                                        raw_label: label,
+                                        label_type,
+                                        style: &node_text_style,
+                                        max_width_px: Some(ctx.wrapping_width),
+                                        wrap_mode: ctx.node_wrap_mode,
+                                        config: ctx.config,
+                                        math_renderer: ctx.math_renderer,
+                                    },
                                 );
                                 metrics.height
                             } else {
@@ -939,14 +945,16 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         &flow_node.styles,
                                     );
                                 let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                                    ctx.measurer,
-                                    label,
-                                    label_type,
-                                    &node_text_style,
-                                    Some(ctx.wrapping_width),
-                                    ctx.node_wrap_mode,
-                                    ctx.config,
-                                    ctx.math_renderer,
+                                    crate::flowchart::FlowchartLabelMetricsRequest {
+                                        measurer: ctx.measurer,
+                                        raw_label: label,
+                                        label_type,
+                                        style: &node_text_style,
+                                        max_width_px: Some(ctx.wrapping_width),
+                                        wrap_mode: ctx.node_wrap_mode,
+                                        config: ctx.config,
+                                        math_renderer: ctx.math_renderer,
+                                    },
                                 );
                                 (metrics.width, metrics.height)
                             } else {

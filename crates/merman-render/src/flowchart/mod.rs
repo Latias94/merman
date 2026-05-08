@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 mod label;
 mod layout;
 mod node;
@@ -13,7 +11,10 @@ pub(crate) type FlowSubgraph = merman_core::diagrams::flowchart::FlowSubgraph;
 
 pub use layout::{layout_flowchart_v2, layout_flowchart_v2_typed};
 
-pub(crate) use label::{flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout};
+pub(crate) use label::{
+    FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout,
+    flowchart_label_plain_text_for_layout,
+};
 pub(crate) use node::flowchart_node_render_dimensions;
 pub(crate) use self_loop::{FlowchartSelfLoopEdgeOptions, flowchart_self_loop_helper_edges};
 pub(crate) use style::{

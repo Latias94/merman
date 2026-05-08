@@ -947,18 +947,33 @@ pub(crate) fn flowchart_node_render_dimensions(
     node_render_dimensions(layout_shape, metrics, padding)
 }
 
-pub(super) fn node_layout_dimensions(
-    layout_shape: Option<&str>,
-    metrics: crate::text::TextMetrics,
-    padding: f64,
-    state_padding: f64,
-    wrap_mode: crate::text::WrapMode,
-    node_icon: Option<&str>,
-    node_img: Option<&str>,
-    node_pos: Option<&str>,
-    node_asset_width: Option<f64>,
-    node_asset_height: Option<f64>,
-) -> (f64, f64) {
+pub(super) struct NodeLayoutDimensionsRequest<'a> {
+    pub(super) layout_shape: Option<&'a str>,
+    pub(super) metrics: crate::text::TextMetrics,
+    pub(super) padding: f64,
+    pub(super) state_padding: f64,
+    pub(super) wrap_mode: crate::text::WrapMode,
+    pub(super) node_icon: Option<&'a str>,
+    pub(super) node_img: Option<&'a str>,
+    pub(super) node_pos: Option<&'a str>,
+    pub(super) node_asset_width: Option<f64>,
+    pub(super) node_asset_height: Option<f64>,
+}
+
+pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f64, f64) {
+    let NodeLayoutDimensionsRequest {
+        layout_shape,
+        metrics,
+        padding,
+        state_padding,
+        wrap_mode,
+        node_icon,
+        node_img,
+        node_pos,
+        node_asset_width,
+        node_asset_height,
+    } = req;
+
     fn chromium_tilted_cylinder_bbox_width_shrink(height: f64) -> f64 {
         // Chromium's `getBBox()` for Mermaid's `tiltedCylinder.ts` path has a reproducible width
         // contraction at a couple of label-height buckets used by upstream flowchart fixtures.
