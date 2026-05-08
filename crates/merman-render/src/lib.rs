@@ -250,6 +250,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?,
         )),
+        (RenderSemanticModel::Info(model), "info") => {
+            Ok(LayoutDiagram::InfoDiagram(info::layout_info_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?))
+        }
         (RenderSemanticModel::Json(semantic), _) => layout_json_by_type(
             diagram_type,
             semantic,

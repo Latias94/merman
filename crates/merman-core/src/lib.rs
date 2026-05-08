@@ -454,6 +454,8 @@ impl Engine {
                 .map(RenderSemanticModel::Sankey),
             "radar" => crate::diagrams::radar::parse_radar_model_for_render(code, meta)
                 .map(RenderSemanticModel::Radar),
+            "info" => crate::diagrams::info::parse_info_model_for_render(code, meta)
+                .map(RenderSemanticModel::Info),
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -588,6 +590,7 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::Info(_) => {}
         }
     }
 
@@ -609,6 +612,7 @@ impl Engine {
             RenderSemanticModel::Requirement(_) => "requirement",
             RenderSemanticModel::Sankey(_) => "sankey",
             RenderSemanticModel::Radar(_) => "radar",
+            RenderSemanticModel::Info(_) => "info",
         }
     }
 

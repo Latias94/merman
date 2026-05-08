@@ -95,6 +95,7 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/sequence_medium.mmd"),
         ),
         ("er_medium", include_str!("fixtures/er_medium.mmd")),
+        ("info_medium", include_str!("fixtures/info_medium.mmd")),
         ("pie_medium", include_str!("fixtures/pie_medium.mmd")),
         (
             "mindmap_medium",

@@ -98,6 +98,7 @@ pub enum RenderSemanticModel {
     Requirement(crate::diagrams::requirement::RequirementDiagramRenderModel),
     Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
     Radar(crate::diagrams::radar::RadarDiagramRenderModel),
+    Info(crate::diagrams::info::InfoDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

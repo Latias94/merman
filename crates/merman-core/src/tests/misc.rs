@@ -702,6 +702,35 @@ graticule polygon
 }
 
 #[test]
+fn parse_info_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+info
+showInfo
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "info");
+    match parsed.model {
+        RenderSemanticModel::Info(model) => {
+            assert!(model.show_info);
+        }
+        other => panic!("info render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("info"));
+    assert_eq!(parsed_json.model["showInfo"], json!(true));
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
