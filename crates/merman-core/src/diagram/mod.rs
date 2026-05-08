@@ -100,6 +100,7 @@ pub enum RenderSemanticModel {
     Radar(crate::diagrams::radar::RadarDiagramRenderModel),
     Info(crate::diagrams::info::InfoDiagramRenderModel),
     Treemap(crate::diagrams::treemap::TreemapDiagramRenderModel),
+    Block(crate::diagrams::block::BlockDiagramRenderModel),
     QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartRenderModel),
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
 }

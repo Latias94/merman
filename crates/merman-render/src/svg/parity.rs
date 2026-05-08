@@ -496,6 +496,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::TreemapDiagram(layout), RenderSemanticModel::Treemap(_)) => {
             render_treemap_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
         }
+        (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
+            render_block_diagram_svg_model(layout, model, effective_config, options)
+        }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
                 layout,
@@ -680,6 +683,9 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 options,
             )
         }
+        (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
+            render_block_diagram_svg_model(layout, model, effective_config.as_value(), options)
+        }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
                 layout,
@@ -794,6 +800,15 @@ pub fn render_block_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     block::render_block_diagram_svg(layout, semantic, effective_config, options)
+}
+
+pub fn render_block_diagram_svg_model(
+    layout: &BlockDiagramLayout,
+    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    block::render_block_diagram_svg_model(layout, model, effective_config, options)
 }
 
 pub fn render_radar_diagram_svg(

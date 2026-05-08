@@ -26,7 +26,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `gantt` | `typed-first` | typed layout + typed SVG | Migrated after kanban; keep date/timezone parity gates tight. |
 | `kanban` | `typed-first` | typed layout + layout-only SVG | Migrated after sequence; keep as the small-diagram typed model pattern. |
 | `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |
-| `block` | `json-fallback` | JSON layout + JSON SVG | Defer unless profiling shows JSON cost. |
+| `block` | `typed-first` | typed layout + typed SVG | Block tree/edge transport now shares the core render model; keep shape/SVG parity gates tight. |
 | `requirement` | `typed-first` | typed layout + typed SVG | Requirements/relations/classes now share the core render model. |
 | `radar` | `typed-first` | typed layout + typed SVG | Axes/curves/options now share the core render model. |
 | `treemap` | `typed-first` | typed layout + layout-only SVG | Hierarchical tree transport now shares the core render model. |

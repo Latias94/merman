@@ -123,6 +123,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   SVG render-model dispatch consume it directly, `parse_diagram_sync` keeps the semantic JSON
   payload stable, and the benchmark fixture was repaired so the pipeline can actually measure the
   diagram.
+- [x] Move block diagrams to a typed render model.
+  Evidence: `parse_block_model_for_render` now returns `BlockDiagramRenderModel`, layout/SVG
+  render-model dispatch consume it directly, `parse_diagram_sync` keeps the semantic JSON payload
+  stable, and render-side block JSON transport structs were replaced by the shared core model.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -156,7 +160,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parent-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_gitgraph_typed_render_model.md`. Treemap status:
   parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_treemap_typed_render_model.md`. Keep this item open for
+  `docs/performance/spotcheck_2026-05-08_treemap_typed_render_model.md`. Block status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_block_typed_render_model.md`. Keep this item open for
   the next typed migration.
 
 ## P1: Text and Measurement Module Split

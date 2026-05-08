@@ -264,6 +264,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?,
         )),
+        (RenderSemanticModel::Block(model), "block") => Ok(LayoutDiagram::BlockDiagram(
+            block::layout_block_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        )),
         (RenderSemanticModel::QuadrantChart(model), "quadrantChart") => Ok(
             LayoutDiagram::QuadrantChartDiagram(quadrantchart::layout_quadrantchart_diagram_typed(
                 model,

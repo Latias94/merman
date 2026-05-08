@@ -1,77 +1,11 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct BlockDiagramModel {
-    // Keep the full upstream semantic model shape for future parity work.
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub blocks: Vec<BlockNode>,
-    #[serde(default, rename = "blocksFlat")]
-    pub blocks_flat: Vec<BlockNode>,
-    #[serde(default)]
-    pub edges: Vec<BlockEdge>,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub warnings: Vec<String>,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub classes: HashMap<String, BlockClassDef>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct BlockClassDef {
-    #[allow(dead_code)]
-    pub id: String,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[allow(dead_code)]
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct BlockNode {
-    pub id: String,
-    #[serde(default)]
-    pub label: String,
-    #[serde(default, rename = "type")]
-    pub block_type: String,
-    #[serde(default)]
-    pub children: Vec<BlockNode>,
-    #[serde(default)]
-    pub columns: Option<i64>,
-    #[serde(default, rename = "widthInColumns")]
-    pub width_in_columns: Option<i64>,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub width: Option<i64>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub directions: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct BlockEdge {
-    pub id: String,
-    pub start: String,
-    pub end: String,
-    #[serde(default, rename = "arrowTypeEnd")]
-    pub arrow_type_end: Option<String>,
-    #[serde(default, rename = "arrowTypeStart")]
-    pub arrow_type_start: Option<String>,
-    #[serde(default)]
-    pub label: String,
-}
+pub(crate) type BlockDiagramModel = merman_core::diagrams::block::BlockDiagramRenderModel;
+pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
 
 #[derive(Debug, Clone)]
 struct SizedBlock {
@@ -908,7 +842,14 @@ pub fn layout_block_diagram(
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
     let model: BlockDiagramModel = crate::json::from_value_ref(semantic)?;
+    layout_block_diagram_typed(&model, effective_config, measurer)
+}
 
+pub fn layout_block_diagram_typed(
+    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<BlockDiagramLayout> {
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {
         font_family: config_string(effective_config, &["themeVariables", "fontFamily"])

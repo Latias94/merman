@@ -3,6 +3,50 @@ use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockDiagramRenderModel {
+    #[serde(default, rename = "blocksFlat")]
+    pub blocks_flat: Vec<BlockNodeRenderModel>,
+    #[serde(default)]
+    pub edges: Vec<BlockEdgeRenderModel>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockNodeRenderModel {
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default, rename = "type")]
+    pub block_type: String,
+    #[serde(default)]
+    pub children: Vec<BlockNodeRenderModel>,
+    #[serde(default)]
+    pub columns: Option<i64>,
+    #[serde(default, rename = "widthInColumns")]
+    pub width_in_columns: Option<i64>,
+    #[serde(default)]
+    pub width: Option<i64>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default)]
+    pub directions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BlockEdgeRenderModel {
+    pub id: String,
+    pub start: String,
+    pub end: String,
+    #[serde(default, rename = "arrowTypeEnd")]
+    pub arrow_type_end: Option<String>,
+    #[serde(default, rename = "arrowTypeStart")]
+    pub arrow_type_start: Option<String>,
+    #[serde(default)]
+    pub label: String,
+}
+
 #[derive(Debug, Clone, Default)]
 struct Block {
     id: String,
@@ -378,6 +422,59 @@ fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
         );
     }
     Value::Object(obj)
+}
+
+fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
+    BlockNodeRenderModel {
+        id: b.id.clone(),
+        label: b.label.clone().unwrap_or_default(),
+        block_type: b.block_type.clone(),
+        children: b.children.iter().map(block_to_render_node).collect(),
+        columns: b.columns,
+        width_in_columns: b.width_in_columns,
+        width: b.width,
+        classes: b.classes.clone(),
+        styles: b.styles.clone().unwrap_or_default(),
+        directions: b.directions.clone().unwrap_or_default(),
+    }
+}
+
+fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
+    BlockEdgeRenderModel {
+        id: b.id.clone(),
+        start: b.start.clone().unwrap_or_default(),
+        end: b.end.clone().unwrap_or_default(),
+        arrow_type_end: b.arrow_type_end.clone(),
+        arrow_type_start: b.arrow_type_start.clone(),
+        label: b.label.clone().unwrap_or_default(),
+    }
+}
+
+fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
+    BlockDiagramRenderModel {
+        blocks_flat: db.blocks_flat().iter().map(block_to_render_node).collect(),
+        edges: db.edges.iter().map(block_to_render_edge).collect(),
+    }
+}
+
+fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
+    let mut parser = Parser::new(code);
+    parser.parse_header()?;
+    let blocks = parser.parse_document(false)?;
+
+    let mut db = BlockDb::default();
+    db.clear();
+    db.gen_counter = parser.gen_counter;
+    db.set_hierarchy(blocks, &meta.effective_config)?;
+    Ok(db)
+}
+
+pub fn parse_block_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<BlockDiagramRenderModel> {
+    let db = parse_block_db(code, meta)?;
+    Ok(block_db_to_render_model(&db))
 }
 
 fn type_str_to_type(type_str: &str) -> String {
@@ -1285,14 +1382,7 @@ impl<'a> Parser<'a> {
 }
 
 pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut parser = Parser::new(code);
-    parser.parse_header()?;
-    let blocks = parser.parse_document(false)?;
-
-    let mut db = BlockDb::default();
-    db.clear();
-    db.gen_counter = parser.gen_counter;
-    db.set_hierarchy(blocks, &meta.effective_config)?;
+    let db = parse_block_db(code, meta)?;
 
     Ok(json!({
         "type": meta.diagram_type,
@@ -1308,7 +1398,7 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1375,6 +1465,46 @@ mod tests {
         assert_eq!(edges[0]["start"].as_str().unwrap(), "id1");
         assert_eq!(edges[0]["end"].as_str().unwrap(), "id2");
         assert_eq!(edges[0]["arrowTypeEnd"].as_str().unwrap(), "arrow_point");
+    }
+
+    #[test]
+    fn block_render_model_uses_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new();
+        let input = "block-beta\n  A[\"first\"] --> B[\"second\"]\n";
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "block");
+        match parsed.model {
+            RenderSemanticModel::Block(model) => {
+                let a = model
+                    .blocks_flat
+                    .iter()
+                    .find(|block| block.id == "A")
+                    .unwrap();
+                assert_eq!(a.label, "first");
+                assert_eq!(model.edges.len(), 1);
+                assert_eq!(model.edges[0].start, "A");
+                assert_eq!(model.edges[0].end, "B");
+                assert_eq!(
+                    model.edges[0].arrow_type_end.as_deref(),
+                    Some("arrow_point")
+                );
+            }
+            other => panic!("block render parse should return typed model, got {other:?}"),
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.model["type"], json!("block"));
+        assert_eq!(parsed_json.model["blocks"][0]["id"], json!("A"));
+        assert_eq!(parsed_json.model["edges"][0]["start"], json!("A"));
+        assert!(parsed_json.model.get("config").is_some());
     }
 
     #[test]

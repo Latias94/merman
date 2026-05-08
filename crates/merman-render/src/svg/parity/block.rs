@@ -12,6 +12,16 @@ pub(super) fn render_block_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let model: crate::block::BlockDiagramModel = crate::json::from_value_ref(semantic)?;
+    render_block_diagram_svg_model(layout, &model, effective_config, options)
+}
+
+pub(super) fn render_block_diagram_svg_model(
+    layout: &BlockDiagramLayout,
+    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     fn decode_block_label_html(raw: &str) -> String {
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
         // which decodes HTML entities (notably `&nbsp;`).
@@ -64,7 +74,6 @@ pub(super) fn render_block_diagram_svg(
         }
     }
 
-    let model: crate::block::BlockDiagramModel = crate::json::from_value_ref(semantic)?;
     let node_padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
         std::collections::HashMap::new();
