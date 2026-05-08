@@ -3,10 +3,6 @@
 // We use these overrides to keep Mermaid@11.12.2 Journey fixed text/face geometry constants in one
 // place, so layout and SVG parity code do not duplicate the same diagram-specific literals.
 
-pub fn journey_legend_circle_cx_px() -> f64 {
-    20.0
-}
-
 pub fn journey_legend_circle_r_px() -> f64 {
     7.0
 }

@@ -460,8 +460,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   frame envelope expansion. Kanban now reuses the section padding for the item label inset,
   and Architecture now reuses the service label bottom extension for singleton offsets. XYChart now
   uses one shared bar data-label inset helper for both bar orientations, reducing the helper
-  footprint to 67. Pie later dropped a redundant outer-radius helper, and Sequence now derives
-  its note padding total from the existing note gap, reducing the helper footprint to 65.
+  footprint to 67. Pie later dropped a redundant outer-radius helper, Sequence now derives
+  its note padding total from the existing note gap, and Journey inlines its single-use legend
+  circle center value, reducing the helper footprint to 64.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

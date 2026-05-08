@@ -217,7 +217,7 @@ pub fn layout_journey_diagram_typed(
             actor: actor.to_string(),
             pos,
             color,
-            circle_cx: journey_text_overrides::journey_legend_circle_cx_px(),
+            circle_cx: 20.0,
             circle_cy: y_pos,
             circle_r: legend_circle_r,
             label_lines,

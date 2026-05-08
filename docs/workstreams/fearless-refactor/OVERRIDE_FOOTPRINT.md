@@ -39,8 +39,9 @@ hand-curated helper functions.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
 helpers; the remaining public Sankey helper is the actual `showValues`-aware padding lookup used by
 layout tests and render code.
-Since then, Pie dropped the redundant outer-radius helper and Sequence now derives its note padding
-total from the existing note gap, bringing the hand-curated helper total to 65.
+Since then, Pie dropped the redundant outer-radius helper, Sequence now derives its note padding
+total from the existing note gap, and Journey inlined its single-use legend circle center value,
+bringing the hand-curated helper total to 64.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -117,13 +118,13 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `65`.
+Total helper functions reported by `xtask`: `64`.
 
 | file | helper functions |
 | --- | ---: |
 | `architecture_text_overrides_11_12_2.rs` | 7 |
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
-| `journey_text_overrides_11_12_2.rs` | 13 |
+| `journey_text_overrides_11_12_2.rs` | 12 |
 | `kanban_text_overrides_11_12_2.rs` | 5 |
 | `pie_text_overrides_11_12_2.rs` | 8 |
 | `radar_text_overrides_11_12_2.rs` | 3 |
