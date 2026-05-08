@@ -54,7 +54,7 @@ Root viewport overrides:
 - `gitgraph_root_overrides_11_12_2.rs`: 83 entries
 - `journey_root_overrides_11_12_2.rs`: 4 entries
 - `er_root_overrides_11_12_2.rs`: 17 entries
-- `kanban_root_overrides_11_12_2.rs`: 4 entries
+- `kanban_root_overrides_11_12_2.rs`: 7 entries
 - `pie_root_overrides_11_12_2.rs`: 14 entries
 - `requirement_root_overrides_11_12_2.rs`: 6 entries
 - `sankey_root_overrides_11_12_2.rs`: 5 entries

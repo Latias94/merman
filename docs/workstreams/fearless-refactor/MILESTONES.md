@@ -403,9 +403,10 @@ Progress:
   metadata for generated override categories and manual raw SVG/path bridge categories.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
-- Root viewport overrides dropped 23 fixture-specific entries so far: 19 architecture pins after
-  topology-driven calibration covered the matching profiles, and 4 journey pins after the
-  deterministic viewport path covered the matching fixtures.
+- Root viewport overrides dropped 27 fixture-specific entries so far: 19 architecture pins after
+  topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
+  viewport path covered the matching fixtures, and 4 stale kanban pins were pruned from the
+  generated table while the remaining 7 kanban pins still gate `parity-root`.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 

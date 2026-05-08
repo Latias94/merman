@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-08
+## Snapshot: 2026-05-09
 
 Command:
 
@@ -28,9 +28,10 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 23-entry reduction in root viewport overrides after topology-driven
-viewport calibration replaced several fixture-specific root pins and the `journey` root viewport
-overrides were removed entirely.
+The current snapshot reflects a 27-entry reduction in root viewport overrides after topology-driven
+viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
+overrides were removed entirely, and four stale `kanban` root viewport entries were pruned from the
+generated table.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.
@@ -50,7 +51,7 @@ layout tests and render code.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1551`.
+Total entries reported by `xtask`: `1547`.
 
 | file | entries |
 | --- | ---: |
@@ -61,7 +62,7 @@ Total entries reported by `xtask`: `1551`.
 | `er_root_overrides_11_12_2.rs` | 35 |
 | `flowchart_root_overrides_11_12_2.rs` | 266 |
 | `gitgraph_root_overrides_11_12_2.rs` | 232 |
-| `kanban_root_overrides_11_12_2.rs` | 11 |
+| `kanban_root_overrides_11_12_2.rs` | 7 |
 | `mindmap_root_overrides_11_12_2.rs` | 80 |
 | `pie_root_overrides_11_12_2.rs` | 35 |
 | `requirement_root_overrides_11_12_2.rs` | 46 |

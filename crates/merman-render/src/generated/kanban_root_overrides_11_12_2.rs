@@ -10,15 +10,9 @@ pub fn lookup_kanban_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "kanban_stress_common2_long_column_titles_wrapping" => Some(("90 -310 425 290", "425")),
-        "kanban_stress_common_multiline_metadata_label_override" => {
-            Some(("90 -310 220 195", "220"))
-        }
         "stress_kanban_font_size_097" => Some(("90 -310 425 195", "425")),
         "stress_kanban_font_size_precedence_098" => Some(("90 -310 425 302", "425")),
         "upstream_docs_samples_example_001" => Some(("90 -310 425 147", "425")),
-        "upstream_docs_samples_example_004" => Some(("90 -310 630 318", "630")),
-        "upstream_docs_samples_example_005" => Some(("90 -310 835 318", "835")),
         "upstream_cypress_kanban_spec_3_should_render_a_kanban_with_a_single_wrapping_node_003" => {
             Some(("90 -310 220 195", "220"))
         }

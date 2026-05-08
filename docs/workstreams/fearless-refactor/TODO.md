@@ -423,10 +423,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   metadata for every generated override category and manual raw SVG/path bridge category, with a
   regression test guarding generated category removal metadata.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: 23 root viewport overrides have been removed so far: 19 `architecture` entries after
-  topology-driven viewport calibration, plus 4 `journey` entries after the deterministic viewport
-  path proved stable. `compare-architecture-svgs --check-dom --dom-decimals 3` and
-  `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3` still pass.
+  Evidence: 27 root viewport overrides have been removed so far: 19 `architecture` entries after
+  topology-driven viewport calibration and 4 `journey` entries after the deterministic viewport
+  path proved stable, plus 4 stale `kanban` entries pruned from the generated table. The remaining
+  `kanban` root viewport pins are still required for `compare-kanban-svgs --check-dom
+  --dom-mode parity-root --dom-decimals 3`. `compare-architecture-svgs --check-dom --dom-decimals 3`
+  and `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3` still pass.
 - [x] Prevent override tables from becoming the default fix for model bugs.
   Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
   category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.
