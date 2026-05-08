@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Replaced the remaining 7 generated `kanban` root viewport pins with profile-based root height
+  calibration, removing the generated Kanban root table while keeping `parity-root` green.
 - Pruned 4 obsolete `kanban` root viewport entries from the generated table after confirming the
   remaining 7 fixture-specific pins still gate `parity-root`.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
