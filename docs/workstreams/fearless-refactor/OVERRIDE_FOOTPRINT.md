@@ -17,6 +17,22 @@ Generated override modules scanned: `39`.
 
 Manual raw SVG/path bridge files scanned: `1`.
 
+### Category Metadata Snapshot
+
+`xtask report-overrides` now prints category-level owner, source, allowed-use, and expected-removal
+metadata before each count table. This keeps removal criteria visible in CI logs and drift reviews,
+not only in policy prose.
+
+| category | owner | expected removal |
+| --- | --- | --- |
+| Root viewport overrides | render parity workstream | Delete entries once typed layout/emitted bounds can derive the same root viewport or a baseline upgrade removes the pinned behavior. |
+| Text metric lookup overrides | render parity workstream | Delete entries once vendored/shared text measurement returns the upstream dimensions without fixture-specific lookup arms. |
+| SVG text metric tables | render parity workstream | Replace with shared font metrics or browser-probe imports, then delete stale rows. |
+| Font metric tables | shared text measurement owner | Regenerate or trim when better vendored font/probe data covers the drift; remove only if a real measurement backend becomes the default. |
+| Typed textLength lookups | C4 renderer owner | Delete once C4 type-line measurement is computed from shared text measurement or Mermaid stops emitting the pinned `textLength`. |
+| Hand-curated helper overrides | diagram renderer owner | Replace with repeatable generated data or typed model/layout computations as soon as a reliable source exists. |
+| Manual raw SVG/path bridges | diagram-specific `svg/parity` module owner | Delete once typed layout/path emission reproduces the upstream literal behavior; keep local owner/removal notes beside each bridge. |
+
 ### Root Viewport Overrides
 
 Total entries reported by `xtask`: `1574`.
@@ -117,6 +133,8 @@ Counts are inventory units and should not be compared directly across categories
 - Helper overrides count public helper functions in generated small constant modules.
 - Manual raw SVG/path bridge counts are hand-authored `maybe_override_*` functions under
   `crates/merman-render/src/svg/parity/`.
+- Category metadata in the report records owner, source, allowed use, and expected removal criteria
+  for every generated/manual override category.
 
 ## Categories
 
@@ -132,9 +150,8 @@ Counts are inventory units and should not be compared directly across categories
 
 - Manual bridge scanning is intentionally naming-based today: hand-authored bridge functions must
   use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
-- Generated override removal criteria are not encoded in generated metadata yet.
-- The report inventories count and location; it does not yet capture owner/removal metadata
-  directly.
+- Generated override metadata is category-level. Per-entry fixture/probe provenance still lives in
+  generator inputs, generated comments, tests, and upstream fixture names.
 
 ## Next Actions
 
@@ -142,4 +159,4 @@ Counts are inventory units and should not be compared directly across categories
   owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
   `gitgraph`, `sequence`, and `class`.
-- Add generated metadata when an override has an expected removal condition.
+- Tighten per-entry fixture/probe provenance when regenerating large override tables.

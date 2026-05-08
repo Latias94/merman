@@ -389,13 +389,15 @@ Progress:
   what evidence reviewers should require.
 - `xtask report-overrides` now inventories hand-authored `maybe_override_*` raw SVG/path bridge
   functions under `svg/parity` in addition to generated override modules.
+- `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
+  metadata for generated override categories and manual raw SVG/path bridge categories.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 
 Exit criteria:
 
 - Override footprint is reported and tracked.
-- Temporary overrides have owners or removal conditions.
+- Temporary and generated override categories have owners and removal conditions.
 - New model fixes are preferred over new overrides unless browser/font probing proves otherwise.
 
 ## M6: Release Readiness

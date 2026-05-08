@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-08
 
+- Added category-level owner/source/allowed-use/expected-removal metadata to `xtask
+  report-overrides`, plus a regression test so generated override categories keep explicit removal
+  criteria.
 - Expanded `xtask report-overrides` to inventory hand-authored `maybe_override_*` raw SVG/path
   bridge functions under `svg/parity`, with stable `/` paths in report output.
 - Fixed override helper-function counting in `xtask report-overrides` and added regression tests

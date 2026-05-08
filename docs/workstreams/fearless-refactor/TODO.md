@@ -405,7 +405,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Add owner/removal notes for current temporary raw SVG/path bridges.
   Evidence: `svg/parity/flowchart/edge_geom/degenerate_path.rs` documents the current flowchart
   degenerate path bridge owner and removal criteria.
-- [ ] Add generated metadata for generated overrides with expected removal criteria.
+- [x] Add generated metadata for generated overrides with expected removal criteria.
+  Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
+  metadata for every generated override category and manual raw SVG/path bridge category, with a
+  regression test guarding generated category removal metadata.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
 - [ ] Prevent override tables from becoming the default fix for model bugs.
 

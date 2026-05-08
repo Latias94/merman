@@ -17,6 +17,14 @@ enum OverrideCategory {
     RawPathBridge,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct OverrideCategoryMetadata {
+    owner: &'static str,
+    source: &'static str,
+    allowed_use: &'static str,
+    expected_removal: &'static str,
+}
+
 impl OverrideCategory {
     const ALL: [OverrideCategory; 7] = [
         OverrideCategory::RootViewport,
@@ -49,6 +57,53 @@ impl OverrideCategory {
             OverrideCategory::TypeTextLength => "lookup arms",
             OverrideCategory::HandCuratedHelpers => "helper functions",
             OverrideCategory::RawPathBridge => "bridge functions",
+        }
+    }
+
+    fn metadata(self) -> OverrideCategoryMetadata {
+        match self {
+            OverrideCategory::RootViewport => OverrideCategoryMetadata {
+                owner: "render parity workstream",
+                source: "fixture-derived upstream SVG root viewBox/max-width baselines for Mermaid @11.12.3",
+                allowed_use: "narrow export-bound pins when browser insertion or emitted bounds differ from deterministic Rust layout",
+                expected_removal: "delete entries once typed layout/emitted bounds can derive the same root viewport or a baseline upgrade removes the pinned behavior",
+            },
+            OverrideCategory::TextLookup => OverrideCategoryMetadata {
+                owner: "render parity workstream",
+                source: "fixture or browser-probe HTML/SVG text measurements for exact diagram text contexts",
+                allowed_use: "exact diagram/text/font-size lookups for browser/font measurement facts that shared metrics cannot derive yet",
+                expected_removal: "delete entries once vendored/shared text measurement returns the upstream dimensions without fixture-specific lookup arms",
+            },
+            OverrideCategory::SvgTextMetrics => OverrideCategoryMetadata {
+                owner: "render parity workstream",
+                source: "browser getBBox/getComputedTextLength measurements extracted from upstream SVG text nodes",
+                allowed_use: "font-keyed SVG text overhang and scale correction for Mermaid baseline parity",
+                expected_removal: "replace with shared font metrics or browser-probe imports, then delete stale rows",
+            },
+            OverrideCategory::FontMetrics => OverrideCategoryMetadata {
+                owner: "shared text measurement owner",
+                source: "browser-measured glyph, kerning, trigram, HTML, and SVG correction tables",
+                allowed_use: "deterministic text measurement support when runtime browser measurement is unavailable",
+                expected_removal: "regenerate or trim when better vendored font/probe data covers the drift; remove only if a real measurement backend becomes the default",
+            },
+            OverrideCategory::TypeTextLength => OverrideCategoryMetadata {
+                owner: "C4 renderer owner",
+                source: "C4 type-line textLength values observed in pinned Mermaid CLI baselines",
+                allowed_use: "exact C4 shape type textLength pins for upstream DOM-backed text measurement behavior",
+                expected_removal: "delete once C4 type-line measurement is computed from shared text measurement or Mermaid stops emitting the pinned textLength",
+            },
+            OverrideCategory::HandCuratedHelpers => OverrideCategoryMetadata {
+                owner: "diagram renderer owner",
+                source: "small hand-curated constants for known Mermaid browser/layout quirks",
+                allowed_use: "narrow constants that are stable, tested, and cheaper than broad generated tables",
+                expected_removal: "replace with repeatable generated data or typed model/layout computations as soon as a reliable source exists",
+            },
+            OverrideCategory::RawPathBridge => OverrideCategoryMetadata {
+                owner: "diagram-specific svg/parity module owner",
+                source: "hand-authored maybe_override_* functions under svg/parity",
+                allowed_use: "temporary exact raw SVG/path bridges for literal upstream behavior that the generic emitter cannot reproduce yet",
+                expected_removal: "delete once typed layout/path emission reproduces the upstream literal behavior; keep local owner/removal notes beside each bridge",
+            },
         }
     }
 }
@@ -303,7 +358,12 @@ fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory
     }
 
     let total: usize = category_entries.iter().map(|entry| entry.count).sum();
+    let metadata = category.metadata();
     println!("{}:", category.heading());
+    println!("- owner: {}", metadata.owner);
+    println!("- source: {}", metadata.source);
+    println!("- allowed use: {}", metadata.allowed_use);
+    println!("- expected removal: {}", metadata.expected_removal);
     println!("- total: {total} {}", category.total_unit());
     for entry in category_entries {
         println!("- {}: {} {}", entry.file_name, entry.count, entry.unit);
@@ -363,7 +423,9 @@ fn count_matches(re: &Regex, text: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{count_manual_bridge_functions, count_public_functions, report_path_name};
+    use super::{
+        OverrideCategory, count_manual_bridge_functions, count_public_functions, report_path_name,
+    };
     use std::path::Path;
 
     #[test]
@@ -412,5 +474,22 @@ fn private_helper() {}
             )),
             "svg/parity/flowchart/edge_geom/degenerate_path.rs"
         );
+    }
+
+    #[test]
+    fn generated_categories_report_removal_metadata() {
+        for category in [
+            OverrideCategory::RootViewport,
+            OverrideCategory::TextLookup,
+            OverrideCategory::SvgTextMetrics,
+            OverrideCategory::FontMetrics,
+            OverrideCategory::TypeTextLength,
+            OverrideCategory::HandCuratedHelpers,
+        ] {
+            let metadata = category.metadata();
+            assert!(!metadata.source.is_empty());
+            assert!(!metadata.allowed_use.is_empty());
+            assert!(!metadata.expected_removal.is_empty());
+        }
     }
 }
