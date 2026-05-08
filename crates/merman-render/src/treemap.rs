@@ -1,31 +1,10 @@
 use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
-use serde::Deserialize;
+use merman_core::diagrams::treemap::{
+    TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
+};
 use serde_json::Value;
-
-#[derive(Debug, Clone, Deserialize)]
-struct TreemapModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    title: Option<String>,
-    root: TreemapNode,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct TreemapNode {
-    name: String,
-    #[serde(default)]
-    children: Option<Vec<TreemapNode>>,
-    #[serde(default)]
-    value: Option<Value>,
-    #[serde(default, rename = "classSelector")]
-    class_selector: Option<String>,
-    #[serde(default, rename = "cssCompiledStyles")]
-    css_compiled_styles: Option<Vec<String>>,
-}
 
 #[derive(Debug, Clone)]
 struct HierNode {
@@ -425,7 +404,15 @@ pub fn layout_treemap_diagram(
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
-    let model: TreemapModel = crate::json::from_value_ref(semantic)?;
+    let model: TreemapDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_treemap_diagram_typed(&model, effective_config, _measurer)
+}
+
+pub fn layout_treemap_diagram_typed(
+    model: &TreemapDiagramRenderModel,
+    effective_config: &Value,
+    _measurer: &dyn crate::text::TextMeasurer,
+) -> Result<TreemapDiagramLayout> {
     let cfg = treemap_config(effective_config);
 
     let title_height = if model.title.as_deref().is_some_and(|t| !t.trim().is_empty()) {
@@ -518,9 +505,9 @@ pub fn layout_treemap_diagram(
         diagram_padding: cfg.diagram_padding.max(0.0),
         show_values: cfg.show_values,
         value_format: cfg.value_format,
-        acc_title: model.acc_title,
-        acc_descr: model.acc_descr,
-        title: model.title,
+        acc_title: model.acc_title.clone(),
+        acc_descr: model.acc_descr.clone(),
+        title: model.title.clone(),
         sections,
         leaves,
     })

@@ -1,6 +1,37 @@
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct TreemapNodeRenderModel {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<TreemapNodeRenderModel>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+    #[serde(
+        default,
+        rename = "classSelector",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub class_selector: Option<String>,
+    #[serde(
+        default,
+        rename = "cssCompiledStyles",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub css_compiled_styles: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct TreemapDiagramRenderModel {
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub title: Option<String>,
+    pub root: TreemapNodeRenderModel,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ItemType {
     Section,
@@ -57,12 +88,62 @@ impl Arena {
     }
 }
 
+struct TreemapParsedInput {
+    title: Option<String>,
+    acc_title: Option<String>,
+    acc_descr: Option<String>,
+    rows: Vec<TreemapRow>,
+}
+
 pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let Some(parsed) = parse_treemap_input(code, meta)? else {
+        return Ok(json!({}));
+    };
+
+    let class_defs = class_defs_from_rows(&parsed.rows)?;
+    let classes = class_defs_to_value_map(&class_defs);
+    let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
+
+    let (arena, roots) = build_hierarchy(&flat_items);
+    let root_value = json!({
+        "name": "",
+        "children": roots.iter().map(|&idx| node_to_value(&arena, idx)).collect::<Vec<_>>(),
+    });
+
+    let mut nodes_preorder: Vec<Value> = Vec::new();
+    for &idx in &roots {
+        flatten_preorder(&arena, idx, 0, &mut nodes_preorder);
+    }
+
+    Ok(json!({
+        "type": meta.diagram_type,
+        "title": parsed.title,
+        "accTitle": parsed.acc_title,
+        "accDescr": parsed.acc_descr,
+        "root": root_value,
+        "nodes": nodes_preorder,
+        "classes": Value::Object(classes),
+        "config": meta.effective_config.as_value().clone(),
+    }))
+}
+
+pub fn parse_treemap_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<TreemapDiagramRenderModel> {
+    let Some(parsed) = parse_treemap_input(code, meta)? else {
+        return Ok(TreemapDiagramRenderModel::default());
+    };
+
+    treemap_parsed_input_to_render_model(parsed)
+}
+
+fn parse_treemap_input(code: &str, meta: &ParseMetadata) -> Result<Option<TreemapParsedInput>> {
     let mut lines = code.lines();
 
     let header = loop {
         let Some(line) = lines.next() else {
-            return Ok(json!({}));
+            return Ok(None);
         };
         let t = strip_inline_comment_aware(line).trim();
         if t.is_empty() {
@@ -145,11 +226,46 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    let mut classes: Map<String, Value> = Map::new();
+    Ok(Some(TreemapParsedInput {
+        title,
+        acc_title,
+        acc_descr,
+        rows,
+    }))
+}
+
+fn treemap_parsed_input_to_render_model(
+    parsed: TreemapParsedInput,
+) -> Result<TreemapDiagramRenderModel> {
+    let class_defs = class_defs_from_rows(&parsed.rows)?;
+    let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
+    let (arena, roots) = build_hierarchy(&flat_items);
+
+    Ok(TreemapDiagramRenderModel {
+        title: parsed.title,
+        acc_title: parsed.acc_title,
+        acc_descr: parsed.acc_descr,
+        root: TreemapNodeRenderModel {
+            name: String::new(),
+            children: Some(
+                roots
+                    .iter()
+                    .map(|&idx| node_to_render_model(&arena, idx))
+                    .collect(),
+            ),
+            value: None,
+            class_selector: None,
+            css_compiled_styles: None,
+        },
+    })
+}
+
+fn class_defs_from_rows(
+    rows: &[TreemapRow],
+) -> Result<std::collections::HashMap<String, StyleClassDef>> {
     let mut class_defs: std::collections::HashMap<String, StyleClassDef> =
         std::collections::HashMap::new();
-
-    for row in &rows {
+    for row in rows {
         let TreemapRow::ClassDef(c) = row else {
             continue;
         };
@@ -166,7 +282,14 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         );
     }
 
-    for (k, v) in &class_defs {
+    Ok(class_defs)
+}
+
+fn class_defs_to_value_map(
+    class_defs: &std::collections::HashMap<String, StyleClassDef>,
+) -> Map<String, Value> {
+    let mut classes: Map<String, Value> = Map::new();
+    for (k, v) in class_defs {
         classes.insert(
             k.clone(),
             json!({
@@ -177,8 +300,15 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         );
     }
 
+    classes
+}
+
+fn flat_items_from_rows(
+    rows: &[TreemapRow],
+    class_defs: &std::collections::HashMap<String, StyleClassDef>,
+) -> Vec<FlatItem> {
     let mut flat_items: Vec<FlatItem> = Vec::new();
-    for row in &rows {
+    for row in rows {
         let TreemapRow::Item(item) = row else {
             continue;
         };
@@ -186,7 +316,7 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         let styles = item
             .class_selector
             .as_deref()
-            .map(|cls| get_styles_for_class(&class_defs, cls))
+            .map(|cls| get_styles_for_class(class_defs, cls))
             .unwrap_or_default();
         let compiled = if !styles.is_empty() {
             Some(styles.join(";"))
@@ -205,27 +335,7 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    let (arena, roots) = build_hierarchy(&flat_items);
-    let root_value = json!({
-        "name": "",
-        "children": roots.iter().map(|&idx| node_to_value(&arena, idx)).collect::<Vec<_>>(),
-    });
-
-    let mut nodes_preorder: Vec<Value> = Vec::new();
-    for &idx in &roots {
-        flatten_preorder(&arena, idx, 0, &mut nodes_preorder);
-    }
-
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "root": root_value,
-        "nodes": nodes_preorder,
-        "classes": Value::Object(classes),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    flat_items
 }
 
 #[derive(Debug, Clone)]
@@ -310,6 +420,22 @@ fn node_to_value(arena: &Arena, idx: usize) -> Value {
         );
     }
     Value::Object(obj)
+}
+
+fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
+    let node = &arena.nodes[idx];
+    TreemapNodeRenderModel {
+        name: node.name.clone(),
+        children: node.children.as_ref().map(|children| {
+            children
+                .iter()
+                .map(|&c| node_to_render_model(arena, c))
+                .collect()
+        }),
+        value: node.value.clone(),
+        class_selector: node.class_selector.clone(),
+        css_compiled_styles: node.css_compiled_styles.clone(),
+    }
 }
 
 fn flatten_preorder(arena: &Arena, idx: usize, level: i64, out: &mut Vec<Value>) {
@@ -738,7 +864,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -760,6 +886,54 @@ mod tests {
     fn treemap_accepts_treemap_header() {
         let model = parse("treemap\n\"A\"");
         assert_eq!(model["root"]["children"][0]["name"], json!("A"));
+    }
+
+    #[test]
+    fn treemap_render_model_uses_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new();
+        let input = r#"treemap
+title Treemap Title
+accTitle: Treemap accTitle
+accDescr: Treemap accDescr
+"Root"
+  "Leaf": 42
+"#;
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.meta.diagram_type, "treemap");
+        match parsed.model {
+            RenderSemanticModel::Treemap(model) => {
+                assert_eq!(model.title.as_deref(), Some("Treemap Title"));
+                assert_eq!(model.acc_title.as_deref(), Some("Treemap accTitle"));
+                assert_eq!(model.acc_descr.as_deref(), Some("Treemap accDescr"));
+                assert_eq!(model.root.name, "");
+                let root_children = model.root.children.as_ref().unwrap();
+                assert_eq!(root_children.len(), 1);
+                assert_eq!(root_children[0].name, "Root");
+                assert_eq!(root_children[0].children.as_ref().unwrap()[0].name, "Leaf");
+            }
+            other => panic!("treemap render parse should return typed model, got {other:?}"),
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.model["type"], json!("treemap"));
+        assert_eq!(parsed_json.model["title"], json!("Treemap Title"));
+        assert_eq!(parsed_json.model["accTitle"], json!("Treemap accTitle"));
+        assert_eq!(
+            parsed_json.model["root"]["children"][0]["name"],
+            json!("Root")
+        );
+        assert_eq!(
+            parsed_json.model["root"]["children"][0]["children"][0]["value"],
+            json!(42)
+        );
+        assert!(parsed_json.model.get("config").is_some());
     }
 
     fn parse_error(text: &str) -> String {

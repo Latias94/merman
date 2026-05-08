@@ -29,7 +29,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `block` | `json-fallback` | JSON layout + JSON SVG | Defer unless profiling shows JSON cost. |
 | `requirement` | `typed-first` | typed layout + typed SVG | Requirements/relations/classes now share the core render model. |
 | `radar` | `typed-first` | typed layout + typed SVG | Axes/curves/options now share the core render model. |
-| `treemap` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `treemap` | `typed-first` | typed layout + layout-only SVG | Hierarchical tree transport now shares the core render model. |
 | `info` | `typed-first` | typed layout + layout-only SVG | Small layout-only migration; keep semantic JSON stable. |
 | `packet` | `typed-first` | typed layout + typed SVG | Config-heavy small diagram; keep as a high-ROI migration pattern. |
 | `timeline` | `typed-first` | typed layout + typed SVG | Moderate small-diagram migration; watch layout/render midpoint drift. |

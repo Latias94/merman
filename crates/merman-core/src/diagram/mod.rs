@@ -99,6 +99,7 @@ pub enum RenderSemanticModel {
     Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
     Radar(crate::diagrams::radar::RadarDiagramRenderModel),
     Info(crate::diagrams::info::InfoDiagramRenderModel),
+    Treemap(crate::diagrams::treemap::TreemapDiagramRenderModel),
     QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartRenderModel),
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
 }

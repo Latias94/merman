@@ -493,6 +493,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::InfoDiagram(layout), RenderSemanticModel::Info(_)) => {
             render_info_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
         }
+        (LayoutDiagram::TreemapDiagram(layout), RenderSemanticModel::Treemap(_)) => {
+            render_treemap_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
+        }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
                 layout,
@@ -663,6 +666,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         }
         (LayoutDiagram::InfoDiagram(layout), RenderSemanticModel::Info(_)) => {
             render_info_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::TreemapDiagram(layout), RenderSemanticModel::Treemap(_)) => {
+            render_treemap_diagram_svg(
                 layout,
                 &serde_json::Value::Null,
                 effective_config.as_value(),

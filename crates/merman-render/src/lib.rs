@@ -257,6 +257,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?))
         }
+        (RenderSemanticModel::Treemap(model), "treemap") => Ok(LayoutDiagram::TreemapDiagram(
+            treemap::layout_treemap_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        )),
         (RenderSemanticModel::QuadrantChart(model), "quadrantChart") => Ok(
             LayoutDiagram::QuadrantChartDiagram(quadrantchart::layout_quadrantchart_diagram_typed(
                 model,

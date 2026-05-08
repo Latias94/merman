@@ -458,6 +458,8 @@ impl Engine {
                 .map(RenderSemanticModel::Radar),
             "info" => crate::diagrams::info::parse_info_model_for_render(code, meta)
                 .map(RenderSemanticModel::Info),
+            "treemap" => crate::diagrams::treemap::parse_treemap_model_for_render(code, meta)
+                .map(RenderSemanticModel::Treemap),
             "quadrantChart" => {
                 crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render(code, meta)
                     .map(RenderSemanticModel::QuadrantChart)
@@ -599,6 +601,14 @@ impl Engine {
                 }
             }
             RenderSemanticModel::Info(_) => {}
+            RenderSemanticModel::Treemap(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
             RenderSemanticModel::QuadrantChart(v) => {
                 if let Some(s) = v.title.as_deref() {
                     v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
@@ -640,6 +650,7 @@ impl Engine {
             RenderSemanticModel::Sankey(_) => "sankey",
             RenderSemanticModel::Radar(_) => "radar",
             RenderSemanticModel::Info(_) => "info",
+            RenderSemanticModel::Treemap(_) => "treemap",
             RenderSemanticModel::QuadrantChart(_) => "quadrantChart",
             RenderSemanticModel::GitGraph(_) => "gitGraph",
         }
