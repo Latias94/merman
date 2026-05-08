@@ -138,8 +138,7 @@ pub fn layout_kanban_diagram_typed(
 
         for item in section_items {
             let width = (section_width - 1.5 * padding).max(1.0);
-            let inner_max_w =
-                (width - kanban_text_overrides::kanban_item_label_inset_x_px()).max(0.0);
+            let inner_max_w = (width - padding).max(0.0);
 
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
@@ -263,7 +262,6 @@ mod tests {
             24.0
         );
         assert_eq!(kanban_text_overrides::kanban_item_one_row_height_px(), 44.0);
-        assert_eq!(kanban_text_overrides::kanban_item_label_inset_x_px(), 10.0);
         assert_eq!(kanban_text_overrides::kanban_item_two_row_height_px(), 56.0);
     }
 

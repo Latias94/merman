@@ -142,6 +142,7 @@ pub(super) fn render_kanban_diagram_svg(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="items">"#);
+    let item_label_inset_x = kanban_text_overrides::kanban_section_padding_px();
 
     // These helpers are used for positioning and foreignObject sizing. Keep them deterministic and
     // stable across platforms (DOM parity mode will mask numeric drift).
@@ -174,7 +175,7 @@ pub(super) fn render_kanban_diagram_svg(
     }
 
     for n in &layout.items {
-        let max_w = (n.width - kanban_text_overrides::kanban_item_label_inset_x_px()).max(0.0);
+        let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
 
@@ -207,13 +208,11 @@ pub(super) fn render_kanban_diagram_svg(
             });
         let height_adj = (ticket_h.max(assigned_metrics.height)) / 2.0;
 
-        let left_x = rect_x + kanban_text_overrides::kanban_item_label_inset_x_px();
+        let left_x = rect_x + item_label_inset_x;
         let right_x = if assigned_metrics.width > 0.0 {
-            n.width / 2.0
-                - kanban_text_overrides::kanban_item_label_inset_x_px()
-                - assigned_metrics.width
+            n.width / 2.0 - item_label_inset_x - assigned_metrics.width
         } else {
-            n.width / 2.0 - kanban_text_overrides::kanban_item_label_inset_x_px()
+            n.width / 2.0 - item_label_inset_x
         };
 
         let title_y = -height_adj - title_metrics.height / 2.0;

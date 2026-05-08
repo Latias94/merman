@@ -27,6 +27,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   alignment and the viewBox top padding for title y-position, reducing the helper footprint to 71.
 - Removed the derived Sequence self-message separator extra-y helper by computing it from the
   existing frame envelope extra-y value, reducing the helper footprint to 70.
+- Removed the derived Kanban item label inset helper by reusing the existing section padding
+  constant, reducing the helper footprint to 69.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and
