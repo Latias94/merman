@@ -323,6 +323,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `svg/parity/journey.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   journey`, and `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-decimals 3`.
+  Treemap root viewBox accumulation now uses a small bounds accumulator instead of an eight-arg
+  helper, so `svg/parity/treemap.rs` no longer needs a module-level allow. Evidence: `cargo
+  clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p
+  merman-render treemap`, and `cargo run -p xtask -- compare-treemap-svgs --check-dom
+  --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

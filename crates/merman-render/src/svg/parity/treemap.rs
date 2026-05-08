@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 
@@ -385,73 +383,100 @@ pub(super) fn render_treemap_diagram_svg(
         (w, h)
     });
 
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-
-    fn add_rect_bounds(
-        min_x: &mut f64,
-        min_y: &mut f64,
-        max_x: &mut f64,
-        max_y: &mut f64,
+    #[derive(Debug, Clone, Copy)]
+    struct TreemapRect {
         x0: f64,
         y0: f64,
         x1: f64,
         y1: f64,
-    ) {
-        let w = x1 - x0;
-        let h = y1 - y0;
-        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
-            return;
-        }
-        *min_x = (*min_x).min(x0);
-        *min_y = (*min_y).min(y0);
-        *max_x = (*max_x).max(x1);
-        *max_y = (*max_y).max(y1);
     }
+
+    #[derive(Debug, Clone, Copy)]
+    struct TreemapViewBoxBounds {
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    }
+
+    impl TreemapViewBoxBounds {
+        const fn empty() -> Self {
+            Self {
+                min_x: f64::INFINITY,
+                min_y: f64::INFINITY,
+                max_x: f64::NEG_INFINITY,
+                max_y: f64::NEG_INFINITY,
+            }
+        }
+
+        fn include_rect(&mut self, rect: TreemapRect) {
+            let TreemapRect { x0, y0, x1, y1 } = rect;
+            let w = x1 - x0;
+            let h = y1 - y0;
+            if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+                return;
+            }
+            self.min_x = self.min_x.min(x0);
+            self.min_y = self.min_y.min(y0);
+            self.max_x = self.max_x.max(x1);
+            self.max_y = self.max_y.max(y1);
+        }
+
+        fn has_rects(self) -> bool {
+            self.min_x.is_finite()
+                && self.min_y.is_finite()
+                && self.max_x.is_finite()
+                && self.max_y.is_finite()
+        }
+    }
+
+    let mut viewbox_bounds = TreemapViewBoxBounds::empty();
 
     for s in &layout.sections {
         if s.depth == 0 {
             continue;
         }
-        add_rect_bounds(
-            &mut min_x, &mut min_y, &mut max_x, &mut max_y, s.x0, s.y0, s.x1, s.y1,
-        );
+        viewbox_bounds.include_rect(TreemapRect {
+            x0: s.x0,
+            y0: s.y0,
+            x1: s.x1,
+            y1: s.y1,
+        });
     }
     for l in &layout.leaves {
-        add_rect_bounds(
-            &mut min_x, &mut min_y, &mut max_x, &mut max_y, l.x0, l.y0, l.x1, l.y1,
-        );
+        viewbox_bounds.include_rect(TreemapRect {
+            x0: l.x0,
+            y0: l.y0,
+            x1: l.x1,
+            y1: l.y1,
+        });
     }
 
     // Treemap sections/leaves are rendered under `<g class="treemapContainer" transform="translate(0, title_height)">`.
     // Include that translation when computing the root viewport. Also include the title text's
     // bbox (dominant-baseline="middle") so `parity-root` matches the upstream getBBox-derived
     // viewBox w/h.
-    if title_shift_y > 0.0 && min_y.is_finite() && max_y.is_finite() {
-        min_y += title_shift_y;
-        max_y += title_shift_y;
+    if title_shift_y > 0.0 && viewbox_bounds.min_y.is_finite() && viewbox_bounds.max_y.is_finite() {
+        viewbox_bounds.min_y += title_shift_y;
+        viewbox_bounds.max_y += title_shift_y;
     }
     if let (Some(title), Some(&(w, h))) = (title, title_bbox.as_ref()) {
         let cx = layout.width / 2.0;
         let cy = layout.title_height / 2.0;
-        if w > 0.0 && h > 0.0 {
-            add_rect_bounds(
-                &mut min_x,
-                &mut min_y,
-                &mut max_x,
-                &mut max_y,
-                cx - (w / 2.0),
-                cy - (h / 2.0),
-                cx + (w / 2.0),
-                cy + (h / 2.0),
-            );
-        } else if !title.trim().is_empty() {
-            // If measurement is unexpectedly degenerate, still ensure we don't ignore the title
-            // region entirely.
-            min_y = min_y.min(0.0);
-            max_y = max_y.max(layout.title_height);
+        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+            if !title.trim().is_empty() {
+                // If measurement is unexpectedly degenerate, still ensure we don't ignore the title
+                // region entirely.
+                viewbox_bounds.min_y = viewbox_bounds.min_y.min(0.0);
+                viewbox_bounds.max_y = viewbox_bounds.max_y.max(layout.title_height);
+            }
+        } else {
+            viewbox_bounds.include_rect(TreemapRect {
+                x0: cx - (w / 2.0),
+                y0: cy - (h / 2.0),
+                x1: cx + (w / 2.0),
+                y1: cy + (h / 2.0),
+            });
         }
     }
 
@@ -459,11 +484,11 @@ pub(super) fn render_treemap_diagram_svg(
     let vb_y;
     let vb_w;
     let vb_h;
-    if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
-        vb_x = min_x - layout.diagram_padding;
-        vb_y = min_y - layout.diagram_padding;
-        vb_w = (max_x - min_x) + layout.diagram_padding * 2.0;
-        vb_h = (max_y - min_y) + layout.diagram_padding * 2.0;
+    if viewbox_bounds.has_rects() {
+        vb_x = viewbox_bounds.min_x - layout.diagram_padding;
+        vb_y = viewbox_bounds.min_y - layout.diagram_padding;
+        vb_w = (viewbox_bounds.max_x - viewbox_bounds.min_x) + layout.diagram_padding * 2.0;
+        vb_h = (viewbox_bounds.max_y - viewbox_bounds.min_y) + layout.diagram_padding * 2.0;
     } else {
         vb_x = -layout.diagram_padding;
         vb_y = -layout.diagram_padding;
