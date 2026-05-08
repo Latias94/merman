@@ -277,6 +277,9 @@ Progress:
   `svg/parity/requirement.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled sankey relaxation parameters into a small context struct and removed the
   `crates/merman-render/src/sankey.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced timeline node layout's positional content/geometry/text arguments with
+  `TimelineNodeRequest` and removed the `crates/merman-render/src/timeline.rs` module-level
+  `clippy::too_many_arguments` allow.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

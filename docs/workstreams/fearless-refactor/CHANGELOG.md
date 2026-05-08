@@ -26,6 +26,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `requirement` module-level `clippy::too_many_arguments` allow.
 - Bundled sankey relaxation parameters into a small context struct and removed the `sankey`
   module-level `clippy::too_many_arguments` allow.
+- Replaced timeline node layout's positional content/geometry/text arguments with
+  `TimelineNodeRequest` and removed the `timeline` module-level `clippy::too_many_arguments`
+  allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

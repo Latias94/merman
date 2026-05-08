@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use crate::Result;
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
@@ -252,18 +250,34 @@ fn virtual_node_height(
     (h, lines)
 }
 
-fn compute_node(
-    kind: &str,
-    label: &str,
+#[derive(Debug, Clone, Copy)]
+struct TimelineNodeRequest<'a> {
+    kind: &'a str,
+    label: &'a str,
     full_section: i64,
     x: f64,
     y: f64,
     content_width: f64,
     max_height: f64,
-    style: &TextStyle,
+    style: &'a TextStyle,
     layout_font_size: f64,
+}
+
+fn compute_node(
+    request: TimelineNodeRequest<'_>,
     measurer: &dyn TextMeasurer,
 ) -> TimelineNodeLayout {
+    let TimelineNodeRequest {
+        kind,
+        label,
+        full_section,
+        x,
+        y,
+        content_width,
+        max_height,
+        style,
+        layout_font_size,
+    } = request;
     let (h0, label_lines) = virtual_node_height(
         label,
         content_width,
@@ -472,15 +486,17 @@ pub fn layout_timeline_diagram_typed(
 
             let content_width = TASK_STEP_X * (tasks_for_section_count as f64) - 50.0;
             let section_node = compute_node(
-                "section",
-                section_label,
-                section_number,
-                master_x,
-                section_y,
-                content_width,
-                max_section_height,
-                &text_style,
-                layout_font_size,
+                TimelineNodeRequest {
+                    kind: "section",
+                    label: section_label,
+                    full_section: section_number,
+                    x: master_x,
+                    y: section_y,
+                    content_width,
+                    max_height: max_section_height,
+                    style: &text_style,
+                    layout_font_size,
+                },
                 measurer,
             );
             all_nodes_pre_title.push(section_node.clone());
@@ -492,15 +508,17 @@ pub fn layout_timeline_diagram_typed(
             for task in &tasks_for_section {
                 let full_section = section_number;
                 let task_node = compute_node(
-                    "task",
-                    &task.task,
-                    full_section,
-                    task_x,
-                    task_y,
-                    task_content_width,
-                    max_task_height,
-                    &text_style,
-                    layout_font_size,
+                    TimelineNodeRequest {
+                        kind: "task",
+                        label: &task.task,
+                        full_section,
+                        x: task_x,
+                        y: task_y,
+                        content_width: task_content_width,
+                        max_height: max_task_height,
+                        style: &text_style,
+                        layout_font_size,
+                    },
                     measurer,
                 );
                 all_nodes_pre_title.push(task_node.clone());
@@ -518,15 +536,17 @@ pub fn layout_timeline_diagram_typed(
                 let mut event_y = task_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
                 for ev in &task.events {
                     let event_node = compute_node(
-                        "event",
-                        ev,
-                        full_section,
-                        task_x,
-                        event_y,
-                        task_content_width,
-                        50.0,
-                        &text_style,
-                        layout_font_size,
+                        TimelineNodeRequest {
+                            kind: "event",
+                            label: ev,
+                            full_section,
+                            x: task_x,
+                            y: event_y,
+                            content_width: task_content_width,
+                            max_height: 50.0,
+                            style: &text_style,
+                            layout_font_size,
+                        },
                         measurer,
                     );
                     event_y += event_node.height + EVENT_GAP_Y;
@@ -557,15 +577,17 @@ pub fn layout_timeline_diagram_typed(
 
         for task in &model.tasks {
             let task_node = compute_node(
-                "task",
-                &task.task,
-                section_color,
-                master_x,
-                master_y,
-                task_content_width,
-                max_task_height,
-                &text_style,
-                layout_font_size,
+                TimelineNodeRequest {
+                    kind: "task",
+                    label: &task.task,
+                    full_section: section_color,
+                    x: master_x,
+                    y: master_y,
+                    content_width: task_content_width,
+                    max_height: max_task_height,
+                    style: &text_style,
+                    layout_font_size,
+                },
                 measurer,
             );
             all_nodes_pre_title.push(task_node.clone());
@@ -583,15 +605,17 @@ pub fn layout_timeline_diagram_typed(
             let mut event_y = master_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
             for ev in &task.events {
                 let event_node = compute_node(
-                    "event",
-                    ev,
-                    section_color,
-                    master_x,
-                    event_y,
-                    task_content_width,
-                    50.0,
-                    &text_style,
-                    layout_font_size,
+                    TimelineNodeRequest {
+                        kind: "event",
+                        label: ev,
+                        full_section: section_color,
+                        x: master_x,
+                        y: event_y,
+                        content_width: task_content_width,
+                        max_height: 50.0,
+                        style: &text_style,
+                        layout_font_size,
+                    },
                     measurer,
                 );
                 event_y += event_node.height + EVENT_GAP_Y;

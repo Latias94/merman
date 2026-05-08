@@ -336,6 +336,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   arguments, so `sankey.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   sankey`, and `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-decimals 3`.
+  Timeline node layout now uses a `TimelineNodeRequest` input struct instead of passing content,
+  section, geometry, and text settings positionally, so `timeline.rs` no longer needs a module-level
+  allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render timeline`, and `cargo run -p xtask -- compare-timeline-svgs
+  --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene
