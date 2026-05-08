@@ -3,6 +3,12 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-09
+
+- Consolidated `merman-cli` render execution around internal `RenderRequest` and
+  `RasterRequest` structs so parse/layout/render and SVG-raster handling share a smaller execution
+  boundary without changing CLI behavior.
+
 ## 2026-05-08
 
 - Corrected `xtask report-overrides` text lookup accounting so generated `*_OVERRIDES_*`

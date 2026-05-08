@@ -103,6 +103,21 @@ impl FromStr for RenderFormat {
     }
 }
 
+impl RenderFormat {
+    fn raster_extension(self) -> Option<&'static str> {
+        match self {
+            RenderFormat::Svg => None,
+            RenderFormat::Png => Some("png"),
+            RenderFormat::Jpeg => Some("jpg"),
+            RenderFormat::Pdf => Some("pdf"),
+        }
+    }
+
+    fn is_raster(self) -> bool {
+        !matches!(self, RenderFormat::Svg)
+    }
+}
+
 #[derive(Debug, Default)]
 struct Args {
     command: Command,
@@ -133,6 +148,17 @@ struct MetaOut<'a> {
 struct ParseOut<'a> {
     meta: MetaOut<'a>,
     model: &'a Value,
+}
+
+struct RenderRequest<'a> {
+    args: &'a Args,
+    engine: &'a Engine,
+    parse_options: ParseOptions,
+}
+
+struct RasterRequest<'a> {
+    args: &'a Args,
+    svg: &'a str,
 }
 
 fn usage() -> &'static str {
@@ -296,61 +322,6 @@ fn text_measurer(kind: TextMeasurerKind) -> Arc<dyn TextMeasurer + Send + Sync> 
     }
 }
 
-fn layout_options(args: &Args) -> LayoutOptions {
-    LayoutOptions {
-        viewport_width: args.viewport_width,
-        viewport_height: args.viewport_height,
-        text_measurer: text_measurer(args.text_measurer),
-        math_renderer: None,
-        // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on manatee-backed
-        // layout engines. Prefer correctness for CLI output.
-        use_manatee_layout: true,
-    }
-}
-
-fn raster_options(args: &Args) -> merman::render::raster::RasterOptions {
-    merman::render::raster::RasterOptions {
-        scale: args.render_scale,
-        background: args.background.clone(),
-        ..Default::default()
-    }
-}
-
-fn raster_extension(format: RenderFormat) -> Option<&'static str> {
-    match format {
-        RenderFormat::Svg => None,
-        RenderFormat::Png => Some("png"),
-        RenderFormat::Jpeg => Some("jpg"),
-        RenderFormat::Pdf => Some("pdf"),
-    }
-}
-
-fn rasterize_svg(svg: &str, args: &Args) -> Result<Vec<u8>, CliError> {
-    let svg = merman::render::foreign_object_label_fallback_svg_text(svg);
-    match args.render_format {
-        RenderFormat::Svg => Err(CliError::Usage(usage())),
-        RenderFormat::Png => Ok(merman::render::raster::svg_to_png(
-            &svg,
-            &raster_options(args),
-        )?),
-        RenderFormat::Jpeg => Ok(merman::render::raster::svg_to_jpeg(
-            &svg,
-            &raster_options(args),
-        )?),
-        RenderFormat::Pdf => Ok(merman::render::raster::svg_to_pdf(&svg)?),
-    }
-}
-
-fn write_rasterized_svg(svg: &str, args: &Args) -> Result<(), CliError> {
-    let bytes = rasterize_svg(svg, args)?;
-    let ext = raster_extension(args.render_format).ok_or(CliError::Usage(usage()))?;
-    let default_out_path = default_raster_out_path(args.input.as_deref(), ext)
-        .to_string_lossy()
-        .into_owned();
-    let out = args.out.as_deref().unwrap_or(default_out_path.as_str());
-    write_output(Some(out), &bytes)
-}
-
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
     let result = (|| -> Result<(), CliError> {
@@ -381,86 +352,170 @@ fn run(args: Args) -> Result<(), CliError> {
         engine = engine.with_site_config(cfg);
     }
 
-    let options = ParseOptions {
-        suppress_errors: args.suppress_errors,
+    let request = RenderRequest {
+        args: &args,
+        engine: &engine,
+        parse_options: ParseOptions {
+            suppress_errors: args.suppress_errors,
+        },
     };
 
     match args.command {
-        Command::Detect => {
-            let Some(meta) = engine.parse_metadata_sync(&text, options)? else {
-                return Err(CliError::NoDiagram);
-            };
-            println!("{}", meta.diagram_type);
-            Ok(())
-        }
-        Command::Parse => {
-            let Some(parsed) = engine.parse_diagram_sync(&text, options)? else {
-                return Err(CliError::NoDiagram);
-            };
+        Command::Detect => request.detect(&text),
+        Command::Parse => request.parse(&text),
+        Command::Layout => request.layout(&text),
+        Command::Render => request.render(&text),
+    }
+}
 
-            if args.with_meta {
-                let out = ParseOut {
-                    meta: MetaOut {
-                        diagram_type: &parsed.meta.diagram_type,
-                        config: parsed.meta.config.as_value(),
-                        effective_config: parsed.meta.effective_config.as_value(),
-                        title: parsed.meta.title.as_deref(),
-                    },
-                    model: &parsed.model,
-                };
-                if args.pretty {
-                    println!("{}", serde_json::to_string_pretty(&out)?);
-                } else {
-                    println!("{}", serde_json::to_string(&out)?);
-                }
-            } else if args.pretty {
-                println!("{}", serde_json::to_string_pretty(&parsed.model)?);
+impl<'a> RenderRequest<'a> {
+    fn layout_options(&self) -> LayoutOptions {
+        LayoutOptions {
+            viewport_width: self.args.viewport_width,
+            viewport_height: self.args.viewport_height,
+            text_measurer: text_measurer(self.args.text_measurer),
+            math_renderer: None,
+            // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
+            // manatee-backed layout engines. Prefer correctness for CLI output.
+            use_manatee_layout: true,
+        }
+    }
+
+    fn svg_options(&self) -> SvgRenderOptions {
+        SvgRenderOptions {
+            diagram_id: self.args.diagram_id.clone(),
+            ..Default::default()
+        }
+    }
+
+    fn detect(&self, text: &str) -> Result<(), CliError> {
+        let Some(meta) = self.engine.parse_metadata_sync(text, self.parse_options)? else {
+            return Err(CliError::NoDiagram);
+        };
+        println!("{}", meta.diagram_type);
+        Ok(())
+    }
+
+    fn parse(&self, text: &str) -> Result<(), CliError> {
+        let Some(parsed) = self.engine.parse_diagram_sync(text, self.parse_options)? else {
+            return Err(CliError::NoDiagram);
+        };
+
+        if self.args.with_meta {
+            let out = ParseOut {
+                meta: MetaOut {
+                    diagram_type: &parsed.meta.diagram_type,
+                    config: parsed.meta.config.as_value(),
+                    effective_config: parsed.meta.effective_config.as_value(),
+                    title: parsed.meta.title.as_deref(),
+                },
+                model: &parsed.model,
+            };
+            if self.args.pretty {
+                println!("{}", serde_json::to_string_pretty(&out)?);
             } else {
-                println!("{}", serde_json::to_string(&parsed.model)?);
+                println!("{}", serde_json::to_string(&out)?);
             }
-            Ok(())
+        } else if self.args.pretty {
+            println!("{}", serde_json::to_string_pretty(&parsed.model)?);
+        } else {
+            println!("{}", serde_json::to_string(&parsed.model)?);
         }
-        Command::Layout => {
-            let layout = layout_options(&args);
-            let Some(layouted) =
-                merman::render::layout_diagram_sync(&engine, &text, options, &layout)?
-            else {
-                return Err(CliError::NoDiagram);
-            };
-            if args.pretty {
-                println!("{}", serde_json::to_string_pretty(&layouted)?);
-            } else {
-                println!("{}", serde_json::to_string(&layouted)?);
-            }
-            Ok(())
+        Ok(())
+    }
+
+    fn layout(&self, text: &str) -> Result<(), CliError> {
+        let layout = self.layout_options();
+        let Some(layouted) =
+            merman::render::layout_diagram_sync(self.engine, text, self.parse_options, &layout)?
+        else {
+            return Err(CliError::NoDiagram);
+        };
+        if self.args.pretty {
+            println!("{}", serde_json::to_string_pretty(&layouted)?);
+        } else {
+            println!("{}", serde_json::to_string(&layouted)?);
         }
-        Command::Render => {
-            let input_is_svg = text.trim_start().starts_with("<svg");
-            if input_is_svg && !matches!(args.render_format, RenderFormat::Svg) {
-                return write_rasterized_svg(&text, &args);
+        Ok(())
+    }
+
+    fn render(&self, text: &str) -> Result<(), CliError> {
+        if text.trim_start().starts_with("<svg") && self.args.render_format.is_raster() {
+            return RasterRequest {
+                args: self.args,
+                svg: text,
             }
-
-            let layout = layout_options(&args);
-            let svg_opts = SvgRenderOptions {
-                diagram_id: args.diagram_id.clone(),
-                ..Default::default()
-            };
-
-            let Some(svg) =
-                merman::render::render_svg_sync(&engine, &text, options, &layout, &svg_opts)?
-            else {
-                return Err(CliError::NoDiagram);
-            };
-
-            match args.render_format {
-                RenderFormat::Svg => {
-                    let out = args.out.as_deref();
-                    write_output(out, svg.as_bytes())
-                }
-                RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => {
-                    write_rasterized_svg(&svg, &args)
-                }
-            }
+            .write();
         }
+
+        let layout = self.layout_options();
+        let svg_opts = self.svg_options();
+        let Some(svg) = merman::render::render_svg_sync(
+            self.engine,
+            text,
+            self.parse_options,
+            &layout,
+            &svg_opts,
+        )?
+        else {
+            return Err(CliError::NoDiagram);
+        };
+
+        match self.args.render_format {
+            RenderFormat::Svg => {
+                let out = self.args.out.as_deref();
+                write_output(out, svg.as_bytes())
+            }
+            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => RasterRequest {
+                args: self.args,
+                svg: &svg,
+            }
+            .write(),
+        }
+    }
+}
+
+impl<'a> RasterRequest<'a> {
+    fn raster_options(&self) -> merman::render::raster::RasterOptions {
+        merman::render::raster::RasterOptions {
+            scale: self.args.render_scale,
+            background: self.args.background.clone(),
+            ..Default::default()
+        }
+    }
+
+    fn rasterize(&self) -> Result<Vec<u8>, CliError> {
+        let svg = merman::render::foreign_object_label_fallback_svg_text(self.svg);
+        match self.args.render_format {
+            RenderFormat::Svg => Err(CliError::Usage(usage())),
+            RenderFormat::Png => Ok(merman::render::raster::svg_to_png(
+                &svg,
+                &self.raster_options(),
+            )?),
+            RenderFormat::Jpeg => Ok(merman::render::raster::svg_to_jpeg(
+                &svg,
+                &self.raster_options(),
+            )?),
+            RenderFormat::Pdf => Ok(merman::render::raster::svg_to_pdf(&svg)?),
+        }
+    }
+
+    fn output_path(&self) -> Result<String, CliError> {
+        let ext = self
+            .args
+            .render_format
+            .raster_extension()
+            .ok_or(CliError::Usage(usage()))?;
+        Ok(self.args.out.clone().unwrap_or_else(|| {
+            default_raster_out_path(self.args.input.as_deref(), ext)
+                .to_string_lossy()
+                .into_owned()
+        }))
+    }
+
+    fn write(&self) -> Result<(), CliError> {
+        let bytes = self.rasterize()?;
+        let out = self.output_path()?;
+        write_output(Some(out.as_str()), &bytes)
     }
 }

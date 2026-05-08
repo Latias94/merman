@@ -488,9 +488,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Audit CLI option parsing for duplicated raster branches.
   Evidence: CLI layout options and SVG rasterization output handling now share small helpers across
   Mermaid-input render and direct SVG-input rasterization flows.
-- [ ] Consider a small internal `RenderRequest`/`RasterRequest` struct for CLI command execution.
-  Progress: shared helpers removed the immediate duplication; keep this open until command
-  execution needs a larger request object.
+- [x] Consider a small internal `RenderRequest`/`RasterRequest` struct for CLI command execution.
+  Evidence: `crates/merman-cli/src/main.rs` now routes parse/layout/render through internal
+  `RenderRequest` and `RasterRequest` structs, which centralize layout options, SVG options,
+  raster options, and default raster output-path resolution without changing CLI behavior.
 
 ## P3: Documentation Cleanup
 
