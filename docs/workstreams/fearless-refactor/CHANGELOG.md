@@ -9,6 +9,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   functions that were kept only behind `dead_code` allows.
 - Added a focused `text_measure_stress` Criterion bench for vendored font measurement and wrapped
   label paths before future cache work.
+- Recorded the `text_measure_stress` same-machine Criterion spotcheck in
+  `docs/performance/spotcheck_2026-05-08_text_measure_stress.md`.
 - Removed a dead private font-metric quantizer and made the flowchart cluster-width probe
   test-only so production text-measure code stays slimmer.
 - Added category-level owner/source/allowed-use/expected-removal metadata to `xtask

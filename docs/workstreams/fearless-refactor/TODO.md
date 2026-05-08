@@ -464,8 +464,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   graphlib key ownership boundaries.
 - [x] Add focused benchmarks before optimizing text measurement caches.
   Evidence: `text_measure_stress` now covers vendored font computed-length and SVG-like wrapped
-  label measurement with default and bold Mermaid flowchart font styles. Run with
-  `cargo bench -p merman --features render --bench text_measure_stress -- --noplot`.
+  label measurement with default and bold Mermaid flowchart font styles. Same-machine spotcheck:
+  `docs/performance/spotcheck_2026-05-08_text_measure_stress.md`.
 
 ## P3: Public API and CLI Cleanup
 
