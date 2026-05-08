@@ -39,7 +39,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `xychart` | `typed-first` | typed layout + layout-only SVG | Keep the typed model lightweight; SVG emission is layout-only. |
 | `quadrantChart` | `typed-first` | typed layout + layout-only SVG | Axes/quadrants/points/classes now share the core render model. |
 | `sankey` | `typed-first` | typed layout + layout-only SVG | CSV graph now shares the core render model. |
-| `c4` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `c4` | `typed-first` | typed layout + typed SVG | Keep the typed model stable while timing evidence matures. |
 | `error` | `json-fallback` | JSON layout + JSON SVG | Keep JSON; this is the fallback payload for suppressed parse errors. |
 
 ## API Decision

@@ -7,124 +7,11 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use serde::Deserialize;
+use merman_core::diagrams::c4::C4DiagramRenderModel;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-enum C4Text {
-    Wrapped { text: Value },
-    String(String),
-    Value(Value),
-}
-
-impl Default for C4Text {
-    fn default() -> Self {
-        Self::String(String::new())
-    }
-}
-
-impl C4Text {
-    fn as_str(&self) -> &str {
-        match self {
-            Self::Wrapped { text } => text.as_str().unwrap_or(""),
-            Self::String(s) => s.as_str(),
-            Self::Value(v) => v.as_str().unwrap_or(""),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct C4LayoutConfig {
-    #[serde(default, rename = "c4ShapeInRow")]
-    c4_shape_in_row: i64,
-    #[serde(default, rename = "c4BoundaryInRow")]
-    c4_boundary_in_row: i64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4Shape {
-    alias: String,
-    #[serde(default, rename = "parentBoundary")]
-    parent_boundary: String,
-    #[serde(default, rename = "typeC4Shape")]
-    type_c4_shape: C4Text,
-    #[serde(default)]
-    label: C4Text,
-    #[serde(default)]
-    #[allow(dead_code)]
-    wrap: bool,
-    #[serde(default)]
-    #[allow(dead_code)]
-    sprite: Option<Value>,
-    #[serde(default, rename = "type")]
-    ty: Option<C4Text>,
-    #[serde(default)]
-    techn: Option<C4Text>,
-    #[serde(default)]
-    descr: Option<C4Text>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4Boundary {
-    alias: String,
-    #[serde(default, rename = "parentBoundary")]
-    parent_boundary: String,
-    #[serde(default)]
-    label: C4Text,
-    #[serde(default, rename = "type")]
-    ty: Option<C4Text>,
-    #[serde(default)]
-    descr: Option<C4Text>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    wrap: Option<bool>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    sprite: Option<Value>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4Rel {
-    #[serde(rename = "from")]
-    from_alias: String,
-    #[serde(rename = "to")]
-    to_alias: String,
-    #[serde(rename = "type")]
-    rel_type: String,
-    #[serde(default)]
-    label: C4Text,
-    #[serde(default)]
-    techn: Option<C4Text>,
-    #[serde(default)]
-    descr: Option<C4Text>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    wrap: bool,
-    #[serde(default, rename = "offsetX")]
-    offset_x: Option<i64>,
-    #[serde(default, rename = "offsetY")]
-    offset_y: Option<i64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4Model {
-    #[serde(default, rename = "c4Type")]
-    c4_type: String,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default)]
-    wrap: bool,
-    #[serde(default)]
-    layout: C4LayoutConfig,
-    #[serde(default)]
-    shapes: Vec<C4Shape>,
-    #[serde(default)]
-    boundaries: Vec<C4Boundary>,
-    #[serde(default)]
-    rels: Vec<C4Rel>,
-}
+type C4Model = C4DiagramRenderModel;
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
@@ -925,14 +812,13 @@ fn layout_inside_boundary(
     Ok(())
 }
 
-pub(crate) fn layout_c4_diagram(
-    model: &Value,
+pub(crate) fn layout_c4_diagram_typed(
+    model: &C4DiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     viewport_width: f64,
     viewport_height: f64,
 ) -> Result<C4DiagramLayout> {
-    let model: C4Model = from_value_ref(model)?;
     let conf = C4Conf::from_effective_config(effective_config);
 
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
@@ -978,7 +864,7 @@ pub(crate) fn layout_c4_diagram(
     layout_inside_boundary(
         &mut screen_bounds,
         &root_boundaries,
-        &model,
+        model,
         effective_config,
         &conf,
         c4_shape_in_row,
@@ -1138,12 +1024,29 @@ pub(crate) fn layout_c4_diagram(
         height,
         viewport_width,
         viewport_height,
-        c4_type: model.c4_type,
-        title: model.title,
+        c4_type: model.c4_type.clone(),
+        title: model.title.clone(),
         boundaries: boundaries_out,
         shapes: shapes_out,
         rels: rels_out,
     })
+}
+
+pub(crate) fn layout_c4_diagram(
+    model: &Value,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    viewport_width: f64,
+    viewport_height: f64,
+) -> Result<C4DiagramLayout> {
+    let model: C4DiagramRenderModel = from_value_ref(model)?;
+    layout_c4_diagram_typed(
+        &model,
+        effective_config,
+        measurer,
+        viewport_width,
+        viewport_height,
+    )
 }
 
 #[cfg(test)]

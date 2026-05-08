@@ -1,7 +1,178 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum C4Text {
+    Wrapped { text: Value },
+    String(String),
+    Value(Value),
+}
+
+impl Default for C4Text {
+    fn default() -> Self {
+        Self::String(String::new())
+    }
+}
+
+impl C4Text {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Wrapped { text } => text.as_str().unwrap_or(""),
+            Self::String(s) => s.as_str(),
+            Self::Value(v) => v.as_str().unwrap_or(""),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct C4LayoutConfig {
+    #[serde(default, rename = "c4ShapeInRow")]
+    pub c4_shape_in_row: i64,
+    #[serde(default, rename = "c4BoundaryInRow")]
+    pub c4_boundary_in_row: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct C4ShapeRenderModel {
+    pub alias: String,
+    #[serde(default, rename = "parentBoundary")]
+    pub parent_boundary: String,
+    #[serde(default, rename = "typeC4Shape")]
+    pub type_c4_shape: C4Text,
+    #[serde(default)]
+    pub label: C4Text,
+    #[serde(default)]
+    pub wrap: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Value>,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub ty: Option<C4Text>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub techn: Option<C4Text>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descr: Option<C4Text>,
+    #[serde(default, rename = "bgColor", skip_serializing_if = "Option::is_none")]
+    pub bg_color: Option<String>,
+    #[serde(
+        default,
+        rename = "borderColor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub border_color: Option<String>,
+    #[serde(default, rename = "fontColor", skip_serializing_if = "Option::is_none")]
+    pub font_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadowing: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<Value>,
+    #[serde(
+        default,
+        rename = "legendText",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub legend_text: Option<Value>,
+    #[serde(
+        default,
+        rename = "legendSprite",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub legend_sprite: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct C4BoundaryRenderModel {
+    pub alias: String,
+    #[serde(default, rename = "parentBoundary")]
+    pub parent_boundary: String,
+    #[serde(default)]
+    pub label: C4Text,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub ty: Option<C4Text>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descr: Option<C4Text>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrap: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Value>,
+    #[serde(default, rename = "nodeType", skip_serializing_if = "Option::is_none")]
+    pub node_type: Option<String>,
+    #[serde(default, rename = "bgColor", skip_serializing_if = "Option::is_none")]
+    pub bg_color: Option<String>,
+    #[serde(
+        default,
+        rename = "borderColor",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub border_color: Option<String>,
+    #[serde(default, rename = "fontColor", skip_serializing_if = "Option::is_none")]
+    pub font_color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct C4RelRenderModel {
+    #[serde(rename = "from")]
+    pub from_alias: String,
+    #[serde(rename = "to")]
+    pub to_alias: String,
+    #[serde(rename = "type")]
+    pub rel_type: String,
+    #[serde(default)]
+    pub label: C4Text,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub techn: Option<C4Text>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descr: Option<C4Text>,
+    #[serde(default)]
+    pub wrap: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sprite: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Value>,
+    #[serde(default, rename = "offsetX", skip_serializing_if = "Option::is_none")]
+    pub offset_x: Option<i64>,
+    #[serde(default, rename = "offsetY", skip_serializing_if = "Option::is_none")]
+    pub offset_y: Option<i64>,
+    #[serde(default, rename = "lineColor", skip_serializing_if = "Option::is_none")]
+    pub line_color: Option<String>,
+    #[serde(default, rename = "textColor", skip_serializing_if = "Option::is_none")]
+    pub text_color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct C4DiagramRenderModel {
+    #[serde(default, rename = "c4Type")]
+    pub c4_type: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub wrap: bool,
+    #[serde(default)]
+    pub layout: C4LayoutConfig,
+    #[serde(default)]
+    pub shapes: Vec<C4ShapeRenderModel>,
+    #[serde(default)]
+    pub boundaries: Vec<C4BoundaryRenderModel>,
+    #[serde(default)]
+    pub rels: Vec<C4RelRenderModel>,
+}
 
 #[derive(Debug, Default)]
 struct C4Db {
@@ -28,6 +199,14 @@ struct C4Db {
 
 pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_c4_impl(code, meta)
+}
+
+pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
+    let value = parse_c4_impl(code, meta)?;
+    serde_json::from_value(value).map_err(|e| Error::DiagramParse {
+        diagram_type: meta.diagram_type.clone(),
+        message: e.to_string(),
+    })
 }
 
 impl C4Db {
@@ -919,7 +1098,7 @@ fn parse_quoted(input: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1492,5 +1671,46 @@ third
 "#,
         );
         assert_eq!(model["accDescr"], json!("first\nsecond\nthird"));
+    }
+
+    #[test]
+    fn c4_render_model_uses_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new();
+        let input = r#"C4Context
+title Banking Context
+Person(customer, "Customer", "Uses the system")
+System(system, "Internet Banking", "Core system")
+Rel(customer, system, "Uses", "HTTPS")
+"#;
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "c4");
+        match parsed.model {
+            RenderSemanticModel::C4(model) => {
+                assert_eq!(model.c4_type, "C4Context");
+                assert_eq!(model.title.as_deref(), Some("Banking Context"));
+                assert_eq!(model.shapes.len(), 2);
+                assert_eq!(model.shapes[0].label.as_str(), "Customer");
+                assert_eq!(model.rels.len(), 1);
+                assert_eq!(model.rels[0].label.as_str(), "Uses");
+            }
+            other => panic!("c4 render parse should return typed model, got {other:?}"),
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.model["type"], json!("c4"));
+        assert_eq!(parsed_json.model["c4Type"], json!("C4Context"));
+        assert_eq!(
+            parsed_json.model["shapes"][0]["label"]["text"],
+            json!("Customer")
+        );
+        assert_eq!(parsed_json.model["rels"][0]["label"]["text"], json!("Uses"));
     }
 }

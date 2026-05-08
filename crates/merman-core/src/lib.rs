@@ -432,6 +432,8 @@ impl Engine {
             }
             "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(code, meta)
                 .map(RenderSemanticModel::Class),
+            "c4" => crate::diagrams::c4::parse_c4_model_for_render(code, meta)
+                .map(RenderSemanticModel::C4),
             "architecture" => {
                 crate::diagrams::architecture::parse_architecture_model_for_render(code, meta)
                     .map(RenderSemanticModel::Architecture)
@@ -520,6 +522,17 @@ impl Engine {
                 }
             }
             RenderSemanticModel::Architecture(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
+            RenderSemanticModel::C4(v) => {
                 if let Some(s) = v.title.as_deref() {
                     v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
                 }
@@ -666,6 +679,7 @@ impl Engine {
             RenderSemanticModel::Flowchart(_) => "flowchart",
             RenderSemanticModel::Architecture(_) => "architecture",
             RenderSemanticModel::Class(_) => "class",
+            RenderSemanticModel::C4(_) => "c4",
             RenderSemanticModel::Kanban(_) => "kanban",
             RenderSemanticModel::Gantt(_) => "gantt",
             RenderSemanticModel::Pie(_) => "pie",

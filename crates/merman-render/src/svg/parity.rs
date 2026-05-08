@@ -9,7 +9,6 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use indexmap::IndexMap;
-use serde::Deserialize;
 use std::fmt::Write as _;
 
 mod architecture;
@@ -523,6 +522,16 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::C4Diagram(layout), RenderSemanticModel::C4(model)) => {
+            c4::render_c4_diagram_svg_typed(
+                layout,
+                model,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -720,6 +729,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         }
         (LayoutDiagram::GitGraphDiagram(layout), RenderSemanticModel::GitGraph(model)) => {
             gitgraph::render_gitgraph_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::C4Diagram(layout), RenderSemanticModel::C4(model)) => {
+            c4::render_c4_diagram_svg_typed(
                 layout,
                 model,
                 effective_config.as_value(),
@@ -969,68 +988,6 @@ pub fn render_gantt_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     gantt::render_gantt_diagram_svg(layout, semantic, _effective_config, options)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4SvgModelText {
-    #[allow(dead_code)]
-    text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4SvgModelShape {
-    alias: String,
-    #[serde(default, rename = "bgColor")]
-    bg_color: Option<String>,
-    #[serde(default, rename = "borderColor")]
-    border_color: Option<String>,
-    #[serde(default, rename = "fontColor")]
-    font_color: Option<String>,
-    #[serde(default, rename = "typeC4Shape")]
-    #[allow(dead_code)]
-    type_c4_shape: Option<C4SvgModelText>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4SvgModelBoundary {
-    alias: String,
-    #[serde(default, rename = "nodeType")]
-    node_type: Option<String>,
-    #[serde(default, rename = "bgColor")]
-    bg_color: Option<String>,
-    #[serde(default, rename = "borderColor")]
-    border_color: Option<String>,
-    #[serde(default, rename = "fontColor")]
-    #[allow(dead_code)]
-    font_color: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4SvgModelRel {
-    #[serde(rename = "from")]
-    from_alias: String,
-    #[serde(rename = "to")]
-    to_alias: String,
-    #[serde(default, rename = "lineColor")]
-    line_color: Option<String>,
-    #[serde(default, rename = "textColor")]
-    text_color: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct C4SvgModel {
-    #[serde(default, rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default)]
-    shapes: Vec<C4SvgModelShape>,
-    #[serde(default)]
-    boundaries: Vec<C4SvgModelBoundary>,
-    #[serde(default)]
-    rels: Vec<C4SvgModelRel>,
 }
 
 pub fn render_mindmap_diagram_svg(

@@ -96,6 +96,26 @@ pub(crate) fn class_namespace_ids_in_decl_order(model: &ClassDiagramModel) -> Ve
     namespaces.into_iter().map(|ns| ns.id.as_str()).collect()
 }
 
+fn class_namespace_child_pairs(model: &ClassDiagramModel) -> HashSet<(&str, &str)> {
+    let mut pairs = HashSet::with_capacity(model.classes.len());
+    for class in model.classes.values() {
+        let Some(parent) = class
+            .parent
+            .as_deref()
+            .map(str::trim)
+            .filter(|parent| !parent.is_empty())
+        else {
+            continue;
+        };
+        let id = class.id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        pairs.insert((parent, id));
+    }
+    pairs
+}
+
 type Rect = merman_core::geom::Box2;
 
 struct PreparedGraph {
@@ -1861,6 +1881,8 @@ fn layout_class_diagram_v2_typed_inner(
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
+    let namespace_ids = class_namespace_ids_in_decl_order(model);
+    let namespace_child_pairs = class_namespace_child_pairs(model);
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -1879,7 +1901,7 @@ fn layout_class_diagram_v2_typed_inner(
         ..Default::default()
     });
 
-    for id in class_namespace_ids_in_decl_order(model) {
+    for &id in &namespace_ids {
         // Mermaid class namespaces enter the Dagre graph as compound/group nodes without an eager
         // title-sized bbox. The visible title width is reconciled later during SVG emission.
         g.set_node(id.to_string(), NodeLabel::default());
@@ -1893,7 +1915,9 @@ fn layout_class_diagram_v2_typed_inner(
     for c in model.classes.values() {
         let trimmed_id = c.id.trim();
         let is_namespace_facade = trimmed_id.split_once('.').is_some_and(|(ns, short)| {
-            model.namespaces.contains_key(ns.trim())
+            let ns = ns.trim();
+            let short = short.trim();
+            model.namespaces.contains_key(ns)
                 && c.parent
                     .as_deref()
                     .map(|p| p.trim())
@@ -1901,14 +1925,7 @@ fn layout_class_diagram_v2_typed_inner(
                 && c.annotations.is_empty()
                 && c.members.is_empty()
                 && c.methods.is_empty()
-                && model.classes.values().any(|inner| {
-                    inner.id.trim() == short.trim()
-                        && inner
-                            .parent
-                            .as_deref()
-                            .map(|p| p.trim())
-                            .is_some_and(|p| p == ns.trim())
-                })
+                && namespace_child_pairs.contains(&(ns, short))
         });
 
         if is_namespace_facade {
@@ -2210,7 +2227,7 @@ fn layout_class_diagram_v2_typed_inner(
     // Mermaid renders namespaces as Dagre clusters. The cluster geometry comes from the Dagre
     // compound layout (not a post-hoc union of class-node bboxes). Use the computed namespace
     // node x/y/width/height and mirror `clusters.js` sizing tweaks for title width.
-    for id in class_namespace_ids_in_decl_order(model) {
+    for &id in &namespace_ids {
         let Some(ns_node) = fragments.nodes.get(id) else {
             continue;
         };
@@ -2269,12 +2286,12 @@ fn layout_class_diagram_v2_typed_inner(
     let mut edges: Vec<LayoutEdge> = fragments.edges.into_iter().map(|(e, _)| e).collect();
     edges.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let namespace_order: std::collections::HashMap<&str, usize> =
-        class_namespace_ids_in_decl_order(model)
-            .into_iter()
-            .enumerate()
-            .map(|(idx, id)| (id, idx))
-            .collect();
+    let namespace_order: std::collections::HashMap<&str, usize> = namespace_ids
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(idx, id)| (id, idx))
+        .collect();
     clusters.sort_by(|a, b| {
         namespace_order
             .get(a.id.as_str())

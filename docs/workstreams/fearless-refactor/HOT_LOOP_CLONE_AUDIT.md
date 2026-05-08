@@ -101,6 +101,26 @@ Result:
 - Marker-adjusted point storage is reused across edges.
 - Edge-label center lookup no longer clones layout edge ids into `String`.
 
+## Class Namespace Facade Lookup
+
+Class layout used to rescan the full class list for every namespace-qualified facade candidate and
+rebuild namespace declaration order multiple times per layout pass.
+
+Decision:
+
+- Precompute namespace parent/child pairs once per layout pass.
+- Reuse one namespace declaration-order vector for graph node insertion, cluster emission, and
+  cluster ordering.
+- Keep the graphlib-owned node/edge key boundary unchanged for now; that remaining clone-heavy
+  boundary still belongs in a later API-level refactor.
+
+Result:
+
+- Facade detection is now linear in the number of classes.
+- Namespace ordering no longer pays duplicate sort/collect passes.
+- `class_namespace_dense` now exists in the pipeline benchmark fixture set so future class
+  namespace cleanup can be measured directly.
+
 ## Remaining Candidates
 
 1. Class namespace/relation lookup construction still clones ids heavily because graphlib-style
@@ -113,6 +133,8 @@ Result:
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
 - `cargo nextest run -p merman-render flowchart`
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo bench -p merman --features render --bench pipeline -- class_namespace_dense --noplot
+  --sample-size 20 --warm-up-time 1 --measurement-time 1`
 - `cargo nextest run -p merman-render sequence`
 - `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo nextest run -p merman-render class`

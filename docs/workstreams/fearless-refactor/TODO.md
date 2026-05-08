@@ -173,7 +173,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-08_block_typed_render_model.md`. ER status:
   parent-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_er_typed_render_model.md`. Keep this item open for the
-  next typed migration. XyChart status: post-migration typed render-path spotcheck recorded in
+  next typed migration. C4 status: post-migration typed render-path spotcheck recorded in
+  `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`; the JSON compatibility
+  parity compare still passes via `cargo run -p xtask -- compare-c4-svgs --check-dom
+  --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
+  open for a future benchmarkable c4 fixture. XyChart status: post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
   --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
@@ -351,8 +355,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   labels and message ids from the typed render model; sequence activation planning now borrows
   active message and actor ids; non-wrapped sequence actor/message/note labels now render borrowed
   `<br>` split lines; block label hyphenation probes no longer clone the current head string. Class
-  edge rendering now reuses sorted edge order, reuses marker-adjusted point buffers, and borrows
-  edge ids for edge-label center lookup.
+  edge rendering now reuses sorted edge order, reuses marker-adjusted point buffers, borrows edge
+  ids for edge-label center lookup, and class layout precomputes namespace facade lookup plus
+  namespace declaration order once per render pass. The `class_namespace_dense` pipeline fixture now
+  tracks this namespace-heavy path.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
 ## P3: Public API and CLI Cleanup

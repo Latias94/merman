@@ -89,6 +89,7 @@ pub enum RenderSemanticModel {
     Flowchart(crate::diagrams::flowchart::FlowchartV2Model),
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
     Class(crate::models::class_diagram::ClassDiagram),
+    C4(crate::diagrams::c4::C4DiagramRenderModel),
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
     Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
     Pie(crate::diagrams::pie::PieDiagramRenderModel),

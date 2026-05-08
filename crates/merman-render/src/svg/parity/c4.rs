@@ -1,6 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use merman_core::diagrams::c4::{
+    C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
+};
+type C4SvgModelShape = C4ShapeRenderModel;
+type C4SvgModelBoundary = C4BoundaryRenderModel;
+type C4SvgModelRel = C4RelRenderModel;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
@@ -117,16 +123,14 @@ fn c4_write_text_by_tspan(
     }
 }
 
-pub(super) fn render_c4_diagram_svg(
+pub(super) fn render_c4_diagram_svg_typed(
     layout: &crate::model::C4DiagramLayout,
-    semantic: &serde_json::Value,
+    model: &C4DiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: C4SvgModel = crate::json::from_value_ref(semantic)?;
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -742,4 +746,23 @@ pub(super) fn render_c4_diagram_svg(
 
     out.push_str("</svg>");
     Ok(out)
+}
+
+pub(super) fn render_c4_diagram_svg(
+    layout: &crate::model::C4DiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: C4DiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_c4_diagram_svg_typed(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }

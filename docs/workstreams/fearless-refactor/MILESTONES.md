@@ -107,6 +107,9 @@ Progress:
   semantic JSON parsing remains stable for the compatibility API.
 - `er` now has a typed render model consumed by render-layout and SVG render-model dispatch;
   semantic JSON parsing remains stable for the compatibility API.
+- `c4` now has a typed render model consumed by render-layout and SVG render-model dispatch;
+  semantic JSON parsing remains stable for the compatibility API, and the JSON render bridge is
+  now just a compatibility wrapper.
 - `xychart` now has a typed render model consumed by render-layout dispatch; SVG emission stays
   layout-only, and the public render path routes through the typed model without changing the
   semantic JSON compatibility API.
@@ -146,9 +149,11 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_block_typed_render_model.md`.
 - ER parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_er_typed_render_model.md`.
+- C4 post-migration typed render-path spotcheck is recorded in
+  `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`.
 - XYChart typed render-path spotcheck is recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`.
-- Same-machine baseline capture remains a process requirement for the next typed migration.
+- Same-machine baseline capture remains a process requirement for future typed migrations.
 
 Exit criteria:
 
@@ -361,6 +366,9 @@ Progress:
 - Current-main Criterion baseline captured in
   `docs/performance/spotcheck_2026-05-08_current_main_baseline.md`, covering the pipeline bench
   plus targeted flowchart, architecture, and mindmap stress benches.
+- Class namespace-heavy layout cleanup baseline captured in
+  `docs/performance/spotcheck_2026-05-08_class_namespace_dense_layout.md`; the pipeline bench now
+  includes `class_namespace_dense`.
 
 Exit criteria:
 
