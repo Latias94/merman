@@ -29,6 +29,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   existing frame envelope extra-y value, reducing the helper footprint to 70.
 - Removed the derived Kanban item label inset helper by reusing the existing section padding
   constant, reducing the helper footprint to 69.
+- Removed the derived Architecture singleton service offset helper by reusing the existing service
+  label bottom extension constant, reducing the helper footprint to 68.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and

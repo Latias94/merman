@@ -242,7 +242,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         };
     let singleton_icon_text_offset_y = |service_id: &str| {
         if singleton_icon_text_service_id == Some(service_id) {
-            architecture_text_overrides::architecture_singleton_icon_text_service_offset_y_px()
+            architecture_text_overrides::architecture_service_label_bottom_extension_px()
         } else {
             0.0
         }

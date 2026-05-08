@@ -435,7 +435,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   spacing values. Journey also reuses existing legend radius and top padding values for two
   formerly separate helpers. Sequence derives separator self-message y expansion from the existing
   frame envelope expansion. Kanban now reuses the section padding for the item label inset,
-  reducing the helper footprint to 69.
+  and Architecture now reuses the service label bottom extension for singleton offsets, reducing
+  the helper footprint to 68.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

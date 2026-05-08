@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::generated::architecture_text_overrides_11_12_2::architecture_singleton_icon_text_service_offset_y_px;
+use crate::generated::architecture_text_overrides_11_12_2::architecture_service_label_bottom_extension_px;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 
@@ -234,7 +234,7 @@ fn singleton_icon_text_offset_y(
     service_id: &str,
 ) -> f64 {
     if singleton_icon_text_service_id == Some(service_id) {
-        architecture_singleton_icon_text_service_offset_y_px()
+        architecture_service_label_bottom_extension_px()
     } else {
         0.0
     }
