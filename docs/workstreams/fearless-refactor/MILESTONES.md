@@ -428,6 +428,8 @@ Progress:
   visibility cannot hide hand-curated helper footprint.
 - C4 and XYChart now have current exact pipeline bench smoke coverage in
   `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
+- `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline bench fixtures against
+  parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
 - Root viewport overrides dropped 34 fixture-specific entries so far: 19 architecture pins after

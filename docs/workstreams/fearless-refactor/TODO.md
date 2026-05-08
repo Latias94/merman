@@ -184,6 +184,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
   --dom-mode parity --dom-decimals 3`, and the repaired `xychart_medium` fixture now has a current
   pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
+  `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
+  Criterion pre-check skips under the `render` feature.
 
 ## P1: Text and Measurement Module Split
 
