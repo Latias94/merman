@@ -177,11 +177,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-c4-svgs --check-dom
   --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
-  open for a future benchmarkable c4 fixture. XyChart status: post-migration typed render-path spotcheck recorded in
+  open for a historical before/after pair, but `c4_medium` now has a current pipeline bench smoke
+  in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`. XyChart status:
+  post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
-  --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
-  open for a future benchmarkable xychart fixture.
+  --dom-mode parity --dom-decimals 3`, and the repaired `xychart_medium` fixture now has a current
+  pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
 
 ## P1: Text and Measurement Module Split
 

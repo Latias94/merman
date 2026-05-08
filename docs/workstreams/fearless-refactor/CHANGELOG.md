@@ -35,6 +35,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   helper, reducing the helper footprint to 67.
 - Hardened `xtask report-overrides` helper counting so restricted-visibility helpers still count
   toward the hand-curated helper budget.
+- Repaired the `xychart_medium` bench fixture and recorded a C4/XYChart pipeline bench smoke so the
+  remaining typed-model performance notes no longer depend on future benchmarkable fixtures.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and

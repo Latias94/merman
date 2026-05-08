@@ -426,6 +426,8 @@ Progress:
   metadata for generated override categories and manual raw SVG/path bridge categories.
 - `xtask report-overrides` now counts restricted-visibility helper functions, so changing helper
   visibility cannot hide hand-curated helper footprint.
+- C4 and XYChart now have current exact pipeline bench smoke coverage in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
 - Root viewport overrides dropped 34 fixture-specific entries so far: 19 architecture pins after

@@ -19,5 +19,6 @@ dispatch.
 - The SVG parity compare passed with no DOM drift.
 - The JSON compatibility path still parses and renders xychart fixtures through the existing parity
   compare command.
-- `xychart_medium` remains skipped by the filtered pipeline bench pre-checks, so a Criterion
-  before/after pair is still pending for a future benchmarkable fixture.
+- `xychart_medium` was later repaired to use the upstream bracketed axis syntax that the current
+  parser supports, and now runs through the pipeline bench; see
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.

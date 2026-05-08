@@ -18,4 +18,6 @@ path remains stable; this check focuses on the public render API and its typed m
 - The SVG parity compare passed with no DOM drift.
 - The public render path now reaches the typed `RenderSemanticModel::C4` variant before layout and SVG
   emission.
-- A same-machine before/after Criterion capture is still open for a future benchmarkable C4 fixture.
+- A same-machine before/after Criterion pair is still absent for the already-landed migration, but
+  `c4_medium` is benchmarkable through the pipeline bench; see
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`.
