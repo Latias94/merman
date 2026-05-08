@@ -427,13 +427,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `JSON_CLONE_AUDIT.md`. Decision: `layout_parsed` keeps the owned semantic clone for the
   compatibility API; public `render_svg_sync` already uses typed layout/render dispatch and avoids
   owned semantic JSON.
-- [ ] Reduce repeated `serde_json::Value` cloning in layout/render-only paths.
-  Progress: class typed/config layout and render now keep `&MermaidConfig` through note HTML
-  measurement/sanitization, sequence SVG rendering no longer clones the typed render model for
-  title fallback, and the obsolete `render_layout_svg_parts_for_render_model` compat shim plus its
-  no-config typed wrappers have been removed. Remaining clones are mostly legacy `&Value`
-  compatibility bridges or diagram-specific sanitize/config wrappers that still need ownership
-  review.
+- [x] Reduce repeated `serde_json::Value` cloning in layout/render-only paths.
+  Evidence: class typed/config layout and render keep `&MermaidConfig` through note HTML
+  measurement/sanitization, sequence SVG rendering borrows the typed render model for title
+  fallback, and the obsolete `render_layout_svg_parts_for_render_model` compat shim plus its
+  no-config typed wrappers were removed in commit `2c491ace`. `JSON_CLONE_AUDIT.md` classifies the
+  remaining `from_value(effective_config.clone())` sites as intentional legacy `&Value`
+  compatibility bridges or lazy sanitizer fallbacks; future removal belongs to a public compatibility
+  API redesign, not the render-only typed path.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
   Progress: `HOT_LOOP_CLONE_AUDIT.md` records the first pass. Flowchart layout now borrows normal
   edges in the self-loop expansion stage, and layout/SVG render share an explicit helper-edge

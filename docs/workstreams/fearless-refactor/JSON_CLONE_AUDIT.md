@@ -30,6 +30,19 @@ to keep render-only paths typed/config-borrowed.
 | Rebuilding `MermaidConfig` inside class typed layout/render paths | class note HTML layout metrics and rendering | Removed for class typed/config path | Pass the existing `&MermaidConfig` through class layout/render state and only allocate on legacy `&Value` entrypoints. |
 | Cloning typed render models for local title fallback | sequence SVG rendering | Removed | Keep model borrowed and compute an effective title override at emission time. |
 
+## Remaining Clone Sites
+
+- `crates/merman-render/src/class.rs`: legacy `layout_class_diagram_v2_typed` fallback for the
+  compatibility `&Value` layout entrypoint.
+- `crates/merman-render/src/svg/parity/architecture.rs`: legacy semantic render path when the
+  caller only has `&Value`.
+- `crates/merman-render/src/svg/parity/mindmap.rs`: legacy render-model path for the compatibility
+  semantic entrypoint.
+- `crates/merman-render/src/svg/parity/class/note.rs`: lazy sanitizer fallback when typed config
+  was not already provided.
+- `crates/merman-render/src/svg/parity/flowchart/svg_emit.rs` and
+  `crates/merman-render/src/svg/parity/sequence/render.rs`: legacy semantic render entrypoints.
+
 ## Changes Made
 
 - Class SVG render-with-config now has a dedicated model entrypoint that keeps

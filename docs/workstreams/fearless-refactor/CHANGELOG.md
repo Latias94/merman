@@ -57,6 +57,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed the obsolete `render_layout_svg_parts_for_render_model` compat dispatcher and the
   no-config typed wrappers it exclusively served; typed render-model SVG dispatch now uses the
   `*_with_config` surface.
+- Closed the render-only JSON clone cleanup batch after class, sequence, and render-model dispatch
+  paths were reduced to intentional compatibility and lazy-sanitizer fallbacks.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.
