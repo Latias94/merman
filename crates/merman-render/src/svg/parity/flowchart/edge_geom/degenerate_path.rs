@@ -4,6 +4,11 @@
 //! strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`).
 //! Upstream renders these as a single-point path (`M..Z`) while preserving the original
 //! `data-points`.
+//!
+//! Owner: flowchart edge geometry parity.
+//! Removal criteria: delete this bridge when generic edge path emission can reproduce the Mermaid
+//! single-point `M..Z` path for subgraph-to-strict-descendant edges while DOM parity still keeps the
+//! original `data-points`.
 
 use super::*;
 

@@ -31,6 +31,18 @@ Do not add a text override when the mismatch is really caused by:
 - A broad fallback that would affect unrelated strings or diagram families.
 - A one-off inline literal in a renderer when a generated table or shared lookup can own it.
 
+## Allowed Raw SVG/Path Bridges
+
+A raw SVG/path bridge is allowed only when all of these are true:
+
+- A concrete fixture shows upstream Mermaid emits a literal path, geometry attribute, or DOM shape
+  that cannot be reproduced by the current generic layout/emission path.
+- The mismatch is known to be a temporary parity bridge, not a substitute for missing typed model
+  data or incorrect shared geometry.
+- The bridge is narrow: exact diagram family, exact graph shape, and exact emitted attribute.
+- The function is named `maybe_override_*` so `xtask report-overrides` can inventory it.
+- The implementation has an owner and removal criteria documented nearby.
+
 ## Placement Rules
 
 - Generated text data belongs under `crates/merman-render/src/generated/`.
@@ -39,6 +51,9 @@ Do not add a text override when the mismatch is really caused by:
   `crates/merman-render/src/text/metrics.rs`.
 - Diagram renderers may call shared text measurement APIs, but should not grow local width
   override branches unless the measurement is genuinely diagram-specific and documented nearby.
+- Manual raw SVG/path bridges belong under the diagram-specific
+  `crates/merman-render/src/svg/parity/` module, must use the `maybe_override_*` prefix, and must
+  include nearby owner/removal notes.
 - When a new generated override category is added, update `xtask report-overrides` so the footprint
   remains visible in `OVERRIDE_FOOTPRINT.md`.
 
@@ -54,6 +69,14 @@ Before adding or regenerating text width overrides:
 5. Update `OVERRIDE_FOOTPRINT.md` when generated-module counts change.
 6. Prefer deleting stale entries in the same patch when the new model makes them unnecessary.
 
+Before adding a manual raw SVG/path bridge:
+
+1. Record the fixture or parity command that exposes the upstream literal behavior.
+2. Explain why a typed model, layout, or shared emission fix is not the right immediate change.
+3. Add owner/removal notes near the bridge.
+4. Run the narrow render gate for the touched diagram family.
+5. Update `OVERRIDE_FOOTPRINT.md` and keep the function name visible to `xtask report-overrides`.
+
 ## Review Questions
 
 Use these questions during review:
@@ -63,4 +86,5 @@ Use these questions during review:
   short class/member names?
 - Is the value tied to the Mermaid baseline version currently used by fixtures?
 - Can the override be generated from a repeatable upstream probe instead of hand-entered?
+- If this is a raw SVG/path bridge, is it named, owned, and temporary?
 - Does the change keep `cargo clippy --all-targets -- -D warnings` green?

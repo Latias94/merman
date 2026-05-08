@@ -317,14 +317,17 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Run and record override footprint.
   Command: `cargo run -p xtask -- report-overrides`.
   Evidence: `OVERRIDE_FOOTPRINT.md`.
-- [ ] Classify overrides by category:
+- [x] Classify overrides by category:
   - generated text metrics
   - root viewport
   - raw SVG/path precision
   - temporary parity bridge
-  Status: `xtask report-overrides` now scans all generated override modules by category; keep open
-  until temporary raw SVG/path bridges have owners and removal criteria.
-- [ ] Add comments or metadata for temporary overrides with removal criteria.
+  Evidence: `xtask report-overrides` now scans generated override modules by category and
+  hand-authored `maybe_override_*` raw SVG/path bridge functions under `svg/parity`.
+- [x] Add owner/removal notes for current temporary raw SVG/path bridges.
+  Evidence: `svg/parity/flowchart/edge_geom/degenerate_path.rs` documents the current flowchart
+  degenerate path bridge owner and removal criteria.
+- [ ] Add generated metadata for generated overrides with expected removal criteria.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
 - [ ] Prevent override tables from becoming the default fix for model bugs.
 

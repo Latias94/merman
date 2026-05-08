@@ -1,10 +1,11 @@
 # Override Footprint
 
-This file records the generated parity override footprint so growth is visible during fearless
-refactor work. Overrides are useful when upstream behavior depends on browser/font measurement, but
-new model fixes should be preferred when the mismatch comes from our own data or geometry.
+This file records the generated and manual parity override footprint so growth is visible during
+fearless refactor work. Overrides are useful when upstream behavior depends on browser/font
+measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
+preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-07
+## Snapshot: 2026-05-08
 
 Command:
 
@@ -13,6 +14,8 @@ Command:
 Mermaid baseline: `@11.12.3`
 
 Generated override modules scanned: `39`.
+
+Manual raw SVG/path bridge files scanned: `1`.
 
 ### Root Viewport Overrides
 
@@ -96,6 +99,14 @@ Total helper functions reported by `xtask`: `90`.
 | `treemap_text_overrides_11_12_2.rs` | 11 |
 | `xychart_text_overrides_11_12_2.rs` | 4 |
 
+### Manual Raw SVG/Path Bridges
+
+Total bridge functions reported by `xtask`: `1`.
+
+| file | bridge functions |
+| --- | ---: |
+| `svg/parity/flowchart/edge_geom/degenerate_path.rs` | 1 |
+
 ### Counting Notes
 
 Counts are inventory units and should not be compared directly across categories:
@@ -104,6 +115,8 @@ Counts are inventory units and should not be compared directly across categories
 - Text metric lookup arms count `=> Some(...)` parity branches.
 - Font/SVG metric table rows count tuple rows in generated lookup arrays.
 - Helper overrides count public helper functions in generated small constant modules.
+- Manual raw SVG/path bridge counts are hand-authored `maybe_override_*` functions under
+  `crates/merman-render/src/svg/parity/`.
 
 ## Categories
 
@@ -111,21 +124,22 @@ Counts are inventory units and should not be compared directly across categories
   emitted-bounds drift.
 - Generated text metrics: per-diagram width/height/bbox constants or lookup tables derived from
   upstream browser measurements.
-- Raw SVG/path precision bridges: temporary geometry/path literal bridges, currently tracked in
-  older parity workstream notes rather than by `xtask report-overrides`.
+- Raw SVG/path precision bridges: temporary hand-authored geometry/path literal bridges tracked by
+  `xtask report-overrides` when named `maybe_override_*`.
 - Hand-curated constants: small stable constants such as sequence frame/text spacing helpers.
 
 ## Known Gaps
 
-- `xtask report-overrides` now scans generated override modules, but does not yet inventory
-  temporary raw SVG/path precision bridges outside `crates/merman-render/src/generated/`.
-- The report does not yet separate temporary bridge overrides from long-lived browser/font
-  compatibility data.
-- Removal criteria are not encoded in generated metadata yet.
+- Manual bridge scanning is intentionally naming-based today: hand-authored bridge functions must
+  use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
+- Generated override removal criteria are not encoded in generated metadata yet.
+- The report inventories count and location; it does not yet capture owner/removal metadata
+  directly.
 
 ## Next Actions
 
-- Add owner/removal notes for temporary raw SVG/path precision bridges.
+- Keep temporary raw SVG/path bridge functions named `maybe_override_*` and documented with
+  owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
   `gitgraph`, `sequence`, and `class`.
 - Add generated metadata when an override has an expected removal condition.

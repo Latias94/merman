@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-08
 
+- Expanded `xtask report-overrides` to inventory hand-authored `maybe_override_*` raw SVG/path
+  bridge functions under `svg/parity`, with stable `/` paths in report output.
+- Fixed override helper-function counting in `xtask report-overrides` and added regression tests
+  for helper and manual bridge detection.
+- Documented the current flowchart degenerate path bridge with owner/removal criteria and refreshed
+  `OVERRIDE_FOOTPRINT.md` for the generated-plus-manual report snapshot.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

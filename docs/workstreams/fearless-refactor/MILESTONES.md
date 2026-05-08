@@ -341,10 +341,14 @@ Scope:
 
 Progress:
 
-- `OVERRIDE_FOOTPRINT.md` records the first generated-module-wide `xtask report-overrides`
-  snapshot and the remaining temporary bridge reporting gaps.
+- `OVERRIDE_FOOTPRINT.md` records the generated and manual `xtask report-overrides` snapshot plus
+  the remaining naming/metadata limits.
 - `OVERRIDE_POLICY.md` documents when text/render overrides are allowed, where they belong, and
   what evidence reviewers should require.
+- `xtask report-overrides` now inventories hand-authored `maybe_override_*` raw SVG/path bridge
+  functions under `svg/parity` in addition to generated override modules.
+- The current flowchart degenerate path bridge documents its owner and removal criteria near the
+  implementation.
 
 Exit criteria:
 

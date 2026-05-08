@@ -14,16 +14,18 @@ enum OverrideCategory {
     FontMetrics,
     TypeTextLength,
     HandCuratedHelpers,
+    RawPathBridge,
 }
 
 impl OverrideCategory {
-    const ALL: [OverrideCategory; 6] = [
+    const ALL: [OverrideCategory; 7] = [
         OverrideCategory::RootViewport,
         OverrideCategory::TextLookup,
         OverrideCategory::SvgTextMetrics,
         OverrideCategory::FontMetrics,
         OverrideCategory::TypeTextLength,
         OverrideCategory::HandCuratedHelpers,
+        OverrideCategory::RawPathBridge,
     ];
 
     fn heading(self) -> &'static str {
@@ -34,6 +36,7 @@ impl OverrideCategory {
             OverrideCategory::FontMetrics => "Font metric tables",
             OverrideCategory::TypeTextLength => "Typed textLength lookups",
             OverrideCategory::HandCuratedHelpers => "Hand-curated helper overrides",
+            OverrideCategory::RawPathBridge => "Manual raw SVG/path bridges",
         }
     }
 
@@ -45,6 +48,7 @@ impl OverrideCategory {
             OverrideCategory::FontMetrics => "table rows",
             OverrideCategory::TypeTextLength => "lookup arms",
             OverrideCategory::HandCuratedHelpers => "helper functions",
+            OverrideCategory::RawPathBridge => "bridge functions",
         }
     }
 }
@@ -61,7 +65,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     if args.iter().any(|a| matches!(a.as_str(), "--help" | "-h")) {
         println!("usage: xtask report-overrides");
         println!();
-        println!("Prints a generated parity override footprint inventory.");
+        println!("Prints a parity override footprint inventory.");
         println!("This is intended for CI logs and drift reviews.");
         return Ok(());
     }
@@ -77,13 +81,34 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         .join("merman-render")
         .join("src")
         .join("generated");
+    let parity_dir = workspace_root
+        .join("crates")
+        .join("merman-render")
+        .join("src")
+        .join("svg")
+        .join("parity");
+    let source_root = workspace_root
+        .join("crates")
+        .join("merman-render")
+        .join("src");
 
-    let entries = collect_override_footprint_entries(&generated_dir)?;
+    let generated_entries = collect_generated_override_footprint_entries(&generated_dir)?;
+    let manual_entries = collect_manual_bridge_footprint_entries(&parity_dir, &source_root)?;
 
     println!("Mermaid baseline: @11.12.3");
     println!();
-    println!("Generated override modules scanned: {}", entries.len());
+    println!(
+        "Generated override modules scanned: {}",
+        generated_entries.len()
+    );
+    println!(
+        "Manual raw SVG/path bridge files scanned: {}",
+        manual_entries.len()
+    );
     println!();
+
+    let mut entries = generated_entries;
+    entries.extend(manual_entries);
 
     for category in OverrideCategory::ALL {
         print_category(&entries, category);
@@ -91,6 +116,9 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
 
     println!("Notes:");
     println!("- Counts are inventory units and are not directly comparable across categories.");
+    println!(
+        "- Generated module counts cover `crates/merman-render/src/generated`, while manual bridge counts cover hand-authored path-bridge helpers under `crates/merman-render/src/svg/parity`."
+    );
     println!("- Root viewport entries count match arms returning `Some((viewBox, max_width))`.");
     println!("- Text lookup arms count generated or hand-curated `=> Some(...)` parity branches.");
     println!("- Table rows count tuple rows in generated font/SVG metric arrays.");
@@ -98,7 +126,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     Ok(())
 }
 
-fn collect_override_footprint_entries(
+fn collect_generated_override_footprint_entries(
     generated_dir: &Path,
 ) -> Result<Vec<OverrideFootprintEntry>, XtaskError> {
     let mut files = collect_generated_rs_files(generated_dir)?;
@@ -126,6 +154,34 @@ fn collect_override_footprint_entries(
     Ok(entries)
 }
 
+fn collect_manual_bridge_footprint_entries(
+    parity_dir: &Path,
+    source_root: &Path,
+) -> Result<Vec<OverrideFootprintEntry>, XtaskError> {
+    let mut files = collect_parity_rs_files(parity_dir)?;
+    files.sort();
+
+    let mut entries = Vec::new();
+    for path in files {
+        let Some(file_name) = path.strip_prefix(source_root).ok().map(report_path_name) else {
+            continue;
+        };
+        let text = read_text(&path)?;
+        let count = count_manual_bridge_functions(text.as_str());
+        if count == 0 {
+            continue;
+        }
+        entries.push(OverrideFootprintEntry {
+            file_name,
+            category: OverrideCategory::RawPathBridge,
+            count,
+            unit: "bridge functions",
+        });
+    }
+
+    Ok(entries)
+}
+
 fn collect_generated_rs_files(generated_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
     let read_dir = fs::read_dir(generated_dir).map_err(|source| XtaskError::ReadFile {
         path: generated_dir.display().to_string(),
@@ -141,6 +197,34 @@ fn collect_generated_rs_files(generated_dir: &Path) -> Result<Vec<PathBuf>, Xtas
         let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
             files.push(path);
+        }
+    }
+
+    Ok(files)
+}
+
+fn collect_parity_rs_files(parity_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
+    let mut stack = vec![parity_dir.to_path_buf()];
+    let mut files = Vec::new();
+
+    while let Some(dir) = stack.pop() {
+        let read_dir = fs::read_dir(&dir).map_err(|source| XtaskError::ReadFile {
+            path: dir.display().to_string(),
+            source,
+        })?;
+        for entry in read_dir {
+            let entry = entry.map_err(|source| XtaskError::ReadFile {
+                path: dir.display().to_string(),
+                source,
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                files.push(path);
+            }
         }
     }
 
@@ -234,6 +318,10 @@ fn read_text(path: &Path) -> Result<String, XtaskError> {
     })
 }
 
+fn report_path_name(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 fn count_root_viewport_entries(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re =
@@ -255,10 +343,74 @@ fn count_tuple_rows(text: &str) -> usize {
 
 fn count_public_functions(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r#"(?m)^pub fn\s+"#).expect("valid regex"));
+    let re =
+        RE.get_or_init(|| Regex::new(r#"(?m)^pub fn\s+[A-Za-z0-9_]+\s*\("#).expect("valid regex"));
+    count_matches(re, text)
+}
+
+fn count_manual_bridge_functions(text: &str) -> usize {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r#"(?m)^(?:pub(?:\([^)]+\))?\s+)?fn\s+maybe_override_[A-Za-z0-9_]+\s*\("#)
+            .expect("valid regex")
+    });
     count_matches(re, text)
 }
 
 fn count_matches(re: &Regex, text: &str) -> usize {
     re.find_iter(text).count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{count_manual_bridge_functions, count_public_functions, report_path_name};
+    use std::path::Path;
+
+    #[test]
+    fn counts_manual_bridge_functions_in_flowchart_path_override() {
+        let text = r#"
+//! Flowchart edge path overrides.
+pub(in crate::svg::parity::flowchart) fn maybe_override_degenerate_subgraph_edge_path_d(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    data_points: &[crate::model::LayoutPoint],
+) -> Option<String> {
+    None
+}
+"#;
+
+        assert_eq!(count_manual_bridge_functions(text), 1);
+    }
+
+    #[test]
+    fn ignores_non_bridge_functions() {
+        let text = r#"
+pub fn not_a_bridge() {}
+fn definitely_not_a_bridge() {}
+"#;
+
+        assert_eq!(count_manual_bridge_functions(text), 0);
+    }
+
+    #[test]
+    fn counts_public_helper_functions() {
+        let text = r#"
+pub fn helper_one() {}
+pub fn helper_two(
+) {}
+fn private_helper() {}
+"#;
+
+        assert_eq!(count_public_functions(text), 2);
+    }
+
+    #[test]
+    fn report_paths_are_stable_across_platforms() {
+        assert_eq!(
+            report_path_name(Path::new(
+                r"svg\parity\flowchart\edge_geom\degenerate_path.rs"
+            )),
+            "svg/parity/flowchart/edge_geom/degenerate_path.rs"
+        );
+    }
 }
