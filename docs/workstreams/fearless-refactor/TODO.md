@@ -346,6 +346,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo
   nextest run -p merman-render sequence`, and `cargo run -p xtask -- compare-sequence-svgs
   --check-dom --dom-decimals 3`.
+  C4 SVG tspan text emission now uses a `C4TspanText` input struct instead of positional geometry
+  and font arguments, so `svg/parity/c4.rs` no longer needs a module-level allow. Evidence:
+  `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run
+  -p merman-render c4`, and `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

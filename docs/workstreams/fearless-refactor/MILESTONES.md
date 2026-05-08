@@ -282,6 +282,8 @@ Progress:
   `clippy::too_many_arguments` allow.
 - Bundled sequence block frame width planning inputs into `BlockFrameWidthContext` and removed the
   `crates/merman-render/src/sequence.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
+  removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

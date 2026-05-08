@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use merman_core::diagrams::c4::{
     C4BoundaryRenderModel, C4DiagramRenderModel, C4RelRenderModel, C4ShapeRenderModel,
@@ -72,17 +70,28 @@ fn c4_config_font_weight(cfg: &serde_json::Value, type_key: &str) -> String {
     c4_config_string(cfg, &format!("{type_key}FontWeight")).unwrap_or_else(|| "normal".to_string())
 }
 
-fn c4_write_text_by_tspan(
-    out: &mut String,
-    content: &str,
+struct C4TspanText<'a> {
+    content: &'a str,
     x: f64,
     y: f64,
     width: f64,
-    font_family: &str,
+    font_family: &'a str,
     font_size: f64,
-    font_weight: &str,
-    attrs: &[(&str, &str)],
-) {
+    font_weight: &'a str,
+    attrs: &'a [(&'a str, &'a str)],
+}
+
+fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
+    let C4TspanText {
+        content,
+        x,
+        y,
+        width,
+        font_family,
+        font_size,
+        font_weight,
+        attrs,
+    } = text;
     let x = x + width / 2.0;
     let mut style = String::new();
     let _ = write!(
@@ -473,14 +482,16 @@ pub(super) fn render_c4_diagram_svg_typed(
         let label_size = c4_config_font_size(effective_config, &s.type_c4_shape, 14.0) + 2.0;
         c4_write_text_by_tspan(
             &mut out,
-            &s.label.text,
-            s.x,
-            s.y + s.label.y,
-            s.width,
-            &label_family,
-            label_size,
-            label_weight,
-            &[("fill", &font_color)],
+            C4TspanText {
+                content: &s.label.text,
+                x: s.x,
+                y: s.y + s.label.y,
+                width: s.width,
+                font_family: &label_family,
+                font_size: label_size,
+                font_weight: label_weight,
+                attrs: &[("fill", &font_color)],
+            },
         );
 
         let body_family = c4_config_font_family(effective_config, &s.type_c4_shape);
@@ -491,28 +502,32 @@ pub(super) fn render_c4_diagram_svg_typed(
             if !techn.text.trim().is_empty() {
                 c4_write_text_by_tspan(
                     &mut out,
-                    &techn.text,
-                    s.x,
-                    s.y + techn.y,
-                    s.width,
-                    &body_family,
-                    body_size,
-                    &body_weight,
-                    &[("fill", &font_color), ("font-style", "italic")],
+                    C4TspanText {
+                        content: &techn.text,
+                        x: s.x,
+                        y: s.y + techn.y,
+                        width: s.width,
+                        font_family: &body_family,
+                        font_size: body_size,
+                        font_weight: &body_weight,
+                        attrs: &[("fill", &font_color), ("font-style", "italic")],
+                    },
                 );
             }
         } else if let Some(ty) = &s.ty {
             if !ty.text.trim().is_empty() {
                 c4_write_text_by_tspan(
                     &mut out,
-                    &ty.text,
-                    s.x,
-                    s.y + ty.y,
-                    s.width,
-                    &body_family,
-                    body_size,
-                    &body_weight,
-                    &[("fill", &font_color), ("font-style", "italic")],
+                    C4TspanText {
+                        content: &ty.text,
+                        x: s.x,
+                        y: s.y + ty.y,
+                        width: s.width,
+                        font_family: &body_family,
+                        font_size: body_size,
+                        font_weight: &body_weight,
+                        attrs: &[("fill", &font_color), ("font-style", "italic")],
+                    },
                 );
             }
         }
@@ -524,14 +539,16 @@ pub(super) fn render_c4_diagram_svg_typed(
                 let descr_size = c4_config_font_size(effective_config, "person", 14.0);
                 c4_write_text_by_tspan(
                     &mut out,
-                    &descr.text,
-                    s.x,
-                    s.y + descr.y,
-                    s.width,
-                    &descr_family,
-                    descr_size,
-                    &descr_weight,
-                    &[("fill", &font_color)],
+                    C4TspanText {
+                        content: &descr.text,
+                        x: s.x,
+                        y: s.y + descr.y,
+                        width: s.width,
+                        font_family: &descr_family,
+                        font_size: descr_size,
+                        font_weight: &descr_weight,
+                        attrs: &[("fill", &font_color)],
+                    },
                 );
             }
         }
@@ -582,14 +599,16 @@ pub(super) fn render_c4_diagram_svg_typed(
         let boundary_size = c4_config_font_size(effective_config, "boundary", 14.0) + 2.0;
         c4_write_text_by_tspan(
             &mut out,
-            &b.label.text,
-            b.x,
-            b.y + b.label.y,
-            b.width,
-            &boundary_family,
-            boundary_size,
-            boundary_weight,
-            &[("fill", "#444444")],
+            C4TspanText {
+                content: &b.label.text,
+                x: b.x,
+                y: b.y + b.label.y,
+                width: b.width,
+                font_family: &boundary_family,
+                font_size: boundary_size,
+                font_weight: boundary_weight,
+                attrs: &[("fill", "#444444")],
+            },
         );
         if let Some(ty) = &b.ty {
             if !ty.text.trim().is_empty() {
@@ -597,14 +616,16 @@ pub(super) fn render_c4_diagram_svg_typed(
                 let boundary_type_size = c4_config_font_size(effective_config, "boundary", 14.0);
                 c4_write_text_by_tspan(
                     &mut out,
-                    &ty.text,
-                    b.x,
-                    b.y + ty.y,
-                    b.width,
-                    &boundary_family,
-                    boundary_type_size,
-                    &boundary_type_weight,
-                    &[("fill", "#444444")],
+                    C4TspanText {
+                        content: &ty.text,
+                        x: b.x,
+                        y: b.y + ty.y,
+                        width: b.width,
+                        font_family: &boundary_family,
+                        font_size: boundary_type_size,
+                        font_weight: &boundary_type_weight,
+                        attrs: &[("fill", "#444444")],
+                    },
                 );
             }
         }
@@ -615,14 +636,16 @@ pub(super) fn render_c4_diagram_svg_typed(
                     (c4_config_font_size(effective_config, "boundary", 14.0) - 2.0).max(1.0);
                 c4_write_text_by_tspan(
                     &mut out,
-                    &descr.text,
-                    b.x,
-                    b.y + descr.y,
-                    b.width,
-                    &boundary_family,
-                    descr_size,
-                    &descr_weight,
-                    &[("fill", "#444444")],
+                    C4TspanText {
+                        content: &descr.text,
+                        x: b.x,
+                        y: b.y + descr.y,
+                        width: b.width,
+                        font_family: &boundary_family,
+                        font_size: descr_size,
+                        font_weight: &descr_weight,
+                        attrs: &[("fill", "#444444")],
+                    },
                 );
             }
         }
@@ -704,28 +727,33 @@ pub(super) fn render_c4_diagram_svg_typed(
         let message_size = c4_config_font_size(effective_config, "message", 12.0);
         c4_write_text_by_tspan(
             &mut out,
-            &rel.label.text,
-            midx,
-            midy,
-            rel.label.width,
-            &message_family,
-            message_size,
-            &message_weight,
-            &[("fill", &text_color)],
+            C4TspanText {
+                content: &rel.label.text,
+                x: midx,
+                y: midy,
+                width: rel.label.width,
+                font_family: &message_family,
+                font_size: message_size,
+                font_weight: &message_weight,
+                attrs: &[("fill", &text_color)],
+            },
         );
 
         if let Some(techn) = &rel.techn {
             if !techn.text.trim().is_empty() {
+                let techn_text = format!("[{}]", techn.text);
                 c4_write_text_by_tspan(
                     &mut out,
-                    &format!("[{}]", techn.text),
-                    midx,
-                    midy + message_size + 5.0,
-                    rel.label.width.max(techn.width),
-                    &message_family,
-                    message_size,
-                    &message_weight,
-                    &[("fill", &text_color), ("font-style", "italic")],
+                    C4TspanText {
+                        content: &techn_text,
+                        x: midx,
+                        y: midy + message_size + 5.0,
+                        width: rel.label.width.max(techn.width),
+                        font_family: &message_family,
+                        font_size: message_size,
+                        font_weight: &message_weight,
+                        attrs: &[("fill", &text_color), ("font-style", "italic")],
+                    },
                 );
             }
         }

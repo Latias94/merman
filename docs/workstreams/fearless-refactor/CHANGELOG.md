@@ -31,6 +31,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   allow.
 - Bundled sequence block frame width planning inputs into `BlockFrameWidthContext` and removed the
   `sequence` module-level `clippy::too_many_arguments` allow.
+- Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
+  removed the `svg/parity/c4` module-level `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.
