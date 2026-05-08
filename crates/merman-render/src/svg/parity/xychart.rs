@@ -175,6 +175,8 @@ pub(super) fn render_xychart_diagram_svg(
                 if layout.show_data_label {
                     let bar_data_label_scale_factor =
                         xychart_text_overrides::xychart_bar_data_label_scale_factor();
+                    let bar_data_label_inset_px =
+                        xychart_text_overrides::xychart_bar_data_label_inset_px();
 
                     #[derive(Clone)]
                     struct BarItem<'a> {
@@ -198,20 +200,24 @@ pub(super) fn render_xychart_diagram_svg(
                                 item: &BarItem<'_>,
                                 font_size: f64,
                                 char_width_factor: f64,
+                                inset_px: f64,
                             ) -> bool {
                                 let text_w = font_size
                                     * (item.label.chars().count() as f64)
                                     * char_width_factor;
-                                text_w
-                                    <= item.rect.width
-                                        - xychart_text_overrides::
-                                            xychart_horizontal_bar_data_label_right_inset_px()
+                                text_w <= item.rect.width - inset_px
                             }
 
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
                                 let mut fs = item.rect.height * bar_data_label_scale_factor;
-                                while !fits(item, fs, bar_data_label_scale_factor) && fs > 0.0 {
+                                while !fits(
+                                    item,
+                                    fs,
+                                    bar_data_label_scale_factor,
+                                    bar_data_label_inset_px,
+                                ) && fs > 0.0
+                                {
                                     fs -= 1.0;
                                 }
                                 min_font = min_font.min(fs);
@@ -221,11 +227,7 @@ pub(super) fn render_xychart_diagram_svg(
                                 let mut t = node("text");
                                 t.attrs.insert(
                                     "x".to_string(),
-                                    fmt_xy(
-                                        item.rect.x + item.rect.width
-                                            - xychart_text_overrides::
-                                                xychart_horizontal_bar_data_label_right_inset_px(),
-                                    ),
+                                    fmt_xy(item.rect.x + item.rect.width - bar_data_label_inset_px),
                                 );
                                 t.attrs.insert(
                                     "y".to_string(),
@@ -243,8 +245,7 @@ pub(super) fn render_xychart_diagram_svg(
                                 push_child(&mut arena, parent, t);
                             }
                         } else {
-                            let y_offset =
-                                xychart_text_overrides::xychart_vertical_bar_data_label_top_inset_px();
+                            let y_offset = bar_data_label_inset_px;
                             fn fits(
                                 item: &BarItem<'_>,
                                 font_size: f64,
@@ -420,11 +421,7 @@ mod tests {
             0.7
         );
         assert_eq!(
-            xychart_text_overrides::xychart_horizontal_bar_data_label_right_inset_px(),
-            10.0
-        );
-        assert_eq!(
-            xychart_text_overrides::xychart_vertical_bar_data_label_top_inset_px(),
+            xychart_text_overrides::xychart_bar_data_label_inset_px(),
             10.0
         );
     }

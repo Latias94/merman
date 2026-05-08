@@ -418,6 +418,8 @@ Progress:
   69.
 - Architecture now reuses its service label bottom extension for singleton service text offsets,
   reducing the helper footprint to 68.
+- XYChart now uses one shared bar data-label inset helper for both bar orientations, reducing the
+  helper footprint to 67.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

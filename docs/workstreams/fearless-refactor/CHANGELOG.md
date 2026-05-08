@@ -31,6 +31,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   constant, reducing the helper footprint to 69.
 - Removed the derived Architecture singleton service offset helper by reusing the existing service
   label bottom extension constant, reducing the helper footprint to 68.
+- Consolidated XYChart bar data-label horizontal and vertical inset helpers into one shared inset
+  helper, reducing the helper footprint to 67.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and
