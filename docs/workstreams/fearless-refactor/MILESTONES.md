@@ -163,8 +163,7 @@ Progress:
   recorded in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
 - Mindmap/Architecture/C4 stage attribution is recorded in
   `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`; Architecture
-  layout and, before the direct C4 parse cleanup, C4 parse were the biggest observed cross-repo
-  stage gaps. Refresh the cross-repo stage report before treating C4 as a current gap.
+  layout remains the largest observed stage gap after the C4 parse cleanup.
 - Architecture layout's legacy JSON compatibility model has been trimmed of unused fields, and the
   dead top-level group separation helper was removed without disturbing DOM parity.
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero

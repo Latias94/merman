@@ -7,27 +7,24 @@ as fixture/coverage evidence, not as a release-grade performance verdict.
 ## Parameters
 
 - Date: 2026-05-09
-- Git state: working tree after the override helper/gate refactors and the `xychart_medium` fixture
-  repair
+- Git state: working tree after the C4 direct render-model parse cleanup
 - Bench command:
-  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 c4_medium`
-- Bench command:
-  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 xychart_medium`
+  `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 10 --warm-up-time 0.5 --measurement-time 0.5 "c4_medium|xychart_medium"`
 
 ## Results
 
 | benchmark | observed time range |
 | --- | ---: |
-| `parse/c4_medium` | 207.87-241.46 us |
-| `parse_known_type/c4_medium` | 165.95-187.03 us |
-| `layout/c4_medium` | 54.468-65.543 us |
-| `render/c4_medium` | 76.782-91.130 us |
-| `end_to_end/c4_medium` | 301.68-352.39 us |
-| `parse/xychart_medium` | 13.684-16.279 us |
-| `parse_known_type/xychart_medium` | 55.946-59.308 us |
-| `layout/xychart_medium` | 64.054-73.375 us |
-| `render/xychart_medium` | 164.12-182.26 us |
-| `end_to_end/xychart_medium` | 229.76-261.34 us |
+| `parse/c4_medium` | 38.262-42.727 us |
+| `parse_known_type/c4_medium` | 182.60-211.94 us |
+| `layout/c4_medium` | 53.413-62.361 us |
+| `render/c4_medium` | 75.433-84.318 us |
+| `end_to_end/c4_medium` | 184.46-221.01 us |
+| `parse/xychart_medium` | 12.547-14.215 us |
+| `parse_known_type/xychart_medium` | 56.487-67.796 us |
+| `layout/xychart_medium` | 60.561-69.852 us |
+| `render/xychart_medium` | 128.08-143.28 us |
+| `end_to_end/xychart_medium` | 229.41-273.99 us |
 
 ## Observations
 

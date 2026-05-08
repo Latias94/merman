@@ -4,24 +4,24 @@
 
 ## Environment
 
-- Timestamp: "2026-05-09 04:24:39 +0800"
+- Timestamp: "2026-05-09 06:30:37 +0800"
 - OS: "Windows-11-10.0.26100-SP0"
 - Machine: "AMD64"
 - CPU: "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz"
 - Python: "3.12.10"
-- merman: `cb665a5b15c9cc015a4e6389e75d99e638ab4579`
+- merman: `7b973e00951ca2bf7dfb968ebcf894ae7df7f36c`
 - mermaid-rs-renderer: `cf57b027cd8b1c877aa1ea8550d437a772bd204f`
 - mermaid-js: unknown
 - Rust:
 
 ```
-rustc 1.87.0 (17067e9ac 2025-05-09)
+rustc 1.92.0 (ded5c06cf 2025-12-08)
 binary: rustc
-commit-hash: 17067e9ac6d7ecb70e50f92c1944e545188d2359
-commit-date: 2025-05-09
+commit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234
+commit-date: 2025-12-08
 host: x86_64-pc-windows-msvc
-release: 1.87.0
-LLVM version: 20.1.1
+release: 1.92.0
+LLVM version: 21.1.3
 ```
 
 ## Method
@@ -30,14 +30,14 @@ LLVM version: 20.1.1
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
 - Filter: "end_to_end/(c4_medium|xychart_medium)"
 - Exact benches: `end_to_end/c4_medium`, `end_to_end/xychart_medium`
-- Sample size: 15, warm-up: 1s, measurement: 1s
+- Sample size: 30, warm-up: 2s, measurement: 3s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/c4_medium | 337.76 µs | 143.03 µs | - | 2.4x | - |
-| end_to_end/xychart_medium | 239.70 µs | 57.40 µs | - | 4.2x | - |
+| end_to_end/c4_medium | 198.19 µs | 146.49 µs | - | 1.4x | - |
+| end_to_end/xychart_medium | 249.94 µs | 52.46 µs | - | 4.8x | - |
 
 ## Notes
 

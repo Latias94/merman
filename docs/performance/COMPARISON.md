@@ -4,24 +4,24 @@
 
 ## Environment
 
-- Timestamp: "2026-05-09 04:29:32 +0800"
+- Timestamp: "2026-05-09 06:25:29 +0800"
 - OS: "Windows-11-10.0.26100-SP0"
 - Machine: "AMD64"
 - CPU: "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz"
 - Python: "3.12.10"
-- merman: `cb665a5b15c9cc015a4e6389e75d99e638ab4579`
+- merman: `7b973e00951ca2bf7dfb968ebcf894ae7df7f36c`
 - mermaid-rs-renderer: `cf57b027cd8b1c877aa1ea8550d437a772bd204f`
 - mermaid-js: unknown
 - Rust:
 
 ```
-rustc 1.87.0 (17067e9ac 2025-05-09)
+rustc 1.92.0 (ded5c06cf 2025-12-08)
 binary: rustc
-commit-hash: 17067e9ac6d7ecb70e50f92c1944e545188d2359
-commit-date: 2025-05-09
+commit-hash: ded5c06cf21d2b93bffd5d884aa6e96934ee4234
+commit-date: 2025-12-08
 host: x86_64-pc-windows-msvc
-release: 1.87.0
-LLVM version: 20.1.1
+release: 1.92.0
+LLVM version: 21.1.3
 ```
 
 ## Method
@@ -30,18 +30,18 @@ LLVM version: 20.1.1
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
 - Filter: "end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium|c4_medium|xychart_medium)"
 - Exact benches: `end_to_end/flowchart_medium`, `end_to_end/class_medium`, `end_to_end/mindmap_medium`, `end_to_end/architecture_medium`, `end_to_end/c4_medium`, `end_to_end/xychart_medium`
-- Sample size: 15, warm-up: 1s, measurement: 1s
+- Sample size: 30, warm-up: 2s, measurement: 3s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/architecture_medium | 174.54 µs | 39.85 µs | - | 4.4x | - |
-| end_to_end/c4_medium | 316.90 µs | 148.72 µs | - | 2.1x | - |
-| end_to_end/class_medium | 1.97 ms | 2.83 ms | - | 0.7x | - |
-| end_to_end/flowchart_medium | 6.96 ms | 12.11 ms | - | 0.6x | - |
-| end_to_end/mindmap_medium | 269.50 µs | 165.16 µs | - | 1.6x | - |
-| end_to_end/xychart_medium | 249.69 µs | 48.73 µs | - | 5.1x | - |
+| end_to_end/architecture_medium | 204.34 µs | 43.19 µs | - | 4.7x | - |
+| end_to_end/c4_medium | 188.70 µs | 145.16 µs | - | 1.3x | - |
+| end_to_end/class_medium | 1.92 ms | 3.12 ms | - | 0.6x | - |
+| end_to_end/flowchart_medium | 7.28 ms | 14.29 ms | - | 0.5x | - |
+| end_to_end/mindmap_medium | 297.38 µs | 166.32 µs | - | 1.8x | - |
+| end_to_end/xychart_medium | 228.61 µs | 49.91 µs | - | 4.6x | - |
 
 ## Notes
 

@@ -8,15 +8,15 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Fixed the benchmark comparison scripts so the local `mermaid-rs-renderer` checkout runs its
   Criterion benches under `MMDR_RUN_CRITERION_BENCHES=1` instead of falling back to smoke
   validation.
-- Refreshed the rolling `docs/performance/COMPARISON.md` baseline with current flowchart, class,
-  mindmap, architecture, C4, and XYChart end-to-end comparisons against `mermaid-rs-renderer`.
+- Refreshed the rolling `docs/performance/COMPARISON.md` baseline after the C4 direct
+  render-model parse cleanup. C4 end-to-end is now about `1.3x` slower than
+  `mermaid-rs-renderer`, while Architecture and XYChart remain the largest current canary gaps.
 - Added dedicated C4/XYChart cross-repo end-to-end and stage spotcheck reports at
   `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and
   `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
 - Added a Mindmap/Architecture/C4 stage spotcheck at
   `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`, confirming
-  Architecture layout and, before the direct C4 render-model parse cleanup, C4 parse were the
-  largest observed cross-repo stage gaps.
+  Architecture layout remains the largest observed stage gap after the C4 parse cleanup.
 - Routed C4 render-model parsing directly from `C4Db` into `C4DiagramRenderModel`, removing the
   render-only semantic-JSON-to-typed bridge. The targeted pipeline smoke now observes
   `parse/c4_medium` at `36.946-40.355 us` and `end_to_end/c4_medium` at `176.19-191.27 us`; see

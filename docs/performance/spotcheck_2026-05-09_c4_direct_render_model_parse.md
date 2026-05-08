@@ -42,5 +42,6 @@ Criterion compared this run against the local stored baseline and reported:
   it is not expected to benefit from this change.
 - The layout regression warning is recorded but not attributed to this change: the layout code was
   untouched, the run used a low sample size, and the end-to-end path still improved materially.
-- The same-day cross-repo stage reports predate this cleanup for C4. Refresh those reports before
-  treating C4 parse as the current largest cross-repo gap.
+- The same-day cross-repo reports were refreshed after this cleanup; the refreshed C4/XYChart
+  comparison now shows C4 end-to-end at about `1.4x`, and the stage spotcheck shows C4 parse at
+  about `1.8x` while Architecture layout and XyChart layout/render stay farther from parity.

@@ -182,8 +182,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-09_c4_direct_render_model_parse.md`. Cross-repo end-to-end
   comparison evidence is in `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md`
   and stage attribution is in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`;
-  those cross-repo numbers predate the direct C4 parse cleanup and should be refreshed. XyChart
-  status:
+  the refreshed reports put C4 at roughly `1.3-1.4x` end-to-end and `1.8-2.0x` in parse, while
+  Architecture layout and XyChart layout/render remain the clearer cross-repo gaps. XyChart status:
   post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
