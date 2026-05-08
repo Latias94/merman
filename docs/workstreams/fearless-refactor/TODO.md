@@ -332,6 +332,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `svg/parity/requirement.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   requirement`, and `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3`.
+  Sankey relaxation passes now share a `RelaxParams` bundle instead of repeating layout tuning
+  arguments, so `sankey.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
+  merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
+  sankey`, and `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

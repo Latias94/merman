@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
@@ -490,15 +488,20 @@ pub fn layout_sankey_diagram_typed(
         resolve_collisions_top_to_bottom(nodes, column, py, y0_extent, 0, alpha);
     }
 
-    fn relax_left_to_right(
-        nodes: &mut [Node],
-        links: &[Link],
-        columns: &mut [Vec<usize>],
+    #[derive(Debug, Clone, Copy)]
+    struct RelaxParams {
         py: f64,
         alpha: f64,
         beta: f64,
         y0_extent: f64,
         y1_extent: f64,
+    }
+
+    fn relax_left_to_right(
+        nodes: &mut [Node],
+        links: &[Link],
+        columns: &mut [Vec<usize>],
+        params: RelaxParams,
     ) {
         for column in columns.iter_mut().skip(1) {
             for &target in column.iter() {
@@ -508,19 +511,26 @@ pub fn layout_sankey_diagram_typed(
                     let source = links[li].source;
                     let value = links[li].value;
                     let v = value * (nodes[target].layer as f64 - nodes[source].layer as f64);
-                    y += target_top(nodes, links, py, source, target) * v;
+                    y += target_top(nodes, links, params.py, source, target) * v;
                     w += v;
                 }
                 if w <= 0.0 {
                     continue;
                 }
-                let dy = (y / w - nodes[target].y0) * alpha;
+                let dy = (y / w - nodes[target].y0) * params.alpha;
                 nodes[target].y0 += dy;
                 nodes[target].y1 += dy;
                 reorder_node_links(nodes, links, target);
             }
             column.sort_by(|&a, &b| f64_cmp(nodes[a].y0, nodes[b].y0).then_with(|| a.cmp(&b)));
-            resolve_collisions(nodes, column, py, y0_extent, y1_extent, beta);
+            resolve_collisions(
+                nodes,
+                column,
+                params.py,
+                params.y0_extent,
+                params.y1_extent,
+                params.beta,
+            );
         }
     }
 
@@ -528,11 +538,7 @@ pub fn layout_sankey_diagram_typed(
         nodes: &mut [Node],
         links: &[Link],
         columns: &mut [Vec<usize>],
-        py: f64,
-        alpha: f64,
-        beta: f64,
-        y0_extent: f64,
-        y1_extent: f64,
+        params: RelaxParams,
     ) {
         if columns.len() < 2 {
             return;
@@ -546,19 +552,26 @@ pub fn layout_sankey_diagram_typed(
                     let target = links[li].target;
                     let value = links[li].value;
                     let v = value * (nodes[target].layer as f64 - nodes[source].layer as f64);
-                    y += source_top(nodes, links, py, source, target) * v;
+                    y += source_top(nodes, links, params.py, source, target) * v;
                     w += v;
                 }
                 if w <= 0.0 {
                     continue;
                 }
-                let dy = (y / w - nodes[source].y0) * alpha;
+                let dy = (y / w - nodes[source].y0) * params.alpha;
                 nodes[source].y0 += dy;
                 nodes[source].y1 += dy;
                 reorder_node_links(nodes, links, source);
             }
             column.sort_by(|&a, &b| f64_cmp(nodes[a].y0, nodes[b].y0).then_with(|| a.cmp(&b)));
-            resolve_collisions(nodes, column, py, y0_extent, y1_extent, beta);
+            resolve_collisions(
+                nodes,
+                column,
+                params.py,
+                params.y0_extent,
+                params.y1_extent,
+                params.beta,
+            );
         }
     }
 
@@ -566,26 +579,15 @@ pub fn layout_sankey_diagram_typed(
     for i in 0..iterations {
         let alpha = 0.99_f64.powi(i as i32);
         let beta = (1.0 - alpha).max((i as f64 + 1.0) / iterations as f64);
-        relax_right_to_left(
-            &mut nodes,
-            &links,
-            &mut columns_for_relax,
+        let params = RelaxParams {
             py,
             alpha,
             beta,
-            0.0,
-            height,
-        );
-        relax_left_to_right(
-            &mut nodes,
-            &links,
-            &mut columns_for_relax,
-            py,
-            alpha,
-            beta,
-            0.0,
-            height,
-        );
+            y0_extent: 0.0,
+            y1_extent: height,
+        };
+        relax_right_to_left(&mut nodes, &links, &mut columns_for_relax, params);
+        relax_left_to_right(&mut nodes, &links, &mut columns_for_relax, params);
     }
 
     for node in &mut nodes {
