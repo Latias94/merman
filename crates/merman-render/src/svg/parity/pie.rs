@@ -202,6 +202,9 @@ pub(super) fn render_pie_diagram_svg_model(
         }
     }
 
+    let legend_rect_size = pie_text_overrides::pie_legend_rect_size_px();
+    let legend_text_x = legend_rect_size + pie_text_overrides::pie_legend_spacing_px();
+
     for item in &layout.legend_items {
         let _ = write!(
             &mut out,
@@ -213,7 +216,7 @@ pub(super) fn render_pie_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" style="{style}"/>"#,
-            size = super::fmt(pie_text_overrides::pie_legend_rect_size_px()),
+            size = super::fmt(legend_rect_size),
             style = super::escape_xml(&style)
         );
         let text = if model.show_data {
@@ -224,7 +227,7 @@ pub(super) fn render_pie_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}">{text}</text>"#,
-            x = super::fmt(pie_text_overrides::pie_legend_text_x_px()),
+            x = super::fmt(legend_text_x),
             y = super::fmt(pie_text_overrides::pie_legend_text_y_px()),
             text = super::escape_xml(&text)
         );

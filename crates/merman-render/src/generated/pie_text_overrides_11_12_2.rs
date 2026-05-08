@@ -31,20 +31,12 @@ pub fn pie_label_radius_px(radius_px: f64) -> f64 {
     radius_px.max(0.0) * 0.75
 }
 
-pub fn pie_legend_x_px() -> f64 {
-    12.0 * pie_legend_rect_size_px()
-}
-
 pub fn pie_legend_label_font_size_px() -> f64 {
     17.0
 }
 
 pub fn pie_title_y_px() -> f64 {
     -200.0
-}
-
-pub fn pie_legend_text_x_px() -> f64 {
-    pie_legend_rect_size_px() + pie_legend_spacing_px()
 }
 
 pub fn pie_legend_text_y_px() -> f64 {
