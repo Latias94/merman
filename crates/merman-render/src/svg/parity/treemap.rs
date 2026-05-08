@@ -568,10 +568,8 @@ pub(super) fn render_treemap_diagram_svg(
     let section_label_font_size = treemap_text_overrides::treemap_section_label_font_size_px();
     let section_value_font_size = treemap_text_overrides::treemap_section_value_font_size_px();
     let section_inner_padding = treemap_text_overrides::treemap_section_inner_padding_px();
-    let section_value_right_inset = section_inner_padding;
     let section_label_reserved_value_width =
         treemap_text_overrides::treemap_section_label_reserved_value_width_px();
-    let section_label_value_gap = section_inner_padding;
     let section_label_min_visible_width =
         treemap_text_overrides::treemap_section_label_min_visible_width_px();
 
@@ -658,9 +656,9 @@ pub(super) fn render_treemap_diagram_svg(
             let mut space_for_text_content =
                 total_header_width - label_x_position - section_label_inset_x;
             if layout.show_values && section.value != 0.0 {
-                let value_ends_at_x_relative = total_header_width - section_value_right_inset;
+                let value_ends_at_x_relative = total_header_width - section_inner_padding;
                 let estimated_value_text_actual_width = section_label_reserved_value_width;
-                let gap_between_label_and_value = section_label_value_gap;
+                let gap_between_label_and_value = section_inner_padding;
                 let label_must_end_before_x = value_ends_at_x_relative
                     - estimated_value_text_actual_width
                     - gap_between_label_and_value;
@@ -733,7 +731,7 @@ pub(super) fn render_treemap_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<text class="treemapSectionValue" x="{x}" y="{y}" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}"/>"#,
-                    x = fmt(w - section_value_right_inset),
+                    x = fmt(w - section_inner_padding),
                     y = fmt(section_header_center_y),
                     style = escape_attr(&section_value_style)
                 );
@@ -741,7 +739,7 @@ pub(super) fn render_treemap_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<text class="treemapSectionValue" x="{x}" y="{y}" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}">{text}</text>"#,
-                    x = fmt(w - section_value_right_inset),
+                    x = fmt(w - section_inner_padding),
                     y = fmt(section_header_center_y),
                     style = escape_attr(&section_value_style),
                     text = escape_xml(&value_text)
