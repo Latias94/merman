@@ -423,6 +423,8 @@ Progress:
   `*_with_config` path.
 - Removed the unused no-config class layout entrypoints so class note HTML measurement keeps the
   parser's borrowed `MermaidConfig` on the typed path.
+- Completed the flowchart/class/sequence hot-loop clone audit; the remaining clone sites are now
+  documented as compatibility, debug, or graphlib key ownership boundaries.
 
 Exit criteria:
 

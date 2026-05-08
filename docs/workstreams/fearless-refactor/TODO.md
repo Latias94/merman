@@ -436,8 +436,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `from_value(effective_config.clone())` sites as intentional legacy `&Value`
   compatibility bridges or lazy sanitizer fallbacks; future removal belongs to a public compatibility
   API redesign, not the render-only typed path.
-- [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
-  Progress: `HOT_LOOP_CLONE_AUDIT.md` records the first pass. Flowchart layout now borrows normal
+- [x] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.
+  Evidence: `HOT_LOOP_CLONE_AUDIT.md` records the completed pass. Flowchart layout now borrows normal
   edges in the self-loop expansion stage, and layout/SVG render share an explicit helper-edge
   constructor that clones only retained source fields. Sequence block collection now borrows block
   labels and message ids from the typed render model; sequence activation planning now borrows
@@ -446,7 +446,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   edge rendering now reuses sorted edge order, reuses marker-adjusted point buffers, borrows edge
   ids for edge-label center lookup, and class layout precomputes namespace facade lookup plus
   namespace declaration order once per render pass. The `class_namespace_dense` pipeline fixture now
-  tracks this namespace-heavy path.
+  tracks this namespace-heavy path. Remaining clone sites are public compatibility, debug helper, or
+  graphlib key ownership boundaries.
 - [ ] Add focused benchmarks before optimizing text measurement caches.
 
 ## P3: Public API and CLI Cleanup

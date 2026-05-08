@@ -61,6 +61,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   paths were reduced to intentional compatibility and lazy-sanitizer fallbacks.
 - Removed the unused no-config class layout entrypoints so class note HTML measurement now keeps
   the parser's borrowed `MermaidConfig` through the typed path.
+- Closed the flowchart/class/sequence hot-loop clone audit, leaving only compatibility, debug, and
+  graphlib key ownership boundaries for future API-level work.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

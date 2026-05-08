@@ -126,6 +126,17 @@ Result:
 1. Class namespace/relation lookup construction still clones ids heavily because graphlib-style
    graph APIs own node and edge keys. Only optimize after API boundaries are clearer.
 
+## Follow-up Audit
+
+After removing the unused class no-config layout entrypoints, the remaining `clone()` sites in the
+flowchart/class/sequence hot paths are either:
+
+- public compatibility entrypoints that still accept `&Value`,
+- debug-only SVG dump helpers,
+- or graphlib-style key ownership boundaries.
+
+Those cases are intentional at the current API boundary and do not need more local hot-loop cleanup.
+
 ## Verification
 
 - `cargo fmt --check`
