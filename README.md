@@ -26,6 +26,7 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 - [Showcase](#showcase)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
+- [Architecture notes](#architecture-notes)
 - [Crates](#crates)
 - [Links](#links)
 - [Changelog](#changelog)
@@ -344,6 +345,19 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_readable_sync()`.
 - Architecture layout/edge routing is still being aligned to upstream Cytoscape/FCoSE; expect differences in dense compound graphs (see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
+
+## Architecture notes
+
+- `merman-core` owns detection, parsing, stable semantic JSON, and typed render models for the
+  render-optimized path.
+- `merman-render` owns layout and SVG emission. The default SVG helper uses
+  `parse_diagram_for_render_model_sync` -> `layout_parsed_render_layout_only` ->
+  `render_layout_svg_parts_for_render_model_with_config`, so typed diagrams avoid rebuilding the
+  owned semantic JSON payload.
+- `layout_diagram_sync` and `render_layouted_svg` remain compatibility paths for callers that need
+  owned semantic/layout JSON between steps.
+- Parity renderers live under `svg/parity/*`; large renderers are split by diagram responsibility
+  and generated overrides are treated as compatibility data, not as default model fixes.
 
 ## Crates
 

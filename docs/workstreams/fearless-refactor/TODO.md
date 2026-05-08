@@ -469,7 +469,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P3: Documentation Cleanup
 
-- [ ] Update README architecture notes after pipeline cleanup.
+- [x] Update README architecture notes after pipeline cleanup.
+  Evidence: root `README.md` documents the typed render-model path, compatibility
+  `layout_diagram_sync` / `render_layouted_svg` paths, and parity renderer ownership boundaries.
 - [ ] Add a short contributor guide for adding a new typed diagram renderer.
 - [x] Document standard gates for parity, refactor, and release work.
   Evidence: `README.md` now points to `GATES.md`, which records the refactor, parity, performance,
