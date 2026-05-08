@@ -110,6 +110,9 @@ Progress:
 - `c4` now has a typed render model consumed by render-layout and SVG render-model dispatch;
   semantic JSON parsing remains stable for the compatibility API, and the JSON render bridge is
   now just a compatibility wrapper.
+- C4 render-model parsing now bypasses the semantic JSON bridge and converts `C4Db` directly into
+  `C4DiagramRenderModel`, which materially reduced the `c4_medium` parse and end-to-end pipeline
+  smoke cost.
 - `xychart` now has a typed render model consumed by render-layout dispatch; SVG emission stays
   layout-only, and the public render path routes through the typed model without changing the
   semantic JSON compatibility API.
@@ -151,6 +154,8 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_er_typed_render_model.md`.
 - C4 post-migration typed render-path spotcheck is recorded in
   `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`.
+- C4 direct render-model parse cleanup is recorded in
+  `docs/performance/spotcheck_2026-05-09_c4_direct_render_model_parse.md`.
 - XYChart typed render-path spotcheck is recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`.
 - C4/XYChart cross-repo end-to-end comparison evidence is recorded in
@@ -158,7 +163,8 @@ Progress:
   recorded in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
 - Mindmap/Architecture/C4 stage attribution is recorded in
   `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`; Architecture
-  layout and C4 parse remain the biggest current cross-repo stage gaps.
+  layout and, before the direct C4 parse cleanup, C4 parse were the biggest observed cross-repo
+  stage gaps. Refresh the cross-repo stage report before treating C4 as a current gap.
 - Architecture layout's legacy JSON compatibility model has been trimmed of unused fields, and the
   dead top-level group separation helper was removed without disturbing DOM parity.
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero

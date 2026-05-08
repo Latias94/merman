@@ -176,12 +176,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   next typed migration. C4 status: post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-c4-svgs --check-dom
-  --dom-mode parity --dom-decimals 3`, and the same-machine before/after Criterion capture remains
-  open for a historical before/after pair, but `c4_medium` now has a current pipeline bench smoke
-  in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`, with cross-repo
-  end-to-end comparison evidence in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`. XyChart status:
+  --dom-mode parity --dom-decimals 3`, `c4_medium` has a current pipeline bench smoke in
+  `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`, and the direct
+  `C4Db`-to-`C4DiagramRenderModel` cleanup is recorded in
+  `docs/performance/spotcheck_2026-05-09_c4_direct_render_model_parse.md`. Cross-repo end-to-end
+  comparison evidence is in `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md`
+  and stage attribution is in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`;
+  those cross-repo numbers predate the direct C4 parse cleanup and should be refreshed. XyChart
+  status:
   post-migration typed render-path spotcheck recorded in
   `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
   parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom

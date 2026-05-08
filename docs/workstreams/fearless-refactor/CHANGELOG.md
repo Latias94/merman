@@ -15,7 +15,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
 - Added a Mindmap/Architecture/C4 stage spotcheck at
   `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`, confirming
-  Architecture layout and C4 parse remain the largest current cross-repo stage gaps.
+  Architecture layout and, before the direct C4 render-model parse cleanup, C4 parse were the
+  largest observed cross-repo stage gaps.
+- Routed C4 render-model parsing directly from `C4Db` into `C4DiagramRenderModel`, removing the
+  render-only semantic-JSON-to-typed bridge. The targeted pipeline smoke now observes
+  `parse/c4_medium` at `36.946-40.355 us` and `end_to_end/c4_medium` at `176.19-191.27 us`; see
+  `docs/performance/spotcheck_2026-05-09_c4_direct_render_model_parse.md`.
 - Pruned the Architecture layout JSON compatibility model by deleting unused node/edge fields and
   the unused top-level group separation helper while keeping workspace clippy, nextest, and
   Architecture DOM parity green.

@@ -198,15 +198,11 @@ struct C4Db {
 }
 
 pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_c4_impl(code, meta)
+    Ok(parse_c4_db(code, meta)?.to_model(meta))
 }
 
 pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
-    let value = parse_c4_impl(code, meta)?;
-    serde_json::from_value(value).map_err(|e| Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: e.to_string(),
-    })
+    parse_c4_db(code, meta)?.to_render_model()
 }
 
 impl C4Db {
@@ -551,10 +547,176 @@ impl C4Db {
             "config": meta.effective_config.as_value().clone(),
         })
     }
+
+    fn to_render_model(&self) -> Result<C4DiagramRenderModel> {
+        let shapes = self
+            .shapes
+            .iter()
+            .map(c4_shape_render_model_from_map)
+            .collect::<Result<Vec<_>>>()?;
+        let boundaries = self
+            .boundaries
+            .iter()
+            .map(c4_boundary_render_model_from_map)
+            .collect::<Result<Vec<_>>>()?;
+        let rels = self
+            .rels
+            .iter()
+            .map(c4_rel_render_model_from_map)
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(C4DiagramRenderModel {
+            c4_type: self.c4_type.clone(),
+            title: (!self.title.is_empty()).then(|| self.title.clone()),
+            acc_title: None,
+            acc_descr: (!self.acc_descr.is_empty()).then(|| self.acc_descr.clone()),
+            wrap: self.wrap_enabled,
+            layout: C4LayoutConfig {
+                c4_shape_in_row: self.c4_shape_in_row,
+                c4_boundary_in_row: self.c4_boundary_in_row,
+            },
+            shapes,
+            boundaries,
+            rels,
+        })
+    }
 }
 
 fn wrap_text(v: Value) -> Value {
     json!({ "text": v })
+}
+
+fn c4_required_string(obj: &Map<String, Value>, key: &str) -> Result<String> {
+    match obj.get(key) {
+        Some(Value::String(s)) => Ok(s.clone()),
+        Some(other) => Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("expected string field `{key}`, got {other:?}"),
+        }),
+        None => Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("missing required field `{key}`"),
+        }),
+    }
+}
+
+fn c4_optional_string(obj: &Map<String, Value>, key: &str) -> Result<Option<String>> {
+    match obj.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(other) => Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("expected optional string field `{key}`, got {other:?}"),
+        }),
+    }
+}
+
+fn c4_optional_bool(obj: &Map<String, Value>, key: &str) -> Result<Option<bool>> {
+    match obj.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(v)) => Ok(Some(*v)),
+        Some(other) => Err(Error::DiagramParse {
+            diagram_type: "c4".to_string(),
+            message: format!("expected optional bool field `{key}`, got {other:?}"),
+        }),
+    }
+}
+
+fn c4_optional_value(obj: &Map<String, Value>, key: &str) -> Option<Value> {
+    obj.get(key)
+        .and_then(|v| if v.is_null() { None } else { Some(v.clone()) })
+}
+
+fn c4_text_from_value(v: &Value) -> C4Text {
+    match v {
+        Value::Object(map) => {
+            if let Some(text) = map.get("text") {
+                C4Text::Wrapped { text: text.clone() }
+            } else {
+                C4Text::Value(v.clone())
+            }
+        }
+        Value::String(s) => C4Text::String(s.clone()),
+        other => C4Text::Value(other.clone()),
+    }
+}
+
+fn c4_text_or_default(obj: &Map<String, Value>, key: &str) -> C4Text {
+    obj.get(key).map(c4_text_from_value).unwrap_or_default()
+}
+
+fn c4_optional_text(obj: &Map<String, Value>, key: &str) -> Option<C4Text> {
+    obj.get(key).and_then(|v| {
+        if v.is_null() {
+            None
+        } else {
+            Some(c4_text_from_value(v))
+        }
+    })
+}
+
+fn c4_optional_i64(obj: &Map<String, Value>, key: &str) -> Option<i64> {
+    obj.get(key).and_then(value_as_i64)
+}
+
+fn c4_shape_render_model_from_map(obj: &Map<String, Value>) -> Result<C4ShapeRenderModel> {
+    Ok(C4ShapeRenderModel {
+        alias: c4_required_string(obj, "alias")?,
+        parent_boundary: c4_optional_string(obj, "parentBoundary")?.unwrap_or_default(),
+        type_c4_shape: c4_text_or_default(obj, "typeC4Shape"),
+        label: c4_text_or_default(obj, "label"),
+        wrap: c4_optional_bool(obj, "wrap")?.unwrap_or(false),
+        sprite: c4_optional_value(obj, "sprite"),
+        tags: c4_optional_value(obj, "tags"),
+        link: c4_optional_value(obj, "link"),
+        ty: c4_optional_text(obj, "type"),
+        techn: c4_optional_text(obj, "techn"),
+        descr: c4_optional_text(obj, "descr"),
+        bg_color: c4_optional_string(obj, "bgColor")?,
+        border_color: c4_optional_string(obj, "borderColor")?,
+        font_color: c4_optional_string(obj, "fontColor")?,
+        shadowing: c4_optional_value(obj, "shadowing"),
+        shape: c4_optional_value(obj, "shape"),
+        legend_text: c4_optional_value(obj, "legendText"),
+        legend_sprite: c4_optional_value(obj, "legendSprite"),
+    })
+}
+
+fn c4_boundary_render_model_from_map(obj: &Map<String, Value>) -> Result<C4BoundaryRenderModel> {
+    Ok(C4BoundaryRenderModel {
+        alias: c4_required_string(obj, "alias")?,
+        parent_boundary: c4_optional_string(obj, "parentBoundary")?.unwrap_or_default(),
+        label: c4_text_or_default(obj, "label"),
+        ty: c4_optional_text(obj, "type"),
+        descr: c4_optional_text(obj, "descr"),
+        wrap: c4_optional_bool(obj, "wrap")?,
+        sprite: c4_optional_value(obj, "sprite"),
+        tags: c4_optional_value(obj, "tags"),
+        link: c4_optional_value(obj, "link"),
+        node_type: c4_optional_string(obj, "nodeType")?,
+        bg_color: c4_optional_string(obj, "bgColor")?,
+        border_color: c4_optional_string(obj, "borderColor")?,
+        font_color: c4_optional_string(obj, "fontColor")?,
+    })
+}
+
+fn c4_rel_render_model_from_map(obj: &Map<String, Value>) -> Result<C4RelRenderModel> {
+    Ok(C4RelRenderModel {
+        from_alias: c4_required_string(obj, "from")?,
+        to_alias: c4_required_string(obj, "to")?,
+        rel_type: c4_required_string(obj, "type")?,
+        label: c4_text_or_default(obj, "label"),
+        techn: c4_optional_text(obj, "techn"),
+        descr: c4_optional_text(obj, "descr"),
+        wrap: c4_optional_bool(obj, "wrap")?.unwrap_or(false),
+        sprite: c4_optional_value(obj, "sprite"),
+        tags: c4_optional_value(obj, "tags"),
+        link: c4_optional_value(obj, "link"),
+        offset_x: c4_optional_i64(obj, "offsetX"),
+        offset_y: c4_optional_i64(obj, "offsetY"),
+        line_color: c4_optional_string(obj, "lineColor")?,
+        text_color: c4_optional_string(obj, "textColor")?,
+    })
 }
 
 fn arg_to_string(v: Option<&Value>) -> Result<String> {
@@ -645,7 +807,7 @@ fn value_as_i64(v: &Value) -> Option<i64> {
     }
 }
 
-fn parse_c4_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
+fn parse_c4_db(code: &str, meta: &ParseMetadata) -> Result<C4Db> {
     let mut db = C4Db::new(&meta.effective_config);
 
     let mut lines = code.lines().peekable();
@@ -796,7 +958,7 @@ fn parse_c4_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }
     }
 
-    Ok(db.to_model(meta))
+    Ok(db)
 }
 
 fn strip_inline_comment(line: &str) -> String {
