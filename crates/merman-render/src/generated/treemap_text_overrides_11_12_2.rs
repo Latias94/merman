@@ -23,16 +23,8 @@ pub fn treemap_section_value_font_size_px() -> f64 {
     10.0
 }
 
-pub fn treemap_section_value_right_inset_px() -> f64 {
-    10.0
-}
-
 pub fn treemap_section_label_reserved_value_width_px() -> f64 {
     30.0
-}
-
-pub fn treemap_section_label_value_gap_px() -> f64 {
-    10.0
 }
 
 pub fn treemap_section_label_min_visible_width_px() -> f64 {

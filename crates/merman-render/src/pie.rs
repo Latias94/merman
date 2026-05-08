@@ -305,7 +305,7 @@ pub fn layout_pie_diagram_typed(
     let center = pie_text_overrides::pie_center_px();
     let radius = pie_text_overrides::pie_radius_px();
     let outer_radius = pie_text_overrides::pie_outer_radius_px();
-    let label_radius = pie_text_overrides::pie_label_radius_px(radius);
+    let label_radius = radius.max(0.0) * 0.75;
     let legend_x = 12.0 * legend_rect_size;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
@@ -467,10 +467,6 @@ mod tests {
         assert_eq!(
             crate::generated::pie_text_overrides_11_12_2::pie_center_px(),
             225.0
-        );
-        assert_eq!(
-            crate::generated::pie_text_overrides_11_12_2::pie_label_radius_px(185.0),
-            138.75
         );
         assert_eq!(
             crate::generated::pie_text_overrides_11_12_2::pie_title_y_px(),

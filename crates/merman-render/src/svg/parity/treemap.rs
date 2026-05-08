@@ -567,10 +567,11 @@ pub(super) fn render_treemap_diagram_svg(
     let section_label_inset_x = treemap_text_overrides::treemap_section_header_label_inset_x_px();
     let section_label_font_size = treemap_text_overrides::treemap_section_label_font_size_px();
     let section_value_font_size = treemap_text_overrides::treemap_section_value_font_size_px();
-    let section_value_right_inset = treemap_text_overrides::treemap_section_value_right_inset_px();
+    let section_inner_padding = treemap_text_overrides::treemap_section_inner_padding_px();
+    let section_value_right_inset = section_inner_padding;
     let section_label_reserved_value_width =
         treemap_text_overrides::treemap_section_label_reserved_value_width_px();
-    let section_label_value_gap = treemap_text_overrides::treemap_section_label_value_gap_px();
+    let section_label_value_gap = section_inner_padding;
     let section_label_min_visible_width =
         treemap_text_overrides::treemap_section_label_min_visible_width_px();
 

@@ -431,7 +431,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   collapsed into one public scale helper. Treemap also dropped a derived section header
   center-y helper, Pie collapsed its center point into one helper for both axes, and Radar dropped
   a redundant legend baseline-y helper. Pie also dropped two derived legend-position helpers,
-  reducing the helper footprint to 76.
+  now derives its label radius in layout, and Treemap reuses section inner padding for two header
+  spacing values, reducing the helper footprint to 73.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

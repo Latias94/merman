@@ -21,6 +21,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   reducing the hand-curated helper footprint to 78.
 - Removed two derived Pie legend-position helpers by computing legend x-offsets from the existing
   rectangle size and spacing constants, reducing the hand-curated helper footprint to 76.
+- Removed the derived Pie label-radius helper and two Treemap header spacing helpers by computing
+  them from existing layout constants, reducing the hand-curated helper footprint to 73.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and
