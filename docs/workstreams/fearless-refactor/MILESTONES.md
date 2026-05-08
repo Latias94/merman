@@ -96,6 +96,8 @@ Progress:
   semantic JSON parsing remains stable for the compatibility API.
 - `zenuml` now translates to sequence once and uses `SequenceDiagramRenderModel` in render-only
   flows; semantic JSON parsing remains stable for the compatibility API.
+- `quadrantChart` now has a typed render model consumed by render-layout and SVG render-model
+  dispatch; semantic JSON parsing remains stable for the compatibility API.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Kanban parent-vs-typed timing evidence is recorded in
@@ -122,6 +124,8 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_info_typed_render_model.md`.
 - ZenUML parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_zenuml_typed_render_model.md`.
+- Quadrant chart parent-vs-typed timing evidence is recorded in
+  `docs/performance/spotcheck_2026-05-08_quadrant_chart_typed_render_model.md`.
 - Same-machine baseline capture remains a process requirement for the next typed migration.
 
 Exit criteria:

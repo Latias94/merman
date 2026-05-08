@@ -5,61 +5,8 @@ use crate::model::{
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
 };
 use crate::text::TextMeasurer;
-use serde::Deserialize;
+use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use serde_json::Value;
-use std::collections::BTreeMap;
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuadrantChartStyles {
-    radius: Option<f64>,
-    color: Option<String>,
-    stroke_color: Option<String>,
-    stroke_width: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuadrantChartPointModel {
-    text: String,
-    x: f64,
-    y: f64,
-    #[serde(default)]
-    class_name: Option<String>,
-    #[serde(default)]
-    styles: QuadrantChartStyles,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuadrantChartQuadrantsModel {
-    quadrant1_text: String,
-    quadrant2_text: String,
-    quadrant3_text: String,
-    quadrant4_text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuadrantChartAxesModel {
-    x_axis_left_text: String,
-    x_axis_right_text: String,
-    y_axis_bottom_text: String,
-    y_axis_top_text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuadrantChartModel {
-    #[serde(default)]
-    title: Option<String>,
-    quadrants: QuadrantChartQuadrantsModel,
-    axes: QuadrantChartAxesModel,
-    #[serde(default)]
-    points: Vec<QuadrantChartPointModel>,
-    #[serde(default)]
-    classes: BTreeMap<String, QuadrantChartStyles>,
-}
 
 #[derive(Debug, Clone)]
 struct QuadrantChartConfig {
@@ -400,8 +347,15 @@ pub fn layout_quadrantchart_diagram(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
-    let model: QuadrantChartModel = from_value_ref(model)?;
+    let model: QuadrantChartRenderModel = from_value_ref(model)?;
+    layout_quadrantchart_diagram_typed(&model, effective_config, _text_measurer)
+}
 
+pub fn layout_quadrantchart_diagram_typed(
+    model: &QuadrantChartRenderModel,
+    effective_config: &Value,
+    _text_measurer: &dyn TextMeasurer,
+) -> Result<QuadrantChartDiagramLayout> {
     let cfg = default_quadrant_config(effective_config);
     let theme = quadrant_theme_with_overrides(effective_config);
 
@@ -469,7 +423,7 @@ pub fn layout_quadrantchart_diagram(
             height: quadrant_half_height,
             fill: theme.quadrant1_fill.clone(),
             text: QuadrantChartTextData {
-                text: model.quadrants.quadrant1_text,
+                text: model.quadrants.quadrant1_text.clone(),
                 fill: theme.quadrant1_text_fill.clone(),
                 x: 0.0,
                 y: 0.0,
@@ -486,7 +440,7 @@ pub fn layout_quadrantchart_diagram(
             height: quadrant_half_height,
             fill: theme.quadrant2_fill.clone(),
             text: QuadrantChartTextData {
-                text: model.quadrants.quadrant2_text,
+                text: model.quadrants.quadrant2_text.clone(),
                 fill: theme.quadrant2_text_fill.clone(),
                 x: 0.0,
                 y: 0.0,
@@ -503,7 +457,7 @@ pub fn layout_quadrantchart_diagram(
             height: quadrant_half_height,
             fill: theme.quadrant3_fill.clone(),
             text: QuadrantChartTextData {
-                text: model.quadrants.quadrant3_text,
+                text: model.quadrants.quadrant3_text.clone(),
                 fill: theme.quadrant3_text_fill.clone(),
                 x: 0.0,
                 y: 0.0,
@@ -520,7 +474,7 @@ pub fn layout_quadrantchart_diagram(
             height: quadrant_half_height,
             fill: theme.quadrant4_fill.clone(),
             text: QuadrantChartTextData {
-                text: model.quadrants.quadrant4_text,
+                text: model.quadrants.quadrant4_text.clone(),
                 fill: theme.quadrant4_text_fill.clone(),
                 x: 0.0,
                 y: 0.0,
@@ -548,7 +502,7 @@ pub fn layout_quadrantchart_diagram(
     let mut axis_labels: Vec<QuadrantChartAxisLabelData> = Vec::new();
     if !model.axes.x_axis_left_text.trim().is_empty() && show_x_axis {
         axis_labels.push(QuadrantChartAxisLabelData {
-            text: model.axes.x_axis_left_text,
+            text: model.axes.x_axis_left_text.clone(),
             fill: theme.quadrant_x_axis_text_fill.clone(),
             x: quadrant_left
                 + if draw_x_axis_labels_in_middle {
@@ -573,7 +527,7 @@ pub fn layout_quadrantchart_diagram(
     }
     if !model.axes.x_axis_right_text.trim().is_empty() && show_x_axis {
         axis_labels.push(QuadrantChartAxisLabelData {
-            text: model.axes.x_axis_right_text,
+            text: model.axes.x_axis_right_text.clone(),
             fill: theme.quadrant_x_axis_text_fill.clone(),
             x: quadrant_left
                 + quadrant_half_width
@@ -599,7 +553,7 @@ pub fn layout_quadrantchart_diagram(
     }
     if !model.axes.y_axis_bottom_text.trim().is_empty() && show_y_axis {
         axis_labels.push(QuadrantChartAxisLabelData {
-            text: model.axes.y_axis_bottom_text,
+            text: model.axes.y_axis_bottom_text.clone(),
             fill: theme.quadrant_y_axis_text_fill.clone(),
             x: if cfg.y_axis_position == "left" {
                 cfg.y_axis_label_padding
@@ -624,7 +578,7 @@ pub fn layout_quadrantchart_diagram(
     }
     if !model.axes.y_axis_top_text.trim().is_empty() && show_y_axis {
         axis_labels.push(QuadrantChartAxisLabelData {
-            text: model.axes.y_axis_top_text,
+            text: model.axes.y_axis_top_text.clone(),
             fill: theme.quadrant_y_axis_text_fill.clone(),
             x: if cfg.y_axis_position == "left" {
                 cfg.y_axis_label_padding
@@ -701,7 +655,7 @@ pub fn layout_quadrantchart_diagram(
     ];
 
     let mut points: Vec<QuadrantChartPointData> = Vec::new();
-    for p in model.points {
+    for p in &model.points {
         let class_styles = p
             .class_name
             .as_deref()
@@ -710,7 +664,8 @@ pub fn layout_quadrantchart_diagram(
         let radius = p
             .styles
             .radius
-            .or_else(|| class_styles.and_then(|c| c.radius))
+            .map(|v| v as f64)
+            .or_else(|| class_styles.and_then(|c| c.radius.map(|v| v as f64)))
             .unwrap_or(cfg.point_radius);
         let fill = p
             .styles
@@ -749,7 +704,7 @@ pub fn layout_quadrantchart_diagram(
             stroke_color,
             stroke_width,
             text: QuadrantChartTextData {
-                text: p.text,
+                text: p.text.clone(),
                 fill: theme.quadrant_point_text_fill.clone(),
                 x,
                 y: y + cfg.point_text_padding,

@@ -25,6 +25,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a radar typed render-model performance spot-check.
 - Docs: add an info typed render-model performance spot-check.
 - Docs: add a zenuml typed render-model performance spot-check.
+- Docs: add a quadrant chart typed render-model performance spot-check.
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
 - Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
@@ -73,6 +74,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   layout/SVG render-model dispatch while keeping the semantic JSON API stable.
 - ZenUML render pipeline: translate ZenUML once and parse a sequence typed render model for
   render-only flows instead of routing through semantic JSON fallback.
+- Quadrant chart render pipeline: parse a typed render model for layout/render-only flows and
+  reuse it in layout/SVG render-model dispatch instead of deserializing private JSON transport
+  structs.
 - CLI render command: share layout-option construction and SVG rasterization output handling across
   Mermaid-input and SVG-input render flows.
 - Class renderer: reuse sorted edge order and marker-adjusted point buffers while borrowing edge ids

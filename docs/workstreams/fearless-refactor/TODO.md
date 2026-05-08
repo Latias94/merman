@@ -108,6 +108,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_zenuml_model_for_render` translates ZenUML to sequence syntax once, returns
   `SequenceDiagramRenderModel`, render-layout dispatch accepts it for `zenuml`, and
   `parse_diagram_sync` keeps the semantic JSON payload stable.
+- [x] Move quadrant charts to a typed render model.
+  Evidence: `parse_quadrant_chart_model_for_render` now returns `QuadrantChartRenderModel`,
+  layout/SVG render-model dispatch consume it directly, and `parse_diagram_sync` keeps the
+  semantic JSON payload stable, including title, accessibility fields, axes, quadrants, points,
+  classes, and config.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -135,8 +140,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   fixture-added JSON-fallback-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_info_typed_render_model.md`. ZenUML status:
   parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_zenuml_typed_render_model.md`. Keep this item open for
-  the next typed migration.
+  `docs/performance/spotcheck_2026-05-08_zenuml_typed_render_model.md`. Quadrant chart status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_quadrant_chart_typed_render_model.md`. Keep this item
+  open for the next typed migration.
 
 ## P1: Text and Measurement Module Split
 

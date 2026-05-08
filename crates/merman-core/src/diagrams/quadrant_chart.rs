@@ -1,23 +1,56 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
-use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use serde_json::{Value, json};
+use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, Clone, Default)]
-struct StylesObject {
-    radius: Option<i64>,
-    color: Option<String>,
-    stroke_color: Option<String>,
-    stroke_width: Option<String>,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuadrantChartStyles {
+    pub radius: Option<i64>,
+    pub color: Option<String>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct PointInput {
-    text: String,
-    x: f64,
-    y: f64,
-    class_name: Option<String>,
-    styles: StylesObject,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuadrantChartPointModel {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub class_name: Option<String>,
+    pub styles: QuadrantChartStyles,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuadrantChartQuadrantsModel {
+    pub quadrant1_text: String,
+    pub quadrant2_text: String,
+    pub quadrant3_text: String,
+    pub quadrant4_text: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuadrantChartAxesModel {
+    pub x_axis_left_text: String,
+    pub x_axis_right_text: String,
+    pub y_axis_bottom_text: String,
+    pub y_axis_top_text: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QuadrantChartRenderModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub quadrants: QuadrantChartQuadrantsModel,
+    pub axes: QuadrantChartAxesModel,
+    pub points: Vec<QuadrantChartPointModel>,
+    pub classes: BTreeMap<String, QuadrantChartStyles>,
 }
 
 #[derive(Debug, Default)]
@@ -30,8 +63,8 @@ struct QuadrantDb {
     x_axis_right_text: String,
     y_axis_bottom_text: String,
     y_axis_top_text: String,
-    points: Vec<PointInput>,
-    classes: HashMap<String, StylesObject>,
+    points: Vec<QuadrantChartPointModel>,
+    classes: HashMap<String, QuadrantChartStyles>,
 }
 
 impl QuadrantDb {
@@ -83,7 +116,7 @@ impl QuadrantDb {
     ) -> Result<()> {
         let styles_obj = parse_styles(styles)?;
         let text = sanitize_text(text.trim(), config);
-        let p = PointInput {
+        let p = QuadrantChartPointModel {
             text,
             x,
             y,
@@ -95,8 +128,8 @@ impl QuadrantDb {
     }
 }
 
-fn parse_styles(styles: &[String]) -> Result<StylesObject> {
-    let mut out = StylesObject::default();
+fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
+    let mut out = QuadrantChartStyles::default();
     for raw in styles {
         let style = raw.trim();
         if style.is_empty() {
@@ -427,6 +460,31 @@ fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
 }
 
 pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let model = parse_quadrant_chart_model(code, meta)?;
+    Ok(json!({
+        "type": meta.diagram_type,
+        "title": model.title,
+        "accTitle": model.acc_title,
+        "accDescr": model.acc_descr,
+        "quadrants": model.quadrants,
+        "axes": model.axes,
+        "points": model.points,
+        "classes": model.classes,
+        "config": meta.effective_config.as_value().clone(),
+    }))
+}
+
+pub fn parse_quadrant_chart_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<QuadrantChartRenderModel> {
+    parse_quadrant_chart_model(code, meta)
+}
+
+fn parse_quadrant_chart_model(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<QuadrantChartRenderModel> {
     let mut db = QuadrantDb::default();
     db.clear();
 
@@ -598,54 +656,32 @@ pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "quadrants": {
-            "quadrant1Text": db.quadrant1_text,
-            "quadrant2Text": db.quadrant2_text,
-            "quadrant3Text": db.quadrant3_text,
-            "quadrant4Text": db.quadrant4_text,
+    Ok(QuadrantChartRenderModel {
+        title,
+        acc_title,
+        acc_descr,
+        quadrants: QuadrantChartQuadrantsModel {
+            quadrant1_text: db.quadrant1_text,
+            quadrant2_text: db.quadrant2_text,
+            quadrant3_text: db.quadrant3_text,
+            quadrant4_text: db.quadrant4_text,
         },
-        "axes": {
-            "xAxisLeftText": db.x_axis_left_text,
-            "xAxisRightText": db.x_axis_right_text,
-            "yAxisBottomText": db.y_axis_bottom_text,
-            "yAxisTopText": db.y_axis_top_text,
+        axes: QuadrantChartAxesModel {
+            x_axis_left_text: db.x_axis_left_text,
+            x_axis_right_text: db.x_axis_right_text,
+            y_axis_bottom_text: db.y_axis_bottom_text,
+            y_axis_top_text: db.y_axis_top_text,
         },
-        "points": db.points.iter().map(|p| {
-            json!({
-                "text": p.text,
-                "x": p.x,
-                "y": p.y,
-                "className": p.class_name,
-                "styles": {
-                    "radius": p.styles.radius,
-                    "color": p.styles.color,
-                    "strokeColor": p.styles.stroke_color,
-                    "strokeWidth": p.styles.stroke_width,
-                }
-            })
-        }).collect::<Vec<_>>(),
-        "classes": db.classes.iter().map(|(k,v)| {
-            (k.clone(), json!({
-                "radius": v.radius,
-                "color": v.color,
-                "strokeColor": v.stroke_color,
-                "strokeWidth": v.stroke_width,
-            }))
-        }).collect::<Map<String, Value>>(),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+        points: db.points,
+        classes: db.classes.into_iter().collect(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::generated;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -825,6 +861,66 @@ Incorta: [0.20, 0.30]\n",
             "Visionaries"
         );
         assert_eq!(points(&model).len(), 4);
+    }
+
+    #[test]
+    fn parse_quadrant_chart_render_model_uses_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new();
+        let input = r##"
+quadrantChart
+title Typed Quadrant
+accTitle: Quadrant accTitle
+accDescr: Quadrant accDescription
+x-axis Low --> High
+y-axis Bottom --> Top
+quadrant-1 Expand
+quadrant-2 Maintain
+quadrant-3 Evaluate
+quadrant-4 Retire
+classDef priority color: #109060, radius : 10, stroke-color: #310085, stroke-width: 10px
+Project A:::priority : [0.2, 0.8]
+"##;
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "quadrantChart");
+        match parsed.model {
+            RenderSemanticModel::QuadrantChart(model) => {
+                assert_eq!(model.title.as_deref(), Some("Typed Quadrant"));
+                assert_eq!(model.acc_title.as_deref(), Some("Quadrant accTitle"));
+                assert_eq!(model.acc_descr.as_deref(), Some("Quadrant accDescription"));
+                assert_eq!(model.axes.x_axis_left_text, "Low");
+                assert_eq!(model.axes.x_axis_right_text, "High");
+                assert_eq!(model.quadrants.quadrant1_text, "Expand");
+                assert_eq!(model.points.len(), 1);
+                assert_eq!(model.points[0].text, "Project A");
+                assert_eq!(model.points[0].class_name.as_deref(), Some("priority"));
+                assert_eq!(model.classes["priority"].radius, Some(10));
+            }
+            other => panic!("quadrantChart render parse should return typed model, got {other:?}"),
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.model["type"], json!("quadrantChart"));
+        assert_eq!(parsed_json.model["title"], json!("Typed Quadrant"));
+        assert_eq!(parsed_json.model["accTitle"], json!("Quadrant accTitle"));
+        assert_eq!(parsed_json.model["axes"]["xAxisLeftText"], json!("Low"));
+        assert_eq!(
+            parsed_json.model["quadrants"]["quadrant1Text"],
+            json!("Expand")
+        );
+        assert_eq!(parsed_json.model["points"][0]["text"], json!("Project A"));
+        assert_eq!(
+            parsed_json.model["classes"]["priority"]["radius"],
+            json!(10)
+        );
+        assert!(parsed_json.model.get("config").is_some());
     }
 
     #[test]
