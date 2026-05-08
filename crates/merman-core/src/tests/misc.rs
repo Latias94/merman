@@ -629,6 +629,79 @@ Target,Done,2.5
 }
 
 #[test]
+fn parse_radar_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+radar-beta
+title Typed Radar
+accTitle: Radar accTitle
+accDescr: Radar accDescription
+axis A["Axis A"], B["Axis B"], C["Axis C"]
+curve first["First Curve"]{1,2,3}
+curve second{ C: 9, A: 7, B: 8 }
+showLegend false
+ticks 4
+min 1
+max 10
+graticule polygon
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "radar");
+    match parsed.model {
+        RenderSemanticModel::Radar(model) => {
+            assert_eq!(model.title.as_deref(), Some("Typed Radar"));
+            assert_eq!(model.acc_title.as_deref(), Some("Radar accTitle"));
+            assert_eq!(model.acc_descr.as_deref(), Some("Radar accDescription"));
+            assert_eq!(model.axes.len(), 3);
+            assert_eq!(model.axes[0].name, "A");
+            assert_eq!(model.axes[0].label, "Axis A");
+            assert_eq!(model.curves.len(), 2);
+            assert_eq!(model.curves[0].label, "First Curve");
+            assert_eq!(model.curves[0].entries, vec![json!(1), json!(2), json!(3)]);
+            assert_eq!(model.curves[1].entries, vec![json!(7), json!(8), json!(9)]);
+            assert!(!model.options.show_legend);
+            assert_eq!(model.options.ticks, json!(4));
+            assert_eq!(model.options.min, json!(1));
+            assert_eq!(model.options.max, Some(json!(10)));
+            assert_eq!(model.options.graticule, "polygon");
+        }
+        other => panic!("radar render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("radar"));
+    assert_eq!(parsed_json.model["title"], json!("Typed Radar"));
+    assert_eq!(parsed_json.model["accTitle"], json!("Radar accTitle"));
+    assert_eq!(
+        parsed_json.model["axes"][0],
+        json!({"name": "A", "label": "Axis A"})
+    );
+    assert_eq!(
+        parsed_json.model["curves"][1],
+        json!({"name": "second", "label": "second", "entries": [7, 8, 9]})
+    );
+    assert_eq!(
+        parsed_json.model["options"],
+        json!({
+            "showLegend": false,
+            "ticks": 4,
+            "max": 10,
+            "min": 1,
+            "graticule": "polygon",
+        })
+    );
+    assert!(parsed_json.model.get("config").is_some());
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

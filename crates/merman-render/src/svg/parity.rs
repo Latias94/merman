@@ -487,6 +487,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::SankeyDiagram(layout), RenderSemanticModel::Sankey(_)) => {
             render_sankey_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
         }
+        (LayoutDiagram::RadarDiagram(layout), RenderSemanticModel::Radar(model)) => {
+            radar::render_radar_diagram_svg_model(layout, model, effective_config, options)
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -625,6 +628,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             render_sankey_diagram_svg(
                 layout,
                 &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::RadarDiagram(layout), RenderSemanticModel::Radar(model)) => {
+            radar::render_radar_diagram_svg_model(
+                layout,
+                model,
                 effective_config.as_value(),
                 options,
             )

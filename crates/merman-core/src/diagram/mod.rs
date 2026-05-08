@@ -97,6 +97,7 @@ pub enum RenderSemanticModel {
     Journey(crate::diagrams::journey::JourneyDiagramRenderModel),
     Requirement(crate::diagrams::requirement::RequirementDiagramRenderModel),
     Sankey(crate::diagrams::sankey::SankeyDiagramRenderModel),
+    Radar(crate::diagrams::radar::RadarDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

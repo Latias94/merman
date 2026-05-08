@@ -33,54 +33,83 @@ struct OptionAst {
     value: OptionValueAst,
 }
 
-#[derive(Debug, Clone)]
-struct RadarAxis {
-    name: String,
-    label: String,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RadarRenderAxis {
+    pub name: String,
+    pub label: String,
 }
 
-#[derive(Debug, Clone)]
-struct RadarCurve {
-    name: String,
-    label: String,
-    entries: Vec<Value>,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RadarRenderCurve {
+    pub name: String,
+    pub label: String,
+    #[serde(default)]
+    pub entries: Vec<Value>,
 }
 
-#[derive(Debug, Clone)]
-struct RadarOptions {
-    show_legend: bool,
-    ticks: Value,
-    max: Option<Value>,
-    min: Value,
-    graticule: String,
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RadarRenderOptions {
+    #[serde(rename = "showLegend")]
+    pub show_legend: bool,
+    pub ticks: Value,
+    pub max: Option<Value>,
+    pub min: Value,
+    pub graticule: String,
+}
+
+impl Default for RadarRenderOptions {
+    fn default() -> Self {
+        Self {
+            show_legend: true,
+            ticks: json!(5),
+            max: None,
+            min: json!(0),
+            graticule: "circle".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct RadarDiagramRenderModel {
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub axes: Vec<RadarRenderAxis>,
+    #[serde(default)]
+    pub curves: Vec<RadarRenderCurve>,
+    #[serde(default)]
+    pub options: RadarRenderOptions,
 }
 
 #[derive(Debug, Clone)]
 struct RadarDb {
-    axes: Vec<RadarAxis>,
-    curves: Vec<RadarCurve>,
-    options: RadarOptions,
+    title: Option<String>,
+    acc_title: Option<String>,
+    acc_descr: Option<String>,
+    axes: Vec<RadarRenderAxis>,
+    curves: Vec<RadarRenderCurve>,
+    options: RadarRenderOptions,
 }
 
 impl RadarDb {
     fn new() -> Self {
         Self {
+            title: None,
+            acc_title: None,
+            acc_descr: None,
             axes: Vec::new(),
             curves: Vec::new(),
-            options: RadarOptions {
-                show_legend: true,
-                ticks: json!(5),
-                max: None,
-                min: json!(0),
-                graticule: "circle".to_string(),
-            },
+            options: RadarRenderOptions::default(),
         }
     }
 
     fn set_axes(&mut self, axes: Vec<AxisAst>) {
         self.axes = axes
             .into_iter()
-            .map(|a| RadarAxis {
+            .map(|a| RadarRenderAxis {
                 label: a.label.unwrap_or_else(|| a.name.clone()),
                 name: a.name,
             })
@@ -94,7 +123,7 @@ impl RadarDb {
             .map(|c| {
                 let label = c.label.clone().unwrap_or_else(|| c.name.clone());
                 let entries = compute_curve_entries(&axes, &c.entries)?;
-                Ok(RadarCurve {
+                Ok(RadarRenderCurve {
                     name: c.name,
                     label,
                     entries,
@@ -127,9 +156,41 @@ impl RadarDb {
             self.options.graticule = v.clone();
         }
     }
+
+    #[inline]
+    fn semantic_value(&self, meta: &ParseMetadata) -> Value {
+        json!({
+            "type": meta.diagram_type,
+            "title": self.title,
+            "accTitle": self.acc_title,
+            "accDescr": self.acc_descr,
+            "axes": self.axes.iter().map(|a| json!({"name": a.name, "label": a.label})).collect::<Vec<_>>(),
+            "curves": self.curves.iter().map(|c| json!({"name": c.name, "label": c.label, "entries": c.entries})).collect::<Vec<_>>(),
+            "options": {
+                "showLegend": self.options.show_legend,
+                "ticks": self.options.ticks,
+                "max": self.options.max,
+                "min": self.options.min,
+                "graticule": self.options.graticule,
+            },
+            "config": meta.effective_config.as_value().clone(),
+        })
+    }
+
+    #[inline]
+    fn into_render_model(self) -> RadarDiagramRenderModel {
+        RadarDiagramRenderModel {
+            title: self.title,
+            acc_title: self.acc_title,
+            acc_descr: self.acc_descr,
+            axes: self.axes,
+            curves: self.curves,
+            options: self.options,
+        }
+    }
 }
 
-fn compute_curve_entries(axes: &[RadarAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {
+fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {
     if entries.is_empty() {
         return Ok(Vec::new());
     }
@@ -162,11 +223,26 @@ fn compute_curve_entries(axes: &[RadarAxis], entries: &[EntryAst]) -> Result<Vec
 }
 
 pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let Some(db) = parse_radar_db(code, meta)? else {
+        return Ok(json!({}));
+    };
+    Ok(db.semantic_value(meta))
+}
+
+pub fn parse_radar_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RadarDiagramRenderModel> {
+    parse_radar_db(code, meta).map(|db| db.map(RadarDb::into_render_model).unwrap_or_default())
+}
+
+#[inline]
+fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
     let mut lines = code.lines().peekable();
 
     let header = loop {
         let Some(line) = lines.next() else {
-            return Ok(json!({}));
+            return Ok(None);
         };
         let t = strip_inline_comment(line).trim();
         if t.is_empty() {
@@ -271,26 +347,14 @@ pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let mut db = RadarDb::new();
+    db.title = title;
+    db.acc_title = acc_title;
+    db.acc_descr = acc_descr;
     db.set_axes(axes);
     db.set_curves(curves)?;
     db.set_options(options);
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "axes": db.axes.iter().map(|a| json!({"name": a.name, "label": a.label})).collect::<Vec<_>>(),
-        "curves": db.curves.iter().map(|c| json!({"name": c.name, "label": c.label, "entries": c.entries})).collect::<Vec<_>>(),
-        "options": {
-            "showLegend": db.options.show_legend,
-            "ticks": db.options.ticks,
-            "max": db.options.max,
-            "min": db.options.min,
-            "graticule": db.options.graticule,
-        },
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    Ok(Some(db))
 }
 
 fn strip_inline_comment(line: &str) -> &str {

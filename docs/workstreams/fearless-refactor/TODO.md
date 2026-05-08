@@ -96,6 +96,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_sankey_model_for_render` now returns `SankeyDiagramRenderModel`, render-layout
   dispatch consumes it directly, SVG render-model dispatch uses the layout-only sankey SVG path,
   and `parse_diagram_sync` keeps the semantic JSON payload stable.
+- [x] Move radar diagrams to a typed render model.
+  Evidence: `parse_radar_model_for_render` now returns `RadarDiagramRenderModel`, layout/SVG
+  render-model dispatch consume it directly, and `parse_diagram_sync` keeps the semantic JSON
+  payload stable, including title, accessibility fields, axes, curves, options, and config.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -117,8 +121,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parent-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_requirement_typed_render_model.md`. Sankey status:
   parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_sankey_typed_render_model.md`. Keep this item open for
-  the next typed migration.
+  `docs/performance/spotcheck_2026-05-08_sankey_typed_render_model.md`. Radar status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_radar_typed_render_model.md`. Keep this item open for the
+  next typed migration.
 
 ## P1: Text and Measurement Module Split
 

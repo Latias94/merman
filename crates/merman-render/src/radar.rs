@@ -5,44 +5,8 @@ use crate::model::{
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
 };
 use crate::text::TextMeasurer;
-use serde::Deserialize;
-
-#[derive(Debug, Clone, Deserialize)]
-struct RadarAxis {
-    #[allow(dead_code)]
-    name: String,
-    label: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RadarCurve {
-    #[allow(dead_code)]
-    name: String,
-    label: String,
-    entries: Vec<f64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RadarOptions {
-    #[serde(rename = "showLegend")]
-    show_legend: bool,
-    ticks: i64,
-    min: f64,
-    max: Option<f64>,
-    graticule: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RadarModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    title: Option<String>,
-    axes: Vec<RadarAxis>,
-    curves: Vec<RadarCurve>,
-    options: RadarOptions,
-}
+use merman_core::diagrams::radar::RadarDiagramRenderModel;
+use serde_json::Value;
 
 fn config_f64(cfg: &serde_json::Value, path: &[&str], default: f64) -> f64 {
     let mut cur = cfg;
@@ -56,6 +20,16 @@ fn config_f64(cfg: &serde_json::Value, path: &[&str], default: f64) -> f64 {
         .or_else(|| cur.as_i64().map(|n| n as f64))
         .or_else(|| cur.as_u64().map(|n| n as f64))
         .unwrap_or(default)
+}
+
+fn json_f64(v: &Value) -> Option<f64> {
+    v.as_f64()
+        .or_else(|| v.as_i64().map(|n| n as f64))
+        .or_else(|| v.as_u64().map(|n| n as f64))
+}
+
+fn json_i64(v: &Value) -> Option<i64> {
+    v.as_i64().or_else(|| v.as_u64().map(|n| n as i64))
 }
 
 fn fmt_number(v: f64) -> String {
@@ -136,7 +110,15 @@ pub fn layout_radar_diagram(
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<RadarDiagramLayout> {
-    let model: RadarModel = crate::json::from_value_ref(semantic)?;
+    let model: RadarDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_radar_diagram_typed(&model, effective_config, _measurer)
+}
+
+pub fn layout_radar_diagram_typed(
+    model: &RadarDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    _measurer: &dyn TextMeasurer,
+) -> Result<RadarDiagramLayout> {
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),
@@ -183,7 +165,7 @@ pub fn layout_radar_diagram(
         }
     }
 
-    let ticks = model.options.ticks.max(0);
+    let ticks = json_i64(&model.options.ticks).unwrap_or(0).max(0);
     let mut graticules: Vec<RadarGraticuleShapeLayout> = Vec::new();
     if ticks > 0 {
         for t in 1..=ticks {
@@ -218,13 +200,18 @@ pub fn layout_radar_diagram(
     let mut inferred_max: f64 = 0.0;
     for c in &model.curves {
         for v in &c.entries {
-            if v.is_finite() {
-                inferred_max = inferred_max.max(*v);
+            if let Some(v) = json_f64(v).filter(|v| v.is_finite()) {
+                inferred_max = inferred_max.max(v);
             }
         }
     }
-    let max_value = model.options.max.unwrap_or(inferred_max);
-    let min_value = model.options.min;
+    let max_value = model
+        .options
+        .max
+        .as_ref()
+        .and_then(json_f64)
+        .unwrap_or(inferred_max);
+    let min_value = json_f64(&model.options.min).unwrap_or(0.0);
     let denom = (max_value - min_value).abs().max(1e-9);
 
     let mut curves: Vec<RadarCurveLayout> = Vec::new();
@@ -234,7 +221,7 @@ pub fn layout_radar_diagram(
             for i in 0..axis_count {
                 let angle = -std::f64::consts::FRAC_PI_2
                     + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
-                let v = curve.entries.get(i).copied().unwrap_or(min_value);
+                let v = curve.entries.get(i).and_then(json_f64).unwrap_or(min_value);
                 let frac = ((v - min_value) / denom).clamp(0.0, 1.0);
                 points.push(polar_xy(base_radius * frac, angle));
             }

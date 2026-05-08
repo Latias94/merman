@@ -1,5 +1,6 @@
 use super::*;
 use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
+use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
@@ -240,24 +241,16 @@ pub(super) fn render_radar_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[derive(Debug, Clone, serde::Deserialize)]
-    struct RadarSvgModel {
-        #[serde(rename = "accTitle")]
-        acc_title: Option<String>,
-        #[serde(rename = "accDescr")]
-        acc_descr: Option<String>,
-        title: Option<String>,
-        #[serde(default)]
-        curves: Vec<RadarSvgCurve>,
-    }
+    let model: RadarDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_radar_diagram_svg_model(layout, &model, effective_config, options)
+}
 
-    #[derive(Debug, Clone, serde::Deserialize)]
-    struct RadarSvgCurve {
-        label: String,
-    }
-
-    let model: RadarSvgModel = crate::json::from_value_ref(semantic)?;
-
+pub(super) fn render_radar_diagram_svg_model(
+    layout: &RadarDiagramLayout,
+    model: &RadarDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("radar");
     let diagram_id_esc = escape_xml(diagram_id);
 
