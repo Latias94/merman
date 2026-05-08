@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import re
 import subprocess
 import sys
@@ -67,10 +68,14 @@ def gmean(values: Iterable[float]) -> float:
     return math.exp(sum(math.log(v) for v in vals) / len(vals))
 
 
-def run(cmd: list[str], cwd: Path) -> str:
+def run(cmd: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> str:
+    proc_env = os.environ.copy()
+    if env:
+        proc_env.update(env)
     proc = subprocess.run(
         cmd,
         cwd=str(cwd),
+        env=proc_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -214,6 +219,7 @@ def main(argv: list[str]) -> int:
 
     repo_root = Path(__file__).resolve().parents[2]
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
+    mmdr_bench_env = {"MMDR_RUN_CRITERION_BENCHES": "1"}
 
     fixtures = [x.strip() for x in args.fixtures.split(",") if x.strip()]
     if not fixtures:
@@ -256,6 +262,7 @@ def main(argv: list[str]) -> int:
                     bench="renderer",
                 ),
                 cwd=mmdr_dir,
+                env=mmdr_bench_env,
             )
             mmdr_mid = extract_mid_time(mmdr_out, expected_bench=mmdr_exact)
 

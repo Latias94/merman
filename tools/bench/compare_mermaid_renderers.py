@@ -63,10 +63,14 @@ def pretty_time(nanos: float) -> str:
     return f"{nanos / 1e9:.2f} s"
 
 
-def run(cmd: list[str], cwd: Path) -> str:
+def run(cmd: list[str], cwd: Path, *, env: dict[str, str] | None = None) -> str:
+    proc_env = os.environ.copy()
+    if env:
+        proc_env.update(env)
     proc = subprocess.run(
         cmd,
         cwd=str(cwd),
+        env=proc_env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -267,6 +271,7 @@ def list_criterion_benches(
     bench_bin: str,
     package: str | None,
     features: str | None,
+    env: dict[str, str] | None = None,
 ) -> set[str]:
     cmd: list[str] = ["cargo", "bench"]
     if package:
@@ -274,7 +279,7 @@ def list_criterion_benches(
     if features:
         cmd.extend(["--features", features])
     cmd.extend(["--bench", bench_bin, "--", "--list"])
-    out = run(cmd, cwd=cwd)
+    out = run(cmd, cwd=cwd, env=env)
     benches: set[str] = set()
     for raw in out.splitlines():
         line = strip_ansi(raw).strip()
@@ -479,6 +484,7 @@ def main(argv: list[str]) -> int:
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
     mermaid_cli_dir = (repo_root / args.mermaid_cli_dir).resolve()
     out_path = (repo_root / args.out).resolve()
+    mmdr_bench_env = {"MMDR_RUN_CRITERION_BENCHES": "1"}
 
     if not mmdr_dir.exists():
         raise SystemExit(
@@ -501,6 +507,7 @@ def main(argv: list[str]) -> int:
         bench_bin="renderer",
         package=None,
         features=None,
+        env=mmdr_bench_env,
     )
     missing_merman = sorted(b for b in requested if b not in merman_benches)
     missing_mmdr = sorted(b for b in requested if b not in mmdr_benches)
@@ -520,6 +527,7 @@ def main(argv: list[str]) -> int:
         package: str | None,
         features: str | None,
         exact: str,
+        env: dict[str, str] | None = None,
     ) -> str:
         cmd: list[str] = ["cargo", "bench"]
         if package:
@@ -541,7 +549,7 @@ def main(argv: list[str]) -> int:
                 exact,
             ]
         )
-        return run(cmd, cwd=cwd)
+        return run(cmd, cwd=cwd, env=env)
 
     # Run benches (exact) so both Criterion CLI variants behave consistently.
     merman_times: dict[str, TimeEstimate] = {}
@@ -575,6 +583,7 @@ def main(argv: list[str]) -> int:
             package=None,
             features=None,
             exact=exact,
+            env=mmdr_bench_env,
         )
         mmdr_times.update(parse_criterion_times(out, prefix=prefix))
 

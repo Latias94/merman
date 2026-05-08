@@ -4,7 +4,7 @@
 
 ## Environment
 
-- Timestamp: "2026-05-09 04:29:32 +0800"
+- Timestamp: "2026-05-09 04:24:39 +0800"
 - OS: "Windows-11-10.0.26100-SP0"
 - Machine: "AMD64"
 - CPU: "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz"
@@ -28,20 +28,16 @@ LLVM version: 20.1.1
 
 - `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
-- Filter: "end_to_end/(flowchart_medium|class_medium|mindmap_medium|architecture_medium|c4_medium|xychart_medium)"
-- Exact benches: `end_to_end/flowchart_medium`, `end_to_end/class_medium`, `end_to_end/mindmap_medium`, `end_to_end/architecture_medium`, `end_to_end/c4_medium`, `end_to_end/xychart_medium`
+- Filter: "end_to_end/(c4_medium|xychart_medium)"
+- Exact benches: `end_to_end/c4_medium`, `end_to_end/xychart_medium`
 - Sample size: 15, warm-up: 1s, measurement: 1s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/architecture_medium | 174.54 µs | 39.85 µs | - | 4.4x | - |
-| end_to_end/c4_medium | 316.90 µs | 148.72 µs | - | 2.1x | - |
-| end_to_end/class_medium | 1.97 ms | 2.83 ms | - | 0.7x | - |
-| end_to_end/flowchart_medium | 6.96 ms | 12.11 ms | - | 0.6x | - |
-| end_to_end/mindmap_medium | 269.50 µs | 165.16 µs | - | 1.6x | - |
-| end_to_end/xychart_medium | 249.69 µs | 48.73 µs | - | 5.1x | - |
+| end_to_end/c4_medium | 337.76 µs | 143.03 µs | - | 2.4x | - |
+| end_to_end/xychart_medium | 239.70 µs | 57.40 µs | - | 4.2x | - |
 
 ## Notes
 

@@ -49,6 +49,10 @@ python tools/bench/compare_mermaid_renderers.py
 
 By default this writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
 
+The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout automatically.
+If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
+binary will only run its smoke validation path.
+
 If you prefer keeping comparison artifacts out of the docs tree, pass `--out` explicitly, e.g.:
 
 ```bash
@@ -81,6 +85,9 @@ python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium -
 
 This runs a small set of `--exact` Criterion benchmarks for both `merman` and
 `repo-ref/mermaid-rs-renderer` and writes a compact stage-by-stage report.
+
+The helper script also sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout
+automatically.
 
 For lower-noise spotchecks, use the `long` preset:
 
