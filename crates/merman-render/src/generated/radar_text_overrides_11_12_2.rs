@@ -14,7 +14,3 @@ pub fn radar_legend_box_size_px() -> f64 {
 pub fn radar_legend_label_x_px() -> f64 {
     16.0
 }
-
-pub fn radar_legend_label_baseline_y_px() -> f64 {
-    0.0
-}

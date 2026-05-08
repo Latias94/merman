@@ -429,8 +429,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   remaining fixture-specific pins. One additional hand-curated `kanban` helper was removed by
   reusing the existing foreignObject height constant, and the XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header
-  center-y helper, and Pie collapsed its center point into one helper for both axes, reducing the
-  helper footprint to 79.
+  center-y helper, Pie collapsed its center point into one helper for both axes, and Radar dropped
+  a redundant legend baseline-y helper, reducing the helper footprint to 78.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

@@ -410,7 +410,7 @@ pub(super) fn render_radar_diagram_svg_model(
             &mut out,
             r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
             x = fmt_display(radar_text_overrides::radar_legend_label_x_px()),
-            y = fmt_display(radar_text_overrides::radar_legend_label_baseline_y_px()),
+            y = fmt_display(0.0),
             text = escape_xml(label)
         );
         out.push_str("</g>");

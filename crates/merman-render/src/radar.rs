@@ -287,10 +287,6 @@ mod tests {
         assert_eq!(radar_text_overrides::radar_legend_line_step_y_px(), 20.0);
         assert_eq!(radar_text_overrides::radar_legend_box_size_px(), 12.0);
         assert_eq!(radar_text_overrides::radar_legend_label_x_px(), 16.0);
-        assert_eq!(
-            radar_text_overrides::radar_legend_label_baseline_y_px(),
-            0.0
-        );
     }
 
     #[test]

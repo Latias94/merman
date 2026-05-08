@@ -404,6 +404,8 @@ Progress:
   header height, reducing the hand-curated helper footprint to 80.
 - Pie collapsed its center point into one public helper for both axes, reducing the hand-curated
   helper footprint to 79.
+- Radar removed a redundant legend baseline-y helper and now uses the literal `0.0` directly,
+  reducing the hand-curated helper footprint to 78.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
