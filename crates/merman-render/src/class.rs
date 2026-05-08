@@ -1784,15 +1784,6 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
     extras.insert(key.to_string(), obj);
 }
 
-pub fn layout_class_diagram_v2(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
-    layout_class_diagram_v2_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_class_diagram_v2_with_config(
     semantic: &Value,
     effective_config: &merman_core::MermaidConfig,
@@ -1800,14 +1791,6 @@ pub fn layout_class_diagram_v2_with_config(
 ) -> Result<ClassDiagramV2Layout> {
     let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
     layout_class_diagram_v2_typed_with_config(&model, effective_config, measurer)
-}
-
-pub fn layout_class_diagram_v2_typed(
-    model: &ClassDiagramModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    layout_class_diagram_v2_typed_inner(model, effective_config, None, measurer)
 }
 
 pub fn layout_class_diagram_v2_typed_with_config(
@@ -1818,7 +1801,7 @@ pub fn layout_class_diagram_v2_typed_with_config(
     layout_class_diagram_v2_typed_inner(
         model,
         effective_config.as_value(),
-        Some(effective_config),
+        effective_config,
         measurer,
     )
 }
@@ -1826,7 +1809,7 @@ pub fn layout_class_diagram_v2_typed_with_config(
 fn layout_class_diagram_v2_typed_inner(
     model: &ClassDiagramModel,
     effective_config: &Value,
-    borrowed_note_html_config: Option<&merman_core::MermaidConfig>,
+    note_html_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramV2Layout> {
     let diagram_dir = rank_dir_from(&model.direction);
@@ -1867,17 +1850,7 @@ fn layout_class_diagram_v2_typed_inner(
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
     let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike);
-    let mut owned_note_html_config: Option<merman_core::MermaidConfig> = None;
-    let note_html_config = if capture_note_label_metrics {
-        Some(match borrowed_note_html_config {
-            Some(config) => config,
-            None => owned_note_html_config.get_or_insert_with(|| {
-                merman_core::MermaidConfig::from_value(effective_config.clone())
-            }),
-        })
-    } else {
-        None
-    };
+    let note_html_config = capture_note_label_metrics.then_some(note_html_config);
     let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
         FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();

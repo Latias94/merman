@@ -421,6 +421,8 @@ Progress:
 - Removed the obsolete `render_layout_svg_parts_for_render_model` compat dispatcher and the
   no-config typed wrappers it served, so typed render-model dispatch now stays on the
   `*_with_config` path.
+- Removed the unused no-config class layout entrypoints so class note HTML measurement keeps the
+  parser's borrowed `MermaidConfig` on the typed path.
 
 Exit criteria:
 

@@ -59,6 +59,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `*_with_config` surface.
 - Closed the render-only JSON clone cleanup batch after class, sequence, and render-model dispatch
   paths were reduced to intentional compatibility and lazy-sanitizer fallbacks.
+- Removed the unused no-config class layout entrypoints so class note HTML measurement now keeps
+  the parser's borrowed `MermaidConfig` through the typed path.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

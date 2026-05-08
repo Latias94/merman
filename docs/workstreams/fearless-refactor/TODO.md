@@ -431,8 +431,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: class typed/config layout and render keep `&MermaidConfig` through note HTML
   measurement/sanitization, sequence SVG rendering borrows the typed render model for title
   fallback, and the obsolete `render_layout_svg_parts_for_render_model` compat shim plus its
-  no-config typed wrappers were removed in commit `2c491ace`. `JSON_CLONE_AUDIT.md` classifies the
-  remaining `from_value(effective_config.clone())` sites as intentional legacy `&Value`
+  no-config typed wrappers were removed in commit `2c491ace`; unused class layout no-config
+  entrypoints were removed afterward. `JSON_CLONE_AUDIT.md` classifies the remaining
+  `from_value(effective_config.clone())` sites as intentional legacy `&Value`
   compatibility bridges or lazy sanitizer fallbacks; future removal belongs to a public compatibility
   API redesign, not the render-only typed path.
 - [ ] Audit hot loops for avoidable string cloning in flowchart/class/sequence renderers.

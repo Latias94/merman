@@ -32,8 +32,6 @@ to keep render-only paths typed/config-borrowed.
 
 ## Remaining Clone Sites
 
-- `crates/merman-render/src/class.rs`: legacy `layout_class_diagram_v2_typed` fallback for the
-  compatibility `&Value` layout entrypoint.
 - `crates/merman-render/src/svg/parity/architecture.rs`: legacy semantic render path when the
   caller only has `&Value`.
 - `crates/merman-render/src/svg/parity/mindmap.rs`: legacy render-model path for the compatibility
@@ -55,6 +53,8 @@ to keep render-only paths typed/config-borrowed.
   diagram title; it borrows the model and computes the fallback title lazily.
 - The obsolete non-`*_with_config` render-model compat path and its no-config typed wrappers were
   removed, leaving the typed render-model dispatch surface on the `*_with_config` entrypoints.
+- The unused class layout no-config entrypoints were removed, so class layout note HTML measurement
+  now always receives the parser's borrowed `MermaidConfig`.
 
 ## Remaining Work
 
