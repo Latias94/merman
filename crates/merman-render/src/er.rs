@@ -3,74 +3,13 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use serde::Deserialize;
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct ErModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    pub direction: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub classes: BTreeMap<String, ErClassDef>,
-    pub entities: BTreeMap<String, ErEntity>,
-    #[serde(default)]
-    pub relationships: Vec<ErRelationship>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct ErEntity {
-    pub id: String,
-    pub label: String,
-    #[serde(default)]
-    pub alias: String,
-    #[serde(default, rename = "cssClasses")]
-    pub css_classes: String,
-    #[serde(default, rename = "cssStyles")]
-    pub css_styles: Vec<String>,
-    #[serde(default)]
-    pub attributes: Vec<ErAttribute>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct ErAttribute {
-    #[serde(rename = "type")]
-    pub ty: String,
-    pub name: String,
-    #[serde(default)]
-    pub keys: Vec<String>,
-    #[serde(default)]
-    pub comment: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct ErRelationship {
-    #[serde(rename = "entityA")]
-    pub entity_a: String,
-    #[serde(rename = "entityB")]
-    pub entity_b: String,
-    #[serde(rename = "roleA")]
-    pub role_a: String,
-    #[allow(dead_code)]
-    #[serde(rename = "relSpec")]
-    pub rel_spec: Value,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct ErClassDef {
-    #[allow(dead_code)]
-    pub id: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    #[allow(dead_code)]
-    pub text_styles: Vec<String>,
-}
+pub(crate) type ErModel = merman_core::diagrams::er::ErDiagramRenderModel;
+pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
+pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
+pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
@@ -724,7 +663,14 @@ pub fn layout_er_diagram(
     measurer: &dyn TextMeasurer,
 ) -> Result<ErDiagramLayout> {
     let model: ErModel = crate::json::from_value_ref(semantic)?;
+    layout_er_diagram_typed(&model, effective_config, measurer)
+}
 
+pub fn layout_er_diagram_typed(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<ErDiagramLayout> {
     let nodesep = config_f64(effective_config, &["er", "nodeSpacing"]).unwrap_or(140.0);
     let ranksep = config_f64(effective_config, &["er", "rankSpacing"]).unwrap_or(80.0);
     let dir = rank_dir_from(&model.direction);
@@ -958,21 +904,9 @@ pub fn layout_er_diagram(
         let role = rel.map(|r| r.role_a.clone()).unwrap_or_default();
 
         let (base_start_marker, base_end_marker, stroke_dasharray) = if let Some(rel) = rel {
-            let card_a = rel
-                .rel_spec
-                .get("cardA")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let card_b = rel
-                .rel_spec
-                .get("cardB")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let rel_type = rel
-                .rel_spec
-                .get("relType")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let card_a = rel.rel_spec.card_a.as_str();
+            let card_b = rel.rel_spec.card_b.as_str();
+            let rel_type = rel.rel_spec.rel_type.as_str();
             let start_marker = er_marker_id(card_b, "START");
             let end_marker = er_marker_id(card_a, "END");
             let stroke_dasharray = if rel_type == "NON_IDENTIFYING" {

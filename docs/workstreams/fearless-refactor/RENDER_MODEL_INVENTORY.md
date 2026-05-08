@@ -25,7 +25,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `zenuml` | `typed-first` | typed sequence layout + typed sequence SVG | Translates to sequence syntax, then reuses `SequenceDiagramRenderModel`. |
 | `gantt` | `typed-first` | typed layout + typed SVG | Migrated after kanban; keep date/timezone parity gates tight. |
 | `kanban` | `typed-first` | typed layout + layout-only SVG | Migrated after sequence; keep as the small-diagram typed model pattern. |
-| `er`, `erDiagram` | `json-fallback` | JSON layout + JSON SVG | Lower priority than sequence/gantt/kanban; mature parity path. |
+| `er`, `erDiagram` | `typed-first` | typed layout + typed SVG | ER entities/classes/relationships now share the core render model; keep parity gates tight. |
 | `block` | `typed-first` | typed layout + typed SVG | Block tree/edge transport now shares the core render model; keep shape/SVG parity gates tight. |
 | `requirement` | `typed-first` | typed layout + typed SVG | Requirements/relations/classes now share the core render model. |
 | `radar` | `typed-first` | typed layout + typed SVG | Axes/curves/options now share the core render model. |

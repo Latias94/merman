@@ -731,6 +731,56 @@ showInfo
 }
 
 #[test]
+fn parse_er_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+erDiagram
+accTitle: ER accTitle
+accDescr: ER accDescription
+CUSTOMER ||--o{ ORDER : places
+CUSTOMER {
+  string id
+}
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "er");
+    match parsed.model {
+        RenderSemanticModel::Er(model) => {
+            assert_eq!(model.acc_title.as_deref(), Some("ER accTitle"));
+            assert_eq!(model.acc_descr.as_deref(), Some("ER accDescription"));
+            assert_eq!(model.direction, "TB");
+            assert!(model.entities.contains_key("CUSTOMER"));
+            assert!(model.entities.contains_key("ORDER"));
+            assert_eq!(model.relationships.len(), 1);
+            assert_eq!(model.relationships[0].entity_a, "entity-CUSTOMER-0");
+            assert_eq!(model.relationships[0].entity_b, "entity-ORDER-1");
+            assert_eq!(model.relationships[0].role_a, "places");
+            assert_eq!(model.relationships[0].rel_spec.card_a, "ZERO_OR_MORE");
+            assert_eq!(model.relationships[0].rel_spec.card_b, "ONLY_ONE");
+            assert_eq!(model.relationships[0].rel_spec.rel_type, "IDENTIFYING");
+        }
+        other => panic!("er render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("er"));
+    assert_eq!(parsed_json.model["accTitle"], json!("ER accTitle"));
+    assert_eq!(
+        parsed_json.model["relationships"][0]["roleA"],
+        json!("places")
+    );
+    assert!(parsed_json.model.get("constants").is_some());
+}
+
+#[test]
 fn parse_sanitizes_common_db_fields_in_strict_mode() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

@@ -29,6 +29,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a gitGraph typed render-model performance spot-check.
 - Docs: add a treemap typed render-model performance spot-check.
 - Docs: add a block typed render-model performance spot-check.
+- Docs: add an ER typed render-model performance spot-check.
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
 - Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
@@ -87,6 +88,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   layout/layout-only SVG render-model dispatch instead of deserializing private JSON transport
   structs.
 - Block render pipeline: parse a typed render model for layout/render-only flows and reuse it in
+  layout/SVG render-model dispatch instead of deserializing private JSON transport structs.
+- ER render pipeline: parse a typed render model for layout/render-only flows and reuse it in
   layout/SVG render-model dispatch instead of deserializing private JSON transport structs.
 - Benchmarks: repair the `treemap_medium` fixture so Criterion measures treemap instead of
   skipping it as a parse error.

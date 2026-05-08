@@ -499,6 +499,9 @@ pub fn render_layout_svg_parts_for_render_model(
         (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
             render_block_diagram_svg_model(layout, model, effective_config, options)
         }
+        (LayoutDiagram::ErDiagram(layout), RenderSemanticModel::Er(model)) => {
+            render_er_diagram_svg_model(layout, model, effective_config, title, measurer, options)
+        }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
                 layout,
@@ -686,6 +689,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
             render_block_diagram_svg_model(layout, model, effective_config.as_value(), options)
         }
+        (LayoutDiagram::ErDiagram(layout), RenderSemanticModel::Er(model)) => {
+            render_er_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                measurer,
+                options,
+            )
+        }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
                 layout,
@@ -809,6 +822,24 @@ pub fn render_block_diagram_svg_model(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     block::render_block_diagram_svg_model(layout, model, effective_config, options)
+}
+
+pub fn render_er_diagram_svg_model(
+    layout: &ErDiagramLayout,
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    er::render_er_diagram_svg_model(
+        layout,
+        model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }
 
 pub fn render_radar_diagram_svg(

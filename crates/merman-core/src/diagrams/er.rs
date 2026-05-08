@@ -1,49 +1,87 @@
 use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 lalrpop_util::lalrpop_mod!(er_grammar, "/diagrams/er_grammar.rs");
 
-#[derive(Debug, Clone)]
-struct Attribute {
-    ty: String,
-    name: String,
-    keys: Vec<String>,
-    comment: String,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErDiagramRenderModel {
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub direction: String,
+    #[serde(default)]
+    pub classes: BTreeMap<String, ErClassDefRenderModel>,
+    #[serde(default)]
+    pub entities: BTreeMap<String, ErEntityRenderModel>,
+    #[serde(default)]
+    pub relationships: Vec<ErRelationshipRenderModel>,
 }
 
-#[derive(Debug, Clone)]
-struct RelSpec {
-    card_a: String,
-    card_b: String,
-    rel_type: String,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErAttributeRenderModel {
+    #[serde(rename = "type")]
+    pub ty: String,
+    pub name: String,
+    #[serde(default)]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub comment: String,
 }
 
-#[derive(Debug, Clone)]
-struct Relationship {
-    entity_a: String,
-    role_a: String,
-    entity_b: String,
-    rel_spec: RelSpec,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErRelSpecRenderModel {
+    #[serde(rename = "cardA")]
+    pub card_a: String,
+    #[serde(rename = "cardB")]
+    pub card_b: String,
+    #[serde(rename = "relType")]
+    pub rel_type: String,
 }
 
-#[derive(Debug, Clone, Default)]
-struct EntityClass {
-    id: String,
-    styles: Vec<String>,
-    text_styles: Vec<String>,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErRelationshipRenderModel {
+    #[serde(rename = "entityA")]
+    pub entity_a: String,
+    #[serde(default, rename = "roleA")]
+    pub role_a: String,
+    #[serde(rename = "entityB")]
+    pub entity_b: String,
+    #[serde(default, rename = "relSpec")]
+    pub rel_spec: ErRelSpecRenderModel,
 }
 
-#[derive(Debug, Clone)]
-struct EntityNode {
-    id: String,
-    label: String,
-    attributes: Vec<Attribute>,
-    alias: String,
-    shape: String,
-    css_classes: String,
-    css_styles: Vec<String>,
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErClassDefRenderModel {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
 }
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ErEntityRenderModel {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub attributes: Vec<ErAttributeRenderModel>,
+    #[serde(default)]
+    pub alias: String,
+    #[serde(default)]
+    pub shape: String,
+    #[serde(default, rename = "cssClasses")]
+    pub css_classes: String,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
+}
+
+pub(crate) type Attribute = ErAttributeRenderModel;
+pub(crate) type RelSpec = ErRelSpecRenderModel;
+type Relationship = ErRelationshipRenderModel;
+type EntityClass = ErClassDefRenderModel;
+type EntityNode = ErEntityRenderModel;
 
 #[derive(Debug, Clone)]
 enum Action {
@@ -229,79 +267,31 @@ impl ErDb {
         }
     }
 
-    fn to_model(&self, meta: &ParseMetadata) -> Value {
-        let entities_json: serde_json::Map<String, Value> = self
-            .entities
-            .iter()
-            .map(|(name, e)| {
-                let attrs: Vec<Value> = e
-                    .attributes
-                    .iter()
-                    .map(|a| {
-                        json!({
-                            "type": a.ty,
-                            "name": a.name,
-                            "keys": a.keys,
-                            "comment": a.comment,
-                        })
-                    })
-                    .collect();
-                (
-                    name.clone(),
-                    json!({
-                        "id": e.id,
-                        "label": e.label,
-                        "attributes": attrs,
-                        "alias": e.alias,
-                        "shape": e.shape,
-                        "cssClasses": e.css_classes,
-                        "cssStyles": e.css_styles,
-                    }),
-                )
-            })
-            .collect();
+    fn into_render_model(self) -> ErDiagramRenderModel {
+        ErDiagramRenderModel {
+            acc_title: self.acc_title,
+            acc_descr: self.acc_descr,
+            direction: self.direction,
+            classes: self.classes.into_iter().collect(),
+            entities: self.entities.into_iter().collect(),
+            relationships: self.relationships,
+        }
+    }
 
-        let rels_json: Vec<Value> = self
-            .relationships
-            .iter()
-            .map(|r| {
-                json!({
-                    "entityA": r.entity_a,
-                    "roleA": r.role_a,
-                    "entityB": r.entity_b,
-                    "relSpec": {
-                        "cardA": r.rel_spec.card_a,
-                        "cardB": r.rel_spec.card_b,
-                        "relType": r.rel_spec.rel_type,
-                    }
-                })
-            })
-            .collect();
+    fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
+        let mut value =
+            serde_json::to_value(self.into_render_model()).map_err(|e| Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: e.to_string(),
+            })?;
+        let Value::Object(obj) = &mut value else {
+            return Ok(value);
+        };
 
-        let classes_json: serde_json::Map<String, Value> = self
-            .classes
-            .iter()
-            .map(|(k, c)| {
-                (
-                    k.clone(),
-                    json!({
-                        "id": c.id,
-                        "styles": c.styles,
-                        "textStyles": c.text_styles,
-                    }),
-                )
-            })
-            .collect();
-
-        json!({
-            "type": meta.diagram_type,
-            "direction": self.direction,
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "entities": Value::Object(entities_json),
-            "relationships": rels_json,
-            "classes": Value::Object(classes_json),
-            "constants": {
+        obj.insert("type".to_string(), json!(meta.diagram_type));
+        obj.insert(
+            "constants".to_string(),
+            json!({
                 "cardinality": {
                     "zeroOrOne": "ZERO_OR_ONE",
                     "zeroOrMore": "ZERO_OR_MORE",
@@ -313,8 +303,10 @@ impl ErDb {
                     "nonIdentifying": "NON_IDENTIFYING",
                     "identifying": "IDENTIFYING",
                 }
-            }
-        })
+            }),
+        );
+
+        Ok(value)
     }
 }
 
@@ -328,7 +320,7 @@ fn split_styles(raw: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+fn parse_er_db(code: &str, meta: &ParseMetadata) -> Result<ErDb> {
     let actions = er_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
@@ -340,7 +332,17 @@ pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
     for a in actions {
         db.apply(a);
     }
-    Ok(db.to_model(meta))
+    Ok(db)
+}
+
+pub fn parse_er_model_for_render(code: &str, meta: &ParseMetadata) -> Result<ErDiagramRenderModel> {
+    let db = parse_er_db(code, meta)?;
+    Ok(db.into_render_model())
+}
+
+pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let db = parse_er_db(code, meta)?;
+    db.into_model(meta)
 }
 
 #[derive(Debug, Clone)]
