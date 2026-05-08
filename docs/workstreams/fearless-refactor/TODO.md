@@ -471,5 +471,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 - [ ] Update README architecture notes after pipeline cleanup.
 - [ ] Add a short contributor guide for adding a new typed diagram renderer.
-- [ ] Document standard gates for parity, refactor, and release work.
+- [x] Document standard gates for parity, refactor, and release work.
+  Evidence: `README.md` now points to `GATES.md`, which records the refactor, parity, performance,
+  and release command sets.
 - [ ] Document what "Mermaid parity" means for generated override data.

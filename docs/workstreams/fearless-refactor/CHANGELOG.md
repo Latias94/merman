@@ -63,6 +63,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   the parser's borrowed `MermaidConfig` through the typed path.
 - Closed the flowchart/class/sequence hot-loop clone audit, leaving only compatibility, debug, and
   graphlib key ownership boundaries for future API-level work.
+- Added `GATES.md` as the canonical refactor, parity, performance, and release gate reference for
+  this workstream.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.
