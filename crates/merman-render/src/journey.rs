@@ -184,6 +184,8 @@ pub fn layout_journey_diagram_typed(
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
+    let legend_circle_r = journey_text_overrides::journey_legend_circle_r_px();
+    let legend_line_step_y = journey_text_overrides::journey_legend_line_step_y_px();
     let mut y_pos = journey_text_overrides::journey_legend_first_y_px();
     for actor in actors.iter() {
         let (pos, color) = actor_map
@@ -195,9 +197,7 @@ pub fn layout_journey_diagram_typed(
         let mut label_lines: Vec<JourneyActorLegendLineLayout> = Vec::new();
         for (index, line) in lines.iter().enumerate() {
             let x = journey_text_overrides::journey_legend_label_x_px();
-            let y = y_pos
-                + journey_text_overrides::journey_legend_line_text_baseline_offset_y_px()
-                + (index as f64) * journey_text_overrides::journey_legend_line_step_y_px();
+            let y = y_pos + legend_circle_r + (index as f64) * legend_line_step_y;
             let tspan_x = x + box_text_margin * 2.0;
             label_lines.push(JourneyActorLegendLineLayout {
                 text: line.to_string(),
@@ -219,12 +219,11 @@ pub fn layout_journey_diagram_typed(
             color,
             circle_cx: journey_text_overrides::journey_legend_circle_cx_px(),
             circle_cy: y_pos,
-            circle_r: journey_text_overrides::journey_legend_circle_r_px(),
+            circle_r: legend_circle_r,
             label_lines,
         });
 
-        y_pos += journey_text_overrides::journey_legend_line_step_y_px()
-            .max(lines.len() as f64 * journey_text_overrides::journey_legend_line_step_y_px());
+        y_pos += legend_line_step_y * (lines.len().max(1) as f64);
     }
 
     let left_margin = left_margin_base + max_actor_label_width;
@@ -364,17 +363,15 @@ pub fn layout_journey_diagram_typed(
         0.0
     };
 
+    let viewbox_top_pad = journey_text_overrides::journey_viewbox_top_pad_px();
     let bounds = Bounds {
         min_x: 0.0,
-        min_y: -journey_text_overrides::journey_viewbox_top_pad_px(),
+        min_y: -viewbox_top_pad,
         max_x: width,
-        max_y: -journey_text_overrides::journey_viewbox_top_pad_px()
-            + height
-            + extra_vert_for_title,
+        max_y: -viewbox_top_pad + height + extra_vert_for_title,
     };
 
-    let svg_height =
-        height + extra_vert_for_title + journey_text_overrides::journey_viewbox_top_pad_px();
+    let svg_height = height + extra_vert_for_title + viewbox_top_pad;
 
     let activity_line = JourneyLineLayout {
         x1: left_margin,
@@ -398,7 +395,7 @@ pub fn layout_journey_diagram_typed(
         svg_height,
         title,
         title_x: left_margin,
-        title_y: journey_text_overrides::journey_title_y_px(),
+        title_y: viewbox_top_pad,
         actor_legend,
         sections,
         tasks,

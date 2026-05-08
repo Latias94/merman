@@ -432,7 +432,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   center-y helper, Pie collapsed its center point into one helper for both axes, and Radar dropped
   a redundant legend baseline-y helper. Pie also dropped two derived legend-position helpers,
   now derives its label radius in layout, and Treemap reuses section inner padding for two header
-  spacing values, reducing the helper footprint to 73.
+  spacing values. Journey also reuses existing legend radius and top padding values for two
+  formerly separate helpers, reducing the helper footprint to 71.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

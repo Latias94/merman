@@ -67,7 +67,7 @@ impl OverrideCategory {
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::TypeTextLength => 17,
-            OverrideCategory::HandCuratedHelpers => 73,
+            OverrideCategory::HandCuratedHelpers => 71,
             OverrideCategory::RawPathBridge => 1,
         }
     }

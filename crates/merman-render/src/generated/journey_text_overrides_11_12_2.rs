@@ -23,16 +23,8 @@ pub fn journey_legend_line_step_y_px() -> f64 {
     20.0
 }
 
-pub fn journey_legend_line_text_baseline_offset_y_px() -> f64 {
-    7.0
-}
-
 pub fn journey_section_y_px() -> f64 {
     50.0
-}
-
-pub fn journey_title_y_px() -> f64 {
-    25.0
 }
 
 pub fn journey_viewbox_top_pad_px() -> f64 {

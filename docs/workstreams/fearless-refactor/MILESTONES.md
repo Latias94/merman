@@ -410,6 +410,8 @@ Progress:
   existing rectangle size and spacing constants, reducing the hand-curated helper footprint to 76.
 - Pie now derives its label radius from the slice radius in layout, and Treemap reuses the existing
   section inner padding for value inset and label/value gap, reducing the helper footprint to 73.
+- Journey now reuses its legend circle radius for text baseline alignment and its viewBox top
+  padding for title y-position, reducing the helper footprint to 71.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
