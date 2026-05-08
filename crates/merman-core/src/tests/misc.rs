@@ -1,3 +1,4 @@
+use crate::diagrams::xychart::{XyChartAxisRenderModel, XyChartPlotType};
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
@@ -316,6 +317,81 @@ pie showData title Typed Pie
     assert_eq!(parsed_json.model["title"], json!("Typed Pie"));
     assert_eq!(parsed_json.model["sections"][0]["label"], json!("Alpha"));
     assert_eq!(parsed_json.model["sections"][0]["value"], json!(60.0));
+}
+
+#[test]
+fn parse_xychart_render_model_uses_typed_variant_without_changing_json_parse() {
+    let engine = Engine::new();
+    let input = r#"
+xychart horizontal
+title "Typed XYChart"
+accTitle: XY accTitle
+accDescr: XY accDescription
+x-axis "X Axis" [Alpha, Beta]
+y-axis "Y Axis" 1 --> 5
+bar "Series 1" [1, 2]
+line "Series 2" [2, 3]
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "xychart");
+    match parsed.model {
+        RenderSemanticModel::XyChart(model) => {
+            assert_eq!(model.orientation, "horizontal");
+            assert_eq!(model.title.as_deref(), Some("Typed XYChart"));
+            assert_eq!(model.acc_title.as_deref(), Some("XY accTitle"));
+            assert_eq!(model.acc_descr.as_deref(), Some("XY accDescription"));
+            assert_eq!(
+                model.x_axis,
+                XyChartAxisRenderModel::Band {
+                    title: "X Axis".to_string(),
+                    categories: vec!["Alpha".to_string(), "Beta".to_string()],
+                }
+            );
+            assert_eq!(
+                model.y_axis,
+                XyChartAxisRenderModel::Linear {
+                    title: "Y Axis".to_string(),
+                    min: Some(1.0),
+                    max: Some(5.0),
+                }
+            );
+            assert_eq!(model.plots.len(), 2);
+            assert_eq!(model.plots[0].plot_type, XyChartPlotType::Bar);
+            assert_eq!(model.plots[0].values, vec![1.0, 2.0]);
+            assert_eq!(
+                model.plots[0].data,
+                vec![
+                    ("Alpha".to_string(), Some(1.0)),
+                    ("Beta".to_string(), Some(2.0)),
+                ]
+            );
+            assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
+        }
+        other => panic!("xychart render parse should return typed model, got {other:?}"),
+    }
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed_json.model["type"], json!("xychart"));
+    assert_eq!(parsed_json.model["title"], json!("Typed XYChart"));
+    assert_eq!(parsed_json.model["xAxis"]["type"], json!("band"));
+    assert_eq!(
+        parsed_json.model["xAxis"]["categories"],
+        json!(["Alpha", "Beta"])
+    );
+    assert_eq!(parsed_json.model["yAxis"]["type"], json!("linear"));
+    assert_eq!(parsed_json.model["yAxis"]["min"], json!(1.0));
+    assert_eq!(parsed_json.model["yAxis"]["max"], json!(5.0));
+    assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
+    assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
+    assert!(parsed_json.model.get("config").is_some());
 }
 
 #[test]

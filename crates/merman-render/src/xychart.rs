@@ -3,51 +3,10 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use serde::Deserialize;
+use merman_core::diagrams::xychart::{
+    XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
+};
 use serde_json::Value;
-
-#[derive(Debug, Clone, Deserialize)]
-struct XyChartModel {
-    #[serde(default)]
-    pub orientation: String,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub plots: Vec<XyChartPlotModel>,
-    #[serde(rename = "xAxis")]
-    pub x_axis: XyChartAxisModel,
-    #[serde(rename = "yAxis")]
-    pub y_axis: XyChartAxisModel,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct XyChartPlotModel {
-    #[serde(rename = "type")]
-    pub plot_type: String,
-    #[serde(default)]
-    pub data: Vec<(String, Option<f64>)>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type")]
-enum XyChartAxisModel {
-    #[serde(rename = "band")]
-    Band {
-        #[serde(default)]
-        title: String,
-        #[serde(default)]
-        categories: Vec<String>,
-    },
-    #[serde(rename = "linear")]
-    Linear {
-        #[serde(default)]
-        title: String,
-        #[serde(default)]
-        min: Option<f64>,
-        #[serde(default)]
-        max: Option<f64>,
-    },
-}
 
 #[derive(Debug, Clone)]
 struct ChartThemeConfig {
@@ -297,7 +256,7 @@ fn parse_theme_config(effective_config: &Value) -> ChartThemeConfig {
     }
 }
 
-fn parse_chart_config(effective_config: &Value, model: &XyChartModel) -> ChartConfig {
+fn parse_chart_config(effective_config: &Value, model: &XyChartDiagramRenderModel) -> ChartConfig {
     ChartConfig {
         width: config_f64(effective_config, &["xyChart", "width"]).unwrap_or(700.0),
         height: config_f64(effective_config, &["xyChart", "height"]).unwrap_or(500.0),
@@ -1034,8 +993,16 @@ pub(crate) fn layout_xychart_diagram(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
-    let model: XyChartModel = crate::json::from_value_ref(semantic).map_err(Error::Json)?;
+    let model: XyChartDiagramRenderModel =
+        crate::json::from_value_ref(semantic).map_err(Error::Json)?;
+    layout_xychart_diagram_typed(&model, effective_config, text_measurer)
+}
 
+pub(crate) fn layout_xychart_diagram_typed(
+    model: &XyChartDiagramRenderModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+) -> Result<XyChartDiagramLayout> {
     if model
         .orientation
         .as_str()
@@ -1048,7 +1015,7 @@ pub(crate) fn layout_xychart_diagram(
         });
     }
 
-    let chart_cfg = parse_chart_config(effective_config, &model);
+    let chart_cfg = parse_chart_config(effective_config, model);
     let theme_cfg = parse_theme_config(effective_config);
 
     let title = model.title.clone().unwrap_or_default();
@@ -1079,13 +1046,13 @@ pub(crate) fn layout_xychart_diagram(
     }
 
     let (x_axis_kind, x_axis_title) = match &model.x_axis {
-        XyChartAxisModel::Band { title, categories } => (
+        XyChartAxisRenderModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisModel::Linear { title, min, max } => (
+        XyChartAxisRenderModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1093,13 +1060,13 @@ pub(crate) fn layout_xychart_diagram(
         ),
     };
     let (y_axis_kind, y_axis_title) = match &model.y_axis {
-        XyChartAxisModel::Band { title, categories } => (
+        XyChartAxisRenderModel::Band { title, categories } => (
             AxisKind::Band {
                 categories: categories.clone(),
             },
             title.clone(),
         ),
-        XyChartAxisModel::Linear { title, min, max } => (
+        XyChartAxisRenderModel::Linear { title, min, max } => (
             AxisKind::Linear {
                 domain: (min.unwrap_or(0.0), max.unwrap_or(1.0)),
             },
@@ -1231,15 +1198,19 @@ pub(crate) fn layout_xychart_diagram(
         plot_rect
     };
 
-    if model.plots.iter().any(|p| p.plot_type == "bar") {
+    if model
+        .plots
+        .iter()
+        .any(|p| matches!(p.plot_type, XyChartPlotType::Bar))
+    {
         x_axis.recalculate_outer_padding_to_draw_bar();
     }
 
     for (plot_index, plot) in model.plots.iter().enumerate() {
         let color = plot_color_from_palette(&theme_cfg.plot_color_palette, plot_index);
 
-        match plot.plot_type.as_str() {
-            "bar" => {
+        match plot.plot_type {
+            XyChartPlotType::Bar => {
                 let bar_padding_percent = 0.05;
                 let bar_width = (x_axis.outer_padding * 2.0).min(x_axis.tick_distance())
                     * (1.0 - bar_padding_percent);
@@ -1280,7 +1251,7 @@ pub(crate) fn layout_xychart_diagram(
                     data: rects,
                 });
             }
-            "line" => {
+            XyChartPlotType::Line => {
                 let mut points: Vec<(f64, f64)> = Vec::new();
                 for (cat, value) in &plot.data {
                     let x = x_axis.get_scale_value(cat);
@@ -1306,7 +1277,6 @@ pub(crate) fn layout_xychart_diagram(
                     });
                 }
             }
-            _ => {}
         }
     }
 

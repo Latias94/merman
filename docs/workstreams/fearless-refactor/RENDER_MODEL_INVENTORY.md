@@ -36,7 +36,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `journey` | `typed-first` | typed layout + typed SVG | Small-to-moderate migration; watch render midpoint drift. |
 | `gitGraph` | `typed-first` | typed layout + typed SVG | Commit graph transport now shares the core render model. |
 | `pie` | `typed-first` | typed layout + typed SVG | Small typed migration; keep as a simple-diagram pattern. |
-| `xychart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `xychart` | `typed-first` | typed layout + layout-only SVG | Keep the typed model lightweight; SVG emission is layout-only. |
 | `quadrantChart` | `typed-first` | typed layout + layout-only SVG | Axes/quadrants/points/classes now share the core render model. |
 | `sankey` | `typed-first` | typed layout + layout-only SVG | CSV graph now shares the core render model. |
 | `c4` | `json-fallback` | JSON layout + JSON SVG | Defer. |

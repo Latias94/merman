@@ -510,6 +510,9 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::XyChartDiagram(layout), RenderSemanticModel::XyChart(_)) => {
+            render_xychart_diagram_svg(layout, &serde_json::Value::Null, effective_config, options)
+        }
         (LayoutDiagram::GitGraphDiagram(layout), RenderSemanticModel::GitGraph(model)) => {
             gitgraph::render_gitgraph_diagram_svg_model(
                 layout,
@@ -701,6 +704,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
         }
         (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
             render_quadrantchart_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::XyChartDiagram(layout), RenderSemanticModel::XyChart(_)) => {
+            render_xychart_diagram_svg(
                 layout,
                 &serde_json::Value::Null,
                 effective_config.as_value(),

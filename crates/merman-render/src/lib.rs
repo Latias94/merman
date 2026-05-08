@@ -281,6 +281,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?),
         ),
+        (RenderSemanticModel::XyChart(model), "xychart") => Ok(LayoutDiagram::XyChartDiagram(
+            xychart::layout_xychart_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        )),
         (RenderSemanticModel::GitGraph(model), "gitGraph") => Ok(LayoutDiagram::GitGraphDiagram(
             gitgraph::layout_gitgraph_diagram_typed(
                 model,

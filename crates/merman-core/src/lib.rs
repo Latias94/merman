@@ -468,6 +468,8 @@ impl Engine {
                 crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render(code, meta)
                     .map(RenderSemanticModel::QuadrantChart)
             }
+            "xychart" => crate::diagrams::xychart::parse_xychart_model_for_render(code, meta)
+                .map(RenderSemanticModel::XyChart),
             "gitGraph" => crate::diagrams::git_graph::parse_git_graph_model_for_render(code, meta)
                 .map(RenderSemanticModel::GitGraph),
             _ => diagram::parse_or_unsupported(
@@ -633,6 +635,17 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
+            RenderSemanticModel::XyChart(v) => {
+                if let Some(s) = v.title.as_deref() {
+                    v.title = Some(crate::sanitize::sanitize_text(s, effective_config));
+                }
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
+                }
+            }
             RenderSemanticModel::GitGraph(v) => {
                 if let Some(s) = v.acc_title.as_deref() {
                     v.acc_title = Some(common_db::sanitize_acc_title(s, effective_config));
@@ -667,6 +680,7 @@ impl Engine {
             RenderSemanticModel::Block(_) => "block",
             RenderSemanticModel::Er(_) => "er",
             RenderSemanticModel::QuadrantChart(_) => "quadrantChart",
+            RenderSemanticModel::XyChart(_) => "xychart",
             RenderSemanticModel::GitGraph(_) => "gitGraph",
         }
     }

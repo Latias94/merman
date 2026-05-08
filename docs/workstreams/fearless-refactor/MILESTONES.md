@@ -107,6 +107,9 @@ Progress:
   semantic JSON parsing remains stable for the compatibility API.
 - `er` now has a typed render model consumed by render-layout and SVG render-model dispatch;
   semantic JSON parsing remains stable for the compatibility API.
+- `xychart` now has a typed render model consumed by render-layout dispatch; SVG emission stays
+  layout-only, and the public render path routes through the typed model without changing the
+  semantic JSON compatibility API.
 - Post-migration sequence timing and benchmark evidence is recorded in
   `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`.
 - Kanban parent-vs-typed timing evidence is recorded in
@@ -143,6 +146,8 @@ Progress:
   `docs/performance/spotcheck_2026-05-08_block_typed_render_model.md`.
 - ER parent-vs-typed timing evidence is recorded in
   `docs/performance/spotcheck_2026-05-08_er_typed_render_model.md`.
+- XYChart typed render-path spotcheck is recorded in
+  `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`.
 - Same-machine baseline capture remains a process requirement for the next typed migration.
 
 Exit criteria:

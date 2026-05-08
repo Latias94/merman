@@ -1,6 +1,62 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, ParseMetadata, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum XyChartAxisRenderModel {
+    #[serde(rename = "band")]
+    Band {
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        categories: Vec<String>,
+    },
+    #[serde(rename = "linear")]
+    Linear {
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum XyChartPlotType {
+    #[serde(rename = "line")]
+    Line,
+    #[serde(rename = "bar")]
+    Bar,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct XyChartPlotRenderModel {
+    #[serde(rename = "type")]
+    pub plot_type: XyChartPlotType,
+    pub values: Vec<f64>,
+    pub data: Vec<(String, Option<f64>)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct XyChartDiagramRenderModel {
+    #[serde(default)]
+    pub orientation: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(rename = "xAxis")]
+    pub x_axis: XyChartAxisRenderModel,
+    #[serde(rename = "yAxis")]
+    pub y_axis: XyChartAxisRenderModel,
+    #[serde(default)]
+    pub plots: Vec<XyChartPlotRenderModel>,
+}
 
 #[derive(Debug, Clone)]
 enum AxisData {
@@ -17,7 +73,7 @@ enum AxisData {
 
 #[derive(Debug, Clone)]
 struct Plot {
-    plot_type: &'static str,
+    plot_type: XyChartPlotType,
     values: Vec<f64>,
     data: Vec<(String, Option<f64>)>,
 }
@@ -176,7 +232,7 @@ impl XyChartState {
     fn add_line_data(&mut self, data: Vec<f64>) {
         let pairs = self.transform_data_without_category(&data);
         self.plots.push(Plot {
-            plot_type: "line",
+            plot_type: XyChartPlotType::Line,
             values: data,
             data: pairs,
         });
@@ -185,20 +241,71 @@ impl XyChartState {
     fn add_bar_data(&mut self, data: Vec<f64>) {
         let pairs = self.transform_data_without_category(&data);
         self.plots.push(Plot {
-            plot_type: "bar",
+            plot_type: XyChartPlotType::Bar,
             values: data,
             data: pairs,
         });
     }
+
+    fn into_render_model(
+        self,
+        title: Option<String>,
+        acc_title: Option<String>,
+        acc_descr: Option<String>,
+    ) -> XyChartDiagramRenderModel {
+        XyChartDiagramRenderModel {
+            orientation: self.orientation,
+            title,
+            acc_title,
+            acc_descr,
+            x_axis: axis_data_to_render_model(self.x_axis),
+            y_axis: axis_data_to_render_model(self.y_axis),
+            plots: self
+                .plots
+                .into_iter()
+                .map(|p| XyChartPlotRenderModel {
+                    plot_type: p.plot_type,
+                    values: p.values,
+                    data: p.data,
+                })
+                .collect(),
+        }
+    }
 }
 
 pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let Some(model) = parse_xychart_model(code, meta)? else {
+        return Ok(json!({}));
+    };
+
+    let mut value = serde_json::to_value(model).expect("xychart render model must serialize");
+    if let Value::Object(obj) = &mut value {
+        obj.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        obj.insert(
+            "config".to_string(),
+            meta.effective_config.as_value().clone(),
+        );
+    }
+    Ok(value)
+}
+
+pub fn parse_xychart_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<XyChartDiagramRenderModel> {
+    Ok(parse_xychart_model(code, meta)?.unwrap_or_else(empty_render_model))
+}
+
+fn parse_xychart_model(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<Option<XyChartDiagramRenderModel>> {
     let cleaned = strip_comments(code);
     let statements = split_statements(&cleaned);
 
     let mut it = statements.into_iter().filter(|s| !s.trim().is_empty());
     let Some(header_stmt) = it.next() else {
-        return Ok(json!({}));
+        return Ok(None);
     };
 
     let mut state = XyChartState::new(meta);
@@ -284,49 +391,35 @@ pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-        "orientation": state.orientation,
-        "xAxis": axis_to_value(&state.x_axis),
-        "yAxis": axis_to_value(&state.y_axis),
-        "plots": state.plots.iter().map(|p| {
-            json!({
-                "type": p.plot_type,
-                "values": p.values,
-                "data": p.data.iter().map(|(x,y)| json!([x, y])).collect::<Vec<_>>(),
-            })
-        }).collect::<Vec<_>>(),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    Ok(Some(state.into_render_model(title, acc_title, acc_descr)))
 }
 
-fn axis_to_value(axis: &AxisData) -> Value {
+fn empty_render_model() -> XyChartDiagramRenderModel {
+    XyChartDiagramRenderModel {
+        orientation: "vertical".to_string(),
+        title: None,
+        acc_title: None,
+        acc_descr: None,
+        x_axis: XyChartAxisRenderModel::Band {
+            title: String::new(),
+            categories: Vec::new(),
+        },
+        y_axis: XyChartAxisRenderModel::Linear {
+            title: String::new(),
+            min: None,
+            max: None,
+        },
+        plots: Vec::new(),
+    }
+}
+
+fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisRenderModel {
     match axis {
-        AxisData::Band { title, categories } => json!({
-            "type": "band",
-            "title": title,
-            "categories": categories,
-        }),
+        AxisData::Band { title, categories } => XyChartAxisRenderModel::Band { title, categories },
         AxisData::Linear { title, min, max } => {
-            let min = if min.is_finite() {
-                json!(min)
-            } else {
-                Value::Null
-            };
-            let max = if max.is_finite() {
-                json!(max)
-            } else {
-                Value::Null
-            };
-            json!({
-                "type": "linear",
-                "title": title,
-                "min": min,
-                "max": max,
-            })
+            let min = min.is_finite().then_some(min);
+            let max = max.is_finite().then_some(max);
+            XyChartAxisRenderModel::Linear { title, min, max }
         }
     }
 }

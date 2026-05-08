@@ -103,6 +103,7 @@ pub enum RenderSemanticModel {
     Block(crate::diagrams::block::BlockDiagramRenderModel),
     Er(crate::diagrams::er::ErDiagramRenderModel),
     QuadrantChart(crate::diagrams::quadrant_chart::QuadrantChartRenderModel),
+    XyChart(crate::diagrams::xychart::XyChartDiagramRenderModel),
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
 }
 
