@@ -1,5 +1,7 @@
 use super::super::*;
-use super::actor_man_glyphs::{write_actor_man_bottom_glyph, write_actor_man_top_glyph};
+use super::actor_man_glyphs::{
+    ActorManBottomGlyphMetrics, write_actor_man_bottom_glyph, write_actor_man_top_glyph,
+};
 use super::actor_shapes::is_actor_man_variant;
 use super::model::SequenceSvgModel;
 use rustc_hash::FxHashMap;
@@ -63,8 +65,10 @@ pub(super) fn render_sequence_actor_man_bottoms(
             &actor.description,
             n,
             last_idx,
-            actor_height,
-            label_box_height,
+            ActorManBottomGlyphMetrics {
+                actor_height,
+                label_box_height,
+            },
         );
     }
 }

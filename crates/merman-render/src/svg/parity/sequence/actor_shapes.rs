@@ -22,16 +22,7 @@ impl<'a> ActorLabelContext<'a> {
     }
 
     fn write_actor(&self, out: &mut String, cx: f64, cy: f64, actor: &SequenceActor) {
-        write_actor_label(
-            out,
-            cx,
-            cy,
-            &actor.description,
-            actor.wrap,
-            self.wrap_width_px,
-            self.measurer,
-            self.style,
-        );
+        write_actor_label(out, cx, cy, &actor.description, actor.wrap, self);
     }
 }
 
@@ -264,27 +255,29 @@ fn write_actor_label(
     cy: f64,
     label: &str,
     wrap: bool,
-    wrap_width_px: f64,
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
+    ctx: &ActorLabelContext<'_>,
 ) {
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
     if wrap {
-        let raw_lines =
-            crate::text::wrap_label_like_mermaid_lines(label, measurer, style, wrap_width_px);
+        let raw_lines = crate::text::wrap_label_like_mermaid_lines(
+            label,
+            ctx.measurer,
+            ctx.style,
+            ctx.wrap_width_px,
+        );
         write_actor_label_lines(
             out,
             cx,
             cy,
             raw_lines.iter().map(String::as_str),
             raw_lines.len(),
-            style,
+            ctx.style,
         );
     } else {
         let raw_lines = crate::text::split_html_br_lines(label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, style);
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx.style);
     }
 }
 

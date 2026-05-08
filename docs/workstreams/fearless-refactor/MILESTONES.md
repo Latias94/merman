@@ -261,6 +261,9 @@ Progress:
   multi-section frame widening and single-section header wrap behavior localized.
 - Added `SequenceBlockRenderContext` so sequence block frame helpers share one explicit parameter
   bundle instead of repeated long argument lists.
+- Added focused sequence render contexts for actors, actor-man glyphs, interaction overlays,
+  message rendering, and loop text emission; `svg/parity/sequence` no longer carries a module-level
+  `clippy::too_many_arguments` allow.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

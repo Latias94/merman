@@ -3,7 +3,9 @@ use super::block_collection::AltSection;
 use super::block_geometry::{
     frame_x_from_message_ids, message_ids_y_range, section_message_y_range, section_separator_ys,
 };
-use super::block_text::{display_block_label, wrap_svg_text_lines, write_loop_text_lines};
+use super::block_text::{
+    LoopTextRenderContext, display_block_label, wrap_svg_text_lines, write_loop_text_lines,
+};
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
 
@@ -18,6 +20,12 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) box_text_margin: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
+}
+
+impl<'a> SequenceBlockRenderContext<'a> {
+    fn loop_text_context(&self) -> LoopTextRenderContext<'_> {
+        LoopTextRenderContext::new(self.measurer, self.loop_text_style)
+    }
 }
 
 pub(super) fn write_block_frame(
@@ -129,10 +137,10 @@ pub(super) fn render_simple_sequence_block(
     let text_y = frame_y1 + 18.0;
     let label = display_block_label(raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
     let max_w = (frame_x2 - label_box_right).max(0.0);
+    let loop_text_ctx = ctx.loop_text_context();
     write_loop_text_lines(
         out,
-        ctx.measurer,
-        ctx.loop_text_style,
+        &loop_text_ctx,
         text_x,
         text_y,
         Some(max_w),
@@ -172,16 +180,8 @@ pub(super) fn render_sectioned_sequence_block(
     )
     .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
 
-    let header_offset = section_header_offset(
-        sections,
-        frame_x1,
-        frame_x2,
-        adjust_header_for_wrap,
-        ctx.label_box_height,
-        ctx.box_text_margin,
-        ctx.measurer,
-        ctx.loop_text_style,
-    );
+    let header_offset =
+        section_header_offset(sections, frame_x1, frame_x2, adjust_header_for_wrap, ctx);
     let frame_y1 = min_y - header_offset;
     let frame_y2 = max_y + 10.0;
 
@@ -226,10 +226,10 @@ pub(super) fn render_sectioned_sequence_block(
         if i == 0 {
             let y = frame_y1 + 18.0;
             let max_w = (frame_x2 - label_box_right).max(0.0);
+            let loop_text_ctx = ctx.loop_text_context();
             write_loop_text_lines(
                 out,
-                ctx.measurer,
-                ctx.loop_text_style,
+                &loop_text_ctx,
                 main_text_x,
                 y,
                 Some(max_w),
@@ -239,10 +239,10 @@ pub(super) fn render_sectioned_sequence_block(
             continue;
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let loop_text_ctx = ctx.loop_text_context();
         write_loop_text_lines(
             out,
-            ctx.measurer,
-            ctx.loop_text_style,
+            &loop_text_ctx,
             center_text_x,
             y,
             None,
@@ -353,10 +353,10 @@ pub(super) fn render_critical_sequence_block(
         if i == 0 {
             let y = frame_y1 + 18.0;
             let max_w = (frame_x2 - label_box_right).max(0.0);
+            let loop_text_ctx = ctx.loop_text_context();
             write_loop_text_lines(
                 out,
-                ctx.measurer,
-                ctx.loop_text_style,
+                &loop_text_ctx,
                 main_text_x,
                 y,
                 Some(max_w),
@@ -366,10 +366,10 @@ pub(super) fn render_critical_sequence_block(
             continue;
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+        let loop_text_ctx = ctx.loop_text_context();
         write_loop_text_lines(
             out,
-            ctx.measurer,
-            ctx.loop_text_style,
+            &loop_text_ctx,
             center_text_x,
             y,
             None,
@@ -386,16 +386,13 @@ fn section_header_offset(
     frame_x1: f64,
     frame_x2: f64,
     adjust_header_for_wrap: bool,
-    label_box_height: f64,
-    box_text_margin: f64,
-    measurer: &dyn TextMeasurer,
-    loop_text_style: &TextStyle,
+    ctx: &SequenceBlockRenderContext<'_>,
 ) -> f64 {
     if sections
         .first()
         .is_some_and(|s| s.raw_label.trim().is_empty())
     {
-        return (79.0 - label_box_height).max(0.0);
+        return (79.0 - ctx.label_box_height).max(0.0);
     }
     if !adjust_header_for_wrap {
         return 79.0;
@@ -406,11 +403,11 @@ fn section_header_offset(
     let max_w = (frame_x2 - label_box_right).max(0.0);
     let label =
         display_block_label(sections[0].raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
-    let wrapped = wrap_svg_text_lines(&label, measurer, loop_text_style, Some(max_w));
+    let wrapped = wrap_svg_text_lines(&label, ctx.measurer, ctx.loop_text_style, Some(max_w));
     let extra_lines = wrapped.len().saturating_sub(1) as f64;
     let extra_per_line =
-        (sequence_text_overrides::sequence_text_line_step_px(loop_text_style.font_size)
-            - box_text_margin)
+        (sequence_text_overrides::sequence_text_line_step_px(ctx.loop_text_style.font_size)
+            - ctx.box_text_margin)
             .max(0.0);
     base + extra_lines * extra_per_line
 }

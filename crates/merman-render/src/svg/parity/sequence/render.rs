@@ -1,10 +1,13 @@
 use super::super::*;
 use super::actor_man::{render_sequence_actor_man_bottoms, render_sequence_actor_man_tops};
 use super::actor_popup::render_sequence_actor_popup_menus;
-use super::actors::{render_sequence_bottom_actors, render_sequence_top_actors_and_lifelines};
+use super::actors::{
+    SequenceActorRenderContext, render_sequence_bottom_actors,
+    render_sequence_top_actors_and_lifelines,
+};
 use super::frames::render_sequence_box_frames_and_rect_blocks;
-use super::interactions::render_sequence_interaction_overlays;
-use super::messages::render_sequence_messages;
+use super::interactions::{SequenceInteractionRenderContext, render_sequence_interaction_overlays};
+use super::messages::{SequenceMessageRenderContext, render_sequence_messages};
 use super::root::write_sequence_svg_root_open;
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
@@ -117,29 +120,23 @@ fn render_sequence_diagram_svg_inner(
         settings.box_text_margin,
     );
 
+    let actor_ctx = SequenceActorRenderContext {
+        model,
+        nodes_by_id: &nodes_by_id,
+        edges_by_id: &edges_by_id,
+        actor_wrap_width: settings.actor_wrap_width,
+        actor_height: settings.actor_height,
+        label_box_height: settings.label_box_height,
+        measurer,
+        loop_text_style: &settings.loop_text_style,
+    };
+
     if settings.mirror_actors {
-        render_sequence_bottom_actors(
-            &mut out,
-            model,
-            &nodes_by_id,
-            settings.actor_wrap_width,
-            settings.label_box_height,
-            measurer,
-            &settings.loop_text_style,
-        );
+        render_sequence_bottom_actors(&mut out, &actor_ctx);
     }
 
     // Top actors + lifelines.
-    render_sequence_top_actors_and_lifelines(
-        &mut out,
-        model,
-        &nodes_by_id,
-        &edges_by_id,
-        settings.actor_wrap_width,
-        settings.actor_height,
-        measurer,
-        &settings.loop_text_style,
-    );
+    render_sequence_top_actors_and_lifelines(&mut out, &actor_ctx);
 
     let _ = write!(
         &mut out,
@@ -152,31 +149,31 @@ fn render_sequence_diagram_svg_inner(
 
     render_sequence_actor_man_tops(&mut out, model, &nodes_by_id, settings.actor_height);
 
-    render_sequence_interaction_overlays(
-        &mut out,
+    let interaction_ctx = SequenceInteractionRenderContext {
         model,
-        &nodes_by_id,
-        &edges_by_id,
+        nodes_by_id: &nodes_by_id,
+        edges_by_id: &edges_by_id,
         seq_cfg,
         effective_config,
-        &settings,
+        settings: &settings,
         measurer,
-    );
+    };
+    render_sequence_interaction_overlays(&mut out, &interaction_ctx);
 
-    render_sequence_messages(
-        &mut out,
+    let message_ctx = SequenceMessageRenderContext {
         model,
-        &nodes_by_id,
-        &edges_by_id,
+        nodes_by_id: &nodes_by_id,
+        edges_by_id: &edges_by_id,
         measurer,
-        settings.message_align.as_str(),
-        settings.actor_height,
-        settings.actor_label_font_size,
-        settings.sequence_width,
-        settings.wrap_padding,
-        settings.right_angles,
-        &settings.loop_text_style,
-    );
+        message_align: settings.message_align.as_str(),
+        actor_height: settings.actor_height,
+        actor_label_font_size: settings.actor_label_font_size,
+        sequence_width: settings.sequence_width,
+        wrap_padding: settings.wrap_padding,
+        right_angles: settings.right_angles,
+        loop_text_style: &settings.loop_text_style,
+    };
+    render_sequence_messages(&mut out, &message_ctx);
 
     render_sequence_actor_popup_menus(
         &mut out,

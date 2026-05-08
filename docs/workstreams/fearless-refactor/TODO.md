@@ -309,7 +309,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `architecture/foreign_object.rs`, `architecture/root.rs`, and `architecture/viewport.rs`.
 - [ ] Prefer small render context structs over long parameter lists.
   Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for
-  remaining renderer helpers with repeated long argument lists.
+  remaining renderer helpers with repeated long argument lists. Sequence message, interaction,
+  actor, actor-man glyph, and loop-text helpers now use focused render contexts, and
+  `svg/parity/sequence` no longer needs a module-level `clippy::too_many_arguments` allow.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

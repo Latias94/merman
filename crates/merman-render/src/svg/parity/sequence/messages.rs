@@ -3,25 +3,26 @@ use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use rustc_hash::FxHashMap;
 
-pub(super) fn render_sequence_messages(
-    out: &mut String,
-    model: &SequenceSvgModel,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    measurer: &dyn TextMeasurer,
-    message_align: &str,
-    actor_height: f64,
-    actor_label_font_size: f64,
-    sequence_width: f64,
-    wrap_padding: f64,
-    right_angles: bool,
-    loop_text_style: &TextStyle,
-) {
+pub(super) struct SequenceMessageRenderContext<'a> {
+    pub(super) model: &'a SequenceSvgModel,
+    pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) message_align: &'a str,
+    pub(super) actor_height: f64,
+    pub(super) actor_label_font_size: f64,
+    pub(super) sequence_width: f64,
+    pub(super) wrap_padding: f64,
+    pub(super) right_angles: bool,
+    pub(super) loop_text_style: &'a TextStyle,
+}
+
+pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
     let mut sequence_number_visible = false;
     let mut sequence_number: i64 = 1;
     let mut sequence_number_step: i64 = 1;
 
-    for msg in &model.messages {
+    for msg in &ctx.model.messages {
         match msg.message_type {
             // AUTONUMBER
             26 => {
@@ -45,7 +46,7 @@ pub(super) fn render_sequence_messages(
             continue;
         };
         let edge_id = format!("msg-{}", msg.id);
-        let Some(edge) = edges_by_id.get(edge_id.as_str()).copied() else {
+        let Some(edge) = ctx.edges_by_id.get(edge_id.as_str()).copied() else {
             continue;
         };
         if edge.points.len() < 2 {
@@ -58,10 +59,10 @@ pub(super) fn render_sequence_messages(
         let text = msg.message_text();
         if let Some(lbl) = &edge.label {
             let line_step =
-                sequence_text_overrides::sequence_text_line_step_px(actor_label_font_size);
+                sequence_text_overrides::sequence_text_line_step_px(ctx.actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
-            let (label_x, label_anchor) = match message_align {
+            let (label_x, label_anchor) = match ctx.message_align {
                 "right" => (p1.x - 10.0, "end"),
                 "left" => (p0.x + 10.0, "start"),
                 _ => (lbl.x, "middle"),
@@ -71,13 +72,13 @@ pub(super) fn render_sequence_messages(
                 // vendored metrics are close but can be slightly more conservative in some edge
                 // cases; give message wrapping a bit of extra horizontal slack so line breaks match
                 // upstream Cypress baselines.
-                let wrap_w = (bounded_width + 4.5 * wrap_padding)
-                    .max(sequence_width)
+                let wrap_w = (bounded_width + 4.5 * ctx.wrap_padding)
+                    .max(ctx.sequence_width)
                     .max(1.0);
                 let raw_lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                     text,
-                    measurer,
-                    loop_text_style,
+                    ctx.measurer,
+                    ctx.loop_text_style,
                     wrap_w,
                 );
                 render_sequence_message_text_lines(
@@ -87,7 +88,7 @@ pub(super) fn render_sequence_messages(
                     label_x,
                     label_anchor,
                     line_step,
-                    actor_label_font_size,
+                    ctx.actor_label_font_size,
                 );
             } else {
                 render_sequence_message_text_lines(
@@ -97,7 +98,7 @@ pub(super) fn render_sequence_messages(
                     label_x,
                     label_anchor,
                     line_step,
-                    actor_label_font_size,
+                    ctx.actor_label_font_size,
                 );
             }
         }
@@ -130,11 +131,12 @@ pub(super) fn render_sequence_messages(
         if from == to {
             let startx = p0.x;
             let y = p0.y;
-            let d = if right_angles {
-                let actor_w = nodes_by_id
+            let d = if ctx.right_angles {
+                let actor_w = ctx
+                    .nodes_by_id
                     .get(format!("actor-top-{from}").as_str())
                     .map(|n| n.width)
-                    .unwrap_or(actor_height);
+                    .unwrap_or(ctx.actor_height);
                 let text_dx = edge.label.as_ref().map(|l| l.width / 2.0).unwrap_or(0.0);
                 let dx = (actor_w / 2.0).max(text_dx);
                 format!(

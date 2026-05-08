@@ -11,6 +11,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   for helper and manual bridge detection.
 - Documented the current flowchart degenerate path bridge with owner/removal criteria and refreshed
   `OVERRIDE_FOOTPRINT.md` for the generated-plus-manual report snapshot.
+- Replaced sequence parity renderer long-argument helpers with focused render contexts and removed
+  the sequence module-level `clippy::too_many_arguments` allow while keeping sequence DOM parity
+  green.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

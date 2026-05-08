@@ -2,6 +2,17 @@ use super::super::*;
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use std::collections::VecDeque;
 
+pub(super) struct LoopTextRenderContext<'a> {
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) style: &'a TextStyle,
+}
+
+impl<'a> LoopTextRenderContext<'a> {
+    pub(super) fn new(measurer: &'a dyn TextMeasurer, style: &'a TextStyle) -> Self {
+        Self { measurer, style }
+    }
+}
+
 pub(super) fn display_block_label(raw_label: &str, always_show: bool) -> Option<String> {
     let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw_label);
     let t = decoded.as_ref().trim();
@@ -40,16 +51,15 @@ pub(super) fn wrap_svg_text_lines(
 
 pub(super) fn write_loop_text_lines(
     out: &mut String,
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
+    ctx: &LoopTextRenderContext<'_>,
     x: f64,
     y0: f64,
     max_width: Option<f64>,
     text: &str,
     use_tspan: bool,
 ) {
-    let line_step = sequence_text_overrides::sequence_text_line_step_px(style.font_size);
-    let lines = wrap_svg_text_lines(text, measurer, style, max_width);
+    let line_step = sequence_text_overrides::sequence_text_line_step_px(ctx.style.font_size);
+    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
     for (i, line) in lines.into_iter().enumerate() {
         let y = y0 + (i as f64) * line_step;
         if use_tspan {
@@ -58,7 +68,7 @@ pub(super) fn write_loop_text_lines(
                 r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
                 x = fmt(x),
                 y = fmt(y),
-                fs = fmt(style.font_size),
+                fs = fmt(ctx.style.font_size),
                 text = escape_xml(&line)
             );
         } else {
@@ -67,7 +77,7 @@ pub(super) fn write_loop_text_lines(
                 r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
                 x = fmt(x),
                 y = fmt(y),
-                fs = fmt(style.font_size),
+                fs = fmt(ctx.style.font_size),
                 text = escape_xml(&line)
             );
         }
