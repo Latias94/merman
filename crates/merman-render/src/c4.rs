@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
@@ -304,6 +302,24 @@ struct Rect {
     margin: f64,
 }
 
+struct C4LayoutContext<'a> {
+    model: &'a C4Model,
+    effective_config: &'a Value,
+    conf: &'a C4Conf,
+    c4_shape_in_row: usize,
+    c4_boundary_in_row: usize,
+    measurer: &'a dyn TextMeasurer,
+    boundary_children: &'a HashMap<String, Vec<usize>>,
+    shape_children: &'a HashMap<String, Vec<usize>>,
+}
+
+struct C4LayoutState {
+    boundaries: HashMap<String, C4BoundaryLayout>,
+    shapes: HashMap<String, C4ShapeLayout>,
+    global_max_x: f64,
+    global_max_y: f64,
+}
+
 fn has_sprite(v: &Option<Value>) -> bool {
     v.as_ref().is_some_and(|v| match v {
         Value::Null => false,
@@ -428,23 +444,19 @@ fn intersect_points(from: &Rect, to: &Rect) -> (LayoutPoint, LayoutPoint) {
 fn layout_c4_shape_array(
     current_bounds: &mut BoundsState,
     shape_indices: &[usize],
-    model: &C4Model,
-    effective_config: &Value,
-    conf: &C4Conf,
-    c4_shape_in_row: usize,
-    measurer: &dyn TextMeasurer,
-    out_shapes: &mut HashMap<String, C4ShapeLayout>,
+    ctx: &C4LayoutContext<'_>,
+    state: &mut C4LayoutState,
 ) {
     for idx in shape_indices {
-        let shape = &model.shapes[*idx];
-        let mut y = conf.c4_shape_padding;
+        let shape = &ctx.model.shapes[*idx];
+        let mut y = ctx.conf.c4_shape_padding;
 
         let type_c4_shape = shape.type_c4_shape.as_str().to_string();
-        let mut type_conf = conf.c4_shape_font(effective_config, &type_c4_shape);
+        let mut type_conf = ctx.conf.c4_shape_font(ctx.effective_config, &type_c4_shape);
         type_conf.font_size -= 2.0;
 
         let type_text = format!("«{}»", type_c4_shape);
-        let type_metrics = measurer.measure(&type_text, &type_conf);
+        let type_metrics = ctx.measurer.measure(&type_text, &type_conf);
         let type_block = C4TextBlockLayout {
             text: type_text,
             y,
@@ -472,16 +484,16 @@ fn layout_c4_shape_array(
             y = image.y + image.height;
         }
 
-        let text_wrap = shape.wrap && conf.wrap;
-        let text_limit_width = conf.width - conf.c4_shape_padding * 2.0;
+        let text_wrap = shape.wrap && ctx.conf.wrap;
+        let text_limit_width = ctx.conf.width - ctx.conf.c4_shape_padding * 2.0;
 
-        let mut label_conf = conf.c4_shape_font(effective_config, &type_c4_shape);
+        let mut label_conf = ctx.conf.c4_shape_font(ctx.effective_config, &type_c4_shape);
         label_conf.font_size += 2.0;
         label_conf.font_weight = Some("bold".to_string());
 
         let label_text = shape.label.as_str().to_string();
         let label_m = measure_c4_text(
-            measurer,
+            ctx.measurer,
             &label_text,
             &label_conf,
             text_wrap,
@@ -501,9 +513,9 @@ fn layout_c4_shape_array(
 
         if let Some(ty) = shape.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
             let type_text = format!("[{}]", ty.as_str());
-            let type_conf = conf.c4_shape_font(effective_config, &type_c4_shape);
+            let type_conf = ctx.conf.c4_shape_font(ctx.effective_config, &type_c4_shape);
             let m = measure_c4_text(
-                measurer,
+                ctx.measurer,
                 &type_text,
                 &type_conf,
                 text_wrap,
@@ -534,7 +546,7 @@ fn layout_c4_shape_array(
                 font_weight: None,
             };
             let m = measure_c4_text(
-                measurer,
+                ctx.measurer,
                 &techn_text,
                 &techn_conf,
                 text_wrap,
@@ -557,9 +569,9 @@ fn layout_c4_shape_array(
         let mut descr_block: Option<C4TextBlockLayout> = None;
         if let Some(descr) = shape.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
             let descr_text = descr.as_str().to_string();
-            let descr_conf = conf.c4_shape_font(effective_config, &type_c4_shape);
+            let descr_conf = ctx.conf.c4_shape_font(ctx.effective_config, &type_c4_shape);
             let m = measure_c4_text(
-                measurer,
+                ctx.measurer,
                 &descr_text,
                 &descr_conf,
                 text_wrap,
@@ -578,20 +590,20 @@ fn layout_c4_shape_array(
             descr_block = Some(block);
         }
 
-        rect_width += conf.c4_shape_padding;
+        rect_width += ctx.conf.c4_shape_padding;
 
-        let width = conf.width.max(rect_width);
-        let height = conf.height.max(rect_height);
-        let margin = conf.c4_shape_margin;
+        let width = ctx.conf.width.max(rect_width);
+        let height = ctx.conf.height.max(rect_height);
+        let margin = ctx.conf.c4_shape_margin;
 
         let mut rect = Rect {
             origin: merman_core::geom::point(0.0, 0.0),
             size: merman_core::geom::Size::new(width, height),
             margin,
         };
-        current_bounds.insert_rect(&mut rect, c4_shape_in_row, conf);
+        current_bounds.insert_rect(&mut rect, ctx.c4_shape_in_row, ctx.conf);
 
-        out_shapes.insert(
+        state.shapes.insert(
             shape.alias.clone(),
             C4ShapeLayout {
                 alias: shape.alias.clone(),
@@ -612,33 +624,23 @@ fn layout_c4_shape_array(
         );
     }
 
-    current_bounds.bump_last_margin(conf.c4_shape_margin);
+    current_bounds.bump_last_margin(ctx.conf.c4_shape_margin);
 }
 
 fn layout_inside_boundary(
     parent_bounds: &mut BoundsState,
     boundary_indices: &[usize],
-    model: &C4Model,
-    effective_config: &Value,
-    conf: &C4Conf,
-    c4_shape_in_row: usize,
-    c4_boundary_in_row: usize,
-    measurer: &dyn TextMeasurer,
-    boundary_children: &HashMap<String, Vec<usize>>,
-    shape_children: &HashMap<String, Vec<usize>>,
-    out_boundaries: &mut HashMap<String, C4BoundaryLayout>,
-    out_shapes: &mut HashMap<String, C4ShapeLayout>,
-    global_max_x: &mut f64,
-    global_max_y: &mut f64,
+    ctx: &C4LayoutContext<'_>,
+    state: &mut C4LayoutState,
 ) -> Result<()> {
     let mut current_bounds = BoundsState::default();
 
-    let denom = c4_boundary_in_row.min(boundary_indices.len().max(1));
+    let denom = ctx.c4_boundary_in_row.min(boundary_indices.len().max(1));
     let width_limit = parent_bounds.data.width_limit / denom as f64;
     current_bounds.data.width_limit = width_limit;
 
     for (i, idx) in boundary_indices.iter().enumerate() {
-        let boundary = &model.boundaries[*idx];
+        let boundary = &ctx.model.boundaries[*idx];
         let mut y = 0.0;
 
         let mut image = C4ImageLayout {
@@ -653,13 +655,19 @@ fn layout_inside_boundary(
             y = image.y + image.height;
         }
 
-        let text_wrap = boundary.wrap.unwrap_or(model.wrap) && conf.wrap;
-        let mut label_conf = conf.boundary_font();
+        let text_wrap = boundary.wrap.unwrap_or(ctx.model.wrap) && ctx.conf.wrap;
+        let mut label_conf = ctx.conf.boundary_font();
         label_conf.font_size += 2.0;
         label_conf.font_weight = Some("bold".to_string());
 
         let label_text = boundary.label.as_str().to_string();
-        let label_m = measure_c4_text(measurer, &label_text, &label_conf, text_wrap, width_limit);
+        let label_m = measure_c4_text(
+            ctx.measurer,
+            &label_text,
+            &label_conf,
+            text_wrap,
+            width_limit,
+        );
         let label = C4TextBlockLayout {
             text: label_text,
             y: y + 8.0,
@@ -672,8 +680,8 @@ fn layout_inside_boundary(
         let mut ty_block: Option<C4TextBlockLayout> = None;
         if let Some(ty) = boundary.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
             let ty_text = format!("[{}]", ty.as_str());
-            let ty_conf = conf.boundary_font();
-            let m = measure_c4_text(measurer, &ty_text, &ty_conf, text_wrap, width_limit);
+            let ty_conf = ctx.conf.boundary_font();
+            let m = measure_c4_text(ctx.measurer, &ty_text, &ty_conf, text_wrap, width_limit);
             let block = C4TextBlockLayout {
                 text: ty_text,
                 y: y + 5.0,
@@ -688,9 +696,15 @@ fn layout_inside_boundary(
         let mut descr_block: Option<C4TextBlockLayout> = None;
         if let Some(descr) = boundary.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
             let descr_text = descr.as_str().to_string();
-            let mut descr_conf = conf.boundary_font();
+            let mut descr_conf = ctx.conf.boundary_font();
             descr_conf.font_size -= 2.0;
-            let m = measure_c4_text(measurer, &descr_text, &descr_conf, text_wrap, width_limit);
+            let m = measure_c4_text(
+                ctx.measurer,
+                &descr_text,
+                &descr_conf,
+                text_wrap,
+                width_limit,
+            );
             let block = C4TextBlockLayout {
                 text: descr_text,
                 y: y + 20.0,
@@ -715,15 +729,15 @@ fn layout_inside_boundary(
                 message: "c4: parent bounds missing stopy".to_string(),
             })?;
 
-        if i == 0 || i % c4_boundary_in_row == 0 {
-            let x = parent_startx + conf.diagram_margin_x;
-            let y0 = parent_stopy + conf.diagram_margin_y + y;
+        if i == 0 || i % ctx.c4_boundary_in_row == 0 {
+            let x = parent_startx + ctx.conf.diagram_margin_x;
+            let y0 = parent_stopy + ctx.conf.diagram_margin_y + y;
             current_bounds.set_data(x, x, y0, y0);
         } else {
             let startx = current_bounds.data.startx.unwrap_or(parent_startx);
             let stopx = current_bounds.data.stopx.unwrap_or(startx);
             let x = if stopx != startx {
-                stopx + conf.diagram_margin_x
+                stopx + ctx.conf.diagram_margin_x
             } else {
                 startx
             };
@@ -731,39 +745,15 @@ fn layout_inside_boundary(
             current_bounds.set_data(x, x, y0, y0);
         }
 
-        if let Some(shape_indices) = shape_children.get(&boundary.alias) {
+        if let Some(shape_indices) = ctx.shape_children.get(&boundary.alias) {
             if !shape_indices.is_empty() {
-                layout_c4_shape_array(
-                    &mut current_bounds,
-                    shape_indices,
-                    model,
-                    effective_config,
-                    conf,
-                    c4_shape_in_row,
-                    measurer,
-                    out_shapes,
-                );
+                layout_c4_shape_array(&mut current_bounds, shape_indices, ctx, state);
             }
         }
 
-        if let Some(next_boundaries) = boundary_children.get(&boundary.alias) {
+        if let Some(next_boundaries) = ctx.boundary_children.get(&boundary.alias) {
             if !next_boundaries.is_empty() {
-                layout_inside_boundary(
-                    &mut current_bounds,
-                    next_boundaries,
-                    model,
-                    effective_config,
-                    conf,
-                    c4_shape_in_row,
-                    c4_boundary_in_row,
-                    measurer,
-                    boundary_children,
-                    shape_children,
-                    out_boundaries,
-                    out_shapes,
-                    global_max_x,
-                    global_max_y,
-                )?;
+                layout_inside_boundary(&mut current_bounds, next_boundaries, ctx, state)?;
             }
         }
 
@@ -772,7 +762,7 @@ fn layout_inside_boundary(
         let starty = current_bounds.data.starty.unwrap_or(0.0);
         let stopy = current_bounds.data.stopy.unwrap_or(starty);
 
-        out_boundaries.insert(
+        state.boundaries.insert(
             boundary.alias.clone(),
             C4BoundaryLayout {
                 alias: boundary.alias.clone(),
@@ -788,8 +778,8 @@ fn layout_inside_boundary(
             },
         );
 
-        let stopx_with_margin = stopx + conf.c4_shape_margin;
-        let stopy_with_margin = stopy + conf.c4_shape_margin;
+        let stopx_with_margin = stopx + ctx.conf.c4_shape_margin;
+        let stopy_with_margin = stopy + ctx.conf.c4_shape_margin;
         parent_bounds.data.stopx = Some(
             parent_bounds
                 .data
@@ -805,8 +795,12 @@ fn layout_inside_boundary(
                 .max(stopy_with_margin),
         );
 
-        *global_max_x = global_max_x.max(parent_bounds.data.stopx.unwrap_or(*global_max_x));
-        *global_max_y = global_max_y.max(parent_bounds.data.stopy.unwrap_or(*global_max_y));
+        state.global_max_x = state
+            .global_max_x
+            .max(parent_bounds.data.stopx.unwrap_or(state.global_max_x));
+        state.global_max_y = state
+            .global_max_y
+            .max(parent_bounds.data.stopy.unwrap_or(state.global_max_y));
     }
 
     Ok(())
@@ -839,8 +833,12 @@ pub(crate) fn layout_c4_diagram_typed(
             .push(i);
     }
 
-    let mut out_boundaries: HashMap<String, C4BoundaryLayout> = HashMap::new();
-    let mut out_shapes: HashMap<String, C4ShapeLayout> = HashMap::new();
+    let mut state = C4LayoutState {
+        boundaries: HashMap::new(),
+        shapes: HashMap::new(),
+        global_max_x: conf.diagram_margin_x,
+        global_max_y: conf.diagram_margin_y,
+    };
 
     let mut screen_bounds = BoundsState::default();
     screen_bounds.set_data(
@@ -851,9 +849,6 @@ pub(crate) fn layout_c4_diagram_typed(
     );
     screen_bounds.data.width_limit = viewport_width;
 
-    let mut global_max_x = conf.diagram_margin_x;
-    let mut global_max_y = conf.diagram_margin_y;
-
     let root_boundaries = boundary_children.get("").cloned().unwrap_or_default();
     if root_boundaries.is_empty() {
         return Err(Error::InvalidModel {
@@ -861,25 +856,21 @@ pub(crate) fn layout_c4_diagram_typed(
         });
     }
 
-    layout_inside_boundary(
-        &mut screen_bounds,
-        &root_boundaries,
+    let ctx = C4LayoutContext {
         model,
         effective_config,
-        &conf,
+        conf: &conf,
         c4_shape_in_row,
         c4_boundary_in_row,
         measurer,
-        &boundary_children,
-        &shape_children,
-        &mut out_boundaries,
-        &mut out_shapes,
-        &mut global_max_x,
-        &mut global_max_y,
-    )?;
+        boundary_children: &boundary_children,
+        shape_children: &shape_children,
+    };
 
-    screen_bounds.data.stopx = Some(global_max_x);
-    screen_bounds.data.stopy = Some(global_max_y);
+    layout_inside_boundary(&mut screen_bounds, &root_boundaries, &ctx, &mut state)?;
+
+    screen_bounds.data.stopx = Some(state.global_max_x);
+    screen_bounds.data.stopy = Some(state.global_max_y);
 
     let box_startx = screen_bounds.data.startx.unwrap_or(0.0);
     let box_starty = screen_bounds.data.starty.unwrap_or(0.0);
@@ -898,7 +889,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let mut shape_rects: HashMap<&str, Rect> = HashMap::new();
     for s in model.shapes.iter() {
-        let Some(l) = out_shapes.get(&s.alias) else {
+        let Some(l) = state.shapes.get(&s.alias) else {
             continue;
         };
         shape_rects.insert(
@@ -1000,7 +991,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let mut boundaries_out = Vec::with_capacity(model.boundaries.len());
     for b in &model.boundaries {
-        let Some(l) = out_boundaries.get(&b.alias) else {
+        let Some(l) = state.boundaries.get(&b.alias) else {
             return Err(Error::InvalidModel {
                 message: format!("c4: missing boundary layout for {}", b.alias),
             });
@@ -1010,7 +1001,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let mut shapes_out = Vec::with_capacity(model.shapes.len());
     for s in &model.shapes {
-        let Some(l) = out_shapes.get(&s.alias) else {
+        let Some(l) = state.shapes.get(&s.alias) else {
             return Err(Error::InvalidModel {
                 message: format!("c4: missing shape layout for {}", s.alias),
             });

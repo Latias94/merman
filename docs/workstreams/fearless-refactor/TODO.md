@@ -350,6 +350,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   and font arguments, so `svg/parity/c4.rs` no longer needs a module-level allow. Evidence:
   `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run
   -p merman-render c4`, and `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-decimals 3`.
+  C4 layout recursion now shares `C4LayoutContext` and `C4LayoutState` instead of passing
+  model/config/child-map/output state positionally, so `c4.rs` no longer needs a module-level
+  allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render c4`, and `cargo run -p xtask -- compare-c4-svgs --check-dom
+  --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene
