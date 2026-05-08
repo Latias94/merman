@@ -397,6 +397,9 @@ Progress:
   helper constants.
 - Redundant public Sankey padding component helpers were collapsed into private constants, leaving
   only the actual `showValues`-aware public padding lookup in the helper footprint.
+- Kanban removed a redundant label line-height helper by reusing the existing foreignObject
+  height constant, and XYChart collapsed its bar data-label scale helpers into one public helper,
+  reducing the hand-curated helper footprint to 81.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

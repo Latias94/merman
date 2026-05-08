@@ -3,11 +3,7 @@
 // We use these overrides to keep Mermaid@11.12.2 XYChart bar data-label geometry constants in one
 // place, so SVG parity code does not duplicate the same diagram-specific literals.
 
-pub fn xychart_bar_data_label_char_width_factor() -> f64 {
-    0.7
-}
-
-pub fn xychart_horizontal_bar_data_label_font_height_factor() -> f64 {
+pub fn xychart_bar_data_label_scale_factor() -> f64 {
     0.7
 }
 

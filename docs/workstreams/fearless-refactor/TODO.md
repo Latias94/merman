@@ -427,7 +427,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins. One additional hand-curated `kanban` helper was removed by
-  reusing the existing foreignObject height constant, reducing the helper footprint to 82.
+  reusing the existing foreignObject height constant, and the XYChart bar data-label helpers were
+  collapsed into one public scale helper, reducing the helper footprint to 81.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

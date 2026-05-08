@@ -173,8 +173,8 @@ pub(super) fn render_xychart_diagram_svg(
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
                 if layout.show_data_label {
-                    let char_width_factor =
-                        xychart_text_overrides::xychart_bar_data_label_char_width_factor();
+                    let bar_data_label_scale_factor =
+                        xychart_text_overrides::xychart_bar_data_label_scale_factor();
 
                     #[derive(Clone)]
                     struct BarItem<'a> {
@@ -210,10 +210,8 @@ pub(super) fn render_xychart_diagram_svg(
 
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
-                                let mut fs = item.rect.height
-                                    * xychart_text_overrides::
-                                        xychart_horizontal_bar_data_label_font_height_factor();
-                                while !fits(item, fs, char_width_factor) && fs > 0.0 {
+                                let mut fs = item.rect.height * bar_data_label_scale_factor;
+                                while !fits(item, fs, bar_data_label_scale_factor) && fs > 0.0 {
                                     fs -= 1.0;
                                 }
                                 min_font = min_font.min(fs);
@@ -268,13 +266,16 @@ pub(super) fn render_xychart_diagram_svg(
 
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
-                                let denom = (item.label.chars().count() as f64) * char_width_factor;
+                                let denom = (item.label.chars().count() as f64)
+                                    * bar_data_label_scale_factor;
                                 let mut fs = if denom <= 0.0 {
                                     0.0
                                 } else {
                                     item.rect.width / denom
                                 };
-                                while !fits(item, fs, char_width_factor, y_offset) && fs > 0.0 {
+                                while !fits(item, fs, bar_data_label_scale_factor, y_offset)
+                                    && fs > 0.0
+                                {
                                     fs -= 1.0;
                                 }
                                 min_font = min_font.min(fs);
@@ -415,11 +416,7 @@ mod tests {
     #[test]
     fn xychart_bar_data_label_constants_are_generated() {
         assert_eq!(
-            xychart_text_overrides::xychart_bar_data_label_char_width_factor(),
-            0.7
-        );
-        assert_eq!(
-            xychart_text_overrides::xychart_horizontal_bar_data_label_font_height_factor(),
+            xychart_text_overrides::xychart_bar_data_label_scale_factor(),
             0.7
         );
         assert_eq!(

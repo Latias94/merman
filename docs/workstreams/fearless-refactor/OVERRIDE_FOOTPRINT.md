@@ -114,7 +114,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `82`.
+Total helper functions reported by `xtask`: `81`.
 
 | file | helper functions |
 | --- | ---: |
@@ -127,7 +127,7 @@ Total helper functions reported by `xtask`: `82`.
 | `sankey_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 10 |
 | `treemap_text_overrides_11_12_2.rs` | 11 |
-| `xychart_text_overrides_11_12_2.rs` | 4 |
+| `xychart_text_overrides_11_12_2.rs` | 3 |
 
 ### Manual Raw SVG/Path Bridges
 
