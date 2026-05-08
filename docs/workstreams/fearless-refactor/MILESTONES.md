@@ -394,6 +394,8 @@ Progress:
   functions under `svg/parity` in addition to generated override modules.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
   metadata for generated override categories and manual raw SVG/path bridge categories.
+- `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
+  `xtask verify --strict` includes that override-growth gate.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 
@@ -401,6 +403,7 @@ Exit criteria:
 
 - Override footprint is reported and tracked.
 - Temporary and generated override categories have owners and removal conditions.
+- Override table growth fails the strict gate unless the no-growth budget is intentionally updated.
 - New model fixes are preferred over new overrides unless browser/font probing proves otherwise.
 
 ## M6: Release Readiness

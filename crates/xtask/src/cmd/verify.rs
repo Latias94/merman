@@ -7,6 +7,7 @@ use std::process::Command;
 struct VerifyOptions {
     clippy: bool,
     all_features: bool,
+    check_overrides: bool,
 }
 
 pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
@@ -19,9 +20,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             match arg.as_str() {
                 "--clippy" => options.clippy = true,
                 "--all-features" => options.all_features = true,
+                "--check-overrides" => options.check_overrides = true,
                 "--strict" => {
                     options.clippy = true;
                     options.all_features = true;
+                    options.check_overrides = true;
                 }
                 "--help" | "-h" => {
                     print_verify_usage();
@@ -35,7 +38,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     fn print_verify_usage() {
-        println!("usage: xtask verify [--clippy] [--all-features] [--strict]");
+        println!("usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--strict]");
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
@@ -46,7 +49,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
-        println!("  --strict        shorthand for --clippy --all-features");
+        println!("  --check-overrides");
+        println!("                  fail if generated/manual override counts grow beyond budget");
+        println!("  --strict        shorthand for --clippy --all-features --check-overrides");
     }
 
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -113,6 +118,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             "cargo clippy --workspace --all-targets -- -D warnings"
         };
         run_checked(what, &mut clippy_cmd)?;
+    }
+
+    if options.check_overrides {
+        println!("\n== override growth budget ==");
+        cmd::report_overrides(vec!["--check-no-growth".to_string()])?;
     }
 
     println!("\n== cargo nextest ==");

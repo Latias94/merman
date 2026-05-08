@@ -532,17 +532,28 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     gen_upstream_svgs(gen_args)?;
 
-    #[allow(clippy::too_many_arguments)]
-    fn check_one(
-        workspace_root: &Path,
-        baseline_root: &Path,
-        out_root: &Path,
-        diagram: &str,
-        filter: Option<&str>,
+    struct UpstreamSvgCheck<'a> {
+        workspace_root: &'a Path,
+        baseline_root: &'a Path,
+        out_root: &'a Path,
+        diagram: &'a str,
+        filter: Option<&'a str>,
         check_dom: bool,
         dom_mode: svgdom::DomMode,
         dom_decimals: u32,
-    ) -> Result<(), XtaskError> {
+    }
+
+    fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
+        let UpstreamSvgCheck {
+            workspace_root,
+            baseline_root,
+            out_root,
+            diagram,
+            filter,
+            check_dom,
+            dom_mode,
+            dom_decimals,
+        } = ctx;
         let fixtures_dir = workspace_root.join("fixtures").join(diagram);
         let baseline_dir = baseline_root.join(diagram);
         let out_dir = out_root.join(diagram);
@@ -747,16 +758,16 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "radar",
                 "treemap",
             ] {
-                if let Err(err) = check_one(
-                    &workspace_root,
-                    &baseline_root,
-                    &out_root,
-                    d,
+                if let Err(err) = check_one(UpstreamSvgCheck {
+                    workspace_root: &workspace_root,
+                    baseline_root: &baseline_root,
+                    out_root: &out_root,
+                    diagram: d,
                     filter,
                     check_dom,
-                    parsed_dom_mode,
+                    dom_mode: parsed_dom_mode,
                     dom_decimals,
-                ) {
+                }) {
                     failures.push(format!("{d}: {err}"));
                 }
             }
@@ -769,16 +780,16 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
         | "block" | "radar" | "quadrantchart" | "treemap" | "mindmap" | "architecture" => {
-            check_one(
-                &workspace_root,
-                &baseline_root,
-                &out_root,
-                diagram.as_str(),
+            check_one(UpstreamSvgCheck {
+                workspace_root: &workspace_root,
+                baseline_root: &baseline_root,
+                out_root: &out_root,
+                diagram: diagram.as_str(),
                 filter,
                 check_dom,
-                parsed_dom_mode,
+                dom_mode: parsed_dom_mode,
                 dom_decimals,
-            )
+            })
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
             "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, all)"

@@ -60,6 +60,18 @@ impl OverrideCategory {
         }
     }
 
+    fn no_growth_budget(self) -> usize {
+        match self {
+            OverrideCategory::RootViewport => 1574,
+            OverrideCategory::TextLookup => 567,
+            OverrideCategory::SvgTextMetrics => 184,
+            OverrideCategory::FontMetrics => 3774,
+            OverrideCategory::TypeTextLength => 17,
+            OverrideCategory::HandCuratedHelpers => 90,
+            OverrideCategory::RawPathBridge => 1,
+        }
+    }
+
     fn metadata(self) -> OverrideCategoryMetadata {
         match self {
             OverrideCategory::RootViewport => OverrideCategoryMetadata {
@@ -117,12 +129,30 @@ struct OverrideFootprintEntry {
 }
 
 pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
-    if args.iter().any(|a| matches!(a.as_str(), "--help" | "-h")) {
-        println!("usage: xtask report-overrides");
+    let mut check_no_growth = false;
+
+    for arg in args {
+        match arg.as_str() {
+            "--check-no-growth" => check_no_growth = true,
+            "--help" | "-h" => {
+                println!("usage: xtask report-overrides [--check-no-growth]");
+                println!();
+                println!("Prints a parity override footprint inventory.");
+                println!("This is intended for CI logs and drift reviews.");
+                println!();
+                println!("Options:");
+                println!(
+                    "  --check-no-growth  fail if any category grows beyond the explicit budget"
+                );
+                return Ok(());
+            }
+            _ => return Err(XtaskError::Usage),
+        }
+    }
+
+    if check_no_growth {
+        println!("Override growth budget: enabled");
         println!();
-        println!("Prints a parity override footprint inventory.");
-        println!("This is intended for CI logs and drift reviews.");
-        return Ok(());
     }
 
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -169,6 +199,12 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         print_category(&entries, category);
     }
 
+    if check_no_growth {
+        check_override_no_growth(&entries)?;
+        println!("Override growth check: ok");
+        println!();
+    }
+
     println!("Notes:");
     println!("- Counts are inventory units and are not directly comparable across categories.");
     println!(
@@ -179,6 +215,30 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     println!("- Table rows count tuple rows in generated font/SVG metric arrays.");
 
     Ok(())
+}
+
+fn check_override_no_growth(entries: &[OverrideFootprintEntry]) -> Result<(), XtaskError> {
+    let mut failures = Vec::new();
+    for category in OverrideCategory::ALL {
+        let total = category_total(entries, category);
+        let budget = category.no_growth_budget();
+        if total > budget {
+            failures.push(format!(
+                "{} grew to {total} {}, budget {budget}",
+                category.heading(),
+                category.total_unit()
+            ));
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(XtaskError::VerifyFailed(format!(
+        "override footprint grew beyond the explicit no-growth budget:\n{}",
+        failures.join("\n")
+    )))
 }
 
 fn collect_generated_override_footprint_entries(
@@ -371,6 +431,14 @@ fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory
     println!();
 }
 
+fn category_total(entries: &[OverrideFootprintEntry], category: OverrideCategory) -> usize {
+    entries
+        .iter()
+        .filter(|entry| entry.category == category)
+        .map(|entry| entry.count)
+        .sum()
+}
+
 fn read_text(path: &Path) -> Result<String, XtaskError> {
     fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),
@@ -424,7 +492,8 @@ fn count_matches(re: &Regex, text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        OverrideCategory, count_manual_bridge_functions, count_public_functions, report_path_name,
+        OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
+        count_manual_bridge_functions, count_public_functions, report_path_name,
     };
     use std::path::Path;
 
@@ -491,5 +560,35 @@ fn private_helper() {}
             assert!(!metadata.allowed_use.is_empty());
             assert!(!metadata.expected_removal.is_empty());
         }
+    }
+
+    #[test]
+    fn override_growth_check_allows_current_budget() {
+        let entries: Vec<_> = OverrideCategory::ALL
+            .into_iter()
+            .map(|category| OverrideFootprintEntry {
+                file_name: category.heading().to_string(),
+                category,
+                count: category.no_growth_budget(),
+                unit: category.total_unit(),
+            })
+            .collect();
+
+        assert!(check_override_no_growth(&entries).is_ok());
+    }
+
+    #[test]
+    fn override_growth_check_rejects_category_growth() {
+        let entries = [OverrideFootprintEntry {
+            file_name: "flowchart_root_overrides_11_12_2.rs".to_string(),
+            category: OverrideCategory::RootViewport,
+            count: OverrideCategory::RootViewport.no_growth_budget() + 1,
+            unit: "entries",
+        }];
+
+        let err = check_override_no_growth(&entries).expect_err("growth should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("Root viewport overrides grew"));
+        assert!(msg.contains("budget 1574"));
     }
 }

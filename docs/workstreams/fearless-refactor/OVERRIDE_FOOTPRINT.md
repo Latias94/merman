@@ -23,6 +23,11 @@ Manual raw SVG/path bridge files scanned: `1`.
 metadata before each count table. This keeps removal criteria visible in CI logs and drift reviews,
 not only in policy prose.
 
+The same category totals are encoded as no-growth budgets in
+`cargo run -p xtask -- report-overrides --check-no-growth`, which is part of the strict release
+gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
+escape hatch.
+
 | category | owner | expected removal |
 | --- | --- | --- |
 | Root viewport overrides | render parity workstream | Delete entries once typed layout/emitted bounds can derive the same root viewport or a baseline upgrade removes the pinned behavior. |

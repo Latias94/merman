@@ -23,6 +23,19 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3
 
 Use narrower `compare-*` commands when the change touches only one diagram family.
 
+## Override Gate
+
+Use this when a change touches generated override data, manual raw SVG/path bridges, or text
+measurement fallback tables:
+
+```sh
+cargo run -p xtask -- report-overrides --check-no-growth
+```
+
+The gate fails when any override category grows beyond the explicit budget encoded in
+`xtask report-overrides`. Real growth is allowed only when the budget and
+`OVERRIDE_FOOTPRINT.md` are updated with reviewable evidence.
+
 ## Performance Gate
 
 Use this when the change is meant to reduce allocations or render time:
@@ -42,4 +55,4 @@ cargo run -p xtask -- verify --strict
 ```
 
 This is the release-level superset of the other gates and includes fmt, all-features check,
-workspace clippy, nextest, and SVG DOM parity.
+workspace clippy, override no-growth, nextest, and SVG DOM parity.

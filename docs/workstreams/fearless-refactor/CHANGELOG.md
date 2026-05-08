@@ -11,6 +11,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed dead xtask debug/generator helpers, including unused state analyzer geometry, an obsolete
   font-metrics browser char-width helper, a stale flowchart width estimator, and an unused SVG
   override scratch struct.
+- Added an override no-growth budget gate to `xtask report-overrides` and wired it into
+  `xtask verify --strict` so new override growth must be explicit.
+- Replaced `check-upstream-svgs`' long-argument helper with a request struct, removing the last
+  `clippy::too_many_arguments` allow from `xtask` source.
 - Expanded `xtask report-overrides` to inventory hand-authored `maybe_override_*` raw SVG/path
   bridge functions under `svg/parity`, with stable `/` paths in report output.
 - Fixed override helper-function counting in `xtask report-overrides` and added regression tests

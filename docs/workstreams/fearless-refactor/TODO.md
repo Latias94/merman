@@ -415,7 +415,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   metadata for every generated override category and manual raw SVG/path bridge category, with a
   regression test guarding generated category removal metadata.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-- [ ] Prevent override tables from becoming the default fix for model bugs.
+- [x] Prevent override tables from becoming the default fix for model bugs.
+  Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
+  category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.
+  `OVERRIDE_POLICY.md` requires model/layout/sanitizer/DOM-order analysis before raising a budget.
 
 ## P2: Performance and Allocation
 

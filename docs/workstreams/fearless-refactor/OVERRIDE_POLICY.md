@@ -27,6 +27,11 @@ Each generated override category should have an expected removal trigger. Typica
 better vendored font table, a browser-probe import, a typed model/layout fix that can derive the
 value honestly, or a Mermaid baseline upgrade that removes the pinned behavior.
 
+Generated/manual override counts are guarded by a no-growth budget in `xtask report-overrides`.
+Adding entries should be exceptional: first show why the mismatch is not a parser, typed model,
+layout, sanitizer, escaping, or DOM-order bug. If the override is still the right fix, update the
+budget and `OVERRIDE_FOOTPRINT.md` in the same change so review sees the intentional debt increase.
+
 ## Allowed Text Width Overrides
 
 A text width override is allowed only when all of these are true:
@@ -79,6 +84,8 @@ A raw SVG/path bridge is allowed only when all of these are true:
   include nearby owner/removal notes.
 - When a new generated override category is added, update `xtask report-overrides` so the footprint
   remains visible in `OVERRIDE_FOOTPRINT.md`.
+- When an existing override category grows, update the explicit no-growth budget in
+  `xtask report-overrides` only with the evidence checklist below.
 
 ## Evidence Checklist
 
@@ -90,7 +97,9 @@ Before adding or regenerating text width overrides:
 3. Add or extend a focused test near the lookup owner.
 4. Run the narrow render gate for the touched diagram family.
 5. Update `OVERRIDE_FOOTPRINT.md` when generated-module counts change.
-6. Prefer deleting stale entries in the same patch when the new model makes them unnecessary.
+6. Update the `xtask report-overrides --check-no-growth` budget only when the new entries are
+   intentional and reviewable.
+7. Prefer deleting stale entries in the same patch when the new model makes them unnecessary.
 
 Before adding a manual raw SVG/path bridge:
 
