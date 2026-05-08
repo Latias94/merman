@@ -412,6 +412,8 @@ Progress:
   section inner padding for value inset and label/value gap, reducing the helper footprint to 73.
 - Journey now reuses its legend circle radius for text baseline alignment and its viewBox top
   padding for title y-position, reducing the helper footprint to 71.
+- Sequence now derives separator self-message y expansion from the existing frame envelope
+  expansion, reducing the helper footprint to 70.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

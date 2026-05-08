@@ -271,6 +271,6 @@ fn msg_y_range_for_separators(
         edges_by_id,
         msg_endpoints,
         msg_id,
-        sequence_text_overrides::sequence_self_message_separator_extra_y_px(),
+        sequence_text_overrides::sequence_self_message_frame_extra_y_px() / 2.0,
     )
 }

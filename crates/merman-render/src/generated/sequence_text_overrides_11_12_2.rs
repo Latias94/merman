@@ -23,10 +23,6 @@ pub fn sequence_self_message_frame_extra_y_px() -> f64 {
     60.0
 }
 
-pub fn sequence_self_message_separator_extra_y_px() -> f64 {
-    30.0
-}
-
 pub fn sequence_frame_side_pad_px() -> f64 {
     11.0
 }

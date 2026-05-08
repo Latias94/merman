@@ -2110,10 +2110,6 @@ mod tests {
             sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
             60.0
         );
-        assert_eq!(
-            sequence_text_overrides::sequence_self_message_separator_extra_y_px(),
-            30.0
-        );
         assert_eq!(sequence_text_overrides::sequence_frame_side_pad_px(), 11.0);
         assert_eq!(sequence_text_overrides::sequence_frame_geom_pad_px(), 10.0);
         assert_eq!(

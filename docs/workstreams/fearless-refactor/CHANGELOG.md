@@ -25,6 +25,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   them from existing layout constants, reducing the hand-curated helper footprint to 73.
 - Removed two derived Journey helpers by reusing the legend circle radius for legend text baseline
   alignment and the viewBox top padding for title y-position, reducing the helper footprint to 71.
+- Removed the derived Sequence self-message separator extra-y helper by computing it from the
+  existing frame envelope extra-y value, reducing the helper footprint to 70.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and
