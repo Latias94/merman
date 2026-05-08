@@ -69,6 +69,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   compatibility layout/render boundaries.
 - Documented generated override parity as narrow Mermaid `@11.12.3` browser/export facts with
   explicit removal triggers.
+- Added `TYPED_RENDERER_GUIDE.md` to document the standard checklist for new typed diagram renderer
+  migrations.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.
