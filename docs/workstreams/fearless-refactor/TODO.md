@@ -341,6 +341,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p merman-render timeline`, and `cargo run -p xtask -- compare-timeline-svgs
   --check-dom --dom-decimals 3`.
+  Sequence block frame width planning now uses a `BlockFrameWidthContext` instead of repeating
+  actor/message/text-measurement inputs, so `sequence.rs` no longer needs a module-level allow.
+  Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo
+  nextest run -p merman-render sequence`, and `cargo run -p xtask -- compare-sequence-svgs
+  --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

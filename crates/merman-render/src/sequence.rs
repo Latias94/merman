@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
@@ -563,31 +561,33 @@ pub fn layout_sequence_diagram_typed(
         Some((cx - w / 2.0, cx + w / 2.0))
     }
 
-    fn block_frame_width(
-        message_ids: &[String],
-        msg_by_id: &std::collections::HashMap<&str, &SequenceMessage>,
-        actor_index: &std::collections::HashMap<&str, usize>,
-        actor_centers_x: &[f64],
-        actor_widths: &[f64],
+    #[derive(Clone, Copy)]
+    struct BlockFrameWidthContext<'a> {
+        msg_by_id: &'a std::collections::HashMap<&'a str, &'a SequenceMessage>,
+        actor_index: &'a std::collections::HashMap<&'a str, usize>,
+        actor_centers_x: &'a [f64],
+        actor_widths: &'a [f64],
         message_margin: f64,
         box_text_margin: f64,
         bottom_margin_adj: f64,
-        measurer: &dyn TextMeasurer,
-        msg_text_style: &TextStyle,
+        measurer: &'a dyn TextMeasurer,
+        msg_text_style: &'a TextStyle,
         message_width_scale: f64,
-    ) -> Option<f64> {
+    }
+
+    fn block_frame_width(message_ids: &[String], ctx: BlockFrameWidthContext<'_>) -> Option<f64> {
         let mut actor_idxs: Vec<usize> = Vec::new();
         for msg_id in message_ids {
-            let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
+            let Some(msg) = ctx.msg_by_id.get(msg_id.as_str()).copied() else {
                 continue;
             };
             let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
                 continue;
             };
-            if let Some(i) = actor_index.get(from).copied() {
+            if let Some(i) = ctx.actor_index.get(from).copied() {
                 actor_idxs.push(i);
             }
-            if let Some(i) = actor_index.get(to).copied() {
+            if let Some(i) = ctx.actor_index.get(to).copied() {
                 actor_idxs.push(i);
             }
         }
@@ -599,30 +599,32 @@ pub fn layout_sequence_diagram_typed(
 
         if actor_idxs.len() == 1 {
             let i = actor_idxs[0];
-            let actor_w = actor_widths.get(i).copied().unwrap_or(150.0);
-            let half_width =
-                actor_w / 2.0 + (message_margin / 2.0) + box_text_margin + bottom_margin_adj;
+            let actor_w = ctx.actor_widths.get(i).copied().unwrap_or(150.0);
+            let half_width = actor_w / 2.0
+                + (ctx.message_margin / 2.0)
+                + ctx.box_text_margin
+                + ctx.bottom_margin_adj;
             let w = (2.0 * half_width).max(1.0);
             return Some(w);
         }
 
         let min_i = actor_idxs.first().copied()?;
         let max_i = actor_idxs.last().copied()?;
-        let mut x1 = actor_centers_x[min_i] - 11.0;
-        let mut x2 = actor_centers_x[max_i] + 11.0;
+        let mut x1 = ctx.actor_centers_x[min_i] - 11.0;
+        let mut x2 = ctx.actor_centers_x[max_i] + 11.0;
 
         // Expand multi-actor blocks to include overflowing message labels (e.g. long self messages).
         for msg_id in message_ids {
-            let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
+            let Some(msg) = ctx.msg_by_id.get(msg_id.as_str()).copied() else {
                 continue;
             };
             let Some((l, r)) = message_span_x(
                 msg,
-                actor_index,
-                actor_centers_x,
-                measurer,
-                msg_text_style,
-                message_width_scale,
+                ctx.actor_index,
+                ctx.actor_centers_x,
+                ctx.measurer,
+                ctx.msg_text_style,
+                ctx.message_width_scale,
             ) else {
                 continue;
             };
@@ -668,6 +670,19 @@ pub fn layout_sequence_diagram_typed(
         },
     }
 
+    let block_frame_width_ctx = BlockFrameWidthContext {
+        msg_by_id: &msg_by_id,
+        actor_index: &actor_index,
+        actor_centers_x: &actor_centers_x,
+        actor_widths: &actor_widths,
+        message_margin,
+        box_text_margin,
+        bottom_margin_adj,
+        measurer,
+        msg_text_style: &msg_text_style,
+        message_width_scale,
+    };
+
     let mut directive_steps: std::collections::HashMap<String, f64> =
         std::collections::HashMap::new();
     let mut stack: Vec<BlockStackEntry> = Vec::new();
@@ -698,19 +713,7 @@ pub fn layout_sequence_diagram_typed(
 
                     if raw_label.trim().is_empty() {
                         directive_steps.insert(start_id, block_base_step_empty);
-                    } else if let Some(w) = block_frame_width(
-                        &messages,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    } else if let Some(w) = block_frame_width(&messages, block_frame_width_ctx) {
                         let label = block_label_text(&raw_label);
                         let metrics = measurer.measure_wrapped(
                             &label,
@@ -748,19 +751,7 @@ pub fn layout_sequence_diagram_typed(
                     end_step = if has_self { 40.0 } else { block_end_step };
                     if raw_label.trim().is_empty() {
                         directive_steps.insert(start_id, block_base_step_empty);
-                    } else if let Some(w) = block_frame_width(
-                        &messages,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    } else if let Some(w) = block_frame_width(&messages, block_frame_width_ctx) {
                         let label = block_label_text(&raw_label);
                         let metrics = measurer.measure_wrapped(
                             &label,
@@ -797,19 +788,7 @@ pub fn layout_sequence_diagram_typed(
                     end_step = if has_self { 40.0 } else { block_end_step };
                     if raw_label.trim().is_empty() {
                         directive_steps.insert(start_id, block_base_step_empty);
-                    } else if let Some(w) = block_frame_width(
-                        &messages,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    } else if let Some(w) = block_frame_width(&messages, block_frame_width_ctx) {
                         let label = block_label_text(&raw_label);
                         let metrics = measurer.measure_wrapped(
                             &label,
@@ -857,19 +836,7 @@ pub fn layout_sequence_diagram_typed(
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
                     }
-                    if let Some(w) = block_frame_width(
-                        &message_ids,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    if let Some(w) = block_frame_width(&message_ids, block_frame_width_ctx) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
                             let is_empty = raw.trim().is_empty();
                             if is_empty {
@@ -932,19 +899,7 @@ pub fn layout_sequence_diagram_typed(
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
                     }
-                    if let Some(w) = block_frame_width(
-                        &message_ids,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    if let Some(w) = block_frame_width(&message_ids, block_frame_width_ctx) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
                             let is_empty = raw.trim().is_empty();
                             if is_empty {
@@ -1007,19 +962,7 @@ pub fn layout_sequence_diagram_typed(
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
                     }
-                    if let Some(w) = block_frame_width(
-                        &message_ids,
-                        &msg_by_id,
-                        &actor_index,
-                        &actor_centers_x,
-                        &actor_widths,
-                        message_margin,
-                        box_text_margin,
-                        bottom_margin_adj,
-                        measurer,
-                        &msg_text_style,
-                        message_width_scale,
-                    ) {
+                    if let Some(w) = block_frame_width(&message_ids, block_frame_width_ctx) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
                             let is_empty = raw.trim().is_empty();
                             if is_empty {

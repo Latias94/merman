@@ -29,6 +29,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Replaced timeline node layout's positional content/geometry/text arguments with
   `TimelineNodeRequest` and removed the `timeline` module-level `clippy::too_many_arguments`
   allow.
+- Bundled sequence block frame width planning inputs into `BlockFrameWidthContext` and removed the
+  `sequence` module-level `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.
