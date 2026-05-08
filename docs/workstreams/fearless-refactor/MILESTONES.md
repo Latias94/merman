@@ -288,6 +288,10 @@ Progress:
   `svg/parity/class/viewbox.rs`.
 - Extracted architecture JSON/typed render-model access into
   `svg/parity/architecture/model.rs`.
+- Extracted architecture render settings, CSS construction, and theme/config-derived text style
+  setup into `svg/parity/architecture/settings.rs`.
+- Extracted architecture service, junction, and group SVG emission into
+  `svg/parity/architecture/nodes.rs`.
 - Extracted architecture foreignObject XHTML normalization and entity-safe ampersand escaping into
   `svg/parity/architecture/foreign_object.rs`, with its normalization tests colocated there.
 - Extracted architecture built-in icon SVG bodies into `svg/parity/architecture/icons.rs`.
@@ -295,13 +299,17 @@ Progress:
   `svg/parity/architecture/labels.rs`.
 - Extracted architecture edge direction/arrow helpers, shared bounds helpers, and recursive group
   rectangle computation into `svg/parity/architecture/geometry.rs`.
+- Extracted architecture edge bounds accumulation and DOM emission into
+  `svg/parity/architecture/edges.rs`.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.
+- Extracted architecture root viewport finalization, profile calibration, `f32` snapping, and
+  generated root override replacement into `svg/parity/architecture/viewport.rs`.
 - Class and sequence renderer splits are complete for the current scope: `class/render.rs` and
   `sequence/render.rs` are thin orchestration boundaries over dedicated owner modules.
-- Architecture remains the active renderer decomposition target; root viewport calibration and
-  CSS/theme ownership still need final module boundaries.
+- Architecture renderer split is now complete for the current scope; keep any follow-up cleanup
+  under M5 if future profiling or navigation reveals new dead code.
 
 Exit criteria:
 

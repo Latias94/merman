@@ -46,6 +46,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   keeping the semantic JSON parse API stable.
 - Render performance: avoid rebuilding `MermaidConfig` in class typed/config layout and render
   paths, and avoid cloning the sequence typed render model for title fallback.
+- Architecture renderer: move render settings/CSS derivation, service/group node emission, edge
+  bounds/DOM emission, and root viewport finalization into dedicated modules while preserving SVG
+  parity.
 - Flowchart layout: borrow normal edges during self-loop expansion and keep ownership only for
   generated helper edges.
 - Flowchart self-loops: share explicit helper-edge construction between layout and SVG rendering

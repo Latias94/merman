@@ -271,21 +271,30 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `sequence/render.rs` is now a thin orchestration layer; actors, messages, notes,
   blocks, activations, interactions, root, settings, CSS, and model helpers live in dedicated
   `sequence/*` modules.
-- [ ] Split `svg/parity/architecture.rs`.
+- [x] Split `svg/parity/architecture.rs`.
   Proposed boundaries:
   - typed model extraction (JSON and typed render-model access now live in
     `architecture/model.rs`)
+  - CSS/theme/settings derivation (CSS construction, icon/padding/font/useMaxWidth settings, and
+    text style derivation now live in `architecture/settings.rs`; root `<style>` emission remains
+    in `architecture/root.rs`)
   - service/group layout emission (group rectangle recursion and shared bounds helpers now live in
-    `architecture/geometry.rs`)
-  - edge rendering (direction, arrow, and edge-id helpers now live in `architecture/geometry.rs`)
+    `architecture/geometry.rs`; service, junction, and group SVG emission now lives in
+    `architecture/nodes.rs`)
+  - edge rendering (direction, arrow, and edge-id helpers now live in `architecture/geometry.rs`;
+    edge bounds accumulation and edge DOM emission now live in `architecture/edges.rs`)
   - icon/text XHTML normalization (foreignObject XHTML normalization and entity-safe ampersand
     escaping now live in `architecture/foreign_object.rs`; built-in icon SVG bodies now live in
     `architecture/icons.rs`; SVG label wrapping/text emission now lives in
     `architecture/labels.rs`)
   - root/viewBox handling (SVG root opening, accessibility title/description emission, empty
     diagram fallback sizing, and root viewBox/max-width placeholders now live in
-    `architecture/root.rs`; root viewport calibration still needs a dedicated owner)
-  - CSS/theme emission
+    `architecture/root.rs`; root viewport finalization, profile calibration, f32 snapping, and
+    generated root override replacement now live in `architecture/viewport.rs`)
+  Evidence: `architecture.rs` is now an orchestration layer over `architecture/model.rs`,
+  `architecture/settings.rs`, `architecture/nodes.rs`, `architecture/edges.rs`,
+  `architecture/geometry.rs`, `architecture/labels.rs`, `architecture/icons.rs`,
+  `architecture/foreign_object.rs`, `architecture/root.rs`, and `architecture/viewport.rs`.
 - [ ] Prefer small render context structs over long parameter lists.
   Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for
   remaining renderer helpers with repeated long argument lists.
