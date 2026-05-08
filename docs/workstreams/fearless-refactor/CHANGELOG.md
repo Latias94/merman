@@ -13,6 +13,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Added dedicated C4/XYChart cross-repo end-to-end and stage spotcheck reports at
   `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and
   `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
+- Added a Mindmap/Architecture/C4 stage spotcheck at
+  `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`, confirming
+  Architecture layout and C4 parse remain the largest current cross-repo stage gaps.
+- Pruned the Architecture layout JSON compatibility model by deleting unused node/edge fields and
+  the unused top-level group separation helper while keeping workspace clippy, nextest, and
+  Architecture DOM parity green.
 - Removed the final manual raw SVG/path bridge by collapsing the flowchart degenerate
   subgraph-descendant route into generic single-point path emission; `xtask report-overrides` now
   reports zero manual bridge files.

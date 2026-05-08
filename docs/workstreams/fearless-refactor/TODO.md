@@ -370,6 +370,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   architecture`, and `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-decimals
   3`.
+  The legacy Architecture JSON compatibility model in `architecture.rs` was also trimmed of unused
+  node/edge fields, and the unused top-level group separation helper was deleted while keeping the
+  same clippy/nextest/DOM gates green.
   Class marker defs now use `MarkerContext` / `MarkerSpec` instead of long helper argument lists,
   so `svg/parity/class` no longer needs a module-level allow. Evidence: `cargo clippy -p
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render

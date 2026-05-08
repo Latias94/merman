@@ -156,6 +156,11 @@ Progress:
 - C4/XYChart cross-repo end-to-end comparison evidence is recorded in
   `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md`, and stage attribution is
   recorded in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`.
+- Mindmap/Architecture/C4 stage attribution is recorded in
+  `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`; Architecture
+  layout and C4 parse remain the biggest current cross-repo stage gaps.
+- Architecture layout's legacy JSON compatibility model has been trimmed of unused fields, and the
+  dead top-level group separation helper was removed without disturbing DOM parity.
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero
   manual bridge files.
 - Same-machine baseline capture remains a process requirement for future typed migrations.
