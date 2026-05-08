@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
@@ -259,17 +257,37 @@ pub(super) fn render_journey_diagram_svg_model(
         }
     }
 
-    fn write_text_candidate(
-        out: &mut String,
-        content: &str,
-        class: &str,
+    #[derive(Debug, Clone, Copy)]
+    struct JourneyTextBox {
         x: f64,
         y: f64,
         width: f64,
         height: f64,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct JourneyTextStyle<'a> {
         task_font_size: f64,
-        task_font_family: &str,
+        task_font_family: &'a str,
+    }
+
+    fn write_text_candidate(
+        out: &mut String,
+        content: &str,
+        class: &str,
+        text_box: JourneyTextBox,
+        style: JourneyTextStyle<'_>,
     ) {
+        let JourneyTextBox {
+            x,
+            y,
+            width,
+            height,
+        } = text_box;
+        let JourneyTextStyle {
+            task_font_size,
+            task_font_family,
+        } = style;
         let content_esc = escape_xml(content);
         let class_esc = escape_attr(class);
         let font_family_esc = escape_attr(task_font_family);
@@ -442,12 +460,16 @@ pub(super) fn render_journey_diagram_svg_model(
                 &mut out,
                 &section.section,
                 &section_class,
-                section.x,
-                section.y,
-                section.width,
-                section.height,
-                task_font_size,
-                task_font_family,
+                JourneyTextBox {
+                    x: section.x,
+                    y: section.y,
+                    width: section.width,
+                    height: section.height,
+                },
+                JourneyTextStyle {
+                    task_font_size,
+                    task_font_family,
+                },
             );
             out.push_str("</g>");
         }
@@ -557,12 +579,16 @@ pub(super) fn render_journey_diagram_svg_model(
             &mut out,
             &task.task,
             "task",
-            task.x,
-            task.y,
-            task.width,
-            task.height,
-            task_font_size,
-            task_font_family,
+            JourneyTextBox {
+                x: task.x,
+                y: task.y,
+                width: task.width,
+                height: task.height,
+            },
+            JourneyTextStyle {
+                task_font_size,
+                task_font_family,
+            },
         );
 
         out.push_str("</g>");

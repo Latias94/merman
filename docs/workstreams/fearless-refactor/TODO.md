@@ -319,6 +319,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   module-level `clippy::too_many_arguments` allow. Evidence: `cargo clippy -p merman-render
   --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render`, and
   flowchart/class/ER/state DOM parity compares passed.
+  Journey text candidate emission now groups geometry/font inputs into small structs, so
+  `svg/parity/journey.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
+  merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
+  journey`, and `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene
