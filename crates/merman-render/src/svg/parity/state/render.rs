@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
@@ -1952,16 +1950,16 @@ fn render_state_node_svg(
                 details.leaf_roughjs_unique.insert(key);
             }
             let (fill_d, stroke_d) = cached_paths(ctx, key, || {
-                roughjs_paths_for_rect(
-                    -w / 2.0,
-                    -h / 2.0,
+                roughjs_paths_for_rect(StateRoughRectSpec {
+                    x: -w / 2.0,
+                    y: -h / 2.0,
                     w,
                     h,
-                    "#333333",
-                    "#333333",
-                    1.3,
-                    ctx.hand_drawn_seed,
-                )
+                    fill: "#333333",
+                    stroke: "#333333",
+                    stroke_width: 1.3,
+                    seed: ctx.hand_drawn_seed,
+                })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
             if let Some(s) = rough_start {
@@ -2046,16 +2044,16 @@ fn render_state_node_svg(
                 details.leaf_roughjs_unique.insert(key);
             }
             let (fill_d, stroke_d) = cached_paths(ctx, key, || {
-                roughjs_paths_for_rect(
-                    -w / 2.0,
-                    -h / 2.0,
+                roughjs_paths_for_rect(StateRoughRectSpec {
+                    x: -w / 2.0,
+                    y: -h / 2.0,
                     w,
                     h,
-                    "#fff5ad",
-                    "#aaaa33",
-                    1.3,
-                    ctx.hand_drawn_seed,
-                )
+                    fill: "#fff5ad",
+                    stroke: "#aaaa33",
+                    stroke_width: 1.3,
+                    seed: ctx.hand_drawn_seed,
+                })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
             if let Some(s) = rough_start {

@@ -292,16 +292,31 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     ))
 }
 
+pub(in crate::svg::parity) struct StateRoughRectSpec<'a> {
+    pub(in crate::svg::parity) x: f64,
+    pub(in crate::svg::parity) y: f64,
+    pub(in crate::svg::parity) w: f64,
+    pub(in crate::svg::parity) h: f64,
+    pub(in crate::svg::parity) fill: &'a str,
+    pub(in crate::svg::parity) stroke: &'a str,
+    pub(in crate::svg::parity) stroke_width: f32,
+    pub(in crate::svg::parity) seed: u64,
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_rect(
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    fill: &str,
-    stroke: &str,
-    stroke_width: f32,
-    seed: u64,
+    spec: StateRoughRectSpec<'_>,
 ) -> Option<(String, String)> {
+    let StateRoughRectSpec {
+        x,
+        y,
+        w,
+        h,
+        fill,
+        stroke,
+        stroke_width,
+        seed,
+    } = spec;
+
     let fill = roughjs_parse_hex_color_to_srgba(fill)?;
     let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
 

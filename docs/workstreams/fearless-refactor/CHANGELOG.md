@@ -40,6 +40,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `svg/parity/architecture.rs` module-level `clippy::too_many_arguments` allow.
 - Replaced class marker defs helper argument lists with `MarkerContext` / `MarkerSpec`, removing
   the `svg/parity/class` module-level `clippy::too_many_arguments` allow.
+- Replaced state RoughJS rectangle arguments with `StateRoughRectSpec`, removing the
+  `svg/parity/state` module-level `clippy::too_many_arguments` allow and narrowing the requirement
+  renderer call site to the same spec shape.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

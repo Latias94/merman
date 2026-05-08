@@ -1,3 +1,4 @@
+use super::state::StateRoughRectSpec;
 use super::*;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
@@ -956,16 +957,16 @@ pub(super) fn render_requirement_diagram_svg_model(
             fmt(x),
             fmt(y + n.height)
         );
-        let stroke_path = roughjs_paths_for_rect(
+        let stroke_path = roughjs_paths_for_rect(StateRoughRectSpec {
             x,
             y,
-            n.width,
-            n.height,
-            fill_color,
-            stroke_color,
-            stroke_width as f32,
-            hand_drawn_seed,
-        )
+            w: n.width,
+            h: n.height,
+            fill: fill_color,
+            stroke: stroke_color,
+            stroke_width: stroke_width as f32,
+            seed: hand_drawn_seed,
+        })
         .map(|(_, stroke_d)| stroke_d)
         .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
 

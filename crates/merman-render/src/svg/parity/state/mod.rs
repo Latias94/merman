@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -16,6 +14,7 @@ pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
 pub(super) use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
+pub(super) use roughjs::StateRoughRectSpec;
 pub(super) use roughjs::{
     roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
 };

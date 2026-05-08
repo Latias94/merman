@@ -365,6 +365,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   so `svg/parity/class` no longer needs a module-level allow. Evidence: `cargo clippy -p
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   class`, and `cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3`.
+  State and requirement RoughJS rectangle helpers now use a spec struct instead of positional
+  geometry/paint arguments, so `svg/parity/state` no longer needs a module-level allow and the
+  requirement renderer follows the same narrowed call shape. Evidence: `cargo clippy -p
+  merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
+  state requirement`, `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3`,
+  and `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

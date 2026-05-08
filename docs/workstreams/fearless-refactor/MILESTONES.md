@@ -344,6 +344,9 @@ Progress:
   `svg/parity/architecture.rs` module-level `clippy::too_many_arguments` allow.
 - Replaced class marker defs helper argument lists with `MarkerContext` / `MarkerSpec`, removing
   the `svg/parity/class` module-level `clippy::too_many_arguments` allow.
+- Replaced state RoughJS rectangle arguments with `StateRoughRectSpec`, removing the
+  `svg/parity/state` module-level `clippy::too_many_arguments` allow and narrowing the
+  requirement renderer call site to the same spec shape.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.
