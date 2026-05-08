@@ -314,6 +314,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `svg/parity/sequence` no longer needs a module-level `clippy::too_many_arguments` allow.
   SVG path-bounds cubic/arc helpers now use explicit input structs, so `svg/parity/path_bounds.rs`
   also no longer needs a module-level allow.
+  Shared SVG curve emit helpers now use `PathPoint` and `PathCubic`, the basis curve no longer
+  duplicates bounded and unbounded emission paths, and `svg/parity/curve.rs` no longer needs a
+  module-level `clippy::too_many_arguments` allow. Evidence: `cargo clippy -p merman-render
+  --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render`, and
+  flowchart/class/ER/state DOM parity compares passed.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

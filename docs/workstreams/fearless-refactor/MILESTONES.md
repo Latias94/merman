@@ -266,6 +266,9 @@ Progress:
   `clippy::too_many_arguments` allow.
 - Structured SVG path-bounds cubic and arc inputs so `svg/parity/path_bounds.rs` no longer carries
   a module-level `clippy::too_many_arguments` allow.
+- Structured shared SVG curve emission around `PathPoint` and `PathCubic`, merged the duplicate
+  bounded/unbounded basis curve paths, and removed the `svg/parity/curve.rs` module-level
+  `clippy::too_many_arguments` allow.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.
