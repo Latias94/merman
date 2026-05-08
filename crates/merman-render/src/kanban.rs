@@ -86,12 +86,10 @@ pub fn layout_kanban_diagram_typed(
     let font_scale = legend_style.font_size / 16.0;
     let section_label_height_baseline =
         kanban_text_overrides::kanban_section_label_height_baseline_px() * font_scale;
-    let section_label_fo_height =
+    let label_foreign_object_height =
         kanban_text_overrides::kanban_label_foreign_object_height_px() * font_scale;
     let item_one_row_height = kanban_text_overrides::kanban_item_one_row_height_px() * font_scale;
     let item_two_row_height = kanban_text_overrides::kanban_item_two_row_height_px() * font_scale;
-    let item_label_line_height =
-        kanban_text_overrides::kanban_item_label_line_height_px() * font_scale;
 
     let mut max_label_height = section_label_height_baseline;
     let mut sections: Vec<KanbanSectionLayout> = Vec::new();
@@ -109,7 +107,7 @@ pub fn layout_kanban_diagram_typed(
             Some(section_width),
             WrapMode::HtmlLike,
         );
-        let label_height = label_metrics.height.max(section_label_fo_height);
+        let label_height = label_metrics.height.max(label_foreign_object_height);
         max_label_height = max_label_height.max(label_height);
 
         sections.push(KanbanSectionLayout {
@@ -166,7 +164,7 @@ pub fn layout_kanban_diagram_typed(
             } else {
                 item_one_row_height
             };
-            let extra_title_height = (title_metrics.height - item_label_line_height).max(0.0);
+            let extra_title_height = (title_metrics.height - label_foreign_object_height).max(0.0);
             let height = base_height + extra_title_height;
 
             let center_x = section.center_x;
@@ -267,10 +265,6 @@ mod tests {
         assert_eq!(kanban_text_overrides::kanban_item_one_row_height_px(), 44.0);
         assert_eq!(kanban_text_overrides::kanban_item_label_inset_x_px(), 10.0);
         assert_eq!(kanban_text_overrides::kanban_item_two_row_height_px(), 56.0);
-        assert_eq!(
-            kanban_text_overrides::kanban_item_label_line_height_px(),
-            24.0
-        );
     }
 
     #[test]

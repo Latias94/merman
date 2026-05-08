@@ -9,6 +9,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   calibration, removing the generated Kanban root table while keeping `parity-root` green.
 - Pruned 4 obsolete `kanban` root viewport entries from the generated table after confirming the
   remaining 7 fixture-specific pins still gate `parity-root`.
+- Removed the redundant Kanban label line-height helper by reusing the existing foreignObject
+  height constant, reducing the hand-curated helper footprint to 82.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and

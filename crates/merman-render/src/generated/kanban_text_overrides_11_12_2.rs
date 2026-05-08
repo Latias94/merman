@@ -26,7 +26,3 @@ pub fn kanban_item_label_inset_x_px() -> f64 {
 pub fn kanban_item_two_row_height_px() -> f64 {
     56.0
 }
-
-pub fn kanban_item_label_line_height_px() -> f64 {
-    24.0
-}

@@ -426,7 +426,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: 34 root viewport overrides have been removed so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
-  remaining fixture-specific pins. `compare-architecture-svgs --check-dom --dom-decimals 3`,
+  remaining fixture-specific pins. One additional hand-curated `kanban` helper was removed by
+  reusing the existing foreignObject height constant, reducing the helper footprint to 82.
+  `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.
 - [x] Prevent override tables from becoming the default fix for model bugs.
