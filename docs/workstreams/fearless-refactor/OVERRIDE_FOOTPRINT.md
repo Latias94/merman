@@ -15,7 +15,7 @@ Mermaid baseline: `@11.12.3`
 
 Generated override modules scanned: `37`.
 
-Manual raw SVG/path bridge files scanned: `1`.
+Manual raw SVG/path bridge files scanned: `0`.
 
 ### Category Metadata Snapshot
 
@@ -31,7 +31,8 @@ escape hatch.
 The current snapshot reflects a 34-entry reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
-remaining fixture-specific Kanban root pins.
+remaining fixture-specific Kanban root pins. It also reflects the final manual raw SVG/path bridge
+removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.

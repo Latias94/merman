@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Refreshed `OVERRIDE_FOOTPRINT.md` after `xtask verify --strict` so the snapshot now reports zero
+  manual raw SVG/path bridge files and matches the current override inventory.
 - Cached XYChart axis tick labels inside the layout axis state so `calculate_space`,
   `tick_distance`, and axis drawable generation reuse the same labels instead of rebuilding them.
   The follow-up smoke records `layout/xychart_medium` at `55.129-60.551 us` in
