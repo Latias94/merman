@@ -76,16 +76,6 @@ pub(super) fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
-#[allow(dead_code)]
-fn toggle_rank_dir(dir: RankDir) -> RankDir {
-    match dir {
-        RankDir::TB => RankDir::LR,
-        RankDir::LR => RankDir::TB,
-        RankDir::BT => RankDir::RL,
-        RankDir::RL => RankDir::BT,
-    }
-}
-
 pub(super) fn value_to_label_text(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),

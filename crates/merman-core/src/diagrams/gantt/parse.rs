@@ -25,18 +25,6 @@ fn split_statement_suffix(s: &str) -> &str {
     &s[..end]
 }
 
-#[allow(dead_code)]
-fn split_statement_suffix_semi_only(s: &str) -> &str {
-    let mut end = s.len();
-    for (i, c) in s.char_indices() {
-        if c == ';' {
-            end = i;
-            break;
-        }
-    }
-    &s[..end]
-}
-
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
     // Avoid slicing by raw bytes: non-ASCII leading characters would panic if `prefix.len()` is
     // not on a UTF-8 boundary (e.g. task lines that start with CJK labels).
@@ -69,21 +57,6 @@ fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a s
         return None;
     }
     Some(&after[ws.len_utf8()..])
-}
-
-#[allow(dead_code)]
-fn parse_keyword_arg_semi_only<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
-    let t = line.trim_start();
-    if !starts_with_ci(t, keyword) {
-        return None;
-    }
-    let after = &t[keyword.len()..];
-    let ws = after.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let rest = &after[ws.len_utf8()..];
-    Some(split_statement_suffix_semi_only(rest))
 }
 
 fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {

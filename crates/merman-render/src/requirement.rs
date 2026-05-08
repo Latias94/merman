@@ -71,9 +71,6 @@ fn rank_dir_from(direction: &str) -> RankDir {
 struct RequirementLabelMetrics {
     width: f64,
     height: f64,
-    // Mermaid `calculateTextWidth(...)+50` result used as `max-width: ...px` in HTML labels.
-    #[allow(dead_code)]
-    max_width_px: i64,
 }
 
 fn requirement_label_uses_markdown_html(raw: &str) -> bool {
@@ -81,44 +78,10 @@ fn requirement_label_uses_markdown_html(raw: &str) -> bool {
     raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
 }
 
-fn calculate_text_width_like_mermaid_px(
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    text: &str,
-) -> i64 {
-    // Mermaid `calculateTextWidth` uses an SVG `<text>` bbox and rounds to integers. It also takes
-    // the maximum width across `sans-serif` and the configured `fontFamily`.
-    fn round_i64(v: f64) -> i64 {
-        if !v.is_finite() {
-            return 0;
-        }
-        v.round() as i64
-    }
-
-    let mut sans = style.clone();
-    sans.font_family = Some("sans-serif".to_string());
-    // `calculateTextWidth` does not incorporate per-line bold style (it uses config fontWeight).
-    sans.font_weight = None;
-
-    let mut fam = style.clone();
-    fam.font_weight = None;
-
-    // Mermaid `calculateTextWidth` uses `drawSimpleText` (single-run SVG `<text>`) rather than the
-    // whitespace-tokenized label renderer. Mirror that by using the single-run bbox extents API.
-    let (l1, r1) = measurer.measure_svg_title_bbox_x(text, &sans);
-    let (l2, r2) = measurer.measure_svg_title_bbox_x(text, &fam);
-    let w1 = (l1 + r1).max(0.0);
-    let w2 = (l2 + r2).max(0.0);
-
-    round_i64(w1.max(w2))
-}
-
 fn measure_requirement_label_metrics(
     measurer: &dyn TextMeasurer,
     html_style: &TextStyle,
-    calc_style: &TextStyle,
     display_text: &str,
-    calc_text: &str,
     bold: bool,
 ) -> Option<RequirementLabelMetrics> {
     if display_text.trim().is_empty() {
@@ -148,27 +111,8 @@ fn measure_requirement_label_metrics(
     } else {
         measured.width.max(1.0)
     };
-    let max_width_px = if let Some(px) =
-        crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_calc_max_width_px(
-            calc_text,
-        ) {
-        px
-    } else {
-        let calc_input =
-            if calc_text.contains('\n') || calc_text.to_ascii_lowercase().contains("<br") {
-                crate::flowchart::flowchart_label_plain_text_for_layout(calc_text, "text", true)
-            } else {
-                calc_text.to_string()
-            };
-        let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, &calc_input);
-        (calc_w + 50).max(0)
-    };
 
-    Some(RequirementLabelMetrics {
-        width,
-        height,
-        max_width_px,
-    })
+    Some(RequirementLabelMetrics { width, height })
 }
 
 #[derive(Debug, Clone)]
@@ -179,10 +123,9 @@ struct RequirementBoxLayout {
 
 fn requirement_box_layout(
     measurer: &dyn TextMeasurer,
-    calc_style: &TextStyle,
     html_style_regular: &TextStyle,
     html_style_bold: &TextStyle,
-    lines: &[(String, String, bool)],
+    lines: &[(String, bool)],
     gap: f64,
     padding: f64,
 ) -> RequirementBoxLayout {
@@ -191,15 +134,13 @@ fn requirement_box_layout(
     let mut max_w: f64 = 0.0;
 
     // First pass: label bbox widths/heights (HTML).
-    for (display, calc, bold) in lines {
+    for (display, bold) in lines {
         let html_style = if *bold {
             html_style_bold
         } else {
             html_style_regular
         };
-        let m = measure_requirement_label_metrics(
-            measurer, html_style, calc_style, display, calc, *bold,
-        );
+        let m = measure_requirement_label_metrics(measurer, html_style, display, *bold);
         if let Some(m) = &m {
             max_w = max_w.max(m.width);
         }
@@ -295,11 +236,6 @@ pub fn layout_requirement_diagram_typed(
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
         .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
         .unwrap_or(16.0);
-    let calc_style = TextStyle {
-        font_family: font_family.clone(),
-        font_size,
-        font_weight: None,
-    };
     let html_style_regular = TextStyle {
         font_family: font_family.clone(),
         font_size,
@@ -337,26 +273,24 @@ pub fn layout_requirement_diagram_typed(
         }
 
         let type_disp = format!("<<{}>>", r.node_type);
-        let type_calc = format!("&lt;&lt;{}&gt;&gt;", r.node_type);
-        let mut lines: Vec<(String, String, bool)> = Vec::new();
-        lines.push((type_disp, type_calc, false));
-        lines.push((r.name.clone(), r.name.clone(), true));
+        let mut lines: Vec<(String, bool)> = Vec::new();
+        lines.push((type_disp, false));
+        lines.push((r.name.clone(), true));
 
         let id_line = prefixed_nonempty_line("ID: ", &r.requirement_id);
-        lines.push((id_line.clone(), id_line, false));
+        lines.push((id_line, false));
 
         let text_line = prefixed_nonempty_line("Text: ", &r.text);
-        lines.push((text_line.clone(), text_line, false));
+        lines.push((text_line, false));
 
         let risk_line = prefixed_nonempty_line("Risk: ", &r.risk);
-        lines.push((risk_line.clone(), risk_line, false));
+        lines.push((risk_line, false));
 
         let verify_line = prefixed_nonempty_line("Verification: ", &r.verify_method);
-        lines.push((verify_line.clone(), verify_line, false));
+        lines.push((verify_line, false));
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &calc_style,
             &html_style_regular,
             &html_style_bold,
             &lines,
@@ -379,10 +313,9 @@ pub fn layout_requirement_diagram_typed(
         }
 
         let type_disp = "<<Element>>".to_string();
-        let type_calc = "&lt;&lt;Element&gt;&gt;".to_string();
-        let mut lines: Vec<(String, String, bool)> = Vec::new();
-        lines.push((type_disp, type_calc, false));
-        lines.push((e.name.clone(), e.name.clone(), true));
+        let mut lines: Vec<(String, bool)> = Vec::new();
+        lines.push((type_disp, false));
+        lines.push((e.name.clone(), true));
 
         let type_line = e.element_type.trim().to_string();
         let type_line = if type_line.is_empty() {
@@ -390,14 +323,13 @@ pub fn layout_requirement_diagram_typed(
         } else {
             format!("Type: {type_line}")
         };
-        lines.push((type_line.clone(), type_line, false));
+        lines.push((type_line, false));
 
         let doc_line = prefixed_nonempty_line("Doc Ref: ", &e.doc_ref);
-        lines.push((doc_line.clone(), doc_line, false));
+        lines.push((doc_line, false));
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &calc_style,
             &html_style_regular,
             &html_style_bold,
             &lines,
@@ -433,19 +365,15 @@ pub fn layout_requirement_diagram_typed(
         let edge_id = requirement_edge_id(&rel.src, &rel.dst, 0);
 
         let label_display = format!("<<{}>>", rel.rel_type);
-        let label_calc = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
         let metrics = measure_requirement_label_metrics(
             text_measurer,
             &html_style_regular,
-            &calc_style,
             &label_display,
-            &label_calc,
             false,
         )
         .unwrap_or(RequirementLabelMetrics {
             width: 0.0,
             height: 0.0,
-            max_width_px: 0,
         });
 
         let el = EdgeLabel {

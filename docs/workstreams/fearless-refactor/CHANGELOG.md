@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-08
 
+- Removed unused requirement-layout `max-width` calculation state plus dead state/gantt helper
+  functions that were kept only behind `dead_code` allows.
 - Added a focused `text_measure_stress` Criterion bench for vendored font measurement and wrapped
   label paths before future cache work.
 - Removed a dead private font-metric quantizer and made the flowchart cluster-width probe
