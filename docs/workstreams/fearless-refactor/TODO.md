@@ -407,6 +407,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - temporary parity bridge
   Evidence: `xtask report-overrides` now scans generated override modules by category and
   hand-authored `maybe_override_*` raw SVG/path bridge functions under `svg/parity`.
+- [x] Count generated text lookup tables as text lookup debt.
+  Evidence: `xtask report-overrides` now counts rows in generated `*_OVERRIDES_*` binary-search
+  tables as text metric lookup entries, so `block`, `er`, `gantt`, and `mindmap` table data no
+  longer appear as hand-curated helper functions in `OVERRIDE_FOOTPRINT.md`.
+- [x] Remove redundant public helper decomposition in hand-curated overrides.
+  Evidence: `sankey_text_overrides_11_12_2.rs` now keeps the padding base/extra values as private
+  constants and exposes only `sankey_node_padding_px(show_values)`, reducing helper footprint
+  without changing layout behavior.
 - [x] Add owner/removal notes for current temporary raw SVG/path bridges.
   Evidence: `svg/parity/flowchart/edge_geom/degenerate_path.rs` documents the current flowchart
   degenerate path bridge owner and removal criteria.

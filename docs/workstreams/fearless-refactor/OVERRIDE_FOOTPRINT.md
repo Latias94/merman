@@ -30,6 +30,12 @@ escape hatch.
 
 The current snapshot reflects a 19-entry reduction in `architecture_root_overrides_11_12_2.rs`
 after topology-driven viewport calibration replaced several fixture-specific root pins.
+It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
+in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
+hand-curated helper functions.
+The hand-curated helper total also reflects pruning two redundant public Sankey padding component
+helpers; the remaining public Sankey helper is the actual `showValues`-aware padding lookup used by
+layout tests and render code.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -73,14 +79,17 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup arms reported by `xtask`: `567`.
+Total lookup entries reported by `xtask`: `1140`.
 
-| file | lookup arms |
+| file | lookup entries |
 | --- | ---: |
+| `block_text_overrides_11_12_2.rs` | 125 |
 | `c4_text_overrides_11_12_2.rs` | 3 |
 | `class_text_overrides_11_12_2.rs` | 342 |
-| `er_text_overrides_11_12_2.rs` | 1 |
+| `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
+| `gantt_text_overrides_11_12_2.rs` | 44 |
+| `mindmap_text_overrides_11_12_2.rs` | 291 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
@@ -105,20 +114,17 @@ Total lookup arms reported by `xtask`: `567`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `90`.
+Total helper functions reported by `xtask`: `83`.
 
 | file | helper functions |
 | --- | ---: |
 | `architecture_text_overrides_11_12_2.rs` | 8 |
-| `block_text_overrides_11_12_2.rs` | 2 |
-| `gantt_text_overrides_11_12_2.rs` | 2 |
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 | `journey_text_overrides_11_12_2.rs` | 15 |
 | `kanban_text_overrides_11_12_2.rs` | 7 |
-| `mindmap_text_overrides_11_12_2.rs` | 1 |
 | `pie_text_overrides_11_12_2.rs` | 13 |
 | `radar_text_overrides_11_12_2.rs` | 4 |
-| `sankey_text_overrides_11_12_2.rs` | 7 |
+| `sankey_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 10 |
 | `treemap_text_overrides_11_12_2.rs` | 11 |
 | `xychart_text_overrides_11_12_2.rs` | 4 |
@@ -136,7 +142,8 @@ Total bridge functions reported by `xtask`: `1`.
 Counts are inventory units and should not be compared directly across categories:
 
 - Root viewport entries count match arms returning `Some((viewBox, max_width))`.
-- Text metric lookup arms count `=> Some(...)` parity branches.
+- Text metric lookup entries count `=> Some(...)` parity branches and rows in generated
+  `*_OVERRIDES_*` binary-search tables.
 - Font/SVG metric table rows count tuple rows in generated lookup arrays.
 - Helper overrides count public helper functions in generated small constant modules.
 - Manual raw SVG/path bridge counts are hand-authored `maybe_override_*` functions under

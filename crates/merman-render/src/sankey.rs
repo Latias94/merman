@@ -658,11 +658,6 @@ mod tests {
     #[test]
     fn sankey_text_constants_are_generated() {
         assert_eq!(sankey_text_overrides::sankey_node_width_px(), 10.0);
-        assert_eq!(sankey_text_overrides::sankey_node_padding_base_px(), 10.0);
-        assert_eq!(
-            sankey_text_overrides::sankey_node_padding_show_values_extra_px(),
-            15.0
-        );
         assert_eq!(sankey_text_overrides::sankey_node_padding_px(true), 25.0);
         assert_eq!(sankey_text_overrides::sankey_node_padding_px(false), 10.0);
         assert_eq!(sankey_text_overrides::sankey_label_font_size_px(), 14.0);

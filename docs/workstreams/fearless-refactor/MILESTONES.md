@@ -392,6 +392,11 @@ Progress:
   what evidence reviewers should require.
 - `xtask report-overrides` now inventories hand-authored `maybe_override_*` raw SVG/path bridge
   functions under `svg/parity` in addition to generated override modules.
+- `xtask report-overrides` now counts rows in generated `*_OVERRIDES_*` binary-search tables as
+  text metric lookup entries, so generated table debt is tracked separately from hand-curated
+  helper constants.
+- Redundant public Sankey padding component helpers were collapsed into private constants, leaving
+  only the actual `showValues`-aware public padding lookup in the helper footprint.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
   metadata for generated override categories and manual raw SVG/path bridge categories.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and

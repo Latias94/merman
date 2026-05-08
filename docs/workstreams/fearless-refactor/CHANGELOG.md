@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-08
 
+- Corrected `xtask report-overrides` text lookup accounting so generated `*_OVERRIDES_*`
+  binary-search tables are counted as text metric lookup entries instead of hand-curated helpers,
+  with refreshed no-growth budgets and footprint docs.
+- Collapsed redundant public Sankey padding component helpers into private constants, leaving only
+  the `showValues`-aware public padding lookup in the override footprint.
 - Removed unused requirement-layout `max-width` calculation state plus dead state/gantt helper
   functions that were kept only behind `dead_code` allows.
 - Added a focused `text_measure_stress` Criterion bench for vendored font measurement and wrapped

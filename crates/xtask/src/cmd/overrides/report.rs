@@ -51,7 +51,7 @@ impl OverrideCategory {
     fn total_unit(self) -> &'static str {
         match self {
             OverrideCategory::RootViewport => "entries",
-            OverrideCategory::TextLookup => "lookup arms",
+            OverrideCategory::TextLookup => "lookup entries",
             OverrideCategory::SvgTextMetrics => "table rows",
             OverrideCategory::FontMetrics => "table rows",
             OverrideCategory::TypeTextLength => "lookup arms",
@@ -63,11 +63,11 @@ impl OverrideCategory {
     fn no_growth_budget(self) -> usize {
         match self {
             OverrideCategory::RootViewport => 1555,
-            OverrideCategory::TextLookup => 567,
+            OverrideCategory::TextLookup => 1140,
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::TypeTextLength => 17,
-            OverrideCategory::HandCuratedHelpers => 90,
+            OverrideCategory::HandCuratedHelpers => 83,
             OverrideCategory::RawPathBridge => 1,
         }
     }
@@ -211,7 +211,9 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         "- Generated module counts cover `crates/merman-render/src/generated`, while manual bridge counts cover hand-authored path-bridge helpers under `crates/merman-render/src/svg/parity`."
     );
     println!("- Root viewport entries count match arms returning `Some((viewBox, max_width))`.");
-    println!("- Text lookup arms count generated or hand-curated `=> Some(...)` parity branches.");
+    println!(
+        "- Text lookup entries count generated or hand-curated `=> Some(...)` parity branches and rows in `*_OVERRIDES_*` lookup tables."
+    );
     println!("- Table rows count tuple rows in generated font/SVG metric arrays.");
 
     Ok(())
@@ -261,9 +263,7 @@ fn collect_generated_override_footprint_entries(
         }
 
         let text = read_text(&path)?;
-        if let Some(entry) = classify_generated_override_file(file_name, &text) {
-            entries.push(entry);
-        }
+        entries.extend(classify_generated_override_file(file_name, &text));
     }
 
     Ok(entries)
@@ -346,66 +346,63 @@ fn collect_parity_rs_files(parity_dir: &Path) -> Result<Vec<PathBuf>, XtaskError
     Ok(files)
 }
 
-fn classify_generated_override_file(
-    file_name: String,
-    text: &str,
-) -> Option<OverrideFootprintEntry> {
+fn classify_generated_override_file(file_name: String, text: &str) -> Vec<OverrideFootprintEntry> {
     if file_name.contains("_root_overrides_") {
-        return Some(OverrideFootprintEntry {
+        return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::RootViewport,
             count: count_root_viewport_entries(text),
             unit: "entries",
-        });
+        }];
     }
 
     if file_name.starts_with("font_metrics_") {
-        return Some(OverrideFootprintEntry {
+        return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::FontMetrics,
             count: count_tuple_rows(text),
             unit: "table rows",
-        });
+        }];
     }
 
     if file_name.starts_with("svg_overrides_") {
-        return Some(OverrideFootprintEntry {
+        return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::SvgTextMetrics,
             count: count_tuple_rows(text),
             unit: "table rows",
-        });
+        }];
     }
 
     if file_name.contains("_type_textlength_") {
-        return Some(OverrideFootprintEntry {
+        return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::TypeTextLength,
             count: count_some_match_arms(text),
             unit: "lookup arms",
-        });
+        }];
     }
 
     if file_name.contains("_text_overrides_") {
-        let lookup_arms = count_some_match_arms(text);
-        if lookup_arms > 0 {
-            return Some(OverrideFootprintEntry {
+        let lookup_entries = count_some_match_arms(text) + count_static_override_table_rows(text);
+        if lookup_entries > 0 {
+            return vec![OverrideFootprintEntry {
                 file_name,
                 category: OverrideCategory::TextLookup,
-                count: lookup_arms,
-                unit: "lookup arms",
-            });
+                count: lookup_entries,
+                unit: "lookup entries",
+            }];
         }
 
-        return Some(OverrideFootprintEntry {
+        return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::HandCuratedHelpers,
             count: count_public_functions(text),
             unit: "helper functions",
-        });
+        }];
     }
 
-    None
+    Vec::new()
 }
 
 fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory) {
@@ -469,6 +466,32 @@ fn count_tuple_rows(text: &str) -> usize {
     count_matches(re, text)
 }
 
+fn count_static_override_table_rows(text: &str) -> usize {
+    let mut in_override_table = false;
+    let mut rows = 0usize;
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if !in_override_table {
+            in_override_table = trimmed.starts_with("static ")
+                && trimmed.contains("_OVERRIDES")
+                && trimmed.contains("&[");
+            continue;
+        }
+
+        if trimmed.starts_with("];") {
+            in_override_table = false;
+            continue;
+        }
+
+        if trimmed.starts_with('(') {
+            rows += 1;
+        }
+    }
+
+    rows
+}
+
 fn count_public_functions(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re =
@@ -493,7 +516,8 @@ fn count_matches(re: &Regex, text: &str) -> usize {
 mod tests {
     use super::{
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
-        count_manual_bridge_functions, count_public_functions, report_path_name,
+        classify_generated_override_file, count_manual_bridge_functions, count_public_functions,
+        count_static_override_table_rows, report_path_name,
     };
     use std::path::Path;
 
@@ -533,6 +557,48 @@ fn private_helper() {}
 "#;
 
         assert_eq!(count_public_functions(text), 2);
+    }
+
+    #[test]
+    fn counts_static_override_lookup_rows() {
+        let text = r#"
+static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
+    (1600, "A", 9.4375),
+    (
+        2400,
+        "Font size precedence should widen this block",
+        487.890625,
+    ),
+];
+
+static OTHER_ROWS: &[(u16, &str, f64)] = &[
+    (1600, "ignored", 1.0),
+];
+"#;
+
+        assert_eq!(count_static_override_table_rows(text), 2);
+    }
+
+    #[test]
+    fn classifies_static_text_tables_as_lookup_entries() {
+        let text = r#"
+static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
+    (1100, "Task", 22.24853515625),
+    (1100, "Task2", 27.796875),
+];
+
+pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64> {
+    let _ = (font_size, text);
+    None
+}
+"#;
+
+        let entries =
+            classify_generated_override_file("gantt_text_overrides_11_12_2.rs".to_string(), text);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].category, OverrideCategory::TextLookup);
+        assert_eq!(entries[0].count, 2);
+        assert_eq!(entries[0].unit, "lookup entries");
     }
 
     #[test]
