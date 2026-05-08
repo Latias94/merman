@@ -11,7 +11,10 @@ members = [
   "crates/roughr",
   "crates/xtask",
 ]
-exclude = ["repo-ref/*"]
+exclude = [
+  "repo-ref/dear-imgui-rs",
+  "repo-ref/mermaid-rs-renderer",
+]
 
 [workspace.package]
 version = "0.4.0"
