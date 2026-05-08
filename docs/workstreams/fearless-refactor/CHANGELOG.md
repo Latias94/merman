@@ -35,6 +35,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   removed the `svg/parity/c4` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /
   `C4LayoutState`, removing the `c4.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced architecture edge label geometry arguments, recursive group bounds arguments, and the
+  render-model entry argument list with focused context structs, removing the
+  `svg/parity/architecture.rs` module-level `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

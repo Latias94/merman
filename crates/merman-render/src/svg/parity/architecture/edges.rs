@@ -33,14 +33,19 @@ struct ArchitectureEdgeLabelPlan {
     transform: String,
 }
 
-fn architecture_edge_label_plan(
-    edge: super::model::ArchitectureEdgeRef<'_>,
+#[derive(Clone, Copy)]
+struct ArchitectureEdgePoints {
     start_x: f64,
     start_y: f64,
     mid_x: f64,
     mid_y: f64,
     end_x: f64,
     end_y: f64,
+}
+
+fn architecture_edge_label_plan(
+    edge: super::model::ArchitectureEdgeRef<'_>,
+    points: ArchitectureEdgePoints,
     settings: &ArchitectureRenderSettings,
     text_measurer: &VendoredFontMetricsTextMeasurer,
 ) -> Option<ArchitectureEdgeLabelPlan> {
@@ -52,9 +57,9 @@ fn architecture_edge_label_plan(
     };
 
     let wrap_width = match axis {
-        "X" => (start_x - end_x).abs(),
-        "Y" => (start_y - end_y).abs() / 1.5,
-        _ => (start_x - end_x).abs() / 2.0,
+        "X" => (points.start_x - points.end_x).abs(),
+        "Y" => (points.start_y - points.end_y).abs() / 1.5,
+        _ => (points.start_x - points.end_x).abs() / 2.0,
     };
     let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
         wrap_width
@@ -84,7 +89,11 @@ fn architecture_edge_label_plan(
     let (dominant_baseline, transform) = match axis {
         "Y" => (
             "middle",
-            format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
+            format!(
+                r#"translate({}, {}) rotate(-90)"#,
+                fmt(points.mid_x),
+                fmt(points.mid_y)
+            ),
         ),
         "XY" => {
             let pair = format!("{}{}", edge.lhs_dir, edge.rhs_dir);
@@ -108,8 +117,8 @@ fn architecture_edge_label_plan(
                 "auto",
                 format!(
                     "translate({}, {}){sep}                translate({}, {}){sep}                rotate({}, 0, {})",
-                    fmt(mid_x),
-                    fmt(mid_y - half_bbox_h),
+                    fmt(points.mid_x),
+                    fmt(points.mid_y - half_bbox_h),
                     fmt(t2x),
                     fmt(t2y),
                     angle,
@@ -120,7 +129,7 @@ fn architecture_edge_label_plan(
         }
         _ => (
             "middle",
-            format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
+            format!(r#"translate({}, {})"#, fmt(points.mid_x), fmt(points.mid_y)),
         ),
     };
 
@@ -173,148 +182,158 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
         })
         .collect();
 
-    let edge_points = |edge_idx: usize,
-                       edge: super::model::ArchitectureEdgeRef<'_>|
-     -> (f64, f64, f64, f64, f64, f64) {
-        // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
-        //
-        // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
-        // endpoint shifts later, during SVG emission.
-        let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout_edge_points
-            .get(edge_idx)
-            .copied()
-            .unwrap_or_else(|| {
-                let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-                let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+    let edge_points =
+        |edge_idx: usize, edge: super::model::ArchitectureEdgeRef<'_>| -> ArchitectureEdgePoints {
+            // Prefer layout-provided points: this is where we model Mermaid/Cytoscape edge routing.
+            //
+            // The layout points represent raw Cytoscape endpoints; Mermaid applies group/junction
+            // endpoint shifts later, during SVG emission.
+            let (raw_start_x, raw_start_y, mid_x, mid_y, raw_end_x, raw_end_y) = layout_edge_points
+                .get(edge_idx)
+                .copied()
+                .unwrap_or_else(|| {
+                    let (sx, sy) = node_xy.get(edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+                    let (tx, ty) = node_xy.get(edge.rhs_id).copied().unwrap_or((0.0, 0.0));
 
-                let (sx, sy) = match edge.lhs_dir {
-                    'L' => (sx, sy + settings.half_icon),
-                    'R' => (sx + settings.icon_size_px, sy + settings.half_icon),
-                    'T' => (sx + settings.half_icon, sy),
-                    'B' => (sx + settings.half_icon, sy + settings.icon_size_px),
-                    _ => (sx + settings.half_icon, sy + settings.half_icon),
-                };
-                let (tx, ty) = match edge.rhs_dir {
-                    'L' => (tx, ty + settings.half_icon),
-                    'R' => (tx + settings.icon_size_px, ty + settings.half_icon),
-                    'T' => (tx + settings.half_icon, ty),
-                    'B' => (tx + settings.half_icon, ty + settings.icon_size_px),
-                    _ => (tx + settings.half_icon, ty + settings.half_icon),
-                };
+                    let (sx, sy) = match edge.lhs_dir {
+                        'L' => (sx, sy + settings.half_icon),
+                        'R' => (sx + settings.icon_size_px, sy + settings.half_icon),
+                        'T' => (sx + settings.half_icon, sy),
+                        'B' => (sx + settings.half_icon, sy + settings.icon_size_px),
+                        _ => (sx + settings.half_icon, sy + settings.half_icon),
+                    };
+                    let (tx, ty) = match edge.rhs_dir {
+                        'L' => (tx, ty + settings.half_icon),
+                        'R' => (tx + settings.icon_size_px, ty + settings.half_icon),
+                        'T' => (tx + settings.half_icon, ty),
+                        'B' => (tx + settings.half_icon, ty + settings.icon_size_px),
+                        _ => (tx + settings.half_icon, ty + settings.half_icon),
+                    };
 
-                let (mx, my) = if (sx - tx).abs() > 1e-6 && (sy - ty).abs() > 1e-6 {
-                    // Match upstream Mermaid: choose the bend based on the *source* dir.
-                    if is_arch_dir_y(edge.lhs_dir) {
-                        (sx, ty)
+                    let (mx, my) = if (sx - tx).abs() > 1e-6 && (sy - ty).abs() > 1e-6 {
+                        // Match upstream Mermaid: choose the bend based on the *source* dir.
+                        if is_arch_dir_y(edge.lhs_dir) {
+                            (sx, ty)
+                        } else {
+                            (tx, sy)
+                        }
                     } else {
-                        (tx, sy)
-                    }
-                } else {
-                    ((sx + tx) / 2.0, (sy + ty) / 2.0)
-                };
-                (sx, sy, mx, my, tx, ty)
-            });
+                        ((sx + tx) / 2.0, (sy + ty) / 2.0)
+                    };
+                    (sx, sy, mx, my, tx, ty)
+                });
 
-        let mut start_x = raw_start_x;
-        let mut start_y = raw_start_y;
-        let mut end_x = raw_end_x;
-        let mut end_y = raw_end_y;
+            let mut start_x = raw_start_x;
+            let mut start_y = raw_start_y;
+            let mut end_x = raw_end_x;
+            let mut end_y = raw_end_y;
 
-        let lhs_group = edge.lhs_group.unwrap_or(false);
-        if lhs_group {
-            if is_arch_dir_x(edge.lhs_dir) {
-                start_x += if edge.lhs_dir == 'L' {
-                    -group_edge_shift
+            let lhs_group = edge.lhs_group.unwrap_or(false);
+            if lhs_group {
+                if is_arch_dir_x(edge.lhs_dir) {
+                    start_x += if edge.lhs_dir == 'L' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift
+                    };
                 } else {
-                    group_edge_shift
-                };
-            } else {
-                start_y += if edge.lhs_dir == 'T' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift + group_edge_label_bottom_px
-                };
+                    start_y += if edge.lhs_dir == 'T' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift + group_edge_label_bottom_px
+                    };
+                }
             }
-        }
-        if !lhs_group && is_junction(edge.lhs_id) {
-            if is_arch_dir_x(edge.lhs_dir) {
-                start_x += if edge.lhs_dir == 'L' {
-                    settings.half_icon
+            if !lhs_group && is_junction(edge.lhs_id) {
+                if is_arch_dir_x(edge.lhs_dir) {
+                    start_x += if edge.lhs_dir == 'L' {
+                        settings.half_icon
+                    } else {
+                        -settings.half_icon
+                    };
                 } else {
-                    -settings.half_icon
-                };
-            } else {
-                start_y += if edge.lhs_dir == 'T' {
-                    settings.half_icon
-                } else {
-                    -settings.half_icon
-                };
+                    start_y += if edge.lhs_dir == 'T' {
+                        settings.half_icon
+                    } else {
+                        -settings.half_icon
+                    };
+                }
             }
-        }
 
-        let rhs_group = edge.rhs_group.unwrap_or(false);
-        if rhs_group {
-            if is_arch_dir_x(edge.rhs_dir) {
-                end_x += if edge.rhs_dir == 'L' {
-                    -group_edge_shift
+            let rhs_group = edge.rhs_group.unwrap_or(false);
+            if rhs_group {
+                if is_arch_dir_x(edge.rhs_dir) {
+                    end_x += if edge.rhs_dir == 'L' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift
+                    };
                 } else {
-                    group_edge_shift
-                };
-            } else {
-                end_y += if edge.rhs_dir == 'T' {
-                    -group_edge_shift
-                } else {
-                    group_edge_shift + group_edge_label_bottom_px
-                };
+                    end_y += if edge.rhs_dir == 'T' {
+                        -group_edge_shift
+                    } else {
+                        group_edge_shift + group_edge_label_bottom_px
+                    };
+                }
             }
-        }
-        if !rhs_group && is_junction(edge.rhs_id) {
-            if is_arch_dir_x(edge.rhs_dir) {
-                end_x += if edge.rhs_dir == 'L' {
-                    settings.half_icon
+            if !rhs_group && is_junction(edge.rhs_id) {
+                if is_arch_dir_x(edge.rhs_dir) {
+                    end_x += if edge.rhs_dir == 'L' {
+                        settings.half_icon
+                    } else {
+                        -settings.half_icon
+                    };
                 } else {
-                    -settings.half_icon
-                };
-            } else {
-                end_y += if edge.rhs_dir == 'T' {
-                    settings.half_icon
-                } else {
-                    -settings.half_icon
-                };
+                    end_y += if edge.rhs_dir == 'T' {
+                        settings.half_icon
+                    } else {
+                        -settings.half_icon
+                    };
+                }
             }
-        }
 
-        (start_x, start_y, mid_x, mid_y, end_x, end_y)
-    };
+            ArchitectureEdgePoints {
+                start_x,
+                start_y,
+                mid_x,
+                mid_y,
+                end_x,
+                end_y,
+            }
+        };
 
     // Edges (including conservative label bounds).
     if model.edges_len() != 0 {
         let arrow_size = settings.icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
         for (edge_idx, edge) in model.edges().enumerate() {
-            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge_idx, edge);
+            let points = edge_points(edge_idx, edge);
 
             extend_bounds(
                 content_bounds,
-                Bounds::from_points(vec![(start_x, start_y), (mid_x, mid_y), (end_x, end_y)])
-                    .unwrap_or(Bounds {
-                        min_x: start_x,
-                        min_y: start_y,
-                        max_x: end_x,
-                        max_y: end_y,
-                    }),
+                Bounds::from_points(vec![
+                    (points.start_x, points.start_y),
+                    (points.mid_x, points.mid_y),
+                    (points.end_x, points.end_y),
+                ])
+                .unwrap_or(Bounds {
+                    min_x: points.start_x,
+                    min_y: points.start_y,
+                    max_x: points.end_x,
+                    max_y: points.end_y,
+                }),
             );
 
             if edge.lhs_into == Some(true) {
                 let x_shift = if is_arch_dir_x(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, start_x, arrow_size)
+                    arrow_shift(edge.lhs_dir, points.start_x, arrow_size)
                 } else {
-                    start_x - half_arrow_size
+                    points.start_x - half_arrow_size
                 };
                 let y_shift = if is_arch_dir_y(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, start_y, arrow_size)
+                    arrow_shift(edge.lhs_dir, points.start_y, arrow_size)
                 } else {
-                    start_y - half_arrow_size
+                    points.start_y - half_arrow_size
                 };
                 extend_bounds(
                     content_bounds,
@@ -324,14 +343,14 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
 
             if edge.rhs_into == Some(true) {
                 let x_shift = if is_arch_dir_x(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, end_x, arrow_size)
+                    arrow_shift(edge.rhs_dir, points.end_x, arrow_size)
                 } else {
-                    end_x - half_arrow_size
+                    points.end_x - half_arrow_size
                 };
                 let y_shift = if is_arch_dir_y(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, end_y, arrow_size)
+                    arrow_shift(edge.rhs_dir, points.end_y, arrow_size)
                 } else {
-                    end_y - half_arrow_size
+                    points.end_y - half_arrow_size
                 };
                 extend_bounds(
                     content_bounds,
@@ -339,23 +358,13 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
                 );
             }
 
-            let label_plan = architecture_edge_label_plan(
-                edge,
-                start_x,
-                start_y,
-                mid_x,
-                mid_y,
-                end_x,
-                end_y,
-                settings,
-                text_measurer,
-            );
+            let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
             if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(
                     content_bounds,
                     bounds_from_rect(
-                        mid_x - label_plan.aabb_w / 2.0,
-                        mid_y - label_plan.aabb_h / 2.0,
+                        points.mid_x - label_plan.aabb_w / 2.0,
+                        points.mid_y - label_plan.aabb_h / 2.0,
                         label_plan.aabb_w,
                         label_plan.aabb_h,
                     ),
@@ -367,25 +376,25 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             let _ = write!(
                 out,
                 r#"<path d="M {sx},{sy} L {mx},{my} L{ex},{ey} " class="edge" id="{id}"/>"#,
-                sx = fmt(start_x),
-                sy = fmt(start_y),
-                mx = fmt(mid_x),
-                my = fmt(mid_y),
-                ex = fmt(end_x),
-                ey = fmt(end_y),
+                sx = fmt(points.start_x),
+                sy = fmt(points.start_y),
+                mx = fmt(points.mid_x),
+                my = fmt(points.mid_y),
+                ex = fmt(points.end_x),
+                ey = fmt(points.end_y),
                 id = escape_xml(&id)
             );
 
             if edge.lhs_into == Some(true) {
                 let x_shift = if is_arch_dir_x(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, start_x, arrow_size)
+                    arrow_shift(edge.lhs_dir, points.start_x, arrow_size)
                 } else {
-                    start_x - half_arrow_size
+                    points.start_x - half_arrow_size
                 };
                 let y_shift = if is_arch_dir_y(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, start_y, arrow_size)
+                    arrow_shift(edge.lhs_dir, points.start_y, arrow_size)
                 } else {
-                    start_y - half_arrow_size
+                    points.start_y - half_arrow_size
                 };
                 let _ = write!(
                     out,
@@ -398,14 +407,14 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
 
             if edge.rhs_into == Some(true) {
                 let x_shift = if is_arch_dir_x(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, end_x, arrow_size)
+                    arrow_shift(edge.rhs_dir, points.end_x, arrow_size)
                 } else {
-                    end_x - half_arrow_size
+                    points.end_x - half_arrow_size
                 };
                 let y_shift = if is_arch_dir_y(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, end_y, arrow_size)
+                    arrow_shift(edge.rhs_dir, points.end_y, arrow_size)
                 } else {
-                    end_y - half_arrow_size
+                    points.end_y - half_arrow_size
                 };
                 let _ = write!(
                     out,

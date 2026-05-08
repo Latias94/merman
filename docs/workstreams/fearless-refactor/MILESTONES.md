@@ -339,6 +339,9 @@ Progress:
   `svg/parity/architecture/edges.rs`.
 - Refactored architecture edge label wrapping, bbox projection, and transform derivation into one
   local render plan so bounds accumulation and DOM emission share the same computation.
+- Replaced architecture edge label geometry arguments, recursive group bounds arguments, and the
+  render-model entry argument list with focused context structs, removing the
+  `svg/parity/architecture.rs` module-level `clippy::too_many_arguments` allow.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.

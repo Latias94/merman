@@ -355,6 +355,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p merman-render c4`, and `cargo run -p xtask -- compare-c4-svgs --check-dom
   --dom-decimals 3`.
+  Architecture edge label planning, recursive group bounds computation, and the render-model entry
+  point now use focused context structs instead of positional bundles, so
+  `svg/parity/architecture.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
+  merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
+  architecture`, and `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-decimals
+  3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

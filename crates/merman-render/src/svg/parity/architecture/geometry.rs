@@ -76,113 +76,133 @@ pub(super) struct GroupRect<'a> {
     pub(super) title: Option<&'a str>,
 }
 
-pub(super) fn compute_group_rects<'a>(
-    group_id: &'a str,
+pub(super) struct GroupRectComputer<'a> {
     icon_size_px: f64,
-    services_in_group: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
-    junctions_in_group: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
-    child_groups: &rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
-    service_bounds: &rustc_hash::FxHashMap<&'a str, Bounds>,
-    junction_bounds: &rustc_hash::FxHashMap<&'a str, Bounds>,
-    group_rects: &mut rustc_hash::FxHashMap<&'a str, Bounds>,
-    visiting: &mut rustc_hash::FxHashSet<&'a str>,
-) -> Option<Bounds> {
-    if let Some(b) = group_rects.get(group_id) {
-        return Some(b.clone());
-    }
-    if visiting.contains(group_id) {
-        return None;
-    }
-    visiting.insert(group_id);
+    services_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+    junctions_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+    child_groups: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+    service_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    group_rects: rustc_hash::FxHashMap<&'a str, Bounds>,
+    visiting: rustc_hash::FxHashSet<&'a str>,
+}
 
-    let mut content: Option<Bounds> = None;
-    if let Some(svcs) = services_in_group.get(group_id) {
-        for id in svcs {
-            if let Some(b) = service_bounds.get(id) {
-                let mut tmp = content;
-                extend_bounds(&mut tmp, b.clone());
-                content = tmp;
-            }
+impl<'a> GroupRectComputer<'a> {
+    pub(super) fn new(
+        icon_size_px: f64,
+        services_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        junctions_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        child_groups: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
+        service_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+        junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
+    ) -> Self {
+        Self {
+            icon_size_px,
+            services_in_group,
+            junctions_in_group,
+            child_groups,
+            service_bounds,
+            junction_bounds,
+            group_rects: rustc_hash::FxHashMap::default(),
+            visiting: rustc_hash::FxHashSet::default(),
         }
     }
-    if let Some(junctions) = junctions_in_group.get(group_id) {
-        for id in junctions {
-            if let Some(b) = junction_bounds.get(id) {
-                let mut tmp = content;
-                extend_bounds(&mut tmp, b.clone());
-                content = tmp;
+
+    pub(super) fn get(&self, group_id: &str) -> Option<&Bounds> {
+        self.group_rects.get(group_id)
+    }
+
+    pub(super) fn compute(&mut self, group_id: &'a str) -> Option<Bounds> {
+        if let Some(b) = self.group_rects.get(group_id) {
+            return Some(b.clone());
+        }
+        if self.visiting.contains(group_id) {
+            return None;
+        }
+        self.visiting.insert(group_id);
+
+        let mut content: Option<Bounds> = None;
+        if let Some(svcs) = self.services_in_group.get(group_id) {
+            for id in svcs {
+                if let Some(b) = self.service_bounds.get(id) {
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b.clone());
+                    content = tmp;
+                }
             }
         }
-    }
-    if let Some(children) = child_groups.get(group_id) {
-        // Empirical correction for nested compounds:
+        if let Some(junctions) = self.junctions_in_group.get(group_id) {
+            for id in junctions {
+                if let Some(b) = self.junction_bounds.get(id) {
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b.clone());
+                    content = tmp;
+                }
+            }
+        }
+        if let Some(children) = self.child_groups.get(group_id) {
+            // Empirical correction for nested compounds:
+            //
+            // Mermaid draws group rects from Cytoscape `node.boundingBox()` values. When groups
+            // nest, Cytoscape's compound bounds update uses a children bounding box that is not a
+            // perfect "union of already-padded child group rects" in SVG space; treating child
+            // group rects as fully-inclusive inputs makes parent groups slightly too large in
+            // parity-root viewBox comparisons (notably in deep group chains).
+            //
+            // Approximate this by shrinking child group bounds by half the group border width
+            // (2px / 2 == 1px) before unioning them into the parent's content bounds.
+            let child_group_inset = 1.0;
+            for child in children {
+                if let Some(b) = self.compute(child) {
+                    let b = if (b.max_x - b.min_x) > 2.0 * child_group_inset
+                        && (b.max_y - b.min_y) > 2.0 * child_group_inset
+                    {
+                        Bounds {
+                            min_x: b.min_x + child_group_inset,
+                            min_y: b.min_y + child_group_inset,
+                            max_x: b.max_x - child_group_inset,
+                            max_y: b.max_y - child_group_inset,
+                        }
+                    } else {
+                        b
+                    };
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b);
+                    content = tmp;
+                }
+            }
+        }
+
+        // Upstream Mermaid draws group rectangles from `cytoscape-node.boundingBox()` (default
+        // includes labels), then offsets by `halfIconSize`.
         //
-        // Mermaid draws group rects from Cytoscape `node.boundingBox()` values. When groups nest,
-        // Cytoscape's compound bounds update uses a children bounding box that is not a perfect
-        // "union of already-padded child group rects" in SVG space; treating child group rects as
-        // fully-inclusive inputs makes parent groups slightly too large in parity-root viewBox
-        // comparisons (notably in deep group chains).
-        //
-        // Approximate this by shrinking child group bounds by half the group border width
-        // (2px / 2 == 1px) before unioning them into the parent's content bounds.
-        let child_group_inset = 1.0;
-        for child in children {
-            if let Some(b) = compute_group_rects(
-                child,
-                icon_size_px,
-                services_in_group,
-                junctions_in_group,
-                child_groups,
-                service_bounds,
-                junction_bounds,
-                group_rects,
-                visiting,
-            ) {
-                let b = if (b.max_x - b.min_x) > 2.0 * child_group_inset
-                    && (b.max_y - b.min_y) > 2.0 * child_group_inset
-                {
-                    Bounds {
-                        min_x: b.min_x + child_group_inset,
-                        min_y: b.min_y + child_group_inset,
-                        max_x: b.max_x - child_group_inset,
-                        max_y: b.max_y - child_group_inset,
-                    }
-                } else {
-                    b
-                };
-                let mut tmp = content;
-                extend_bounds(&mut tmp, b);
-                content = tmp;
+        // The extra padding is a small empirical correction to approximate browser `boundingBox()`
+        // behavior in headless mode.
+        let _has_child_groups = self
+            .child_groups
+            .get(group_id)
+            .is_some_and(|v| !v.is_empty());
+        let extra = 2.5;
+        let pad = self.icon_size_px / 2.0 + extra;
+        let b = if let Some(content) = content {
+            Bounds {
+                min_x: content.min_x - pad,
+                min_y: content.min_y - pad,
+                max_x: content.max_x + pad,
+                max_y: content.max_y + pad,
             }
-        }
+        } else {
+            // Empty group: match Mermaid's "no children" fallback sizing behavior.
+            Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: self.icon_size_px.max(1.0),
+                max_y: self.icon_size_px.max(1.0),
+            }
+        };
+
+        self.group_rects.insert(group_id, b.clone());
+        self.visiting.remove(group_id);
+        Some(b)
     }
-
-    // Upstream Mermaid draws group rectangles from `cytoscape-node.boundingBox()` (default includes
-    // labels), then offsets by `halfIconSize`.
-    //
-    // The extra padding is a small empirical correction to approximate browser `boundingBox()`
-    // behavior in headless mode.
-    let _has_child_groups = child_groups.get(group_id).is_some_and(|v| !v.is_empty());
-    let extra = 2.5;
-    let pad = icon_size_px / 2.0 + extra;
-    let b = if let Some(content) = content {
-        Bounds {
-            min_x: content.min_x - pad,
-            min_y: content.min_y - pad,
-            max_x: content.max_x + pad,
-            max_y: content.max_y + pad,
-        }
-    } else {
-        // Empty group: match Mermaid's "no children" fallback sizing behavior.
-        Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: icon_size_px.max(1.0),
-            max_y: icon_size_px.max(1.0),
-        }
-    };
-
-    group_rects.insert(group_id, b.clone());
-    visiting.remove(group_id);
-    Some(b)
 }

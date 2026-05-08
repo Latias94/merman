@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
 
@@ -15,7 +13,7 @@ mod settings;
 mod viewport;
 
 use self::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
-use self::geometry::{GroupRect, bounds_from_rect, compute_group_rects, extend_bounds};
+use self::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use self::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
 use self::model::{ArchitectureModel, ArchitectureModelAccess};
 use self::nodes::{
@@ -37,6 +35,20 @@ fn timing_section<'a>(
     enabled.then(|| super::timing::TimingGuard::new(dst))
 }
 
+struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
+    layout: &'a ArchitectureDiagramLayout,
+    model: &'a M,
+    effective_config: &'a serde_json::Value,
+    sanitize_config_opt: Option<&'a merman_core::MermaidConfig>,
+    options: &'a SvgRenderOptions,
+}
+
+struct ArchitectureTimingState<'a> {
+    enabled: bool,
+    timings: &'a mut super::timing::RenderTimings,
+    total_start: std::time::Instant,
+}
+
 pub(super) fn render_architecture_diagram_svg_typed(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
@@ -48,14 +60,18 @@ pub(super) fn render_architecture_diagram_svg_typed(
     let total_start = std::time::Instant::now();
 
     render_architecture_diagram_svg_with_model(
-        layout,
-        model,
-        effective_config,
-        None,
-        options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        ArchitectureRenderRequest {
+            layout,
+            model,
+            effective_config,
+            sanitize_config_opt: None,
+            options,
+        },
+        ArchitectureTimingState {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
 }
 
@@ -70,14 +86,18 @@ pub(super) fn render_architecture_diagram_svg_typed_with_config(
     let total_start = std::time::Instant::now();
 
     render_architecture_diagram_svg_with_model(
-        layout,
-        model,
-        effective_config.as_value(),
-        Some(effective_config),
-        options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        ArchitectureRenderRequest {
+            layout,
+            model,
+            effective_config: effective_config.as_value(),
+            sanitize_config_opt: Some(effective_config),
+            options,
+        },
+        ArchitectureTimingState {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
 }
 
@@ -95,14 +115,18 @@ pub(super) fn render_architecture_diagram_svg(
         crate::json::from_value_ref(semantic)?
     };
     render_architecture_diagram_svg_with_model(
-        layout,
-        &model,
-        effective_config,
-        None,
-        options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        ArchitectureRenderRequest {
+            layout,
+            model: &model,
+            effective_config,
+            sanitize_config_opt: None,
+            options,
+        },
+        ArchitectureTimingState {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
 }
 
@@ -120,27 +144,38 @@ pub(super) fn render_architecture_diagram_svg_with_config(
         crate::json::from_value_ref(semantic)?
     };
     render_architecture_diagram_svg_with_model(
-        layout,
-        &model,
-        effective_config.as_value(),
-        Some(effective_config),
-        options,
-        timing_enabled,
-        &mut timings,
-        total_start,
+        ArchitectureRenderRequest {
+            layout,
+            model: &model,
+            effective_config: effective_config.as_value(),
+            sanitize_config_opt: Some(effective_config),
+            options,
+        },
+        ArchitectureTimingState {
+            enabled: timing_enabled,
+            timings: &mut timings,
+            total_start,
+        },
     )
 }
 
 fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
-    layout: &ArchitectureDiagramLayout,
-    model: &M,
-    effective_config: &serde_json::Value,
-    sanitize_config_opt: Option<&merman_core::MermaidConfig>,
-    options: &SvgRenderOptions,
-    timing_enabled: bool,
-    timings: &mut super::timing::RenderTimings,
-    total_start: std::time::Instant,
+    req: ArchitectureRenderRequest<'_, M>,
+    timing: ArchitectureTimingState<'_>,
 ) -> Result<String> {
+    let ArchitectureRenderRequest {
+        layout,
+        model,
+        effective_config,
+        sanitize_config_opt,
+        options,
+    } = req;
+    let ArchitectureTimingState {
+        enabled: timing_enabled,
+        timings,
+        total_start,
+    } = timing;
+
     fn section<'a>(
         enabled: bool,
         dst: &'a mut std::time::Duration,
@@ -379,26 +414,21 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         v.sort_unstable();
     }
 
-    let mut group_rect_bounds: rustc_hash::FxHashMap<&str, Bounds> =
-        rustc_hash::FxHashMap::default();
-    let mut visiting: rustc_hash::FxHashSet<&str> = rustc_hash::FxHashSet::default();
+    let mut group_rects_computer = GroupRectComputer::new(
+        icon_size_px,
+        &services_in_group,
+        &junctions_in_group,
+        &child_groups,
+        &service_bounds,
+        &junction_bounds,
+    );
     for g in model.groups() {
-        let _ = compute_group_rects(
-            g.id,
-            icon_size_px,
-            &services_in_group,
-            &junctions_in_group,
-            &child_groups,
-            &service_bounds,
-            &junction_bounds,
-            &mut group_rect_bounds,
-            &mut visiting,
-        );
+        let _ = group_rects_computer.compute(g.id);
     }
 
     let mut group_rects: Vec<GroupRect<'_>> = Vec::with_capacity(model.groups_len());
     for g in model.groups() {
-        if let Some(b) = group_rect_bounds.get(g.id) {
+        if let Some(b) = group_rects_computer.get(g.id) {
             group_rects.push(GroupRect {
                 id: g.id,
                 x: b.min_x,
