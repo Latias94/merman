@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed the obsolete generated `journey` root viewport override table and its renderer call site
+  after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and
   `RasterRequest` structs so parse/layout/render and SVG-raster handling share a smaller execution
   boundary without changing CLI behavior.

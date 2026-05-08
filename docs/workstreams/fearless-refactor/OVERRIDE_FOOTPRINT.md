@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `39`.
+Generated override modules scanned: `38`.
 
 Manual raw SVG/path bridge files scanned: `1`.
 
@@ -28,8 +28,9 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 19-entry reduction in `architecture_root_overrides_11_12_2.rs`
-after topology-driven viewport calibration replaced several fixture-specific root pins.
+The current snapshot reflects a 23-entry reduction in root viewport overrides after topology-driven
+viewport calibration replaced several fixture-specific root pins and the `journey` root viewport
+overrides were removed entirely.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.
@@ -49,7 +50,7 @@ layout tests and render code.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1555`.
+Total entries reported by `xtask`: `1551`.
 
 | file | entries |
 | --- | ---: |
@@ -60,7 +61,6 @@ Total entries reported by `xtask`: `1555`.
 | `er_root_overrides_11_12_2.rs` | 35 |
 | `flowchart_root_overrides_11_12_2.rs` | 266 |
 | `gitgraph_root_overrides_11_12_2.rs` | 232 |
-| `journey_root_overrides_11_12_2.rs` | 4 |
 | `kanban_root_overrides_11_12_2.rs` | 11 |
 | `mindmap_root_overrides_11_12_2.rs` | 80 |
 | `pie_root_overrides_11_12_2.rs` | 35 |

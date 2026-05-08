@@ -341,37 +341,20 @@ pub(super) fn render_journey_diagram_svg_model(
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
 
-    let mut max_w_attr = fmt(layout.width).to_string();
-    let mut viewbox_attr = format!(
+    let max_w_attr = fmt(layout.width).to_string();
+    let viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
-    let mut w_attr = fmt(vb_w).to_string();
-    let mut h_attr = fmt(vb_h).to_string();
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override,
-    );
-
-    let mut svg_h_attr = fmt(if vb_min_y < 0.0 {
+    let svg_h_attr = fmt(if vb_min_y < 0.0 {
         vb_h - vb_min_y
     } else {
         vb_h
     })
     .to_string();
-    let parts: Vec<&str> = viewbox_attr.split_whitespace().collect();
-    if parts.len() == 4 {
-        if let (Ok(min_y), Ok(h)) = (parts[1].parse::<f64>(), parts[3].parse::<f64>()) {
-            svg_h_attr = fmt(if min_y < 0.0 { h - min_y } else { h }).to_string();
-        }
-    }
 
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
     let extra_attrs: [(&str, &str); 2] = [
