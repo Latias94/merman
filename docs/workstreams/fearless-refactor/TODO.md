@@ -312,6 +312,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   remaining renderer helpers with repeated long argument lists. Sequence message, interaction,
   actor, actor-man glyph, and loop-text helpers now use focused render contexts, and
   `svg/parity/sequence` no longer needs a module-level `clippy::too_many_arguments` allow.
+  SVG path-bounds cubic/arc helpers now use explicit input structs, so `svg/parity/path_bounds.rs`
+  also no longer needs a module-level allow.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

@@ -61,7 +61,17 @@ pub(super) fn class_rough_line_double_path_and_bounds(
             fmt(y2),
         );
         super::super::path_bounds::svg_path_bounds_include_cubic(
-            &mut pb, x1, y1, c1x, c1y, c2x, c2y, x2, y2,
+            &mut pb,
+            super::super::path_bounds::CubicBezier {
+                x0: x1,
+                y0: y1,
+                x1: c1x,
+                y1: c1y,
+                x2: c2x,
+                y2: c2y,
+                x3: x2,
+                y3: y2,
+            },
         );
     }
 

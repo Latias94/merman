@@ -14,6 +14,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Replaced sequence parity renderer long-argument helpers with focused render contexts and removed
   the sequence module-level `clippy::too_many_arguments` allow while keeping sequence DOM parity
   green.
+- Structured SVG path-bounds cubic/arc inputs and removed the `path_bounds` module-level
+  `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

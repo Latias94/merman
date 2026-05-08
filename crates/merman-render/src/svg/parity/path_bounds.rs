@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 // Shared SVG path bounds helper extracted from parity.rs.
 //
 // Keep behavior identical to Mermaid@11.12.2 DOM parity baselines.
@@ -21,6 +19,18 @@ impl SvgPathBounds {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CubicBezier {
+    pub(super) x0: f64,
+    pub(super) y0: f64,
+    pub(super) x1: f64,
+    pub(super) y1: f64,
+    pub(super) x2: f64,
+    pub(super) y2: f64,
+    pub(super) x3: f64,
+    pub(super) y3: f64,
+}
+
 fn cubic_eval(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
     let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
     let b = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
@@ -28,32 +38,13 @@ fn cubic_eval(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
     ((a * t + b) * t + c) * t + p0
 }
 
-pub(super) fn svg_path_bounds_include_cubic(
-    b: &mut SvgPathBounds,
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    x3: f64,
-    y3: f64,
-) {
-    b.include_point(x0, y0);
-    b.include_point(x3, y3);
+pub(super) fn svg_path_bounds_include_cubic(b: &mut SvgPathBounds, c: CubicBezier) {
+    b.include_point(c.x0, c.y0);
+    b.include_point(c.x3, c.y3);
 
-    fn include_extrema(
-        b: &mut SvgPathBounds,
-        p0: f64,
-        p1: f64,
-        p2: f64,
-        p3: f64,
-        is_x: bool,
-        fixed0: f64,
-        fixed1: f64,
-        fixed2: f64,
-        fixed3: f64,
-    ) {
+    fn include_extrema(b: &mut SvgPathBounds, primary: [f64; 4], secondary: [f64; 4], is_x: bool) {
+        let [p0, p1, p2, p3] = primary;
+        let [fixed0, fixed1, fixed2, fixed3] = secondary;
         let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
         let bb = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
         let c = -3.0 * p0 + 3.0 * p1;
@@ -95,8 +86,8 @@ pub(super) fn svg_path_bounds_include_cubic(
         }
     }
 
-    include_extrema(b, x0, x1, x2, x3, true, y0, y1, y2, y3);
-    include_extrema(b, y0, y1, y2, y3, false, x0, x1, x2, x3);
+    include_extrema(b, [c.x0, c.x1, c.x2, c.x3], [c.y0, c.y1, c.y2, c.y3], true);
+    include_extrema(b, [c.y0, c.y1, c.y2, c.y3], [c.x0, c.x1, c.x2, c.x3], false);
 }
 
 pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
@@ -180,7 +171,19 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         let cy1 = y0 + (2.0 / 3.0) * (y1 - y0);
         let cx2 = x2 + (2.0 / 3.0) * (x1 - x2);
         let cy2 = y2 + (2.0 / 3.0) * (y1 - y2);
-        svg_path_bounds_include_cubic(b, x0, y0, cx1, cy1, cx2, cy2, x2, y2);
+        svg_path_bounds_include_cubic(
+            b,
+            CubicBezier {
+                x0,
+                y0,
+                x1: cx1,
+                y1: cy1,
+                x2: cx2,
+                y2: cy2,
+                x3: x2,
+                y3: y2,
+            },
+        );
     }
 
     fn normalize_angle(mut a: f64) -> f64 {
@@ -209,9 +212,8 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         det.atan2(dot)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn arc_include_bounds(
-        b: &mut SvgPathBounds,
+    #[derive(Debug, Clone, Copy)]
+    struct ArcBoundsInput {
         x0: f64,
         y0: f64,
         rx0: f64,
@@ -221,7 +223,20 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         sweep: bool,
         x1: f64,
         y1: f64,
-    ) {
+    }
+
+    fn arc_include_bounds(b: &mut SvgPathBounds, arc: ArcBoundsInput) {
+        let ArcBoundsInput {
+            x0,
+            y0,
+            rx0,
+            ry0,
+            x_axis_rotation_deg,
+            large_arc,
+            sweep,
+            x1,
+            y1,
+        } = arc;
         // Per SVG 1.1 endpoint-to-center arc conversion.
         // See: https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
         if rx0.abs() < 1e-12 || ry0.abs() < 1e-12 {
@@ -498,7 +513,19 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y3 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                svg_path_bounds_include_cubic(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                svg_path_bounds_include_cubic(
+                    cur,
+                    CubicBezier {
+                        x0: cx,
+                        y0: cy,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        x3,
+                        y3,
+                    },
+                );
                 cx = x3;
                 cy = y3;
                 last_cubic_ctrl = Some((x2, y2));
@@ -539,7 +566,19 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                         ny3 += cy;
                     }
                     let cur = ensure_bounds(&mut b, cx, cy);
-                    svg_path_bounds_include_cubic(cur, cx, cy, nx1, ny1, nx2, ny2, nx3, ny3);
+                    svg_path_bounds_include_cubic(
+                        cur,
+                        CubicBezier {
+                            x0: cx,
+                            y0: cy,
+                            x1: nx1,
+                            y1: ny1,
+                            x2: nx2,
+                            y2: ny2,
+                            x3: nx3,
+                            y3: ny3,
+                        },
+                    );
                     cx = nx3;
                     cy = ny3;
                     last_cubic_ctrl = Some((nx2, ny2));
@@ -569,7 +608,19 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y3 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                svg_path_bounds_include_cubic(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                svg_path_bounds_include_cubic(
+                    cur,
+                    CubicBezier {
+                        x0: cx,
+                        y0: cy,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        x3,
+                        y3,
+                    },
+                );
                 cx = x3;
                 cy = y3;
                 last_cubic_ctrl = Some((x2, y2));
@@ -632,7 +683,20 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 let large_arc = laf.abs() > 0.5;
                 let sweep = sf.abs() > 0.5;
                 if let Some(cur) = b.as_mut() {
-                    arc_include_bounds(cur, cx, cy, rx, ry, rot, large_arc, sweep, x1, y1);
+                    arc_include_bounds(
+                        cur,
+                        ArcBoundsInput {
+                            x0: cx,
+                            y0: cy,
+                            rx0: rx,
+                            ry0: ry,
+                            x_axis_rotation_deg: rot,
+                            large_arc,
+                            sweep,
+                            x1,
+                            y1,
+                        },
+                    );
                 } else {
                     let mut cur = SvgPathBounds {
                         min_x: cx,
@@ -640,7 +704,20 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                         max_x: cx,
                         max_y: cy,
                     };
-                    arc_include_bounds(&mut cur, cx, cy, rx, ry, rot, large_arc, sweep, x1, y1);
+                    arc_include_bounds(
+                        &mut cur,
+                        ArcBoundsInput {
+                            x0: cx,
+                            y0: cy,
+                            rx0: rx,
+                            ry0: ry,
+                            x_axis_rotation_deg: rot,
+                            large_arc,
+                            sweep,
+                            x1,
+                            y1,
+                        },
+                    );
                     b = Some(cur);
                 }
                 cx = x1;

@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::path_bounds::{SvgPathBounds, svg_path_bounds_include_cubic};
+use super::path_bounds::{CubicBezier, SvgPathBounds, svg_path_bounds_include_cubic};
 use super::*;
 
 #[derive(Debug, Default)]
@@ -53,7 +53,19 @@ impl BoundsBuilder {
             });
         }
         if let Some(b) = &mut self.bounds {
-            svg_path_bounds_include_cubic(b, x0, y0, x1, y1, x2, y2, x, y);
+            svg_path_bounds_include_cubic(
+                b,
+                CubicBezier {
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x3: x,
+                    y3: y,
+                },
+            );
         }
         self.cur = Some((x, y));
     }
