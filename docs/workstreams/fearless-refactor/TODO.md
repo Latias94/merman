@@ -307,10 +307,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `architecture/settings.rs`, `architecture/nodes.rs`, `architecture/edges.rs`,
   `architecture/geometry.rs`, `architecture/labels.rs`, `architecture/icons.rs`,
   `architecture/foreign_object.rs`, `architecture/root.rs`, and `architecture/viewport.rs`.
-- [ ] Prefer small render context structs over long parameter lists.
-  Progress: sequence block frame helpers now share `SequenceBlockRenderContext`; keep open for
-  remaining renderer helpers with repeated long argument lists. Sequence message, interaction,
-  actor, actor-man glyph, and loop-text helpers now use focused render contexts, and
+- [x] Prefer small render context structs over long parameter lists.
+  Result: sequence block frame helpers now share `SequenceBlockRenderContext`. Sequence message,
+  interaction, actor, actor-man glyph, and loop-text helpers now use focused render contexts, and
   `svg/parity/sequence` no longer needs a module-level `clippy::too_many_arguments` allow.
   SVG path-bounds cubic/arc helpers now use explicit input structs, so `svg/parity/path_bounds.rs`
   also no longer needs a module-level allow.
@@ -382,6 +381,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p merman-render flowchart`, and `cargo run -p xtask -- compare-flowchart-svgs
   --check-dom --dom-decimals 3`.
+  Core flowchart semantic application now uses `FlowchartSemanticContext`, state layout extraction
+  uses `TypedLayoutContext` / `JsonLayoutContext`, and `StateDb::add_state` merges `StateStmt`
+  directly. This removes the remaining source `clippy::too_many_arguments` allows. Evidence:
+  `cargo clippy -p merman-core --all-targets --all-features -- -D warnings`, `cargo nextest run -p
+  merman-core`, `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3`, and
+  `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3`, plus
+  `cargo run -p xtask -- verify --strict`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

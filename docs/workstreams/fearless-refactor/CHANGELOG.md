@@ -48,6 +48,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Replaced flowchart label, node layout, recursive layout, place-graph, and cluster rect argument
   bundles with request/context structs, removing the `flowchart/mod.rs` module-level
   `clippy::too_many_arguments` allow.
+- Replaced core flowchart semantic and state layout long-argument helpers with
+  `FlowchartSemanticContext`, `TypedLayoutContext`, and `JsonLayoutContext`, and made
+  `StateDb::add_state` merge `StateStmt` directly. Source code no longer carries
+  `clippy::too_many_arguments` allows.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

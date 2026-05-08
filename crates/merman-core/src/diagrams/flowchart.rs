@@ -45,7 +45,7 @@ use accessibility::extract_flowchart_accessibility_statements;
 use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
-use semantic::apply_semantic_statements;
+use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{apply_shape_data_to_node, parse_shape_data_yaml, yaml_to_bool, yaml_to_string};
 use subgraph::SubgraphBuilder;
 
@@ -112,20 +112,22 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
-    apply_semantic_statements(
-        &ast.statements,
-        &mut nodes,
-        &mut node_index,
-        &mut edges,
-        &mut builder.subgraphs,
-        &mut subgraph_index,
-        &mut class_defs,
-        &mut tooltips,
-        &mut edge_defaults,
-        security_level_loose,
-        &meta.diagram_type,
-        &meta.effective_config,
-    )?;
+    {
+        let mut semantic_ctx = FlowchartSemanticContext {
+            nodes: &mut nodes,
+            node_index: &mut node_index,
+            edges: &mut edges,
+            subgraphs: &mut builder.subgraphs,
+            subgraph_index: &mut subgraph_index,
+            class_defs: &mut class_defs,
+            tooltips: &mut tooltips,
+            edge_defaults: &mut edge_defaults,
+            security_level_loose,
+            diagram_type: &meta.diagram_type,
+            config: &meta.effective_config,
+        };
+        apply_semantic_statements(&ast.statements, &mut semantic_ctx)?;
+    }
 
     fn get_layout_shape(n: &Node) -> String {
         // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at 11.12.2.
@@ -281,20 +283,22 @@ pub fn parse_flowchart_model_for_render(
     }
 
     let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
-    apply_semantic_statements(
-        &ast.statements,
-        &mut nodes,
-        &mut node_index,
-        &mut edges,
-        &mut builder.subgraphs,
-        &mut subgraph_index,
-        &mut class_defs,
-        &mut tooltips,
-        &mut edge_defaults,
-        security_level_loose,
-        &meta.diagram_type,
-        &meta.effective_config,
-    )?;
+    {
+        let mut semantic_ctx = FlowchartSemanticContext {
+            nodes: &mut nodes,
+            node_index: &mut node_index,
+            edges: &mut edges,
+            subgraphs: &mut builder.subgraphs,
+            subgraph_index: &mut subgraph_index,
+            class_defs: &mut class_defs,
+            tooltips: &mut tooltips,
+            edge_defaults: &mut edge_defaults,
+            security_level_loose,
+            diagram_type: &meta.diagram_type,
+            config: &meta.effective_config,
+        };
+        apply_semantic_statements(&ast.statements, &mut semantic_ctx)?;
+    }
 
     fn get_layout_shape(n: &Node) -> String {
         // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at 11.12.2.

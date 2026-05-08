@@ -197,18 +197,7 @@ impl StateDb {
         for stmt in stmts {
             match stmt {
                 Stmt::State(s) => {
-                    self.add_state(
-                        &s.id,
-                        &s.ty,
-                        s.doc.clone(),
-                        s.description.as_deref(),
-                        &s.descriptions,
-                        s.note.clone(),
-                        &s.classes,
-                        &s.styles,
-                        &s.text_styles,
-                        s.start,
-                    );
+                    self.add_state(&s);
                 }
                 Stmt::Relation {
                     state1,
@@ -267,47 +256,35 @@ impl StateDb {
         self.ensure_state(id).descriptions.push(clean);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn add_state(
-        &mut self,
-        id: &str,
-        ty: &str,
-        doc: Option<Vec<Stmt>>,
-        description: Option<&str>,
-        descriptions: &[String],
-        note: Option<Note>,
-        classes: &[String],
-        styles: &[String],
-        text_styles: &[String],
-        start: Option<bool>,
-    ) {
+    fn add_state(&mut self, state: &StateStmt) {
+        let id = state.id.trim();
         let st = self.ensure_state(id);
-        if st.doc.is_none() && doc.is_some() {
-            st.doc = doc;
+        if st.doc.is_none() && state.doc.is_some() {
+            st.doc = state.doc.clone();
         }
-        if st.ty == "default" && ty != "default" {
-            st.ty = ty.to_string();
+        if st.ty == "default" && state.ty != "default" {
+            st.ty = state.ty.clone();
         }
         if st.start.is_none() {
-            st.start = start;
+            st.start = state.start;
         }
-        if note.is_some() {
-            st.note = note;
+        if state.note.is_some() {
+            st.note = state.note.clone();
         }
 
-        if let Some(d) = description {
+        if let Some(d) = state.description.as_deref() {
             self.add_description(id, d);
         }
-        for d in descriptions {
+        for d in &state.descriptions {
             self.add_description(id, d);
         }
-        for c in classes {
+        for c in &state.classes {
             self.set_css_class(id, c);
         }
-        for s in styles {
+        for s in &state.styles {
             self.set_style(id, s);
         }
-        for ts in text_styles {
+        for ts in &state.text_styles {
             self.set_text_style(id, ts);
         }
     }
@@ -316,30 +293,8 @@ impl StateDb {
         let id1 = s1.id.trim();
         let id2 = s2.id.trim();
 
-        self.add_state(
-            id1,
-            &s1.ty,
-            s1.doc.clone(),
-            s1.description.as_deref(),
-            &s1.descriptions,
-            s1.note.clone(),
-            &s1.classes,
-            &s1.styles,
-            &s1.text_styles,
-            s1.start,
-        );
-        self.add_state(
-            id2,
-            &s2.ty,
-            s2.doc.clone(),
-            s2.description.as_deref(),
-            &s2.descriptions,
-            s2.note.clone(),
-            &s2.classes,
-            &s2.styles,
-            &s2.text_styles,
-            s2.start,
-        );
+        self.add_state(s1);
+        self.add_state(s2);
 
         let relation_title = title
             .map(|t| t.trim().to_string())
@@ -747,78 +702,45 @@ fn build_layout_data_typed(
     let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
     let mut graph_item_count: usize = 0;
 
-    #[allow(clippy::too_many_arguments)]
+    struct TypedLayoutContext<'a> {
+        states: &'a HashMap<String, StateRecord>,
+        classes: &'a IndexMap<String, StyleClass>,
+        config: &'a MermaidConfig,
+        nodes: &'a mut Vec<StateDiagramRenderNode>,
+        node_index: &'a mut HashMap<String, usize>,
+        edges: &'a mut Vec<StateDiagramRenderEdge>,
+        node_db: &'a mut HashMap<String, NodeScratch>,
+        graph_item_count: &'a mut usize,
+    }
+
     fn setup_doc(
+        ctx: &mut TypedLayoutContext<'_>,
         parent: Option<&StateStmt>,
         doc: &[Stmt],
-        states: &HashMap<String, StateRecord>,
-        classes: &IndexMap<String, StyleClass>,
-        config: &MermaidConfig,
-        nodes: &mut Vec<StateDiagramRenderNode>,
-        node_index: &mut HashMap<String, usize>,
-        edges: &mut Vec<StateDiagramRenderEdge>,
-        node_db: &mut HashMap<String, NodeScratch>,
-        graph_item_count: &mut usize,
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
         for item in doc {
             match item {
-                Stmt::State(s) => data_fetcher(
-                    parent,
-                    s,
-                    states,
-                    classes,
-                    config,
-                    nodes,
-                    node_index,
-                    edges,
-                    node_db,
-                    graph_item_count,
-                    alt_flag,
-                )?,
+                Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
                 Stmt::Relation {
                     state1,
                     state2,
                     description,
                 } => {
-                    data_fetcher(
-                        parent,
-                        state1,
-                        states,
-                        classes,
-                        config,
-                        nodes,
-                        node_index,
-                        edges,
-                        node_db,
-                        graph_item_count,
-                        alt_flag,
-                    )?;
-                    data_fetcher(
-                        parent,
-                        state2,
-                        states,
-                        classes,
-                        config,
-                        nodes,
-                        node_index,
-                        edges,
-                        node_db,
-                        graph_item_count,
-                        alt_flag,
-                    )?;
+                    data_fetcher(ctx, parent, state1, alt_flag)?;
+                    data_fetcher(ctx, parent, state2, alt_flag)?;
 
                     let edge_label_raw = description.clone().unwrap_or_default();
-                    let edge_label = sanitize_text(&edge_label_raw, config);
-                    edges.push(StateDiagramRenderEdge {
-                        id: format!("edge{graph_item_count}"),
+                    let edge_label = sanitize_text(&edge_label_raw, ctx.config);
+                    ctx.edges.push(StateDiagramRenderEdge {
+                        id: format!("edge{}", *ctx.graph_item_count),
                         start: state1.id.clone(),
                         end: state2.id.clone(),
                         arrow_type_end: "arrow_barb".to_string(),
                         classes: CSS_EDGE.to_string(),
                         label: edge_label,
                     });
-                    *graph_item_count += 1;
+                    *ctx.graph_item_count += 1;
                 }
                 _ => {}
             }
@@ -826,18 +748,10 @@ fn build_layout_data_typed(
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn data_fetcher(
+        ctx: &mut TypedLayoutContext<'_>,
         parent: Option<&StateStmt>,
         parsed_item: &StateStmt,
-        states: &HashMap<String, StateRecord>,
-        classes: &IndexMap<String, StyleClass>,
-        config: &MermaidConfig,
-        nodes: &mut Vec<StateDiagramRenderNode>,
-        node_index: &mut HashMap<String, usize>,
-        edges: &mut Vec<StateDiagramRenderEdge>,
-        node_db: &mut HashMap<String, NodeScratch>,
-        graph_item_count: &mut usize,
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
         let item_id = parsed_item.id.clone();
@@ -845,11 +759,15 @@ fn build_layout_data_typed(
             return Ok(());
         }
 
+        let states = ctx.states;
+        let classes = ctx.classes;
+        let config = ctx.config;
+
         let db_state = states.get(&item_id);
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
 
-        let entry = node_db.entry(item_id.clone()).or_insert_with(|| {
+        let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
             if !class_str.trim().is_empty() {
                 css_classes.push_str(class_str.trim());
@@ -957,7 +875,7 @@ fn build_layout_data_typed(
             }
         }
 
-        let dom_id = state_dom_id(&item_id, *graph_item_count, None);
+        let dom_id = state_dom_id(&item_id, *ctx.graph_item_count, None);
         let mut label = Some(entry.label.clone());
         if entry.shape == SHAPE_DIVIDER {
             label = Some(Value::String(String::new()));
@@ -995,10 +913,10 @@ fn build_layout_data_typed(
 
             n.text = sanitize_text(&n.text, config);
 
-            let note_id = format!("{item_id}{NOTE_ID}-{graph_item_count}");
+            let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
             let parent_node_id = format!("{item_id}{PARENT_ID}");
-            let note_dom_id = state_dom_id(&item_id, *graph_item_count, Some(NOTE));
-            let group_dom_id = state_dom_id(&item_id, *graph_item_count, Some(PARENT));
+            let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
+            let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
 
             let mut group_node = StateDiagramRenderNode {
                 id: parent_node_id.clone(),
@@ -1040,16 +958,16 @@ fn build_layout_data_typed(
             };
             note_node.css_compiled_styles = compiled_styles(&note_node.css_classes, classes);
 
-            upsert_node_typed(nodes, node_index, group_node);
-            upsert_node_typed(nodes, node_index, note_node);
-            upsert_node_typed(nodes, node_index, node.clone());
+            upsert_node_typed(ctx.nodes, ctx.node_index, group_node);
+            upsert_node_typed(ctx.nodes, ctx.node_index, note_node);
+            upsert_node_typed(ctx.nodes, ctx.node_index, node.clone());
 
             let (mut from, mut to) = (item_id.clone(), note_id);
             if n.position.as_deref() == Some("left of") {
                 std::mem::swap(&mut from, &mut to);
             }
 
-            edges.push(StateDiagramRenderEdge {
+            ctx.edges.push(StateDiagramRenderEdge {
                 id: format!("{from}-{to}"),
                 start: from,
                 end: to,
@@ -1057,43 +975,31 @@ fn build_layout_data_typed(
                 classes: CSS_EDGE_NOTE_EDGE.to_string(),
                 label: String::new(),
             });
-            *graph_item_count += 1;
+            *ctx.graph_item_count += 1;
         } else {
-            upsert_node_typed(nodes, node_index, node);
+            upsert_node_typed(ctx.nodes, ctx.node_index, node);
         }
 
         if let Some(doc) = parsed_item.doc.as_ref() {
-            setup_doc(
-                Some(parsed_item),
-                doc,
-                states,
-                classes,
-                config,
-                nodes,
-                node_index,
-                edges,
-                node_db,
-                graph_item_count,
-                !alt_flag,
-            )?;
+            setup_doc(ctx, Some(parsed_item), doc, !alt_flag)?;
         }
 
         Ok(())
     }
 
-    setup_doc(
-        None,
-        root_doc,
-        states,
-        classes,
-        config,
-        &mut nodes,
-        &mut node_index,
-        &mut edges,
-        &mut node_db,
-        &mut graph_item_count,
-        false,
-    )?;
+    {
+        let mut ctx = TypedLayoutContext {
+            states,
+            classes,
+            config,
+            nodes: &mut nodes,
+            node_index: &mut node_index,
+            edges: &mut edges,
+            node_db: &mut node_db,
+            graph_item_count: &mut graph_item_count,
+        };
+        setup_doc(&mut ctx, None, root_doc, false)?;
+    }
 
     // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
     for node in nodes.iter_mut() {
@@ -1138,75 +1044,39 @@ fn build_layout_data(
     let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
     let mut graph_item_count: usize = 0;
 
-    #[allow(clippy::too_many_arguments)]
+    struct JsonLayoutContext<'a> {
+        states: &'a HashMap<String, StateRecord>,
+        classes: &'a IndexMap<String, StyleClass>,
+        config: &'a MermaidConfig,
+        look: &'a Value,
+        nodes: &'a mut Vec<Value>,
+        node_index: &'a mut HashMap<String, usize>,
+        edges: &'a mut Vec<Value>,
+        node_db: &'a mut HashMap<String, NodeScratch>,
+        graph_item_count: &'a mut usize,
+    }
+
     fn setup_doc(
+        ctx: &mut JsonLayoutContext<'_>,
         parent: Option<&StateStmt>,
         doc: &[Stmt],
-        states: &HashMap<String, StateRecord>,
-        classes: &IndexMap<String, StyleClass>,
-        config: &MermaidConfig,
-        look: &Value,
-        nodes: &mut Vec<Value>,
-        node_index: &mut HashMap<String, usize>,
-        edges: &mut Vec<Value>,
-        node_db: &mut HashMap<String, NodeScratch>,
-        graph_item_count: &mut usize,
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
         for item in doc {
             match item {
-                Stmt::State(s) => data_fetcher(
-                    parent,
-                    s,
-                    states,
-                    classes,
-                    config,
-                    look,
-                    nodes,
-                    node_index,
-                    edges,
-                    node_db,
-                    graph_item_count,
-                    alt_flag,
-                )?,
+                Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
                 Stmt::Relation {
                     state1,
                     state2,
                     description,
                 } => {
-                    data_fetcher(
-                        parent,
-                        state1,
-                        states,
-                        classes,
-                        config,
-                        look,
-                        nodes,
-                        node_index,
-                        edges,
-                        node_db,
-                        graph_item_count,
-                        alt_flag,
-                    )?;
-                    data_fetcher(
-                        parent,
-                        state2,
-                        states,
-                        classes,
-                        config,
-                        look,
-                        nodes,
-                        node_index,
-                        edges,
-                        node_db,
-                        graph_item_count,
-                        alt_flag,
-                    )?;
+                    data_fetcher(ctx, parent, state1, alt_flag)?;
+                    data_fetcher(ctx, parent, state2, alt_flag)?;
 
                     let edge_label_raw = description.clone().unwrap_or_default();
-                    let edge_label = sanitize_text(&edge_label_raw, config);
-                    edges.push(json!({
-                        "id": format!("edge{graph_item_count}"),
+                    let edge_label = sanitize_text(&edge_label_raw, ctx.config);
+                    ctx.edges.push(json!({
+                        "id": format!("edge{}", *ctx.graph_item_count),
                         "start": state1.id,
                         "end": state2.id,
                         "arrowhead": "normal",
@@ -1219,9 +1089,9 @@ fn build_layout_data(
                         "labelType": G_EDGE_LABELTYPE,
                         "thickness": G_EDGE_THICKNESS,
                         "classes": CSS_EDGE,
-                        "look": look,
+                        "look": ctx.look,
                     }));
-                    *graph_item_count += 1;
+                    *ctx.graph_item_count += 1;
                 }
                 _ => {}
             }
@@ -1229,19 +1099,10 @@ fn build_layout_data(
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn data_fetcher(
+        ctx: &mut JsonLayoutContext<'_>,
         parent: Option<&StateStmt>,
         parsed_item: &StateStmt,
-        states: &HashMap<String, StateRecord>,
-        classes: &IndexMap<String, StyleClass>,
-        config: &MermaidConfig,
-        look: &Value,
-        nodes: &mut Vec<Value>,
-        node_index: &mut HashMap<String, usize>,
-        edges: &mut Vec<Value>,
-        node_db: &mut HashMap<String, NodeScratch>,
-        graph_item_count: &mut usize,
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
         let item_id = parsed_item.id.clone();
@@ -1249,11 +1110,16 @@ fn build_layout_data(
             return Ok(());
         }
 
+        let states = ctx.states;
+        let classes = ctx.classes;
+        let config = ctx.config;
+        let look = ctx.look;
+
         let db_state = states.get(&item_id);
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
 
-        let entry = node_db.entry(item_id.clone()).or_insert_with(|| {
+        let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
             if !class_str.trim().is_empty() {
                 css_classes.push_str(class_str.trim());
@@ -1394,7 +1260,7 @@ fn build_layout_data(
             "cssStyles": entry.css_styles,
             "id": entry.id,
             "dir": entry.dir,
-            "domId": state_dom_id(&item_id, *graph_item_count, None),
+            "domId": state_dom_id(&item_id, *ctx.graph_item_count, None),
             "type": entry.node_type,
             "isGroup": entry.is_group,
             "padding": 8,
@@ -1422,10 +1288,10 @@ fn build_layout_data(
 
             n.text = sanitize_text(&n.text, config);
 
-            let note_id = format!("{item_id}{NOTE_ID}-{graph_item_count}");
+            let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
             let parent_node_id = format!("{item_id}{PARENT_ID}");
-            let note_dom_id = state_dom_id(&item_id, *graph_item_count, Some(NOTE));
-            let group_dom_id = state_dom_id(&item_id, *graph_item_count, Some(PARENT));
+            let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
+            let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
 
             let group_data = json!({
                 "labelStyle": "",
@@ -1460,16 +1326,16 @@ fn build_layout_data(
                 "parentId": format!("{item_id}{PARENT_ID}"),
             });
 
-            upsert_node(nodes, node_index, group_data);
-            upsert_node(nodes, node_index, note_data.clone());
-            upsert_node(nodes, node_index, node_data.clone());
+            upsert_node(ctx.nodes, ctx.node_index, group_data);
+            upsert_node(ctx.nodes, ctx.node_index, note_data.clone());
+            upsert_node(ctx.nodes, ctx.node_index, node_data.clone());
 
             // style compilation after insertion
             for id in [parent_node_id.as_str(), note_id.as_str(), item_id.as_str()] {
-                if let Some(idx) = node_index.get(id).copied() {
-                    let css = nodes[idx]["cssClasses"].as_str().unwrap_or("");
+                if let Some(idx) = ctx.node_index.get(id).copied() {
+                    let css = ctx.nodes[idx]["cssClasses"].as_str().unwrap_or("");
                     let compiled = compiled_styles(css, classes);
-                    if let Some(obj) = nodes[idx].as_object_mut() {
+                    if let Some(obj) = ctx.nodes[idx].as_object_mut() {
                         obj.insert("cssCompiledStyles".to_string(), json!(compiled));
                     }
                 }
@@ -1480,7 +1346,7 @@ fn build_layout_data(
                 std::mem::swap(&mut from, &mut to);
             }
 
-            edges.push(json!({
+            ctx.edges.push(json!({
                 "id": format!("{from}-{to}"),
                 "start": from,
                 "end": to,
@@ -1495,50 +1361,37 @@ fn build_layout_data(
                 "thickness": G_EDGE_THICKNESS,
                 "look": look,
             }));
-            *graph_item_count += 1;
+            *ctx.graph_item_count += 1;
         } else {
             let css = node_data["cssClasses"].as_str().unwrap_or("");
             let compiled = compiled_styles(css, classes);
             if let Some(obj) = node_data.as_object_mut() {
                 obj.insert("cssCompiledStyles".to_string(), json!(compiled));
             }
-            upsert_node(nodes, node_index, node_data);
+            upsert_node(ctx.nodes, ctx.node_index, node_data);
         }
 
         if let Some(doc) = parsed_item.doc.as_ref() {
-            setup_doc(
-                Some(parsed_item),
-                doc,
-                states,
-                classes,
-                config,
-                look,
-                nodes,
-                node_index,
-                edges,
-                node_db,
-                graph_item_count,
-                !alt_flag,
-            )?;
+            setup_doc(ctx, Some(parsed_item), doc, !alt_flag)?;
         }
 
         Ok(())
     }
 
-    setup_doc(
-        None,
-        root_doc,
-        states,
-        classes,
-        config,
-        look,
-        &mut nodes,
-        &mut node_index,
-        &mut edges,
-        &mut node_db,
-        &mut graph_item_count,
-        false,
-    )?;
+    {
+        let mut ctx = JsonLayoutContext {
+            states,
+            classes,
+            config,
+            look,
+            nodes: &mut nodes,
+            node_index: &mut node_index,
+            edges: &mut edges,
+            node_db: &mut node_db,
+            graph_item_count: &mut graph_item_count,
+        };
+        setup_doc(&mut ctx, None, root_doc, false)?;
+    }
 
     // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
     for node in nodes.iter_mut() {
