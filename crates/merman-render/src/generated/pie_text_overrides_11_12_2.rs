@@ -23,10 +23,6 @@ pub fn pie_radius_px() -> f64 {
     185.0
 }
 
-pub fn pie_outer_radius_px() -> f64 {
-    186.0
-}
-
 pub fn pie_legend_label_font_size_px() -> f64 {
     17.0
 }

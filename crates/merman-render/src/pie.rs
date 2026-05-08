@@ -304,7 +304,7 @@ pub fn layout_pie_diagram_typed(
 
     let center = pie_text_overrides::pie_center_px();
     let radius = pie_text_overrides::pie_radius_px();
-    let outer_radius = pie_text_overrides::pie_outer_radius_px();
+    let outer_radius = radius + 1.0;
     let label_radius = radius.max(0.0) * 0.75;
     let legend_x = 12.0 * legend_rect_size;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;

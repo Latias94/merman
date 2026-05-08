@@ -15,10 +15,6 @@ pub fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
     font_size_px.max(1.0) * 1.1875
 }
 
-pub fn sequence_note_text_pad_total_px() -> f64 {
-    20.0
-}
-
 pub fn sequence_self_message_frame_extra_y_px() -> f64 {
     60.0
 }

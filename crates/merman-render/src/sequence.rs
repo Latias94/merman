@@ -1046,7 +1046,7 @@ pub fn layout_sequence_diagram_typed(
     let note_gap = 10.0;
     // Mermaid note boxes use 10px vertical padding on both sides (20px total), on top of the
     // SVG `getBBox().height` of the note text.
-    let note_text_pad_total = sequence_text_overrides::sequence_note_text_pad_total_px();
+    let note_text_pad_total = 2.0 * note_gap;
     let note_top_offset = message_step - note_gap;
 
     let mut cursor_y = actor_top_offset_y + max_actor_visual_height + message_step;
@@ -2101,10 +2101,6 @@ mod tests {
         assert_eq!(
             sequence_text_overrides::sequence_text_line_step_px(16.0),
             19.0
-        );
-        assert_eq!(
-            sequence_text_overrides::sequence_note_text_pad_total_px(),
-            20.0
         );
         assert_eq!(
             sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
