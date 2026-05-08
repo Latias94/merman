@@ -422,6 +422,8 @@ impl Engine {
                 crate::diagrams::state::parse_state_model_for_render(code, meta)
                     .map(RenderSemanticModel::State)
             }
+            "zenuml" => crate::diagrams::zenuml::parse_zenuml_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sequence),
             "sequence" => crate::diagrams::sequence::parse_sequence_model_for_render(code, meta)
                 .map(RenderSemanticModel::Sequence),
             "flowchart-v2" | "flowchart" | "flowchart-elk" => {

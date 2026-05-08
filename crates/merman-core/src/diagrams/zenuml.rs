@@ -10,6 +10,19 @@ use serde_json::Value;
 ///
 /// This is intended to support basic `Actor->Actor: message` diagrams for headless integrations.
 pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let sequence_code = translate_zenuml_to_sequence(code, meta)?;
+    crate::diagrams::sequence::parse_sequence(&sequence_code, meta)
+}
+
+pub fn parse_zenuml_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<crate::diagrams::sequence::SequenceDiagramRenderModel> {
+    let sequence_code = translate_zenuml_to_sequence(code, meta)?;
+    crate::diagrams::sequence::parse_sequence_model_for_render(&sequence_code, meta)
+}
+
+fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<String> {
     let mut out: Vec<String> = vec!["sequenceDiagram".to_string()];
 
     let mut saw_header = false;
@@ -557,12 +570,12 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    crate::diagrams::sequence::parse_sequence(&out.join("\n"), meta)
+    Ok(out.join("\n"))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
 
     #[test]
     fn zenuml_basic_translates_to_sequence_model() {
@@ -626,5 +639,42 @@ A->B: ok
                 .unwrap();
         assert_eq!(parsed.meta.diagram_type, "zenuml");
         assert!(parsed.model.get("messages").is_some());
+    }
+
+    #[test]
+    fn zenuml_render_model_uses_sequence_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new();
+        let input = r#"zenuml
+title Login Flow
+Alice->Bob: Login
+Bob-->Alice: Ack
+"#;
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "zenuml");
+        match parsed.model {
+            RenderSemanticModel::Sequence(model) => {
+                assert_eq!(model.title.as_deref(), Some("Login Flow"));
+                assert_eq!(model.messages.len(), 2);
+                assert_eq!(model.messages[0].from.as_deref(), Some("Alice"));
+                assert_eq!(model.messages[0].to.as_deref(), Some("Bob"));
+                assert_eq!(model.messages[0].message_text(), "Login");
+            }
+            other => {
+                panic!("zenuml render parse should return sequence typed model, got {other:?}")
+            }
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.meta.diagram_type, "zenuml");
+        assert!(parsed_json.model.get("messages").is_some());
+        assert_eq!(parsed_json.model["title"], serde_json::json!("Login Flow"));
     }
 }
