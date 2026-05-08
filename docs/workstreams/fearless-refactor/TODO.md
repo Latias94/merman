@@ -209,7 +209,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 
 ## P1: Renderer Boundary Cleanup
 
-- [ ] Split `svg/parity/class/render.rs`.
+- [x] Split `svg/parity/class/render.rs`.
   Proposed boundaries:
   - render context and ids (render lookup maps, small config helpers, and timing detail emission
     now live in `class/context.rs`; htmlLabels/font/padding/viewport/theme setting derivation now
@@ -238,7 +238,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     viewBox/max-width calibration and class diagram title positioning now live in
     `class/viewbox.rs`)
   - debug SVG helpers
-- [ ] Split `svg/parity/sequence/render.rs`.
+  Evidence: `class/render.rs` is now a thin orchestration layer; node, edge, namespace, root,
+  viewBox, note, interface, debug SVG, settings, and context concerns live in dedicated
+  `class/*` modules.
+- [x] Split `svg/parity/sequence/render.rs`.
   Proposed boundaries:
   - render settings (sequence SVG config parsing now lives in `sequence/settings.rs`)
   - actors and participants (actor traversal and top/bottom ordering live in
@@ -265,6 +268,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     being emitted as a pre-pass, preserving Mermaid DOM order around completed block frames)
   - viewport/bounds (root SVG opening, accessibility title/description, and sequence viewport
     override handling now live in `sequence/root.rs`)
+  Evidence: `sequence/render.rs` is now a thin orchestration layer; actors, messages, notes,
+  blocks, activations, interactions, root, settings, CSS, and model helpers live in dedicated
+  `sequence/*` modules.
 - [ ] Split `svg/parity/architecture.rs`.
   Proposed boundaries:
   - typed model extraction (JSON and typed render-model access now live in

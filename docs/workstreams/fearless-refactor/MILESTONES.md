@@ -298,6 +298,10 @@ Progress:
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.
+- Class and sequence renderer splits are complete for the current scope: `class/render.rs` and
+  `sequence/render.rs` are thin orchestration boundaries over dedicated owner modules.
+- Architecture remains the active renderer decomposition target; root viewport calibration and
+  CSS/theme ownership still need final module boundaries.
 
 Exit criteria:
 
