@@ -11,10 +11,6 @@ pub fn treemap_section_header_height_px() -> f64 {
     25.0
 }
 
-pub fn treemap_section_header_center_y_px() -> f64 {
-    treemap_section_header_height_px() / 2.0
-}
-
 pub fn treemap_section_header_label_inset_x_px() -> f64 {
     6.0
 }

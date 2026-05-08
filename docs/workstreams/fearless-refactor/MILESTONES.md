@@ -400,6 +400,8 @@ Progress:
 - Kanban removed a redundant label line-height helper by reusing the existing foreignObject
   height constant, and XYChart collapsed its bar data-label scale helpers into one public helper,
   reducing the hand-curated helper footprint to 81.
+- Treemap removed a derived section header center-y helper and now computes it directly from the
+  header height, reducing the hand-curated helper footprint to 80.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

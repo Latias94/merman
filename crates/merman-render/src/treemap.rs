@@ -526,10 +526,6 @@ mod tests {
             25.0
         );
         assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_section_header_center_y_px(),
-            12.5
-        );
-        assert_eq!(
             crate::generated::treemap_text_overrides_11_12_2::
                 treemap_section_header_label_inset_x_px(),
             6.0

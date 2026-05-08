@@ -563,7 +563,7 @@ pub(super) fn render_treemap_diagram_svg(
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
     let section_header_height = treemap_text_overrides::treemap_section_header_height_px();
-    let section_header_center_y = treemap_text_overrides::treemap_section_header_center_y_px();
+    let section_header_center_y = section_header_height / 2.0;
     let section_label_inset_x = treemap_text_overrides::treemap_section_header_label_inset_x_px();
     let section_label_font_size = treemap_text_overrides::treemap_section_label_font_size_px();
     let section_value_font_size = treemap_text_overrides::treemap_section_value_font_size_px();
