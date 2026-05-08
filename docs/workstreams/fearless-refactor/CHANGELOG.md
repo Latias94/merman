@@ -15,6 +15,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   hand-curated helper footprint to 81.
 - Removed the derived Treemap section header center-y helper and computed it from the header
   height directly, reducing the hand-curated helper footprint to 80.
+- Collapsed the Pie center point into one public helper for both axes, reducing the
+  hand-curated helper footprint to 79.
 - Removed the obsolete generated `journey` root viewport override table and its renderer call site
   after DOM parity passed without the 4 fixture-specific pins.
 - Consolidated `merman-cli` render execution around internal `RenderRequest` and

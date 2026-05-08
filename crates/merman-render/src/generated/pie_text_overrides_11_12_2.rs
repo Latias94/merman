@@ -15,11 +15,7 @@ pub fn pie_legend_spacing_px() -> f64 {
     4.0
 }
 
-pub fn pie_center_x_px() -> f64 {
-    225.0
-}
-
-pub fn pie_center_y_px() -> f64 {
+pub fn pie_center_px() -> f64 {
     225.0
 }
 

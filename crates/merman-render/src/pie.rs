@@ -302,8 +302,7 @@ pub fn layout_pie_diagram_typed(
     let legend_rect_size = pie_text_overrides::pie_legend_rect_size_px();
     let legend_spacing = pie_text_overrides::pie_legend_spacing_px();
 
-    let center_x = pie_text_overrides::pie_center_x_px();
-    let center_y = pie_text_overrides::pie_center_y_px();
+    let center = pie_text_overrides::pie_center_px();
     let radius = pie_text_overrides::pie_radius_px();
     let outer_radius = pie_text_overrides::pie_outer_radius_px();
     let label_radius = pie_text_overrides::pie_label_radius_px(radius);
@@ -426,13 +425,13 @@ pub fn layout_pie_diagram_typed(
         max_legend_width = max_legend_width.max(w);
     }
 
-    let base_w: f64 = center_x * 2.0;
+    let base_w: f64 = center * 2.0;
     // Mermaid computes:
     //   totalWidth = pieWidth + MARGIN + LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth
     // where `pieWidth == height == 450`.
     let width: f64 =
         (base_w + margin + legend_rect_size + legend_spacing + max_legend_width).max(1.0);
-    let height: f64 = f64::max(center_y * 2.0, 1.0);
+    let height: f64 = f64::max(center * 2.0, 1.0);
 
     Ok(PieDiagramLayout {
         bounds: Some(Bounds {
@@ -441,8 +440,8 @@ pub fn layout_pie_diagram_typed(
             max_x: width,
             max_y: height,
         }),
-        center_x,
-        center_y,
+        center_x: center,
+        center_y: center,
         radius,
         outer_radius,
         legend_x,
@@ -466,7 +465,7 @@ mod tests {
             18.0
         );
         assert_eq!(
-            crate::generated::pie_text_overrides_11_12_2::pie_center_x_px(),
+            crate::generated::pie_text_overrides_11_12_2::pie_center_px(),
             225.0
         );
         assert_eq!(

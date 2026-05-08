@@ -114,7 +114,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `80`.
+Total helper functions reported by `xtask`: `79`.
 
 | file | helper functions |
 | --- | ---: |
@@ -122,7 +122,7 @@ Total helper functions reported by `xtask`: `80`.
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 | `journey_text_overrides_11_12_2.rs` | 15 |
 | `kanban_text_overrides_11_12_2.rs` | 6 |
-| `pie_text_overrides_11_12_2.rs` | 13 |
+| `pie_text_overrides_11_12_2.rs` | 12 |
 | `radar_text_overrides_11_12_2.rs` | 4 |
 | `sankey_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 10 |
