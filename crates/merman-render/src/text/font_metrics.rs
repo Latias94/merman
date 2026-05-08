@@ -12,7 +12,28 @@ pub struct VendoredFontMetricsTextMeasurer {
     fallback: DeterministicTextMeasurer,
 }
 
+#[derive(Clone, Copy)]
+struct FontMetricProfile<'a> {
+    entries: &'a [(char, f64)],
+    default_em: f64,
+    kern_pairs: &'a [(u32, u32, f64)],
+    space_trigrams: &'a [(u32, u32, f64)],
+    trigrams: &'a [(u32, u32, u32, f64)],
+}
+
 impl VendoredFontMetricsTextMeasurer {
+    fn metric_profile(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+    ) -> FontMetricProfile<'_> {
+        FontMetricProfile {
+            entries: table.entries,
+            default_em: table.default_em.max(0.1),
+            kern_pairs: table.kern_pairs,
+            space_trigrams: table.space_trigrams,
+            trigrams: table.trigrams,
+        }
+    }
+
     #[allow(dead_code)]
     fn quantize_svg_px_nearest(v: f64) -> f64 {
         if !(v.is_finite() && v >= 0.0) {
@@ -268,6 +289,7 @@ impl VendoredFontMetricsTextMeasurer {
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
+        let profile = Self::metric_profile(table);
         let t = text.trim_end();
         if t.is_empty() {
             return (0.0, 0.0);
@@ -300,42 +322,15 @@ impl VendoredFontMetricsTextMeasurer {
                 let mut sum_px = 0.0f64;
                 for (idx, w) in words.iter().enumerate() {
                     if idx == 0 {
-                        sum_px += Self::line_width_px(
-                            table.entries,
-                            table.default_em.max(0.1),
-                            table.kern_pairs,
-                            table.space_trigrams,
-                            table.trigrams,
-                            w,
-                            false,
-                            font_size,
-                        );
+                        sum_px += Self::line_width_px(profile, w, false, font_size);
                     } else {
                         let seg = format!(" {w}");
-                        sum_px += Self::line_width_px(
-                            table.entries,
-                            table.default_em.max(0.1),
-                            table.kern_pairs,
-                            table.space_trigrams,
-                            table.trigrams,
-                            &seg,
-                            false,
-                            font_size,
-                        );
+                        sum_px += Self::line_width_px(profile, &seg, false, font_size);
                     }
                 }
                 sum_px
             } else {
-                Self::line_width_px(
-                    table.entries,
-                    table.default_em.max(0.1),
-                    table.kern_pairs,
-                    table.space_trigrams,
-                    table.trigrams,
-                    t,
-                    false,
-                    font_size,
-                )
+                Self::line_width_px(profile, t, false, font_size)
             }
         };
 
@@ -377,6 +372,7 @@ impl VendoredFontMetricsTextMeasurer {
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
+        let profile = Self::metric_profile(table);
         let t = text.trim_end();
         if t.is_empty() {
             return (0.0, 0.0);
@@ -393,16 +389,7 @@ impl VendoredFontMetricsTextMeasurer {
 
         // Mermaid titles (e.g. flowchartTitleText) are rendered as a single `<text>` run, without
         // whitespace-tokenized `<tspan>` segments. Measure as one run to keep viewport parity.
-        let advance_px_unscaled = Self::line_width_px(
-            table.entries,
-            table.default_em.max(0.1),
-            table.kern_pairs,
-            table.space_trigrams,
-            table.trigrams,
-            t,
-            false,
-            font_size,
-        );
+        let advance_px_unscaled = Self::line_width_px(profile, t, false, font_size);
 
         let advance_px = advance_px_unscaled * table.svg_scale;
         let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
@@ -436,6 +423,7 @@ impl VendoredFontMetricsTextMeasurer {
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
+        let profile = Self::metric_profile(table);
         let t = text.trim_end();
         if t.is_empty() {
             return (0.0, 0.0);
@@ -450,16 +438,7 @@ impl VendoredFontMetricsTextMeasurer {
         let first = t.chars().next().unwrap_or(' ');
         let last = t.chars().last().unwrap_or(' ');
 
-        let advance_px_unscaled = Self::line_width_px(
-            table.entries,
-            table.default_em.max(0.1),
-            table.kern_pairs,
-            table.space_trigrams,
-            table.trigrams,
-            t,
-            false,
-            font_size,
-        );
+        let advance_px_unscaled = Self::line_width_px(profile, t, false, font_size);
 
         let advance_px = advance_px_unscaled * table.svg_scale;
         let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
@@ -652,11 +631,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn line_width_px(
-        entries: &[(char, f64)],
-        default_em: f64,
-        kern_pairs: &[(u32, u32, f64)],
-        space_trigrams: &[(u32, u32, f64)],
-        trigrams: &[(u32, u32, u32, f64)],
+        profile: FontMetricProfile<'_>,
         text: &str,
         bold: bool,
         font_size: f64,
@@ -682,9 +657,9 @@ impl VendoredFontMetricsTextMeasurer {
         let mut prev: Option<char> = None;
         for ch in text.chars() {
             let (ch, delta_em) = normalize_whitespace_like(ch);
-            em += Self::lookup_char_em(entries, default_em, ch) + delta_em;
+            em += Self::lookup_char_em(profile.entries, profile.default_em, ch) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_kern_em(kern_pairs, p, ch);
+                em += Self::lookup_kern_em(profile.kern_pairs, p, ch);
             }
             if bold {
                 if let Some(p) = prev {
@@ -695,10 +670,10 @@ impl VendoredFontMetricsTextMeasurer {
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if b == ' ' {
                     if !(a.is_whitespace() || ch.is_whitespace()) {
-                        em += Self::lookup_space_trigram_em(space_trigrams, a, ch);
+                        em += Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
                     }
                 } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
-                    em += Self::lookup_trigram_em(trigrams, a, b, ch);
+                    em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
                 }
             }
             prevprev = prev;
@@ -722,10 +697,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn split_token_to_width_px(
-        entries: &[(char, f64)],
-        default_em: f64,
-        kern_pairs: &[(u32, u32, f64)],
-        trigrams: &[(u32, u32, u32, f64)],
+        profile: FontMetricProfile<'_>,
         tok: &str,
         max_width_px: f64,
         bold: bool,
@@ -751,9 +723,9 @@ impl VendoredFontMetricsTextMeasurer {
         let mut split_at = 0usize;
         for (idx, ch) in chars.iter().enumerate() {
             let (ch_norm, delta_em) = normalize_whitespace_like(*ch);
-            em += Self::lookup_char_em(entries, default_em, ch_norm) + delta_em;
+            em += Self::lookup_char_em(profile.entries, profile.default_em, ch_norm) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_kern_em(kern_pairs, p, ch_norm);
+                em += Self::lookup_kern_em(profile.kern_pairs, p, ch_norm);
             }
             if bold {
                 if let Some(p) = prev {
@@ -763,7 +735,7 @@ impl VendoredFontMetricsTextMeasurer {
             }
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if !(a.is_whitespace() || b.is_whitespace() || ch_norm.is_whitespace()) {
-                    em += Self::lookup_trigram_em(trigrams, a, b, ch_norm);
+                    em += Self::lookup_trigram_em(profile.trigrams, a, b, ch_norm);
                 }
             }
             prevprev = prev;
@@ -785,11 +757,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn wrap_line_to_width_px(
-        entries: &[(char, f64)],
-        default_em: f64,
-        kern_pairs: &[(u32, u32, f64)],
-        space_trigrams: &[(u32, u32, f64)],
-        trigrams: &[(u32, u32, u32, f64)],
+        profile: FontMetricProfile<'_>,
         line: &str,
         max_width_px: f64,
         font_size: f64,
@@ -850,17 +818,7 @@ impl VendoredFontMetricsTextMeasurer {
 
             let candidate = format!("{cur}{tok}");
             let candidate_trimmed = candidate.trim_end();
-            if Self::line_width_px(
-                entries,
-                default_em,
-                kern_pairs,
-                space_trigrams,
-                trigrams,
-                candidate_trimmed,
-                bold,
-                font_size,
-            ) <= max_width_px
-            {
+            if Self::line_width_px(profile, candidate_trimmed, bold, font_size) <= max_width_px {
                 cur = candidate;
                 continue;
             }
@@ -876,16 +834,8 @@ impl VendoredFontMetricsTextMeasurer {
                     for seg in &segments {
                         let candidate = format!("{cur_candidate}{seg}");
                         let candidate_trimmed = candidate.trim_end();
-                        if Self::line_width_px(
-                            entries,
-                            default_em,
-                            kern_pairs,
-                            space_trigrams,
-                            trigrams,
-                            candidate_trimmed,
-                            bold,
-                            font_size,
-                        ) <= max_width_px
+                        if Self::line_width_px(profile, candidate_trimmed, bold, font_size)
+                            <= max_width_px
                         {
                             cur_candidate = candidate;
                             consumed += 1;
@@ -912,17 +862,7 @@ impl VendoredFontMetricsTextMeasurer {
                 continue;
             }
 
-            if Self::line_width_px(
-                entries,
-                default_em,
-                kern_pairs,
-                space_trigrams,
-                trigrams,
-                tok.as_str(),
-                bold,
-                font_size,
-            ) <= max_width_px
-            {
+            if Self::line_width_px(profile, tok.as_str(), bold, font_size) <= max_width_px {
                 cur = tok;
                 continue;
             }
@@ -939,16 +879,8 @@ impl VendoredFontMetricsTextMeasurer {
                 continue;
             }
 
-            let (head, tail) = Self::split_token_to_width_px(
-                entries,
-                default_em,
-                kern_pairs,
-                trigrams,
-                &tok,
-                max_width_px,
-                bold,
-                font_size,
-            );
+            let (head, tail) =
+                Self::split_token_to_width_px(profile, &tok, max_width_px, bold, font_size);
             out.push(head);
             if !tail.is_empty() {
                 tokens.push_front(tail);
@@ -967,11 +899,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn wrap_text_lines_px(
-        entries: &[(char, f64)],
-        default_em: f64,
-        kern_pairs: &[(u32, u32, f64)],
-        space_trigrams: &[(u32, u32, f64)],
-        trigrams: &[(u32, u32, u32, f64)],
+        profile: FontMetricProfile<'_>,
         text: &str,
         style: &TextStyle,
         bold: bool,
@@ -986,11 +914,7 @@ impl VendoredFontMetricsTextMeasurer {
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
             if let Some(w) = max_width_px {
                 lines.extend(Self::wrap_line_to_width_px(
-                    entries,
-                    default_em,
-                    kern_pairs,
-                    space_trigrams,
-                    trigrams,
+                    profile,
                     &line,
                     w,
                     font_size,
@@ -1037,6 +961,7 @@ fn vendored_measure_wrapped_impl(
     } else {
         &[]
     };
+    let profile = VendoredFontMetricsTextMeasurer::metric_profile(table);
 
     let html_override_px = |em: f64| -> f64 {
         // `html_overrides` entries are generated from upstream fixtures by dividing the measured
@@ -1096,14 +1021,7 @@ fn vendored_measure_wrapped_impl(
                 raw_w = raw_w.max(html_override_px(em));
             } else {
                 raw_w = raw_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                    table.entries,
-                    table.default_em.max(0.1),
-                    table.kern_pairs,
-                    table.space_trigrams,
-                    table.trigrams,
-                    &line,
-                    bold,
-                    font_size,
+                    profile, &line, bold, font_size,
                 ));
             }
         }
@@ -1162,11 +1080,7 @@ fn vendored_measure_wrapped_impl(
                 }
                 for seg in split_html_min_content_segments(part) {
                     max_word_w = max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                        table.entries,
-                        table.default_em.max(0.1),
-                        table.kern_pairs,
-                        table.space_trigrams,
-                        table.trigrams,
+                        profile,
                         seg.as_str(),
                         bold,
                         font_size,
@@ -1185,16 +1099,7 @@ fn vendored_measure_wrapped_impl(
 
     let lines = match wrap_mode {
         WrapMode::HtmlLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_px(
-            table.entries,
-            table.default_em.max(0.1),
-            table.kern_pairs,
-            table.space_trigrams,
-            table.trigrams,
-            text,
-            style,
-            bold,
-            max_width,
-            wrap_mode,
+            profile, text, style, bold, max_width, wrap_mode,
         ),
         WrapMode::SvgLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
             table, text, max_width, font_size, true,
@@ -1218,14 +1123,7 @@ fn vendored_measure_wrapped_impl(
                     width = width.max(html_override_px(em));
                 } else {
                     width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                        table.entries,
-                        table.default_em.max(0.1),
-                        table.kern_pairs,
-                        table.space_trigrams,
-                        table.trigrams,
-                        line,
-                        bold,
-                        font_size,
+                        profile, line, bold, font_size,
                     ));
                 }
             }
@@ -1322,17 +1220,11 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
 
         let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
         let font_size = style.font_size.max(1.0);
+        let profile = VendoredFontMetricsTextMeasurer::metric_profile(table);
         let mut width: f64 = 0.0;
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
             width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                table.entries,
-                table.default_em.max(0.1),
-                table.kern_pairs,
-                table.space_trigrams,
-                table.trigrams,
-                &line,
-                bold,
-                font_size,
+                profile, &line, bold, font_size,
             ));
         }
         if width.is_finite() && width >= 0.0 {

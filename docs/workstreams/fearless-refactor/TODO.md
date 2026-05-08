@@ -371,6 +371,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
   state requirement`, `cargo run -p xtask -- compare-state-svgs --check-dom --dom-decimals 3`,
   and `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3`.
+  Vendored font metric wrapping now uses `FontMetricProfile` instead of repeating generated table
+  references across line width and wrapping helpers, so `text.rs` no longer needs a module-level
+  allow. Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render text`, and `cargo run -p xtask -- compare-flowchart-svgs
+  --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene

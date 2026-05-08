@@ -347,6 +347,8 @@ Progress:
 - Replaced state RoughJS rectangle arguments with `StateRoughRectSpec`, removing the
   `svg/parity/state` module-level `clippy::too_many_arguments` allow and narrowing the
   requirement renderer call site to the same spec shape.
+- Replaced vendored font-metric table argument lists with `FontMetricProfile`, removing the
+  `text.rs` module-level `clippy::too_many_arguments` allow.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.

@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 mod deterministic;
 mod flowchart_parity;
 mod font_metrics;
