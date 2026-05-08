@@ -22,6 +22,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   module-level `clippy::too_many_arguments` allow.
 - Replaced treemap root viewBox's long-argument rectangle bounds helper with a small accumulator
   and removed the `treemap` module-level `clippy::too_many_arguments` allow.
+- Replaced requirement label foreignObject emission with a small input struct and removed the
+  `requirement` module-level `clippy::too_many_arguments` allow.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

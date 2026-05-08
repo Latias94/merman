@@ -273,6 +273,8 @@ Progress:
   `svg/parity/journey.rs` module-level `clippy::too_many_arguments` allow.
 - Replaced treemap root viewBox's long-argument rectangle bounds helper with a small accumulator
   and removed the `svg/parity/treemap.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced requirement label foreignObject emission with a small input struct and removed the
+  `svg/parity/requirement.rs` module-level `clippy::too_many_arguments` allow.
 - Extracted class edge geometry/order helpers into `svg/parity/class/edge.rs`.
 - Extracted class edge label/terminal emission into `svg/parity/class/edge.rs`.
 - Moved class edge DOM id and edge class pattern helpers into `svg/parity/class/edge.rs`.

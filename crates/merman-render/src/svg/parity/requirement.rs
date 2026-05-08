@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
@@ -42,22 +40,35 @@ pub(super) fn render_requirement_diagram_svg_model(
         raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
     }
 
+    #[derive(Debug, Clone, Copy)]
     enum LabelContent<'a> {
         Text(&'a str),
         Html(&'a str),
     }
 
-    fn mk_label_foreign_object(
-        out: &mut String,
-        content: LabelContent<'_>,
+    #[derive(Debug, Clone, Copy)]
+    struct LabelForeignObject<'a> {
+        content: LabelContent<'a>,
         width: f64,
         height: f64,
-        span_class: &str,
-        span_style: Option<&str>,
-        div_class: Option<&str>,
-        div_style_prefix: Option<&str>,
+        span_class: &'a str,
+        span_style: Option<&'a str>,
+        div_class: Option<&'a str>,
+        div_style_prefix: Option<&'a str>,
         max_width_px: i64,
-    ) {
+    }
+
+    fn mk_label_foreign_object(out: &mut String, spec: LabelForeignObject<'_>) {
+        let LabelForeignObject {
+            content,
+            width,
+            height,
+            span_class,
+            span_style,
+            div_class,
+            div_style_prefix,
+            max_width_px,
+        } = spec;
         let div_class_attr = div_class
             .map(|c| format!(r#" class="{c}""#))
             .unwrap_or_default();
@@ -594,14 +605,16 @@ pub(super) fn render_requirement_diagram_svg_model(
         );
         mk_label_foreign_object(
             &mut out,
-            LabelContent::Text(&label_text),
-            w,
-            h,
-            "edgeLabel",
-            None,
-            Some("labelBkg"),
-            None,
-            max_width_px,
+            LabelForeignObject {
+                content: LabelContent::Text(&label_text),
+                width: w,
+                height: h,
+                span_class: "edgeLabel",
+                span_style: None,
+                div_class: Some("labelBkg"),
+                div_style_prefix: None,
+                max_width_px,
+            },
         );
         out.push_str("</g></g>");
     }
@@ -1022,17 +1035,20 @@ pub(super) fn render_requirement_diagram_svg_model(
             );
             mk_label_foreign_object(
                 &mut out,
-                line.display_html
-                    .as_deref()
-                    .map(LabelContent::Html)
-                    .unwrap_or_else(|| LabelContent::Text(&line.display_text)),
-                line.html_width,
-                line.html_height,
-                "markdown-node-label nodeLabel",
-                span_style,
-                None,
-                div_style_prefix,
-                line.max_width_px,
+                LabelForeignObject {
+                    content: line
+                        .display_html
+                        .as_deref()
+                        .map(LabelContent::Html)
+                        .unwrap_or_else(|| LabelContent::Text(&line.display_text)),
+                    width: line.html_width,
+                    height: line.html_height,
+                    span_class: "markdown-node-label nodeLabel",
+                    span_style,
+                    div_class: None,
+                    div_style_prefix,
+                    max_width_px: line.max_width_px,
+                },
             );
             out.push_str("</g>");
         }

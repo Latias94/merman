@@ -328,6 +328,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   clippy -p merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p
   merman-render treemap`, and `cargo run -p xtask -- compare-treemap-svgs --check-dom
   --dom-decimals 3`.
+  Requirement label foreignObject emission now uses a `LabelForeignObject` input struct, so
+  `svg/parity/requirement.rs` no longer needs a module-level allow. Evidence: `cargo clippy -p
+  merman-render --all-targets --all-features -- -D warnings`, `cargo nextest run -p merman-render
+  requirement`, and `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-decimals 3`.
 - [ ] Remove dead debug helpers once equivalent `xtask` commands exist.
 
 ## P2: Override Hygiene
