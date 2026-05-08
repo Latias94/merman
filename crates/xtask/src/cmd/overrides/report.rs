@@ -397,7 +397,7 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
         return vec![OverrideFootprintEntry {
             file_name,
             category: OverrideCategory::HandCuratedHelpers,
-            count: count_public_functions(text),
+            count: count_visible_functions(text),
             unit: "helper functions",
         }];
     }
@@ -492,10 +492,11 @@ fn count_static_override_table_rows(text: &str) -> usize {
     rows
 }
 
-fn count_public_functions(text: &str) -> usize {
+fn count_visible_functions(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re =
-        RE.get_or_init(|| Regex::new(r#"(?m)^pub fn\s+[A-Za-z0-9_]+\s*\("#).expect("valid regex"));
+    let re = RE.get_or_init(|| {
+        Regex::new(r#"(?m)^pub(?:\([^)]+\))?\s+fn\s+[A-Za-z0-9_]+\s*\("#).expect("valid regex")
+    });
     count_matches(re, text)
 }
 
@@ -516,8 +517,8 @@ fn count_matches(re: &Regex, text: &str) -> usize {
 mod tests {
     use super::{
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
-        classify_generated_override_file, count_manual_bridge_functions, count_public_functions,
-        count_static_override_table_rows, report_path_name,
+        classify_generated_override_file, count_manual_bridge_functions,
+        count_static_override_table_rows, count_visible_functions, report_path_name,
     };
     use std::path::Path;
 
@@ -548,15 +549,17 @@ fn definitely_not_a_bridge() {}
     }
 
     #[test]
-    fn counts_public_helper_functions() {
+    fn counts_visible_helper_functions() {
         let text = r#"
 pub fn helper_one() {}
-pub fn helper_two(
+pub(crate) fn helper_two(
+) {}
+pub(in crate::cmd) fn helper_three(
 ) {}
 fn private_helper() {}
 "#;
 
-        assert_eq!(count_public_functions(text), 2);
+        assert_eq!(count_visible_functions(text), 3);
     }
 
     #[test]

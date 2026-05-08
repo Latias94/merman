@@ -422,6 +422,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
   metadata for every generated override category and manual raw SVG/path bridge category, with a
   regression test guarding generated category removal metadata.
+- [x] Count restricted-visibility helper functions in helper footprint.
+  Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
+  functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
   Evidence: 34 root viewport overrides have been removed so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path

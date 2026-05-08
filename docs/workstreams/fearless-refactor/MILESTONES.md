@@ -424,6 +424,8 @@ Progress:
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
   metadata for generated override categories and manual raw SVG/path bridge categories.
+- `xtask report-overrides` now counts restricted-visibility helper functions, so changing helper
+  visibility cannot hide hand-curated helper footprint.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
 - Root viewport overrides dropped 34 fixture-specific entries so far: 19 architecture pins after
