@@ -4,6 +4,29 @@ Overrides are compatibility data, not a substitute for fixing the renderer model
 when upstream Mermaid behavior depends on browser/font measurement or on intentionally pinned
 export quirks that cannot be derived reliably from the semantic model.
 
+## Mermaid Parity for Generated Overrides
+
+For generated override data, Mermaid parity means matching a reproducible upstream
+`mermaid@11.12.3` browser/export fact for a narrow context. It does not mean adding a broad
+shortcut because the rendered image looks closer.
+
+Generated overrides are valid only when they encode one of these upstream facts:
+
+- browser/font measurement such as `getBBox()`, `getComputedTextLength()`, or HTML label layout;
+- root viewport/export values produced after upstream DOM insertion;
+- literal SVG/path quirks that are version-pinned and covered by fixtures or probes.
+
+Generated overrides must not encode:
+
+- missing parser or typed-model fields;
+- incorrect layout rank/order/route logic;
+- sanitizer, escaping, Markdown, or DOM order bugs;
+- values copied from a single failing fixture without a repeatable upstream source.
+
+Each generated override category should have an expected removal trigger. Typical triggers are a
+better vendored font table, a browser-probe import, a typed model/layout fix that can derive the
+value honestly, or a Mermaid baseline upgrade that removes the pinned behavior.
+
 ## Allowed Text Width Overrides
 
 A text width override is allowed only when all of these are true:

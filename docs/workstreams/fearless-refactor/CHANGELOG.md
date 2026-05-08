@@ -67,6 +67,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   this workstream.
 - Updated the root README architecture notes to describe the typed render-model path and the
   compatibility layout/render boundaries.
+- Documented generated override parity as narrow Mermaid `@11.12.3` browser/export facts with
+  explicit removal triggers.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

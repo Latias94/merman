@@ -476,4 +476,6 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Document standard gates for parity, refactor, and release work.
   Evidence: `README.md` now points to `GATES.md`, which records the refactor, parity, performance,
   and release command sets.
-- [ ] Document what "Mermaid parity" means for generated override data.
+- [x] Document what "Mermaid parity" means for generated override data.
+  Evidence: `OVERRIDE_POLICY.md` defines generated override parity as narrow, reproducible
+  Mermaid `@11.12.3` browser/export facts with explicit removal triggers.
