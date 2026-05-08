@@ -3,7 +3,9 @@ use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use serde::Deserialize;
+use merman_core::diagrams::git_graph::{
+    GitGraphCommitRenderModel as GitGraphCommit, GitGraphRenderModel,
+};
 use std::collections::HashMap;
 
 const LAYOUT_OFFSET: f64 = 10.0;
@@ -12,42 +14,6 @@ const DEFAULT_POS: f64 = 30.0;
 const THEME_COLOR_LIMIT: usize = 8;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
-
-#[derive(Debug, Clone, Deserialize)]
-struct GitGraphBranch {
-    name: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct GitGraphCommit {
-    id: String,
-    #[serde(default)]
-    message: String,
-    #[serde(default)]
-    parents: Vec<String>,
-    seq: i64,
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(rename = "type")]
-    commit_type: i64,
-    branch: String,
-    #[serde(default, rename = "customType")]
-    custom_type: Option<i64>,
-    #[serde(default, rename = "customId")]
-    custom_id: Option<bool>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct GitGraphModel {
-    #[serde(default)]
-    branches: Vec<GitGraphBranch>,
-    #[serde(default)]
-    commits: Vec<GitGraphCommit>,
-    #[serde(default)]
-    direction: String,
-    #[serde(rename = "type")]
-    diagram_type: String,
-}
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -105,15 +71,15 @@ struct CommitPosition {
     y: f64,
 }
 
-fn find_closest_parent(
-    parents: &[String],
+fn find_closest_parent<'a>(
+    parents: &'a [String],
     dir: &str,
-    commit_pos: &HashMap<String, CommitPosition>,
-) -> Option<String> {
+    commit_pos: &HashMap<&str, CommitPosition>,
+) -> Option<&'a str> {
     let mut target: f64 = if dir == "BT" { f64::INFINITY } else { 0.0 };
-    let mut closest: Option<String> = None;
+    let mut closest: Option<&str> = None;
     for parent in parents {
-        let Some(pos) = commit_pos.get(parent) else {
+        let Some(pos) = commit_pos.get(parent.as_str()) else {
             continue;
         };
         let parent_position = if dir == "TB" || dir == "BT" {
@@ -123,11 +89,11 @@ fn find_closest_parent(
         };
         if dir == "BT" {
             if parent_position <= target {
-                closest = Some(parent.clone());
+                closest = Some(parent.as_str());
                 target = parent_position;
             }
         } else if parent_position >= target {
-            closest = Some(parent.clone());
+            closest = Some(parent.as_str());
             target = parent_position;
         }
     }
@@ -139,7 +105,7 @@ fn should_reroute_arrow(
     commit_b: &GitGraphCommit,
     p1: CommitPosition,
     p2: CommitPosition,
-    all_commits: &HashMap<String, GitGraphCommit>,
+    all_commits: &HashMap<&str, &GitGraphCommit>,
     dir: &str,
 ) -> bool {
     let commit_b_is_furthest = if dir == "TB" || dir == "BT" {
@@ -179,17 +145,20 @@ fn find_lane(y1: f64, y2: f64, lanes: &mut Vec<f64>, depth: usize) -> f64 {
 fn draw_arrow(
     commit_a: &GitGraphCommit,
     commit_b: &GitGraphCommit,
-    all_commits: &HashMap<String, GitGraphCommit>,
-    commit_pos: &HashMap<String, CommitPosition>,
-    branch_index: &HashMap<String, usize>,
+    all_commits: &HashMap<&str, &GitGraphCommit>,
+    commit_pos: &HashMap<&str, CommitPosition>,
+    branch_index: &HashMap<&str, usize>,
     lanes: &mut Vec<f64>,
     dir: &str,
 ) -> Option<GitGraphArrowLayout> {
-    let p1 = *commit_pos.get(&commit_a.id)?;
-    let p2 = *commit_pos.get(&commit_b.id)?;
+    let p1 = *commit_pos.get(commit_a.id.as_str())?;
+    let p2 = *commit_pos.get(commit_b.id.as_str())?;
     let arrow_needs_rerouting = should_reroute_arrow(commit_a, commit_b, p1, p2, all_commits, dir);
 
-    let mut color_class_num = branch_index.get(&commit_b.branch).copied().unwrap_or(0);
+    let mut color_class_num = branch_index
+        .get(commit_b.branch.as_str())
+        .copied()
+        .unwrap_or(0);
     if commit_b.commit_type == COMMIT_TYPE_MERGE
         && commit_a
             .id
@@ -197,7 +166,7 @@ fn draw_arrow(
             .ne(commit_b.parents.first().map(|s| s.as_str()).unwrap_or(""))
     {
         color_class_num = branch_index
-            .get(&commit_a.branch)
+            .get(commit_a.branch.as_str())
             .copied()
             .unwrap_or(color_class_num);
     }
@@ -240,7 +209,10 @@ fn draw_arrow(
                     p2.y
                 ));
             } else {
-                color_class_num = branch_index.get(&commit_a.branch).copied().unwrap_or(0);
+                color_class_num = branch_index
+                    .get(commit_a.branch.as_str())
+                    .copied()
+                    .unwrap_or(0);
                 line_def = Some(format!(
                     "M {} {} L {} {} {} {} {} L {} {} {} {} {} L {} {}",
                     p1.x,
@@ -279,7 +251,10 @@ fn draw_arrow(
                     p2.y
                 ));
             } else {
-                color_class_num = branch_index.get(&commit_a.branch).copied().unwrap_or(0);
+                color_class_num = branch_index
+                    .get(commit_a.branch.as_str())
+                    .copied()
+                    .unwrap_or(0);
                 line_def = Some(format!(
                     "M {} {} L {} {} {} {} {} L {} {} {} {} {} L {} {}",
                     p1.x,
@@ -317,7 +292,10 @@ fn draw_arrow(
                 p2.y
             ));
         } else {
-            color_class_num = branch_index.get(&commit_a.branch).copied().unwrap_or(0);
+            color_class_num = branch_index
+                .get(commit_a.branch.as_str())
+                .copied()
+                .unwrap_or(0);
             line_def = Some(format!(
                 "M {} {} L {} {} {} {} {} L {} {} {} {} {} L {} {}",
                 p1.x,
@@ -587,7 +565,15 @@ pub fn layout_gitgraph_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<GitGraphDiagramLayout> {
-    let model: GitGraphModel = crate::json::from_value_ref(semantic)?;
+    let model: GitGraphRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_gitgraph_diagram_typed(&model, effective_config, measurer)
+}
+
+pub fn layout_gitgraph_diagram_typed(
+    model: &GitGraphRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<GitGraphDiagramLayout> {
     let _ = model.diagram_type.as_str();
 
     let direction = if model.direction.trim().is_empty() {
@@ -625,8 +611,8 @@ pub fn layout_gitgraph_diagram(
     };
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
-    let mut branch_pos: HashMap<String, f64> = HashMap::new();
-    let mut branch_index: HashMap<String, usize> = HashMap::new();
+    let mut branch_pos: HashMap<&str, f64> = HashMap::new();
+    let mut branch_index: HashMap<&str, usize> = HashMap::new();
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
         // Upstream gitGraph uses `drawText(...).getBBox().width` for branch label widths.
@@ -637,8 +623,8 @@ pub fn layout_gitgraph_diagram(
             &b.name,
                 apply_bbox_corrections,
             );
-        branch_pos.insert(b.name.clone(), pos);
-        branch_index.insert(b.name.clone(), i);
+        branch_pos.insert(b.name.as_str(), pos);
+        branch_index.insert(b.name.as_str(), i);
 
         branches.push(GitGraphBranchLayout {
             name: b.name.clone(),
@@ -657,20 +643,18 @@ pub fn layout_gitgraph_diagram(
             };
     }
 
-    let mut commits_by_id: HashMap<String, GitGraphCommit> = HashMap::new();
-    for c in &model.commits {
-        commits_by_id.insert(c.id.clone(), c.clone());
-    }
+    let commits_by_id: HashMap<&str, &GitGraphCommit> =
+        model.commits.iter().map(|c| (c.id.as_str(), c)).collect();
 
-    let mut commit_order: Vec<GitGraphCommit> = model.commits.clone();
+    let mut commit_order: Vec<&GitGraphCommit> = model.commits.iter().collect();
     commit_order.sort_by_key(|c| c.seq);
 
-    let mut sorted_keys: Vec<String> = commit_order.iter().map(|c| c.id.clone()).collect();
+    let mut sorted_keys: Vec<&str> = commit_order.iter().map(|c| c.id.as_str()).collect();
     if direction == "BT" {
         sorted_keys.reverse();
     }
 
-    let mut commit_pos: HashMap<String, CommitPosition> = HashMap::new();
+    let mut commit_pos: HashMap<&str, CommitPosition> = HashMap::new();
     let mut commits: Vec<GitGraphCommitLayout> = Vec::new();
     let mut max_pos: f64 = 0.0;
     let mut cur_pos = if direction == "TB" || direction == "BT" {
@@ -679,8 +663,8 @@ pub fn layout_gitgraph_diagram(
         0.0
     };
 
-    for id in &sorted_keys {
-        let Some(commit) = commits_by_id.get(id) else {
+    for &id in &sorted_keys {
+        let Some(commit) = commits_by_id.get(id).copied() else {
             continue;
         };
 
@@ -689,12 +673,12 @@ pub fn layout_gitgraph_diagram(
                 if let Some(closest_parent) =
                     find_closest_parent(&commit.parents, &direction, &commit_pos)
                 {
-                    if let Some(parent_position) = commit_pos.get(&closest_parent) {
+                    if let Some(parent_position) = commit_pos.get(closest_parent) {
                         if direction == "TB" {
                             cur_pos = parent_position.y + COMMIT_STEP;
                         } else if direction == "BT" {
                             let current_position = commit_pos
-                                .get(&commit.id)
+                                .get(commit.id.as_str())
                                 .copied()
                                 .unwrap_or(CommitPosition { x: 0.0, y: 0.0 });
                             cur_pos = current_position.y - COMMIT_STEP;
@@ -713,7 +697,7 @@ pub fn layout_gitgraph_diagram(
         } else {
             cur_pos + LAYOUT_OFFSET
         };
-        let Some(branch_lane) = branch_pos.get(&commit.branch).copied() else {
+        let Some(branch_lane) = branch_pos.get(commit.branch.as_str()).copied() else {
             return Err(crate::Error::InvalidModel {
                 message: format!("unknown branch for commit {}: {}", commit.id, commit.branch),
             });
@@ -724,7 +708,7 @@ pub fn layout_gitgraph_diagram(
         } else {
             (pos_with_offset, branch_lane)
         };
-        commit_pos.insert(commit.id.clone(), CommitPosition { x, y });
+        commit_pos.insert(commit.id.as_str(), CommitPosition { x, y });
 
         commits.push(GitGraphCommitLayout {
             id: commit.id.clone(),
@@ -759,11 +743,9 @@ pub fn layout_gitgraph_diagram(
     let mut arrows: Vec<GitGraphArrowLayout> = Vec::new();
     // Mermaid draws arrows by iterating insertion order of the commits map. The DB inserts commits
     // in sequence order, so iterate by `seq` regardless of direction.
-    let mut commits_for_arrows = model.commits.clone();
-    commits_for_arrows.sort_by_key(|c| c.seq);
-    for commit_b in &commits_for_arrows {
+    for commit_b in commit_order {
         for parent in &commit_b.parents {
-            let Some(commit_a) = commits_by_id.get(parent) else {
+            let Some(commit_a) = commits_by_id.get(parent.as_str()).copied() else {
                 continue;
             };
             if let Some(a) = draw_arrow(
@@ -803,7 +785,11 @@ pub fn layout_gitgraph_diagram(
     }
 
     for c in &commits {
-        let r = if commit_symbol_type(&commits_by_id[&c.id]) == COMMIT_TYPE_MERGE {
+        let commit = commits_by_id
+            .get(c.id.as_str())
+            .copied()
+            .expect("layout commit must have a source render commit");
+        let r = if commit_symbol_type(commit) == COMMIT_TYPE_MERGE {
             9.0
         } else {
             10.0

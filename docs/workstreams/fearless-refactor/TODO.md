@@ -113,6 +113,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   layout/SVG render-model dispatch consume it directly, and `parse_diagram_sync` keeps the
   semantic JSON payload stable, including title, accessibility fields, axes, quadrants, points,
   classes, and config.
+- [x] Move gitGraph to a typed render model.
+  Evidence: `parse_git_graph_model_for_render` now returns `GitGraphRenderModel`, layout/SVG
+  render-model dispatch consume it directly, `parse_diagram_sync` keeps the semantic JSON payload
+  stable, and layout borrows typed commit/branch indexes instead of cloning private JSON transport
+  structs.
 - [ ] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
   Sequence status: post-migration baseline captured in
@@ -142,8 +147,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   parent-vs-typed Criterion spotcheck captured in
   `docs/performance/spotcheck_2026-05-08_zenuml_typed_render_model.md`. Quadrant chart status:
   parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_quadrant_chart_typed_render_model.md`. Keep this item
-  open for the next typed migration.
+  `docs/performance/spotcheck_2026-05-08_quadrant_chart_typed_render_model.md`. GitGraph status:
+  parent-vs-typed Criterion spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_gitgraph_typed_render_model.md`. Keep this item open for
+  the next typed migration.
 
 ## P1: Text and Measurement Module Split
 

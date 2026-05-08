@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -21,6 +21,43 @@ struct Commit {
     branch: String,
     custom_type: Option<i64>,
     custom_id: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GitGraphBranchRenderModel {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GitGraphCommitRenderModel {
+    pub id: String,
+    pub message: String,
+    pub seq: i64,
+    #[serde(rename = "type")]
+    pub commit_type: i64,
+    pub tags: Vec<String>,
+    pub parents: Vec<String>,
+    pub branch: String,
+    #[serde(rename = "customType", skip_serializing_if = "Option::is_none")]
+    pub custom_type: Option<i64>,
+    #[serde(rename = "customId", skip_serializing_if = "Option::is_none")]
+    pub custom_id: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GitGraphRenderModel {
+    #[serde(rename = "type")]
+    pub diagram_type: String,
+    pub commits: Vec<GitGraphCommitRenderModel>,
+    pub branches: Vec<GitGraphBranchRenderModel>,
+    #[serde(rename = "currentBranch")]
+    pub current_branch: String,
+    pub direction: String,
+    #[serde(rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -505,7 +542,7 @@ impl GitGraphDb {
         out
     }
 
-    fn branches_as_obj_array(&self) -> Vec<Value> {
+    fn branches_in_order(&self) -> Vec<GitGraphBranchRenderModel> {
         let mut entries: Vec<(String, f64)> = Vec::new();
         for (i, name) in self.branch_config_order.iter().enumerate() {
             let cfg = self.branch_config.get(name);
@@ -520,7 +557,7 @@ impl GitGraphDb {
         entries.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         entries
             .into_iter()
-            .map(|(name, _)| json!({ "name": name }))
+            .map(|(name, _)| GitGraphBranchRenderModel { name })
             .collect()
     }
 }
@@ -533,22 +570,18 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     cur.as_i64()
 }
 
-fn commit_to_value(c: &Commit) -> Value {
-    let mut obj = Map::new();
-    obj.insert("id".to_string(), json!(c.id));
-    obj.insert("message".to_string(), json!(c.message));
-    obj.insert("seq".to_string(), json!(c.seq));
-    obj.insert("type".to_string(), json!(c.commit_type));
-    obj.insert("tags".to_string(), json!(c.tags));
-    obj.insert("parents".to_string(), json!(c.parents));
-    obj.insert("branch".to_string(), json!(c.branch));
-    if let Some(v) = c.custom_type {
-        obj.insert("customType".to_string(), json!(v));
+fn commit_to_render_model(c: Commit) -> GitGraphCommitRenderModel {
+    GitGraphCommitRenderModel {
+        id: c.id,
+        message: c.message,
+        seq: c.seq,
+        commit_type: c.commit_type,
+        tags: c.tags,
+        parents: c.parents,
+        branch: c.branch,
+        custom_type: c.custom_type,
+        custom_id: c.custom_id,
     }
-    if let Some(v) = c.custom_id {
-        obj.insert("customId".to_string(), json!(v));
-    }
-    Value::Object(obj)
 }
 
 fn parse_commit_type(raw: &str) -> Result<i64> {
@@ -753,6 +786,28 @@ fn parse_acc_descr_block_start(line: &str) -> bool {
 }
 
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let model = parse_git_graph_model(code, meta)?;
+    Ok(json!({
+        "type": model.diagram_type,
+        "commits": model.commits,
+        "branches": model.branches,
+        "currentBranch": model.current_branch,
+        "direction": model.direction,
+        "accTitle": model.acc_title,
+        "accDescr": model.acc_descr,
+        "warnings": model.warnings,
+        "config": meta.effective_config.as_value().clone(),
+    }))
+}
+
+pub fn parse_git_graph_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<GitGraphRenderModel> {
+    parse_git_graph_model(code, meta)
+}
+
+fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
     let mut lines = code.lines();
     let Some(header) = lines.next() else {
         return Err(Error::DiagramParse {
@@ -930,26 +985,33 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let commits = db
         .commits_in_seq_order()
         .into_iter()
-        .map(|c| commit_to_value(&c))
+        .map(commit_to_render_model)
         .collect::<Vec<_>>();
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "commits": commits,
-        "branches": db.branches_as_obj_array(),
-        "currentBranch": db.curr_branch,
-        "direction": db.direction,
-        "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title) },
-        "accDescr": if db.acc_descr.is_empty() { None::<String> } else { Some(db.acc_descr) },
-        "warnings": db.warnings,
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    Ok(GitGraphRenderModel {
+        diagram_type: meta.diagram_type.clone(),
+        commits,
+        branches: db.branches_in_order(),
+        current_branch: db.curr_branch,
+        direction: db.direction,
+        acc_title: if db.acc_title.is_empty() {
+            None
+        } else {
+            Some(db.acc_title)
+        },
+        acc_descr: if db.acc_descr.is_empty() {
+            None
+        } else {
+            Some(db.acc_descr)
+        },
+        warnings: db.warnings,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -995,6 +1057,60 @@ mod tests {
         assert_eq!(model["currentBranch"].as_str().unwrap(), "main");
         assert_eq!(model["direction"].as_str().unwrap(), "LR");
         assert_eq!(model["branches"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse() {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "gitGraph": { "seed": 1 }
+        })));
+        let input = r#"
+gitGraph TB:
+accTitle: Git accTitle
+accDescr: Git accDescription
+commit id:"C0"
+branch feature
+checkout feature
+commit id:"F1" tag:"v1"
+checkout main
+merge feature id:"M1"
+"#;
+
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(parsed.meta.diagram_type, "gitGraph");
+        match parsed.model {
+            RenderSemanticModel::GitGraph(model) => {
+                assert_eq!(model.diagram_type, "gitGraph");
+                assert_eq!(model.direction, "TB");
+                assert_eq!(model.current_branch, "main");
+                assert_eq!(model.acc_title.as_deref(), Some("Git accTitle"));
+                assert_eq!(model.acc_descr.as_deref(), Some("Git accDescription"));
+                assert_eq!(model.branches.len(), 2);
+                assert_eq!(model.branches[0].name, "main");
+                assert_eq!(model.commits.len(), 3);
+                assert_eq!(model.commits[1].id, "F1");
+                assert_eq!(model.commits[1].tags, vec!["v1".to_string()]);
+                assert_eq!(model.commits[2].commit_type, COMMIT_TYPE_MERGE);
+            }
+            other => panic!("gitGraph render parse should return typed model, got {other:?}"),
+        }
+
+        let parsed_json = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed_json.model["type"], json!("gitGraph"));
+        assert_eq!(parsed_json.model["direction"], json!("TB"));
+        assert_eq!(parsed_json.model["currentBranch"], json!("main"));
+        assert_eq!(parsed_json.model["accTitle"], json!("Git accTitle"));
+        assert_eq!(parsed_json.model["branches"][0]["name"], json!("main"));
+        assert_eq!(parsed_json.model["commits"][1]["id"], json!("F1"));
+        assert_eq!(parsed_json.model["commits"][1]["tags"], json!(["v1"]));
+        assert!(parsed_json.model.get("config").is_some());
     }
 
     #[test]

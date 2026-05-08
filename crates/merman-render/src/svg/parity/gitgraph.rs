@@ -21,6 +21,67 @@ pub(super) fn render_gitgraph_diagram_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let acc_title = semantic
+        .get("accTitle")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let acc_descr = semantic
+        .get("accDescr")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim_end_matches('\n'))
+        .filter(|s| !s.is_empty());
+
+    render_gitgraph_diagram_svg_with_accessibility(
+        layout,
+        acc_title,
+        acc_descr,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_gitgraph_diagram_svg_model(
+    layout: &crate::model::GitGraphDiagramLayout,
+    model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|s| s.trim_end_matches('\n'))
+        .filter(|s| !s.is_empty());
+
+    render_gitgraph_diagram_svg_with_accessibility(
+        layout,
+        acc_title,
+        acc_descr,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+fn render_gitgraph_diagram_svg_with_accessibility(
+    layout: &crate::model::GitGraphDiagramLayout,
+    acc_title: Option<&str>,
+    acc_descr: Option<&str>,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
@@ -83,17 +144,6 @@ pub(super) fn render_gitgraph_diagram_svg(
     let vb_min_y = bounds.min_y;
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
-
-    let acc_title = semantic
-        .get("accTitle")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = semantic
-        .get("accDescr")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.is_empty());
 
     let aria_title_id = format!("chart-title-{diagram_id}");
     let aria_desc_id = format!("chart-desc-{diagram_id}");

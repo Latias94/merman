@@ -501,6 +501,16 @@ pub fn render_layout_svg_parts_for_render_model(
                 options,
             )
         }
+        (LayoutDiagram::GitGraphDiagram(layout), RenderSemanticModel::GitGraph(model)) => {
+            gitgraph::render_gitgraph_diagram_svg_model(
+                layout,
+                model,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
@@ -664,6 +674,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 layout,
                 &serde_json::Value::Null,
                 effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::GitGraphDiagram(layout), RenderSemanticModel::GitGraph(model)) => {
+            gitgraph::render_gitgraph_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                measurer,
                 options,
             )
         }

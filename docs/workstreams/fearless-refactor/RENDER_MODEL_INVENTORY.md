@@ -34,7 +34,7 @@ This inventory tracks the semantic transport boundary between `merman-core` and
 | `packet` | `typed-first` | typed layout + typed SVG | Config-heavy small diagram; keep as a high-ROI migration pattern. |
 | `timeline` | `typed-first` | typed layout + typed SVG | Moderate small-diagram migration; watch layout/render midpoint drift. |
 | `journey` | `typed-first` | typed layout + typed SVG | Small-to-moderate migration; watch render midpoint drift. |
-| `gitGraph` | `json-fallback` | JSON layout + JSON SVG | Defer. |
+| `gitGraph` | `typed-first` | typed layout + typed SVG | Commit graph transport now shares the core render model. |
 | `pie` | `typed-first` | typed layout + typed SVG | Small typed migration; keep as a simple-diagram pattern. |
 | `xychart` | `json-fallback` | JSON layout + JSON SVG | Defer. |
 | `quadrantChart` | `typed-first` | typed layout + layout-only SVG | Axes/quadrants/points/classes now share the core render model. |
