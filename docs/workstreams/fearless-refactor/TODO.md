@@ -420,6 +420,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
     `mindmap_layout_stress` benches with the same Criterion options.
   Note: package-wide Criterion options were rejected by the lib bench harness, so the recorded
   baseline uses explicit `--bench` commands.
+- [x] Record a same-machine benchmark spotcheck for the core flowchart/state context cleanup.
+  Evidence: `docs/performance/spotcheck_2026-05-08_core_context_cleanup.md` compares parent
+  `cefe26b3` with current `e7e761db` using isolated Criterion target directories.
 - [x] Profile JSON clone cost in `layout_parsed` and public wrapper APIs.
   Evidence: `JSON_CLONE_AUDIT.md`. Decision: `layout_parsed` keeps the owned semantic clone for the
   compatibility API; public `render_svg_sync` already uses typed layout/render dispatch and avoids

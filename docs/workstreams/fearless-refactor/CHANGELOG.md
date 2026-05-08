@@ -52,6 +52,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `FlowchartSemanticContext`, `TypedLayoutContext`, and `JsonLayoutContext`, and made
   `StateDb::add_state` merge `StateStmt` directly. Source code no longer carries
   `clippy::too_many_arguments` allows.
+- Recorded an isolated Criterion spotcheck for the core flowchart/state context cleanup using
+  `flowchart_medium` and `state_medium` in separate target directories.
 - Simplified class layout namespace lookup by precomputing namespace parent/child pairs once per
   render pass and reusing the namespace declaration order vector across graph setup and cluster
   emission.

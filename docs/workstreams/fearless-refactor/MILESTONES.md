@@ -415,6 +415,9 @@ Progress:
 - Class namespace-heavy layout cleanup baseline captured in
   `docs/performance/spotcheck_2026-05-08_class_namespace_dense_layout.md`; the pipeline bench now
   includes `class_namespace_dense`.
+- Core flowchart/state context cleanup spotcheck captured in
+  `docs/performance/spotcheck_2026-05-08_core_context_cleanup.md`, covering the touched
+  `flowchart_medium` and `state_medium` pipeline fixtures.
 
 Exit criteria:
 
