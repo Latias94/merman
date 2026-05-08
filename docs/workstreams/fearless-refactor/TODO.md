@@ -415,6 +415,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   metadata for every generated override category and manual raw SVG/path bridge category, with a
   regression test guarding generated category removal metadata.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
+  Evidence: 19 architecture root viewport overrides were removed after topology-driven viewport
+  calibration covered the matching fixtures; `compare-architecture-svgs --check-dom --dom-decimals 3`
+  still passes.
 - [x] Prevent override tables from becoming the default fix for model bugs.
   Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
   category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.
@@ -459,7 +462,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   namespace declaration order once per render pass. The `class_namespace_dense` pipeline fixture now
   tracks this namespace-heavy path. Remaining clone sites are public compatibility, debug helper, or
   graphlib key ownership boundaries.
-- [ ] Add focused benchmarks before optimizing text measurement caches.
+- [x] Add focused benchmarks before optimizing text measurement caches.
+  Evidence: `text_measure_stress` now covers vendored font computed-length and SVG-like wrapped
+  label measurement with default and bold Mermaid flowchart font styles. Run with
+  `cargo bench -p merman --features render --bench text_measure_stress -- --noplot`.
 
 ## P3: Public API and CLI Cleanup
 

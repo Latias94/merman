@@ -396,6 +396,8 @@ Progress:
   metadata for generated override categories and manual raw SVG/path bridge categories.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
+- Architecture root viewport overrides dropped 19 fixture-specific entries after topology-driven
+  calibration covered the matching profiles.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 
@@ -404,6 +406,8 @@ Exit criteria:
 - Override footprint is reported and tracked.
 - Temporary and generated override categories have owners and removal conditions.
 - Override table growth fails the strict gate unless the no-growth budget is intentionally updated.
+- Architecture root viewport tables keep shrinking as profile-driven viewport code replaces
+  fixture-specific pins.
 - New model fixes are preferred over new overrides unless browser/font probing proves otherwise.
 
 ## M6: Release Readiness

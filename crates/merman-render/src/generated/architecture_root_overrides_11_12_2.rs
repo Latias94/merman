@@ -9,87 +9,10 @@ pub fn lookup_architecture_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_architecture_cypress_complex_junction_edges_normalized" => Some((
-            "-333.2172546386719 -266.3057403564453 746.4345092773438 663.6115112304688",
-            "746.4345092773438",
-        )),
-        "upstream_architecture_cypress_directional_arrows_normalized" => Some((
-            "-195.6711883544922 -187.24441528320312 514.3424072265625 538.5298767089844",
-            "514.3424072265625",
-        )),
-        "upstream_architecture_cypress_edge_labels_normalized" => Some((
-            "-185.4211883544922 -182.99441528320312 514.3424072265625 538.5298767089844",
-            "514.3424072265625",
-        )),
-        "upstream_architecture_cypress_groups_normalized" => Some((
-            "-183.60711669921875 -262.5092315673828 447.2142639160156 660.0184936523438",
-            "447.2142639160156",
-        )),
-        "upstream_architecture_cypress_groups_within_groups_normalized" => Some((
-            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
-            "529.3255615234375",
-        )),
-        "upstream_architecture_docs_groups_within_groups" => Some((
-            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
-            "529.3255615234375",
-        )),
-        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_groups_within_groups_003" => {
-            Some((
-                "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
-                "529.3255615234375",
-            ))
-        }
-        "upstream_html_demos_architecture_groups_within_groups_002" => Some((
-            "-224.6627960205078 -234.7019500732422 529.3255615234375 600.4039306640625",
-            "529.3255615234375",
-        )),
-        "upstream_architecture_demo_arrow_mesh_bidirectional" => Some((
-            "-195.6711883544922 -187.24441528320312 514.3424072265625 538.5298767089844",
-            "514.3424072265625",
-        )),
-        "upstream_architecture_demo_arrow_mesh_bidirectional_inverse" => Some((
-            "-195.49441528320312 -187.4211883544922 514.3423767089844 538.5299072265625",
-            "514.3423767089844",
-        )),
-        "upstream_architecture_demo_edge_label_long" => Some((
-            "-150.99441528320312 -182.99441528320312 514.3423767089844 538.5298767089844",
-            "514.3423767089844",
-        )),
-        "upstream_architecture_demo_edge_label_short" => Some((
-            "-185.4211883544922 -182.99441528320312 514.3424072265625 538.5298767089844",
-            "514.3424072265625",
-        )),
-        "upstream_architecture_demo_junction_groups_arrows" => Some((
-            "-333.2172546386719 -266.3057403564453 746.4345092773438 663.6115112304688",
-            "746.4345092773438",
-        )),
-        "upstream_architecture_cypress_reasonable_height" => Some((
-            "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
-            "1859.8199462890625",
-        )),
-        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_a_reasonable_height_011" => {
-            Some((
-                "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
-                "1859.8199462890625",
-            ))
-        }
-        "upstream_architecture_layout_reasonable_height" => Some((
-            "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
-            "1859.8199462890625",
-        )),
         "mmdr_tests_architecture_architecture_basic" => Some((
             "-182.84327697753906 -65.5 445.6865539550781 262",
             "445.6865539550781",
         )),
-        "upstream_architecture_cypress_fallback_icon" => {
-            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
-        }
-        "upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003" => {
-            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
-        }
-        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004" => {
-            Some(("-49.8515625 -22 179.703125 184.1875", "179.703125"))
-        }
         "upstream_cypress_architecture_spec_should_render_a_simple_architecture_diagram_with_titleandaccessi_002" => {
             Some((
                 "-183.41357421875 -165.96131896972656 446.8271484375 462.922607421875",

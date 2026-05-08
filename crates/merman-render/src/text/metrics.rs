@@ -1069,7 +1069,7 @@ pub fn measure_markdown_svg_like_precise_width_px(
 /// This is primarily needed for cluster titles: Mermaid centers the title group using the wrapped
 /// SVG text bbox width, while the layout engine still keeps the cluster box sizing independent from
 /// the title width once the cluster content is wider.
-#[allow(dead_code)]
+#[cfg(test)]
 pub(crate) fn measure_flowchart_svg_like_precise_width_px(
     measurer: &dyn TextMeasurer,
     text: &str,

@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-08
 
+- Added a focused `text_measure_stress` Criterion bench for vendored font measurement and wrapped
+  label paths before future cache work.
+- Removed a dead private font-metric quantizer and made the flowchart cluster-width probe
+  test-only so production text-measure code stays slimmer.
 - Added category-level owner/source/allowed-use/expected-removal metadata to `xtask
   report-overrides`, plus a regression test so generated override categories keep explicit removal
   criteria.
@@ -15,6 +19,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `xtask verify --strict` so new override growth must be explicit.
 - Replaced `check-upstream-svgs`' long-argument helper with a request struct, removing the last
   `clippy::too_many_arguments` allow from `xtask` source.
+- Removed 19 redundant architecture root viewport overrides after topology-driven calibration
+  covered the matching profiles.
 - Expanded `xtask report-overrides` to inventory hand-authored `maybe_override_*` raw SVG/path
   bridge functions under `svg/parity`, with stable `/` paths in report output.
 - Fixed override helper-function counting in `xtask report-overrides` and added regression tests

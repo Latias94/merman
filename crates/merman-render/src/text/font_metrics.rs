@@ -34,29 +34,6 @@ impl VendoredFontMetricsTextMeasurer {
         }
     }
 
-    #[allow(dead_code)]
-    fn quantize_svg_px_nearest(v: f64) -> f64 {
-        if !(v.is_finite() && v >= 0.0) {
-            return 0.0;
-        }
-        // Browser-derived SVG text metrics in upstream Mermaid fixtures frequently land on binary
-        // fractions (e.g. `...484375` = 31/64). Quantize to a power-of-two grid so our headless
-        // layout math stays on the same lattice and we don't accumulate tiny FP drift that shows
-        // up in `viewBox`/`max-width` diffs.
-        let x = v * 256.0;
-        let f = x.floor();
-        let frac = x - f;
-        let i = if frac < 0.5 {
-            f
-        } else if frac > 0.5 {
-            f + 1.0
-        } else {
-            let fi = f as i64;
-            if fi % 2 == 0 { f } else { f + 1.0 }
-        };
-        i / 256.0
-    }
-
     pub(super) fn quantize_svg_bbox_px_nearest(v: f64) -> f64 {
         if !(v.is_finite() && v >= 0.0) {
             return 0.0;
@@ -680,20 +657,6 @@ impl VendoredFontMetricsTextMeasurer {
             prev = Some(ch);
         }
         em * font_size
-    }
-
-    #[allow(dead_code)]
-    fn ceil_to_1_64_px(v: f64) -> f64 {
-        if !(v.is_finite() && v >= 0.0) {
-            return 0.0;
-        }
-        // Keep identical semantics with `crate::text::ceil_to_1_64_px`.
-        let x = v * 64.0;
-        let r = x.round();
-        if (x - r).abs() < 1e-4 {
-            return r / 64.0;
-        }
-        ((x) - 1e-5).ceil() / 64.0
     }
 
     fn split_token_to_width_px(

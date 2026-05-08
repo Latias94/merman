@@ -62,7 +62,7 @@ impl OverrideCategory {
 
     fn no_growth_budget(self) -> usize {
         match self {
-            OverrideCategory::RootViewport => 1574,
+            OverrideCategory::RootViewport => 1555,
             OverrideCategory::TextLookup => 567,
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
@@ -589,6 +589,6 @@ fn private_helper() {}
         let err = check_override_no_growth(&entries).expect_err("growth should fail");
         let msg = err.to_string();
         assert!(msg.contains("Root viewport overrides grew"));
-        assert!(msg.contains("budget 1574"));
+        assert!(msg.contains("budget 1555"));
     }
 }

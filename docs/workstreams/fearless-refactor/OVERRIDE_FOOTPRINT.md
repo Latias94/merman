@@ -28,6 +28,9 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
+The current snapshot reflects a 19-entry reduction in `architecture_root_overrides_11_12_2.rs`
+after topology-driven viewport calibration replaced several fixture-specific root pins.
+
 | category | owner | expected removal |
 | --- | --- | --- |
 | Root viewport overrides | render parity workstream | Delete entries once typed layout/emitted bounds can derive the same root viewport or a baseline upgrade removes the pinned behavior. |
@@ -40,11 +43,11 @@ escape hatch.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1574`.
+Total entries reported by `xtask`: `1555`.
 
 | file | entries |
 | --- | ---: |
-| `architecture_root_overrides_11_12_2.rs` | 120 |
+| `architecture_root_overrides_11_12_2.rs` | 101 |
 | `block_root_overrides_11_12_2.rs` | 119 |
 | `c4_root_overrides_11_12_2.rs` | 51 |
 | `class_root_overrides_11_12_2.rs` | 196 |
