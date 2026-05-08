@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-
 use super::*;
 
 // Class diagram SVG renderer implementation (split from parity.rs).

@@ -35,180 +35,191 @@ pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str>
 
 pub(super) fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str) {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
-    fn marker_path(
-        out: &mut String,
-        diagram_id: &str,
-        diagram_marker_class: &str,
-        name: &str,
-        kind: &str,
-        ref_x: &str,
-        ref_y: &str,
-        marker_w: &str,
-        marker_h: &str,
-        d: &str,
-    ) {
-        let _ = write!(
-            out,
-            r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{}"/></marker></defs>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(diagram_marker_class),
-            escape_xml_display(name),
-            escape_xml_display(kind),
-            escape_xml_display(diagram_marker_class),
-            ref_x,
-            ref_y,
-            marker_w,
-            marker_h,
-            escape_xml_display(d)
-        );
+    struct MarkerContext<'a> {
+        out: &'a mut String,
+        diagram_id: &'a str,
+        diagram_marker_class: &'a str,
     }
 
-    fn marker_circle(
-        out: &mut String,
-        diagram_id: &str,
-        diagram_marker_class: &str,
-        name: &str,
-        kind: &str,
-        ref_x: &str,
-        ref_y: &str,
-        marker_w: &str,
-        marker_h: &str,
-    ) {
-        let _ = write!(
-            out,
-            r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><circle stroke="black" fill="transparent" cx="7" cy="7" r="6"/></marker></defs>"#,
-            escape_xml_display(diagram_id),
-            escape_xml_display(diagram_marker_class),
-            escape_xml_display(name),
-            escape_xml_display(kind),
-            escape_xml_display(diagram_marker_class),
-            ref_x,
-            ref_y,
-            marker_w,
-            marker_h
-        );
+    enum MarkerShape<'a> {
+        Path(&'a str),
+        Circle,
     }
 
-    marker_path(
+    struct MarkerSpec<'a> {
+        name: &'a str,
+        kind: &'a str,
+        ref_x: &'a str,
+        ref_y: &'a str,
+        marker_w: &'a str,
+        marker_h: &'a str,
+        shape: MarkerShape<'a>,
+    }
+
+    fn marker(ctx: &mut MarkerContext<'_>, spec: MarkerSpec<'_>) {
+        match spec.shape {
+            MarkerShape::Path(d) => {
+                let _ = write!(
+                    ctx.out,
+                    r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{}"/></marker></defs>"#,
+                    escape_xml_display(ctx.diagram_id),
+                    escape_xml_display(ctx.diagram_marker_class),
+                    escape_xml_display(spec.name),
+                    escape_xml_display(spec.kind),
+                    escape_xml_display(ctx.diagram_marker_class),
+                    spec.ref_x,
+                    spec.ref_y,
+                    spec.marker_w,
+                    spec.marker_h,
+                    escape_xml_display(d)
+                );
+            }
+            MarkerShape::Circle => {
+                let _ = write!(
+                    ctx.out,
+                    r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><circle stroke="black" fill="transparent" cx="7" cy="7" r="6"/></marker></defs>"#,
+                    escape_xml_display(ctx.diagram_id),
+                    escape_xml_display(ctx.diagram_marker_class),
+                    escape_xml_display(spec.name),
+                    escape_xml_display(spec.kind),
+                    escape_xml_display(ctx.diagram_marker_class),
+                    spec.ref_x,
+                    spec.ref_y,
+                    spec.marker_w,
+                    spec.marker_h
+                );
+            }
+        }
+    }
+
+    let mut ctx = MarkerContext {
         out,
         diagram_id,
         diagram_marker_class,
-        "aggregationStart",
-        "aggregation",
-        "18",
-        "7",
-        "190",
-        "240",
-        "M 18,7 L9,13 L1,7 L9,1 Z",
+    };
+
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "aggregationStart",
+            kind: "aggregation",
+            ref_x: "18",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+        },
     );
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "aggregationEnd",
-        "aggregation",
-        "1",
-        "7",
-        "20",
-        "28",
-        "M 18,7 L9,13 L1,7 L9,1 Z",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "aggregationEnd",
+            kind: "aggregation",
+            ref_x: "1",
+            ref_y: "7",
+            marker_w: "20",
+            marker_h: "28",
+            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+        },
     );
 
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "extensionStart",
-        "extension",
-        "18",
-        "7",
-        "190",
-        "240",
-        "M 1,7 L18,13 V 1 Z",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "extensionStart",
+            kind: "extension",
+            ref_x: "18",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Path("M 1,7 L18,13 V 1 Z"),
+        },
     );
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "extensionEnd",
-        "extension",
-        "1",
-        "7",
-        "20",
-        "28",
-        "M 1,1 V 13 L18,7 Z",
-    );
-
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "compositionStart",
-        "composition",
-        "18",
-        "7",
-        "190",
-        "240",
-        "M 18,7 L9,13 L1,7 L9,1 Z",
-    );
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "compositionEnd",
-        "composition",
-        "1",
-        "7",
-        "20",
-        "28",
-        "M 18,7 L9,13 L1,7 L9,1 Z",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "extensionEnd",
+            kind: "extension",
+            ref_x: "1",
+            ref_y: "7",
+            marker_w: "20",
+            marker_h: "28",
+            shape: MarkerShape::Path("M 1,1 V 13 L18,7 Z"),
+        },
     );
 
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "dependencyStart",
-        "dependency",
-        "6",
-        "7",
-        "190",
-        "240",
-        "M 5,7 L9,13 L1,7 L9,1 Z",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "compositionStart",
+            kind: "composition",
+            ref_x: "18",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+        },
     );
-    marker_path(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "dependencyEnd",
-        "dependency",
-        "13",
-        "7",
-        "20",
-        "28",
-        "M 18,7 L9,13 L14,7 L9,1 Z",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "compositionEnd",
+            kind: "composition",
+            ref_x: "1",
+            ref_y: "7",
+            marker_w: "20",
+            marker_h: "28",
+            shape: MarkerShape::Path("M 18,7 L9,13 L1,7 L9,1 Z"),
+        },
     );
 
-    marker_circle(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "lollipopStart",
-        "lollipop",
-        "13",
-        "7",
-        "190",
-        "240",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "dependencyStart",
+            kind: "dependency",
+            ref_x: "6",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Path("M 5,7 L9,13 L1,7 L9,1 Z"),
+        },
     );
-    marker_circle(
-        out,
-        diagram_id,
-        diagram_marker_class,
-        "lollipopEnd",
-        "lollipop",
-        "1",
-        "7",
-        "190",
-        "240",
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "dependencyEnd",
+            kind: "dependency",
+            ref_x: "13",
+            ref_y: "7",
+            marker_w: "20",
+            marker_h: "28",
+            shape: MarkerShape::Path("M 18,7 L9,13 L14,7 L9,1 Z"),
+        },
+    );
+
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "lollipopStart",
+            kind: "lollipop",
+            ref_x: "13",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Circle,
+        },
+    );
+    marker(
+        &mut ctx,
+        MarkerSpec {
+            name: "lollipopEnd",
+            kind: "lollipop",
+            ref_x: "1",
+            ref_y: "7",
+            marker_w: "190",
+            marker_h: "240",
+            shape: MarkerShape::Circle,
+        },
     );
 }

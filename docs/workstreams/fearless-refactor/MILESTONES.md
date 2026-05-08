@@ -342,6 +342,8 @@ Progress:
 - Replaced architecture edge label geometry arguments, recursive group bounds arguments, and the
   render-model entry argument list with focused context structs, removing the
   `svg/parity/architecture.rs` module-level `clippy::too_many_arguments` allow.
+- Replaced class marker defs helper argument lists with `MarkerContext` / `MarkerSpec`, removing
+  the `svg/parity/class` module-level `clippy::too_many_arguments` allow.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.
