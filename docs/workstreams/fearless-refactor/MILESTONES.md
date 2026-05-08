@@ -498,6 +498,10 @@ Progress:
   `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`; the local
   Criterion smoke shows `render/xychart_medium` at `113.74-122.92 us` after the SVG renderer
   stopped building per-node `BTreeMap` tables and temporary CSS strings.
+- Recorded the XYChart layout tick-cache cleanup in
+  `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`; the local Criterion smoke
+  shows `layout/xychart_medium` at `55.129-60.551 us` after tick labels moved from repeated
+  generation to axis-state reuse.
 
 Exit criteria:
 

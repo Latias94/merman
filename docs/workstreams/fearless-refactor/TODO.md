@@ -193,7 +193,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
   `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`. The follow-up render
   allocation cleanup is recorded in
-  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`.
+  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`, and the follow-up
+  layout tick-cache cleanup is recorded in
+  `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 
@@ -516,6 +518,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   one group-path helper, and direct CSS writes into the output buffer. The follow-up smoke is
   recorded in `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`, with
   `render/xychart_medium` at `113.74-122.92 us` and a `-14.810%` midpoint change in the local
+  Criterion analysis.
+- [x] Cache XYChart axis tick labels across layout passes.
+  Evidence: `crates/merman-render/src/xychart.rs` now refreshes tick labels when an axis position
+  changes and reuses borrowed tick slices in `calculate_space`, `tick_distance`, and axis drawable
+  generation. The follow-up smoke is recorded in
+  `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`, with
+  `layout/xychart_medium` at `55.129-60.551 us` and a `-13.698%` midpoint change in the local
   Criterion analysis.
 
 ## P3: Public API and CLI Cleanup

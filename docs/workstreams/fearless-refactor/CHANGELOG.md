@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Cached XYChart axis tick labels inside the layout axis state so `calculate_space`,
+  `tick_distance`, and axis drawable generation reuse the same labels instead of rebuilding them.
+  The follow-up smoke records `layout/xychart_medium` at `55.129-60.551 us` in
+  `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`.
 - Reduced XYChart SVG render allocation overhead by replacing the temporary DOM arena's
   per-node `BTreeMap` attribute tables with static tags and insertion-order attribute vectors,
   centralizing nested group creation, and writing shared XYChart CSS directly into the output

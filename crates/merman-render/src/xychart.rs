@@ -420,6 +420,22 @@ fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
     out
 }
 
+fn build_tick_values(kind: &AxisKind, axis_position: AxisPosition) -> Vec<String> {
+    match kind {
+        AxisKind::Band { categories } => categories.clone(),
+        AxisKind::Linear { domain } => {
+            let (mut a, mut b) = *domain;
+            if matches!(axis_position, AxisPosition::Left) {
+                std::mem::swap(&mut a, &mut b);
+            }
+            d3_ticks(a, b, 10)
+                .into_iter()
+                .map(|v| format!("{v}"))
+                .collect()
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum AxisKind {
     Band { categories: Vec<String> },
@@ -432,6 +448,7 @@ struct Axis {
     axis_config: AxisConfig,
     axis_theme: AxisThemeConfig,
     axis_position: AxisPosition,
+    tick_values: Vec<String>,
     bounding_rect: BoundingRect,
     range: (f64, f64),
     show_title: bool,
@@ -450,11 +467,13 @@ impl Axis {
         axis_theme: AxisThemeConfig,
         title: String,
     ) -> Self {
+        let tick_values = build_tick_values(&kind, AxisPosition::Left);
         Self {
             kind,
             axis_config,
             axis_theme,
             axis_position: AxisPosition::Left,
+            tick_values,
             bounding_rect: BoundingRect {
                 x: 0.0,
                 y: 0.0,
@@ -474,6 +493,7 @@ impl Axis {
 
     fn set_axis_position(&mut self, pos: AxisPosition) {
         self.axis_position = pos;
+        self.tick_values = build_tick_values(&self.kind, self.axis_position);
         let range = self.range;
         self.set_range(range);
     }
@@ -499,30 +519,17 @@ impl Axis {
         )
     }
 
-    fn tick_values(&self) -> Vec<String> {
-        match &self.kind {
-            AxisKind::Band { categories } => categories.clone(),
-            AxisKind::Linear { domain } => {
-                let (mut a, mut b) = *domain;
-                if matches!(self.axis_position, AxisPosition::Left) {
-                    std::mem::swap(&mut a, &mut b);
-                }
-                d3_ticks(a, b, 10)
-                    .into_iter()
-                    .map(|v| format!("{v}"))
-                    .collect()
-            }
-        }
+    fn tick_values(&self) -> &[String] {
+        &self.tick_values
     }
 
     fn tick_distance(&self) -> f64 {
-        let ticks = self.tick_values();
         let (a, b) = self.get_range();
         let span = (a - b).abs();
-        if ticks.is_empty() {
+        if self.tick_values.is_empty() {
             return 0.0;
         }
-        span / (ticks.len() as f64)
+        span / (self.tick_values.len() as f64)
     }
 
     fn get_scale_value(&self, value: &str) -> f64 {
@@ -588,7 +595,7 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(&ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
                 let max_padding = 0.2 * available.height;
                 self.outer_padding = (dim.height / 2.0).min(max_padding);
                 let width_required = dim.width + self.axis_config.label_padding * 2.0;
@@ -635,7 +642,7 @@ impl Axis {
 
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
-                let dim = max_text_dimension(&ticks, self.axis_config.label_font_size, measurer);
+                let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
                 let max_padding = 0.2 * available.width;
                 self.outer_padding = (dim.width / 2.0).min(max_padding);
                 let height_required = dim.height + self.axis_config.label_padding * 2.0;
