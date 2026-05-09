@@ -63,40 +63,7 @@ pub(crate) fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskE
         .unwrap_or(&workspace_root)
         .join("quadrantchart");
 
-    let mut mmd_files: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().is_none_or(|e| e != "mmd") {
-            continue;
-        }
-        if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-        {
-            continue;
-        }
-        if let Some(ref f) = filter {
-            if !path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
-        }
-        mmd_files.push(path);
-    }
-    mmd_files.sort();
+    let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
 
     fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
         path: out_svg_dir.display().to_string(),

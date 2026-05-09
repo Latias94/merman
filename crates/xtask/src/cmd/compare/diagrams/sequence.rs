@@ -61,33 +61,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
         .unwrap_or(&workspace_root)
         .join("sequence");
 
-    let mut mmd_files: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().is_none_or(|e| e != "mmd") {
-            continue;
-        }
-        if let Some(ref f) = filter {
-            if !path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
-        }
-        mmd_files.push(path);
-    }
-    mmd_files.sort();
+    let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
 
     if mmd_files.is_empty() {
         return Err(XtaskError::SvgCompareFailed(format!(

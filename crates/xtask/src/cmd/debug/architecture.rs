@@ -1,7 +1,6 @@
 //! Architecture debug utilities.
 
 use crate::XtaskError;
-use crate::util::*;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -186,29 +185,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             .join("architecture-delta")
     });
 
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !is_file_with_extension(&path, "mmd") {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if name.contains("_parser_only_") || name.contains("_parser_only_spec") {
-            continue;
-        }
-        if name.contains(&fixture) {
-            candidates.push(path);
-        }
-    }
-    candidates.sort();
+    let candidates = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, Some(&fixture), true);
 
     let mmd_path = match candidates.len() {
         0 => {
@@ -736,26 +713,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         source,
     })?;
 
-    let mut fixtures: Vec<PathBuf> = Vec::new();
-    let entries = fs::read_dir(&fixtures_dir).map_err(|e| {
-        XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}: {e}",
-            fixtures_dir.display()
-        ))
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            XtaskError::SvgCompareFailed(format!(
-                "failed to read fixtures directory {}: {e}",
-                fixtures_dir.display()
-            ))
-        })?;
-        let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|e| e == "mmd") {
-            fixtures.push(path);
-        }
-    }
-    fixtures.sort();
+    let fixtures = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, None, true);
 
     let engine = merman::Engine::new();
     let layout_opts = svg_compare_layout_opts();

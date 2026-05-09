@@ -7,6 +7,92 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+
+    if diagram == "gantt"
+        && matches!(
+            name,
+            "click_loose.mmd"
+                | "click_strict.mmd"
+                | "dateformat_hash_comment_truncates.mmd"
+                | "excludes_hash_comment_truncates.mmd"
+                | "today_marker_and_axis.mmd"
+        )
+    {
+        return true;
+    }
+    if diagram == "state" && name == "upstream_state_parser_spec.mmd" {
+        // Mermaid upstream currently crashes on this input (kept for parser parity).
+        return true;
+    }
+    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
+        return true;
+    }
+    if diagram == "c4" {
+        // Mermaid C4 has known render-time type assumptions that make some valid parser
+        // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
+        // `UpdateElementStyle(..., techn="Rust")` storing `techn` as a raw string).
+        //
+        // Keep these fixtures for parser parity, but skip them for upstream SVG baselines.
+        return matches!(
+            name,
+            "nesting_updates.mmd"
+                | "upstream_boundary_spec.mmd"
+                | "upstream_c4container_header_and_direction_spec.mmd"
+                | "upstream_container_spec.mmd"
+                | "upstream_person_ext_spec.mmd"
+                | "upstream_person_spec.mmd"
+                | "upstream_system_spec.mmd"
+                | "upstream_update_element_style_all_fields_spec.mmd"
+        );
+    }
+
+    false
+}
+
+fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+
+    if diagram == "gantt"
+        && matches!(
+            name,
+            "click_loose.mmd"
+                | "click_strict.mmd"
+                | "dateformat_hash_comment_truncates.mmd"
+                | "excludes_hash_comment_truncates.mmd"
+                | "today_marker_and_axis.mmd"
+        )
+    {
+        return true;
+    }
+    if diagram == "state" && (name.contains("_parser_") || name.contains("_parser_spec")) {
+        return true;
+    }
+    if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
+        return true;
+    }
+    if diagram == "c4" {
+        return matches!(
+            name,
+            "nesting_updates.mmd"
+                | "upstream_boundary_spec.mmd"
+                | "upstream_c4container_header_and_direction_spec.mmd"
+                | "upstream_container_spec.mmd"
+                | "upstream_person_ext_spec.mmd"
+                | "upstream_person_spec.mmd"
+                | "upstream_system_spec.mmd"
+                | "upstream_update_element_style_all_fields_spec.mmd"
+        );
+    }
+
+    false
+}
+
 pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "er".to_string();
     let mut out_root: Option<PathBuf> = None;
@@ -149,93 +235,8 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
 
-        let mut mmd_files: Vec<PathBuf> = Vec::new();
-        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-            return Err(XtaskError::UpstreamSvgFailed(format!(
-                "failed to list fixtures directory {}",
-                fixtures_dir.display()
-            )));
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "mmd") {
-                continue;
-            }
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-            {
-                continue;
-            }
-            if diagram == "gantt"
-                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                    matches!(
-                        n,
-                        "click_loose.mmd"
-                            | "click_strict.mmd"
-                            | "dateformat_hash_comment_truncates.mmd"
-                            | "excludes_hash_comment_truncates.mmd"
-                            | "today_marker_and_axis.mmd"
-                    )
-                })
-            {
-                continue;
-            }
-            if diagram == "state"
-                && path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n == "upstream_state_parser_spec.mmd")
-            {
-                // Mermaid upstream currently crashes on this input (kept for parser parity).
-                continue;
-            }
-            if diagram == "class"
-                && path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains("upstream_text_label_variants_spec"))
-            {
-                continue;
-            }
-            if diagram == "c4" {
-                // Mermaid C4 has known render-time type assumptions that make some valid parser
-                // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
-                // `UpdateElementStyle(..., techn="Rust")` storing `techn` as a raw string).
-                //
-                // Keep these fixtures for parser parity, but skip them for upstream SVG baselines.
-                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                    matches!(
-                        n,
-                        "nesting_updates.mmd"
-                            | "upstream_boundary_spec.mmd"
-                            | "upstream_c4container_header_and_direction_spec.mmd"
-                            | "upstream_container_spec.mmd"
-                            | "upstream_person_ext_spec.mmd"
-                            | "upstream_person_spec.mmd"
-                            | "upstream_system_spec.mmd"
-                            | "upstream_update_element_style_all_fields_spec.mmd"
-                    )
-                }) {
-                    continue;
-                }
-            }
-            if let Some(f) = filter {
-                if !path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains(f))
-                {
-                    continue;
-                }
-            }
-            mmd_files.push(path);
-        }
-        mmd_files.sort();
+        let mut mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, true);
+        mmd_files.retain(|path| !upstream_svg_fixture_is_skipped_for_generation(diagram, path));
 
         if mmd_files.is_empty() {
             return Err(XtaskError::UpstreamSvgFailed(format!(
@@ -555,87 +556,8 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let baseline_dir = baseline_root.join(diagram);
         let out_dir = out_root.join(diagram);
 
-        let mut mmd_files: Vec<PathBuf> = Vec::new();
-        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-            return Err(XtaskError::UpstreamSvgFailed(format!(
-                "failed to list fixtures directory {}",
-                fixtures_dir.display()
-            )));
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "mmd") {
-                continue;
-            }
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-            {
-                continue;
-            }
-            if diagram == "gantt"
-                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                    matches!(
-                        n,
-                        "click_loose.mmd"
-                            | "click_strict.mmd"
-                            | "dateformat_hash_comment_truncates.mmd"
-                            | "excludes_hash_comment_truncates.mmd"
-                            | "today_marker_and_axis.mmd"
-                    )
-                })
-            {
-                continue;
-            }
-            if diagram == "state"
-                && path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains("_parser_") || n.contains("_parser_spec"))
-            {
-                continue;
-            }
-            if diagram == "class"
-                && path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains("upstream_text_label_variants_spec"))
-            {
-                continue;
-            }
-            if diagram == "c4"
-                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-                    matches!(
-                        n,
-                        "nesting_updates.mmd"
-                            | "upstream_boundary_spec.mmd"
-                            | "upstream_c4container_header_and_direction_spec.mmd"
-                            | "upstream_container_spec.mmd"
-                            | "upstream_person_ext_spec.mmd"
-                            | "upstream_person_spec.mmd"
-                            | "upstream_system_spec.mmd"
-                            | "upstream_update_element_style_all_fields_spec.mmd"
-                    )
-                })
-            {
-                continue;
-            }
-            if let Some(f) = filter {
-                if !path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains(f))
-                {
-                    continue;
-                }
-            }
-            mmd_files.push(path);
-        }
-        mmd_files.sort();
+        let mut mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, true);
+        mmd_files.retain(|path| !upstream_svg_fixture_is_skipped_for_check(diagram, path));
 
         if mmd_files.is_empty() {
             return Err(XtaskError::UpstreamSvgFailed(format!(

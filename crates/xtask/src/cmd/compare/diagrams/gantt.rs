@@ -60,44 +60,20 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     });
     let out_svg_dir = out_path.parent().unwrap_or(&workspace_root).join("gantt");
 
-    let mut mmd_files: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().is_none_or(|e| e != "mmd") {
-            continue;
-        }
-
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if matches!(
-            name,
-            "today_marker_and_axis.mmd"
-                | "click_loose.mmd"
-                | "click_strict.mmd"
-                | "dateformat_hash_comment_truncates.mmd"
-                | "excludes_hash_comment_truncates.mmd"
-        ) {
-            continue;
-        }
-
-        if let Some(ref f) = filter {
-            if !name.contains(f) {
-                continue;
-            }
-        }
-        mmd_files.push(path);
-    }
-    mmd_files.sort();
+    let mut mmd_files =
+        crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
+    mmd_files.retain(|path| {
+        path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            !matches!(
+                n,
+                "today_marker_and_axis.mmd"
+                    | "click_loose.mmd"
+                    | "click_strict.mmd"
+                    | "dateformat_hash_comment_truncates.mmd"
+                    | "excludes_hash_comment_truncates.mmd"
+            )
+        })
+    });
 
     if mmd_files.is_empty() {
         return Err(XtaskError::SvgCompareFailed(format!(

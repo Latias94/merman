@@ -10,6 +10,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Centralized `xtask` `.mmd` fixture discovery for semantic snapshots, layout snapshots, and
   alignment checks, keeping `_deferred`, `upstream-svgs`, parser-only, and filename filter policy in
   one place.
+- Added a shared `xtask` single-directory fixture listing helper and routed the SVG compare
+  commands through it, deleting repeated parser-only scan loops across the compare diagram modules.
+- Reused the same fixture listing helper in upstream SVG generation and the Architecture debug
+  tooling, keeping the diagram-specific exclusions local while deleting the shared scan boilerplate.
 - Extracted a shared `xtask` fixture-to-SVG export helper and refactored `gen-debug-svgs` plus
   the ER, Flowchart, State, Class, and C4 generators onto it, removing repeated scan/read/write
   loops from the command layer.

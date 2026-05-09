@@ -58,41 +58,13 @@ pub(crate) fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     });
     let out_svg_dir = out_path.parent().unwrap_or(&workspace_root).join("state");
 
-    let mut mmd_files: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().is_none_or(|e| e != "mmd") {
-            continue;
-        }
-        if path
-            .file_name()
+    let mut mmd_files =
+        crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
+    mmd_files.retain(|path| {
+        path.file_name()
             .and_then(|n| n.to_str())
-            .is_some_and(|n| n == "upstream_state_parser_spec.mmd")
-        {
-            // Mermaid upstream currently crashes on this input (kept for parser parity).
-            continue;
-        }
-        if let Some(ref f) = filter {
-            if !path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
-        }
-        mmd_files.push(path);
-    }
-    mmd_files.sort();
+            .is_some_and(|n| n != "upstream_state_parser_spec.mmd")
+    });
 
     if mmd_files.is_empty() {
         return Err(XtaskError::SvgCompareFailed(format!(

@@ -1,6 +1,7 @@
 pub(crate) mod audit;
 pub(crate) mod compare;
 pub(crate) mod debug;
+pub(crate) mod fixtures;
 pub(crate) mod generate;
 pub(crate) mod import;
 pub(crate) mod overrides;
@@ -10,6 +11,7 @@ pub(crate) mod verify;
 pub(crate) use audit::*;
 pub(crate) use compare::*;
 pub(crate) use debug::*;
+pub(crate) use fixtures::*;
 pub(crate) use generate::*;
 pub(crate) use import::*;
 pub(crate) use overrides::*;
