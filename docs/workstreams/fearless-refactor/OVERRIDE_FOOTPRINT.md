@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `36`.
+Generated override modules scanned: `35`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -45,9 +45,9 @@ inlined its single-use legend placement and mouth offset values, Radar inlined i
 legend box size and label x-offset literals, XYChart inlined its bar data-label scale and inset
 literals, deleting the empty generated override module, Sequence inlined its self-only frame min pad
 literals in block geometry, Sankey inlined its SVG-only label font/gap/dy literals, Treemap
-inlined its section header label/value sizing literals, and Architecture deleted a dead icon text
-bbox helper, leaving only production layout/SVG parity call sites, bringing the hand-curated helper
-total to 37.
+inlined its section header label/value sizing literals, Architecture deleted a dead icon text bbox
+helper, and Radar inlined its final legend row spacing value and deleted the now-empty generated
+module, bringing the hand-curated helper total to 36.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -124,7 +124,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `37`.
+Total helper functions reported by `xtask`: `36`.
 
 | file | helper functions |
 | --- | ---: |
@@ -133,7 +133,6 @@ Total helper functions reported by `xtask`: `37`.
 | `journey_text_overrides_11_12_2.rs` | 6 |
 | `kanban_text_overrides_11_12_2.rs` | 5 |
 | `pie_text_overrides_11_12_2.rs` | 2 |
-| `radar_text_overrides_11_12_2.rs` | 1 |
 | `sankey_text_overrides_11_12_2.rs` | 2 |
 | `sequence_text_overrides_11_12_2.rs` | 6 |
 | `treemap_text_overrides_11_12_2.rs` | 3 |

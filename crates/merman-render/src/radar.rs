@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
@@ -243,7 +242,7 @@ pub fn layout_radar_diagram_typed(
     if model.options.show_legend && !curves.is_empty() {
         let base_x = ((width / 2.0 + margin_right) * 3.0) / 4.0;
         let base_y = (-(height / 2.0 + margin_top) * 3.0) / 4.0;
-        let step_y = radar_text_overrides::radar_legend_line_step_y_px();
+        let step_y = 20.0;
         for (i, c) in model.curves.iter().enumerate() {
             legend_items.push(RadarLegendItemLayout {
                 label: c.label.clone(),
@@ -278,17 +277,11 @@ pub fn layout_radar_diagram_typed(
 #[cfg(test)]
 mod tests {
     use super::layout_radar_diagram;
-    use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
     use crate::text::DeterministicTextMeasurer;
     use serde_json::json;
 
     #[test]
-    fn radar_text_constants_are_generated() {
-        assert_eq!(radar_text_overrides::radar_legend_line_step_y_px(), 20.0);
-    }
-
-    #[test]
-    fn radar_legend_layout_uses_generated_step_y() {
+    fn radar_legend_layout_uses_mermaid_step_y() {
         let semantic = json!({
             "title": "Radar",
             "axes": [
@@ -316,9 +309,6 @@ mod tests {
         let layout = layout_radar_diagram(&semantic, &json!({}), &measurer).unwrap();
 
         assert_eq!(layout.legend_items.len(), 2);
-        assert_eq!(
-            layout.legend_items[1].y - layout.legend_items[0].y,
-            radar_text_overrides::radar_legend_line_step_y_px()
-        );
+        assert_eq!(layout.legend_items[1].y - layout.legend_items[0].y, 20.0);
     }
 }
