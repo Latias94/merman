@@ -402,6 +402,8 @@ Progress:
   fully moved into `edge_geom` and root SVG emission.
 - Deleted the obsolete Flowchart straight-except-one-endpoint basis helper after full flowchart DOM
   parity stayed green without the special case.
+- Inlined the single-use flowchart basis midpoint helper into the edge path builder, deleting
+  `maybe_insert_midpoint_for_basis` after flowchart DOM parity and the strict gate stayed green.
 - Removed unused no-bounds D3 curve wrappers, leaving `curve.rs` with only active path-and-bounds
   entrypoints plus the still-used basis/linear path helpers.
 - Removed the remaining dead xtask debug helpers and stale scratch structs after equivalent
@@ -540,6 +542,8 @@ Progress:
 - The flowchart cyclic-special basis helper was deleted after strict-gate rechecks stayed green
   without it, removing `maybe_pad_cyclic_special_basis_route` from
   `svg/parity/flowchart/edge_geom/basis.rs`.
+- The C4 root viewport overrides were rechecked by bypassing the lookup entirely; all 35 entries
+  still drift, so the C4 table remains in place for now.
 
 Exit criteria:
 

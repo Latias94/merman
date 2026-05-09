@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Inlined `maybe_insert_midpoint_for_basis` into the flowchart edge path builder after
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+  --filter flowchart` and `cargo run -p xtask -- verify --strict` both stayed green without the
+  helper.
 - Deleted `maybe_pad_cyclic_special_basis_route` from the flowchart basis helper after
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` and `cargo run -p xtask -- verify --strict` both stayed green without it.

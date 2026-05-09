@@ -196,7 +196,7 @@ fn flowchart_compute_edge_path_geom_impl(
         dedup_consecutive_points_into, force_intersect_for_layout_shape,
         intersect_for_layout_shape, is_rounded_intersect_shift_shape,
         line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
+        maybe_fix_corners, maybe_normalize_selfedge_loop_points,
         maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
         maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
         normalize_cyclic_special_data_points, write_flowchart_edge_trace,
@@ -397,11 +397,14 @@ fn flowchart_compute_edge_path_geom_impl(
         && interpolate != "linear"
         && (!is_cluster_edge || is_cyclic_special)
     {
-        maybe_insert_midpoint_for_basis(
-            points_for_render,
-            interpolate,
-            is_cluster_edge,
-            is_cyclic_special,
+        let a = &points_for_render[0];
+        let b = &points_for_render[1];
+        points_for_render.insert(
+            1,
+            crate::model::LayoutPoint {
+                x: (a.x + b.x) / 2.0,
+                y: (a.y + b.y) / 2.0,
+            },
         );
     }
 

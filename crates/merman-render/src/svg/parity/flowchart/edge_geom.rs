@@ -17,7 +17,7 @@ mod line_with_offset;
 mod rect_clip;
 mod trace;
 
-pub(super) use basis::{maybe_insert_midpoint_for_basis, maybe_remove_redundant_cluster_run_point};
+pub(super) use basis::maybe_remove_redundant_cluster_run_point;
 pub(super) use boundary::{
     BoundaryNode, boundary_for_cluster, boundary_for_node, maybe_normalize_selfedge_loop_points,
 };

@@ -434,6 +434,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `maybe_collapse_straight_except_one_endpoint` special case or its support helpers, and
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` stayed green without it.
+- [x] Inline the single-use flowchart basis midpoint helper into the main edge path.
+  Evidence: `maybe_insert_midpoint_for_basis` was folded into
+  `flowchart_compute_edge_path_geom_impl`, and `cargo run -p xtask -- compare-flowchart-svgs
+  --check-dom --dom-mode parity --dom-decimals 3 --filter flowchart` stayed green without the
+  helper.
 
 ## P2: Override Hygiene
 
@@ -492,7 +497,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Timeline then dropped 9 entries now covered by deterministic root output, and 12 `pie` entries now
   covered by deterministic root output, plus 12 `er` entries now covered by deterministic root
   output, 35 `requirement` entries now covered by deterministic root output, and 16 `c4` entries
-  now covered by deterministic root output. The entire 119-entry `block` root override module was
+  now covered by deterministic root output. C4 root viewport overrides were also rechecked by
+  bypassing the lookup entirely; all 35 entries still drift, so the table remains in place for
+  now. The entire 119-entry `block` root override module was
   deleted after Block `parity-root` stayed green without any root pins, followed by 68 `state`
   root pins now covered by deterministic root output. The Class root table then dropped 166
   obsolete pins and gained one missing docs root pin, making Class `parity-root` green with a
