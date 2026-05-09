@@ -448,7 +448,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: 309 root viewport overrides have been removed so far: 19 `architecture` entries after
+  Evidence: root viewport footprint is down 474 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
@@ -457,7 +457,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   output, 35 `requirement` entries now covered by deterministic root output, and 16 `c4` entries
   now covered by deterministic root output. The entire 119-entry `block` root override module was
   deleted after Block `parity-root` stayed green without any root pins, followed by 68 `state`
-  root pins now covered by deterministic root output. One additional hand-curated
+  root pins now covered by deterministic root output. The Class root table then dropped 166
+  obsolete pins and gained one missing docs root pin, making Class `parity-root` green with a
+  165-entry net reduction. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header
@@ -504,6 +506,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-block-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-gitgraph-svgs --check-dom --dom-decimals 3`,
   `compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,

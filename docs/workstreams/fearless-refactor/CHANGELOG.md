@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Collapsed the Class root viewport table from 196 entries to 31 by removing 166 obsolete pins and
+  adding one missing existing docs root pin, reducing root viewport overrides to 1100 while making
+  Class `parity-root` green.
 - Removed sixty-eight obsolete State root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1265 while keeping State `parity-root` green.
 - Removed all 119 obsolete Block root viewport pins and deleted the now-empty Block root override
