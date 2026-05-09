@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Tightened the manual raw SVG/path bridge no-growth budget from 1 to 0 and added a regression
+  test, so strict verification now rejects any bridge reintroduction unless the budget is
+  intentionally reviewed.
 - Normalized the Flowchart math upstream SVG baseline for `upstream_docs_math_flowcharts_001` to
   the current Mermaid CLI + Chrome output and made the Node KaTeX probe retry system browsers while
   measuring the sanitized MathML that SVG emission uses, clearing the last Flowchart `parity-root`

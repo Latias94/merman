@@ -68,7 +68,7 @@ impl OverrideCategory {
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::TypeTextLength => 17,
             OverrideCategory::HandCuratedHelpers => 0,
-            OverrideCategory::RawPathBridge => 1,
+            OverrideCategory::RawPathBridge => 0,
         }
     }
 
@@ -660,5 +660,20 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
         let msg = err.to_string();
         assert!(msg.contains("Root viewport overrides grew"));
         assert!(msg.contains("budget 931"));
+    }
+
+    #[test]
+    fn override_growth_check_rejects_manual_bridge_growth() {
+        let entries = [OverrideFootprintEntry {
+            file_name: "svg/parity/flowchart/edge_geom/degenerate_path.rs".to_string(),
+            category: OverrideCategory::RawPathBridge,
+            count: 1,
+            unit: "bridge functions",
+        }];
+
+        let err = check_override_no_growth(&entries).expect_err("bridge growth should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("Manual raw SVG/path bridges grew"));
+        assert!(msg.contains("budget 0"));
     }
 }

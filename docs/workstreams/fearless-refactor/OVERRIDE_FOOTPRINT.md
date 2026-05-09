@@ -26,7 +26,8 @@ successful eliminations visible in CI logs and drift reviews, not only in policy
 The same category totals are encoded as no-growth budgets in
 `cargo run -p xtask -- report-overrides --check-no-growth`, which is part of the strict release
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
-escape hatch.
+escape hatch. Manual raw SVG/path bridges now have an exact zero budget, so any bridge
+reintroduction fails the strict gate unless the budget is deliberately changed.
 
 The current snapshot reflects a 643-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
