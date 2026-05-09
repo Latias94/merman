@@ -534,8 +534,8 @@ impl<'input> Lexer<'input> {
         let rest = &self.input[after..];
         let rest_trim = rest.trim_start();
         if rest_trim.starts_with('{') {
-            let brace_pos = rest.find('{').unwrap();
-            self.pos = after + brace_pos + 1;
+            let consumed_ws = rest.len() - rest_trim.len();
+            self.pos = after + consumed_ws + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 return Some(Err(LexError {
                     message: "Unterminated accDescr block; missing '}'".to_string(),
