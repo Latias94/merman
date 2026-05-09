@@ -48,14 +48,16 @@ pub(super) fn write_sequence_svg_root_open(
         fmt(vb_w),
         fmt(vb_h)
     );
-    if let Some((viewbox, max_w)) =
-        crate::generated::sequence_root_overrides_11_12_2::lookup_sequence_root_viewport_override(
-            diagram_id,
-        )
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
+    let mut width_attr = fmt_string(vb_w);
+    let mut height_attr = fmt_string(vb_h);
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut width_attr,
+        &mut height_attr,
+        &mut max_w_attr,
+        crate::generated::sequence_root_overrides_11_12_2::lookup_sequence_root_viewport_override,
+    );
 
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
     root_svg::push_svg_root_open(

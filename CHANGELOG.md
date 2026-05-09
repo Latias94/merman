@@ -169,6 +169,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `svg/parity/sequence/settings.rs`.
 - Sequence renderer: move root SVG opening, accessibility title/description, and sequence viewport
   override handling into `svg/parity/sequence/root.rs`.
+- Sequence renderer: route root viewport overrides through the shared root override helper while
+  preserving title placement from the computed content width.
 - Sequence renderer: move activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Sequence renderer: move note emission into `svg/parity/sequence/notes.rs`.

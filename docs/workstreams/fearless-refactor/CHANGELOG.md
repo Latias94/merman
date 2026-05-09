@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Routed Sequence root viewport override application through the shared root override helper while
+  preserving title placement from the computed content width.
 - Routed Gitgraph root viewport override application through the shared root override helper while
   preserving title centering from the final viewBox.
 - Added default Architecture root viewport calibration for nested-groups and reasonable-height
