@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the obsolete flowchart degenerate path helper after targeted `edges_to_from_subgraphs`
+  and `subgraph_spec` DOM parity checks stayed green without the special case.
 - Made the mmdr benchmark helper scripts lockfile-aware and added `--mmdr-toolchain` so the
   reference checkout can run under a compatible Rust toolchain while this workspace remains pinned.
   Recorded a fresh standard-canary stage spotcheck in
@@ -323,8 +325,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   bridge functions under `svg/parity`, with stable `/` paths in report output.
 - Fixed override helper-function counting in `xtask report-overrides` and added regression tests
   for helper and manual bridge detection.
-- Documented the current flowchart degenerate path bridge with owner/removal criteria and refreshed
-  `OVERRIDE_FOOTPRINT.md` for the generated-plus-manual report snapshot.
+- Documented the then-current flowchart degenerate path bridge with owner/removal criteria and
+  refreshed `OVERRIDE_FOOTPRINT.md` for the generated-plus-manual report snapshot.
 - Replaced sequence parity renderer long-argument helpers with focused render contexts and removed
   the sequence module-level `clippy::too_many_arguments` allow while keeping sequence DOM parity
   green.

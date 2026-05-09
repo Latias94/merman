@@ -449,9 +449,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: Sankey first collapsed redundant padding component helpers, then moved its remaining
   node geometry values into `sankey` owner constants and deleted the now-empty generated module,
   reducing helper footprint without changing layout behavior.
-- [x] Add owner/removal notes for current temporary raw SVG/path bridges.
-  Evidence: `svg/parity/flowchart/edge_geom/degenerate_path.rs` documents the current flowchart
-  degenerate path bridge owner and removal criteria.
+- [x] Remove the obsolete flowchart degenerate path helper after parity stayed green.
+  Evidence: `crates/merman-render/src/svg/parity/flowchart/edge_geom/degenerate_path.rs` was
+  deleted after `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity
+  --dom-decimals 3 --filter edges_to_from_subgraphs` and `--filter subgraph_spec` both stayed
+  green without the helper.
 - [x] Add generated metadata for generated overrides with expected removal criteria.
   Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
   metadata for every generated override category and manual raw SVG/path bridge category, with a

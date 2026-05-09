@@ -531,8 +531,8 @@ Progress:
   keeping `parity-root` green. Architecture then added default root viewport calibration for
   nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving
   31 Architecture root pins that still guard real `parity-root` drift.
-- The current flowchart degenerate path bridge documents its owner and removal criteria near the
-  implementation.
+- The obsolete flowchart degenerate path helper was removed after the `edges_to_from_subgraphs`
+  and `subgraph_spec` flowchart DOM parity checks stayed green without it.
 
 Exit criteria:
 
