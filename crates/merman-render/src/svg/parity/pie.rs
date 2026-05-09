@@ -189,7 +189,7 @@ pub(super) fn render_pie_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText">{text}</text>"#,
-                y = super::fmt(pie_text_overrides::pie_title_y_px()),
+                y = super::fmt(-200.0),
                 text = super::escape_xml(t)
             );
         }
@@ -197,7 +197,7 @@ pub(super) fn render_pie_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<text x="0" y="{y}" class="pieTitleText"/>"#,
-                y = super::fmt(pie_text_overrides::pie_title_y_px())
+                y = super::fmt(-200.0)
             );
         }
     }
@@ -228,7 +228,7 @@ pub(super) fn render_pie_diagram_svg_model(
             &mut out,
             r#"<text x="{x}" y="{y}">{text}</text>"#,
             x = super::fmt(legend_text_x),
-            y = super::fmt(pie_text_overrides::pie_legend_text_y_px()),
+            y = super::fmt(14.0),
             text = super::escape_xml(&text)
         );
         out.push_str("</g>");

@@ -437,8 +437,10 @@ Progress:
   helper footprint to 67.
 - Pie now derives its outer radius from the slice radius, Sequence now derives its note padding
   total from the existing note gap, Journey inlines its single-use legend placement and mouth
-  offset values, and Radar inlines its remaining legend box size and label x-offset literals,
-  reducing the helper footprint to 56.
+  offset values, and Radar inlines its remaining legend box size and label x-offset literals.
+  Pie now inlines its fixed margin, center, radius, legend label font size, title y, and legend
+  text y literals while keeping only the shared legend rectangle size and spacing helpers,
+  reducing the helper footprint to 50.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

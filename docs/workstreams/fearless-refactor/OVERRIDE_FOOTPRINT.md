@@ -39,10 +39,10 @@ hand-curated helper functions.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
 helpers; the remaining public Sankey helper is the actual `showValues`-aware padding lookup used by
 layout tests and render code.
-Since then, Pie dropped the redundant outer-radius helper, Sequence now derives its note padding
-total from the existing note gap, Journey inlined its single-use legend placement and mouth
-offset values, and Radar inlined its remaining legend box size and label x-offset literals,
-bringing the hand-curated helper total to 56.
+Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
+text y literals, Sequence now derives its note padding total from the existing note gap, Journey
+inlined its single-use legend placement and mouth offset values, and Radar inlined its remaining
+legend box size and label x-offset literals, bringing the hand-curated helper total to 50.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -119,7 +119,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `56`.
+Total helper functions reported by `xtask`: `50`.
 
 | file | helper functions |
 | --- | ---: |
@@ -127,7 +127,7 @@ Total helper functions reported by `xtask`: `56`.
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 | `journey_text_overrides_11_12_2.rs` | 6 |
 | `kanban_text_overrides_11_12_2.rs` | 5 |
-| `pie_text_overrides_11_12_2.rs` | 8 |
+| `pie_text_overrides_11_12_2.rs` | 2 |
 | `radar_text_overrides_11_12_2.rs` | 1 |
 | `sankey_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 8 |

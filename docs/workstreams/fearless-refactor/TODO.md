@@ -463,7 +463,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   footprint to 67. Pie later dropped a redundant outer-radius helper, Sequence now derives
   its note padding total from the existing note gap, Journey inlines its single-use legend
   placement and mouth offset values, and Radar inlines its remaining legend box size and label
-  x-offset literals, reducing the helper footprint to 56.
+  x-offset literals. Pie now inlines its fixed margin, center, radius, legend label font size,
+  title y, and legend text y literals, leaving only the shared legend rectangle size and spacing
+  helpers and reducing the helper footprint to 50.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.
