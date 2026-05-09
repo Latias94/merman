@@ -497,7 +497,7 @@ Progress:
   parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
-- Root viewport footprint dropped 661 entries net so far: 19 architecture pins after
+- Root viewport footprint dropped 666 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
   calibration covered the remaining Kanban `parity-root` profiles, plus 4 sankey pins now covered
@@ -512,9 +512,9 @@ Progress:
   obsolete pins while staying green under `parity-root`. Flowchart then dropped 131 obsolete pins
   and later cleared `upstream_docs_math_flowcharts_001` by normalizing the browser-sensitive math
   baseline and measuring sanitized KaTeX MathML through the Node probe, so Flowchart `parity-root`
-  is green without root override growth. Pie then replaced 18 section-less fixture pins with a typed
-  empty-pie root viewport rule for Mermaid's `-Infinity` viewBox/no-`max-width` behavior, reducing
-  the Pie root table from 23 entries to 5.
+  is green without root override growth. Pie then replaced its 23 remaining root pins with a typed
+  empty-pie root viewport rule plus shared 1/64px-quantized legend SVG bbox measurement, deleting
+  the Pie root override module.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 

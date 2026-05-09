@@ -1,4 +1,4 @@
-use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
+use super::{PieDiagramLayout, Result, SvgRenderOptions, root_svg};
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
@@ -88,22 +88,13 @@ pub(super) fn render_pie_diagram_svg_model(
     );
     let mut w_attr = super::fmt(vb_w).to_string();
     let mut h_attr = super::fmt(vb_h).to_string();
-    if !apply_empty_pie_root_viewport(
+    apply_empty_pie_root_viewport(
         model,
         &mut viewbox_attr,
         &mut w_attr,
         &mut h_attr,
         &mut max_w_attr,
-    ) {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
-        );
-    }
+    );
 
     let style_attr = if max_w_attr == NO_MAX_WIDTH_SENTINEL {
         "background-color: white;".to_string()

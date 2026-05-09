@@ -5,9 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
-- Modeled section-less Pie root viewport behavior in the renderer (`-Infinity` viewBox width with no
-  `max-width`) and removed 18 fixture-specific Pie root pins, reducing root viewport overrides to
-  913 while keeping Pie `parity-root` green.
+- Modeled section-less Pie root viewport behavior and legend bbox width in the renderer, then
+  deleted the Pie root override module, reducing root viewport overrides to 908 while keeping Pie
+  `parity-root` green.
 - Rechecked the 3 remaining Sankey root viewport pins by disabling the Sankey root lookup and
   confirming `parity-root` still drifts on the three energy-flow fixtures, so those pins stay in the
   override budget until Sankey root height derivation changes.
