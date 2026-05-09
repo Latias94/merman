@@ -28,13 +28,14 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 47-entry reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 59-entry reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
 deterministic emitted bounds and nine obsolete Timeline pins that now match deterministic root
-output. It also reflects the final manual raw SVG/path bridge removal, so manual bridge scanning
-now reports zero bridge files.
+output, then twelve obsolete Pie pins that also match deterministic root output. It also reflects
+the final manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge
+files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.
@@ -78,7 +79,7 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1527`.
+Total entries reported by `xtask`: `1515`.
 
 | file | entries |
 | --- | ---: |
@@ -90,7 +91,7 @@ Total entries reported by `xtask`: `1527`.
 | `flowchart_root_overrides_11_12_2.rs` | 266 |
 | `gitgraph_root_overrides_11_12_2.rs` | 232 |
 | `mindmap_root_overrides_11_12_2.rs` | 80 |
-| `pie_root_overrides_11_12_2.rs` | 35 |
+| `pie_root_overrides_11_12_2.rs` | 23 |
 | `requirement_root_overrides_11_12_2.rs` | 46 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 232 |
