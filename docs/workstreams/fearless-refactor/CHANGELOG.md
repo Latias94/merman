@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Added a lint-allow audit for the remaining source-level allowances, including the confirmed
+  generated State parser `filter_map_identity` allowance and the larger enum migration candidates.
 - Removed local production unwraps from Architecture alignment flattening, Gantt compact section
   grouping, and Sequence self-frame width planning without changing DOM parity.
 - Made the `xtask` font-metrics ridge solver module-local and covered it with focused tests, then

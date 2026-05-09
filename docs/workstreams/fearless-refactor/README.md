@@ -129,3 +129,4 @@ Use this order when choosing work:
 - `PUBLIC_API_CLI_REVIEW.md`: public render API and CLI cleanup decisions.
 - `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
 - `OVERRIDE_POLICY.md`: rules for adding, reviewing, and removing text/render overrides.
+- `LINT_ALLOW_AUDIT.md`: remaining hand-written lint allowances and removal criteria.
