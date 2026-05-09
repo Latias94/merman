@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct BlockDiagramRenderModel {
@@ -132,12 +132,13 @@ impl BlockDb {
     }
 
     fn ensure_block_exists(&mut self, id: &str) -> &mut Block {
-        if !self.block_database.contains_key(id) {
-            self.insert_block(id.to_string(), Block::new(id.to_string()));
+        match self.block_database.entry(id.to_string()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                self.block_database_order.push(id.to_string());
+                entry.insert(Block::new(id.to_string()))
+            }
         }
-        self.block_database
-            .get_mut(id)
-            .expect("block must exist after ensure_block_exists")
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
