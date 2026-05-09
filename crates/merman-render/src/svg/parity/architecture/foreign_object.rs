@@ -302,8 +302,8 @@ fn parse_foreign_object_fragment(raw: &str) -> Vec<ForeignObjectFragmentNode> {
                 };
 
                 if let Some(pos) = stack.iter().rposition(|el| el.name_lc == name_lc) {
-                    while stack.len() > pos + 1 {
-                        let mut orphan = stack.pop().expect("stack length checked");
+                    let mut orphaned = stack.split_off(pos + 1);
+                    for mut orphan in orphaned.drain(..) {
                         if orphan.raw_close.is_none() {
                             orphan.raw_close = Some(format!("</{}>", orphan.name_lc));
                         }
@@ -313,13 +313,20 @@ fn parse_foreign_object_fragment(raw: &str) -> Vec<ForeignObjectFragmentNode> {
                             ForeignObjectFragmentNode::Element(orphan),
                         );
                     }
-                    let mut element = stack.pop().expect("matching close exists");
-                    element.raw_close = Some(raw_tag);
-                    push_node(
-                        &mut stack,
-                        &mut roots,
-                        ForeignObjectFragmentNode::Element(element),
-                    );
+                    if let Some(mut element) = stack.pop() {
+                        element.raw_close = Some(raw_tag);
+                        push_node(
+                            &mut stack,
+                            &mut roots,
+                            ForeignObjectFragmentNode::Element(element),
+                        );
+                    } else {
+                        push_node(
+                            &mut stack,
+                            &mut roots,
+                            ForeignObjectFragmentNode::RawTag(raw_tag),
+                        );
+                    }
                 } else {
                     push_node(
                         &mut stack,

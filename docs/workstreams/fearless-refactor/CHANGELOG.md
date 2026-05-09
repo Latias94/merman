@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Reworked the Architecture foreign-object close-tag handling to use `split_off` and explicit
+  fallback branches instead of stack-pop expects.
+- Replaced the `svg::parity::path_bounds` initialize-then-unwrap helper with
+  `Option::get_or_insert`, keeping the same computed path bounds.
 - Removed local layout and tree-construction unwraps from State renderer edge post-processing and
   Treemap hierarchy construction, keeping the same DOM outputs while avoiding local panics.
 - Removed redundant `accDescr` brace scans from the Class and ER lexer paths by reusing the

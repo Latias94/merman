@@ -89,6 +89,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Class/ER parser cleanup: remove redundant `accDescr` brace scans in the lexer paths.
 - State/Treemap cleanup: remove local layout and tree-construction unwraps from production
   paths.
+- SVG path-bounds helper: replace the local initialize-then-unwrap pattern with
+  `Option::get_or_insert`.
+- Architecture foreign-object cleanup: replace stack-close expects with explicit split-off
+  handling.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

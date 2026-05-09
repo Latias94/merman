@@ -371,15 +371,12 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         let ucmd = cmd.to_ascii_uppercase();
 
         fn ensure_bounds(b: &mut Option<SvgPathBounds>, x: f64, y: f64) -> &mut SvgPathBounds {
-            if b.is_none() {
-                *b = Some(SvgPathBounds {
-                    min_x: x,
-                    min_y: y,
-                    max_x: x,
-                    max_y: y,
-                });
-            }
-            b.as_mut().expect("just set")
+            b.get_or_insert(SvgPathBounds {
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            })
         }
 
         match ucmd {
