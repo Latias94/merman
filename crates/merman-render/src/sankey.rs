@@ -660,12 +660,6 @@ mod tests {
         assert_eq!(sankey_text_overrides::sankey_node_width_px(), 10.0);
         assert_eq!(sankey_text_overrides::sankey_node_padding_px(true), 25.0);
         assert_eq!(sankey_text_overrides::sankey_node_padding_px(false), 10.0);
-        assert_eq!(sankey_text_overrides::sankey_label_font_size_px(), 14.0);
-        assert_eq!(sankey_text_overrides::sankey_label_gap_x_px(), 6.0);
-        assert_eq!(
-            sankey_text_overrides::sankey_label_hide_values_dy_em(),
-            0.35
-        );
     }
 
     #[test]

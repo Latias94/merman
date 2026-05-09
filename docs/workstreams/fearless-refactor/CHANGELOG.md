@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed Sankey SVG-only label font/gap/dy helpers by inlining the fixed values in the renderer,
+  leaving only node geometry and padding helpers and reducing the helper footprint to 38.
 - Removed Sequence self-only frame min pad helpers by inlining the fixed values in block geometry,
   reducing the helper footprint to 41.
 - Removed Treemap section header label/value sizing helpers by inlining the fixed values in the

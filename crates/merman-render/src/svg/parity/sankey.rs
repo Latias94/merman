@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
 
 pub(super) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
@@ -59,7 +58,9 @@ pub(super) fn render_sankey_diagram_svg(
 
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
-    let label_font_size = sankey_text_overrides::sankey_label_font_size_px();
+    let label_font_size: f64 = 14.0;
+    let label_gap_x: f64 = 6.0;
+    let label_hide_values_dy_em: f64 = 0.35;
 
     let mut min_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -75,7 +76,7 @@ pub(super) fn render_sankey_diagram_svg(
         let dy_em = if show_values {
             0.0
         } else {
-            sankey_text_overrides::sankey_label_hide_values_dy_em()
+            label_hide_values_dy_em
         };
         let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * label_font_size;
         let ascent = label_font_size * DEFAULT_ASCENT_EM;
@@ -202,20 +203,14 @@ pub(super) fn render_sankey_diagram_svg(
     for n in &layout.nodes {
         let y = (n.y0 + n.y1) / 2.0;
         let (x, anchor) = if n.x0 < layout_width / 2.0 {
-            (
-                n.x1 + sankey_text_overrides::sankey_label_gap_x_px(),
-                "start",
-            )
+            (n.x1 + label_gap_x, "start")
         } else {
-            (n.x0 - sankey_text_overrides::sankey_label_gap_x_px(), "end")
+            (n.x0 - label_gap_x, "end")
         };
         let dy = if show_values {
             "0em".to_string()
         } else {
-            format!(
-                "{}em",
-                fmt(sankey_text_overrides::sankey_label_hide_values_dy_em())
-            )
+            format!("{}em", fmt(label_hide_values_dy_em))
         };
         let v = (n.value * 100.0).round() / 100.0;
         let text = if show_values {
