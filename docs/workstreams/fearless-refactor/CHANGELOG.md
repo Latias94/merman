@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed unused no-bounds D3 curve path wrappers from `svg/parity/curve.rs`; active renderers now
+  use the shared path-and-bounds entrypoints or the still-used basis/linear path helpers.
 - Deleted the unused Flowchart `edge_bbox` helper module and narrowed the remaining cyclic-special
   basis helper visibility after Flowchart tests, clippy, and SVG DOM parity stayed green.
 - Moved ER and Block HTML width override ownership out of the shared vendored text measurer and

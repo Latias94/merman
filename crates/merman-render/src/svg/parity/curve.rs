@@ -198,10 +198,6 @@ fn emit_cmd_cubic_impl(out: &mut String, bounds: Option<&mut BoundsBuilder>, cub
     }
 }
 
-pub(super) fn curve_monotone_path_d(points: &[LayoutPoint], swap_xy: bool) -> String {
-    curve_monotone_path_d_impl(points, swap_xy, None)
-}
-
 pub(super) fn curve_monotone_path_d_and_bounds(
     points: &[LayoutPoint],
     swap_xy: bool,
@@ -394,16 +390,6 @@ fn curve_monotone_path_d_impl(
     out
 }
 
-#[allow(dead_code)]
-fn curve_monotone_x_path_d(points: &[LayoutPoint]) -> String {
-    curve_monotone_path_d(points, false)
-}
-
-#[allow(dead_code)]
-fn curve_monotone_y_path_d(points: &[LayoutPoint]) -> String {
-    curve_monotone_path_d(points, true)
-}
-
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 pub(super) fn curve_basis_path_d(points: &[LayoutPoint]) -> String {
     curve_basis_path_d_impl(points, None)
@@ -534,11 +520,6 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
 // Ported from D3 `curveNatural` (d3-shape v3.x).
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: natural }`).
-#[allow(dead_code)]
-pub(super) fn curve_natural_path_d(points: &[LayoutPoint]) -> String {
-    curve_natural_path_d_impl(points, None)
-}
-
 pub(super) fn curve_natural_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
@@ -656,11 +637,6 @@ fn curve_natural_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsB
 }
 
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
-#[allow(dead_code)]
-pub(super) fn curve_step_after_path_d(points: &[LayoutPoint]) -> String {
-    curve_step_after_path_d_impl(points, None)
-}
-
 pub(super) fn curve_step_after_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
@@ -704,11 +680,6 @@ fn curve_step_after_path_d_impl(
 }
 
 // Ported from D3 `curveStepBefore` (d3-shape v3.x).
-#[allow(dead_code)]
-pub(super) fn curve_step_before_path_d(points: &[LayoutPoint]) -> String {
-    curve_step_before_path_d_impl(points, None)
-}
-
 pub(super) fn curve_step_before_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
@@ -752,11 +723,6 @@ fn curve_step_before_path_d_impl(
 }
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
-#[allow(dead_code)]
-pub(super) fn curve_step_path_d(points: &[LayoutPoint]) -> String {
-    curve_step_path_d_impl(points, None)
-}
-
 pub(super) fn curve_step_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
@@ -804,11 +770,6 @@ fn curve_step_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBuil
 }
 
 // Ported from D3 `curveCardinal` (d3-shape v3.x).
-#[allow(dead_code)]
-pub(super) fn curve_cardinal_path_d(points: &[LayoutPoint], tension: f64) -> String {
-    curve_cardinal_path_d_impl(points, tension, None)
-}
-
 pub(super) fn curve_cardinal_path_d_and_bounds(
     points: &[LayoutPoint],
     tension: f64,
@@ -939,11 +900,6 @@ fn curve_cardinal_path_d_impl(
 // Ported from D3 `curveBumpY` (d3-shape v3.x).
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: bumpY }`).
-#[allow(dead_code)]
-pub(super) fn curve_bump_y_path_d(points: &[LayoutPoint]) -> String {
-    curve_bump_y_path_d_impl(points, None)
-}
-
 pub(super) fn curve_bump_y_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
@@ -983,22 +939,12 @@ fn curve_bump_y_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
 // Ported from D3 `curveCatmullRom` (d3-shape v3.x), with the default alpha=0.5.
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: catmullRom }`).
-#[allow(dead_code)]
-pub(super) fn curve_catmull_rom_path_d(points: &[LayoutPoint]) -> String {
-    curve_catmull_rom_path_d_with_alpha(points, 0.5)
-}
-
 pub(super) fn curve_catmull_rom_path_d_and_bounds(
     points: &[LayoutPoint],
 ) -> (String, Option<SvgPathBounds>) {
     let mut b = BoundsBuilder::default();
     let d = curve_catmull_rom_path_d_with_alpha_impl(points, 0.5, Some(&mut b));
     (d, b.bounds)
-}
-
-#[allow(dead_code)]
-fn curve_catmull_rom_path_d_with_alpha(points: &[LayoutPoint], alpha: f64) -> String {
-    curve_catmull_rom_path_d_with_alpha_impl(points, alpha, None)
 }
 
 fn curve_catmull_rom_path_d_with_alpha_impl(

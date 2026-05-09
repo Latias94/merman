@@ -384,6 +384,8 @@ Progress:
   under M5 if future profiling or navigation reveals new dead code.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
   fully moved into `edge_geom` and root SVG emission.
+- Removed unused no-bounds D3 curve wrappers, leaving `curve.rs` with only active path-and-bounds
+  entrypoints plus the still-used basis/linear path helpers.
 - Removed the remaining dead xtask debug helpers and stale scratch structs after equivalent
   commands existed; the state SVG analyzer, font-metrics generator, and SVG override generator no
   longer keep dead helper code around.
