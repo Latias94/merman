@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Narrowed State link sanitizer internals to file-private helpers after the State parity gate and
+  strict gate stayed green.
 - Collapsed the duplicated State label HTML line-wrapping and entity-preservation logic behind
   shared private helpers, kept the public State label entry points thin, and revalidated State DOM
   parity plus the strict gate.

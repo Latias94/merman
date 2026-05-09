@@ -402,6 +402,8 @@ Progress:
   removed unused wrappers, and narrowed `state_strip_note_group` to file-private visibility.
 - Collapsed duplicated State label HTML wrapping and entity-preservation helpers behind shared
   private helpers, leaving the label entry points thin and easier to audit.
+- Narrowed the State link sanitizer's internal URL parsing helpers to file-private visibility, so
+  only the public allowlist entry point remains exported.
 - Removed the remaining generated `dead_code` allowances after clippy proved the generated
   override modules no longer need that blanket exception.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline

@@ -1,4 +1,4 @@
-pub(super) fn state_url_scheme_like(input: &str) -> Option<&str> {
+fn state_url_scheme_like(input: &str) -> Option<&str> {
     let lower = input.to_ascii_lowercase();
 
     let last_colon = input.rfind(':');
@@ -20,7 +20,7 @@ pub(super) fn state_url_scheme_like(input: &str) -> Option<&str> {
     best_end.map(|end| &input[..end])
 }
 
-pub(super) fn state_is_invalid_protocol_like(url_scheme: &str) -> bool {
+fn state_is_invalid_protocol_like(url_scheme: &str) -> bool {
     let lower = url_scheme.to_ascii_lowercase();
     let trimmed = lower.trim();
     let trimmed = trimmed.trim_start_matches(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'));
