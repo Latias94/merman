@@ -43,9 +43,10 @@ Since then, Pie inlined its fixed margin, center, radius, label font size, title
 text y literals, Sequence now derives its note padding total from the existing note gap, Journey
 inlined its single-use legend placement and mouth offset values, Radar inlined its remaining
 legend box size and label x-offset literals, XYChart inlined its bar data-label scale and inset
-literals, deleting the empty generated override module, and Treemap inlined its section header
-label/value sizing literals, leaving only the shared section spacing helpers and leaf-fit
-tolerance, bringing the hand-curated helper total to 43.
+literals, deleting the empty generated override module, Sequence inlined its self-only frame min pad
+literals in block geometry, and Treemap inlined its section header label/value sizing literals,
+leaving only the shared section spacing helpers and leaf-fit tolerance, bringing the hand-curated
+helper total to 41.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -122,7 +123,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `43`.
+Total helper functions reported by `xtask`: `41`.
 
 | file | helper functions |
 | --- | ---: |
@@ -133,7 +134,7 @@ Total helper functions reported by `xtask`: `43`.
 | `pie_text_overrides_11_12_2.rs` | 2 |
 | `radar_text_overrides_11_12_2.rs` | 1 |
 | `sankey_text_overrides_11_12_2.rs` | 5 |
-| `sequence_text_overrides_11_12_2.rs` | 8 |
+| `sequence_text_overrides_11_12_2.rs` | 6 |
 | `treemap_text_overrides_11_12_2.rs` | 3 |
 
 ### Manual Raw SVG/Path Bridges

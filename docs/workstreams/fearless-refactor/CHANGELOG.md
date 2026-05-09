@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed Sequence self-only frame min pad helpers by inlining the fixed values in block geometry,
+  reducing the helper footprint to 41.
 - Removed Treemap section header label/value sizing helpers by inlining the fixed values in the
   renderer, leaving only the shared spacing helpers and leaf-fit tolerance and reducing the helper
   footprint to 43.

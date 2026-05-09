@@ -26,11 +26,3 @@ pub fn sequence_frame_side_pad_px() -> f64 {
 pub fn sequence_frame_geom_pad_px() -> f64 {
     10.0
 }
-
-pub fn sequence_self_only_frame_min_pad_left_px() -> f64 {
-    5.0
-}
-
-pub fn sequence_self_only_frame_min_pad_right_px() -> f64 {
-    15.0
-}

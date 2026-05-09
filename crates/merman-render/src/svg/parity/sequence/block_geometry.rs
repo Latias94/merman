@@ -112,9 +112,8 @@ pub(super) fn frame_x_from_message_ids<'a>(
         if let Some(n) = actor_nodes_by_id.get(self_only_actor.unwrap()).copied() {
             let left = n.x - n.width / 2.0;
             let right = n.x + n.width / 2.0;
-            let min_x1 = left - sequence_text_overrides::sequence_self_only_frame_min_pad_left_px();
-            let min_x2 =
-                right + sequence_text_overrides::sequence_self_only_frame_min_pad_right_px();
+            let min_x1 = left - 5.0;
+            let min_x2 = right + 15.0;
             // Only widen when the computed geometry is suspiciously narrow; avoid shifting
             // frames that already match upstream due to message label geometry.
             if (x2 - x1) < (min_x2 - min_x1) - 1.0 {

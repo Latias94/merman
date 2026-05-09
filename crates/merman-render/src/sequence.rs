@@ -2108,13 +2108,5 @@ mod tests {
         );
         assert_eq!(sequence_text_overrides::sequence_frame_side_pad_px(), 11.0);
         assert_eq!(sequence_text_overrides::sequence_frame_geom_pad_px(), 10.0);
-        assert_eq!(
-            sequence_text_overrides::sequence_self_only_frame_min_pad_left_px(),
-            5.0
-        );
-        assert_eq!(
-            sequence_text_overrides::sequence_self_only_frame_min_pad_right_px(),
-            15.0
-        );
     }
 }
