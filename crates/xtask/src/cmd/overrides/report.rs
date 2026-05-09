@@ -12,7 +12,6 @@ enum OverrideCategory {
     TextLookup,
     SvgTextMetrics,
     FontMetrics,
-    TypeTextLength,
     HandCuratedHelpers,
     RawPathBridge,
 }
@@ -26,12 +25,11 @@ struct OverrideCategoryMetadata {
 }
 
 impl OverrideCategory {
-    const ALL: [OverrideCategory; 7] = [
+    const ALL: [OverrideCategory; 6] = [
         OverrideCategory::RootViewport,
         OverrideCategory::TextLookup,
         OverrideCategory::SvgTextMetrics,
         OverrideCategory::FontMetrics,
-        OverrideCategory::TypeTextLength,
         OverrideCategory::HandCuratedHelpers,
         OverrideCategory::RawPathBridge,
     ];
@@ -42,7 +40,6 @@ impl OverrideCategory {
             OverrideCategory::TextLookup => "Text metric lookup overrides",
             OverrideCategory::SvgTextMetrics => "SVG text metric tables",
             OverrideCategory::FontMetrics => "Font metric tables",
-            OverrideCategory::TypeTextLength => "Typed textLength lookups",
             OverrideCategory::HandCuratedHelpers => "Hand-curated helper overrides",
             OverrideCategory::RawPathBridge => "Manual raw SVG/path bridges",
         }
@@ -54,7 +51,6 @@ impl OverrideCategory {
             OverrideCategory::TextLookup => "lookup entries",
             OverrideCategory::SvgTextMetrics => "table rows",
             OverrideCategory::FontMetrics => "table rows",
-            OverrideCategory::TypeTextLength => "lookup arms",
             OverrideCategory::HandCuratedHelpers => "helper functions",
             OverrideCategory::RawPathBridge => "bridge functions",
         }
@@ -63,10 +59,9 @@ impl OverrideCategory {
     fn no_growth_budget(self) -> usize {
         match self {
             OverrideCategory::RootViewport => 931,
-            OverrideCategory::TextLookup => 883,
+            OverrideCategory::TextLookup => 880,
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
-            OverrideCategory::TypeTextLength => 17,
             OverrideCategory::HandCuratedHelpers => 0,
             OverrideCategory::RawPathBridge => 0,
         }
@@ -97,12 +92,6 @@ impl OverrideCategory {
                 source: "browser-measured glyph, kerning, trigram, HTML, and SVG correction tables",
                 allowed_use: "deterministic text measurement support when runtime browser measurement is unavailable",
                 expected_removal: "regenerate or trim when better vendored font/probe data covers the drift; remove only if a real measurement backend becomes the default",
-            },
-            OverrideCategory::TypeTextLength => OverrideCategoryMetadata {
-                owner: "C4 renderer owner",
-                source: "C4 type-line textLength values observed in pinned Mermaid CLI baselines",
-                allowed_use: "exact C4 shape type textLength pins for upstream DOM-backed text measurement behavior",
-                expected_removal: "delete once C4 type-line measurement is computed from shared text measurement or Mermaid stops emitting the pinned textLength",
             },
             OverrideCategory::HandCuratedHelpers => OverrideCategoryMetadata {
                 owner: "diagram renderer owner",
@@ -481,15 +470,6 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
         }];
     }
 
-    if file_name.contains("_type_textlength_") {
-        return vec![OverrideFootprintEntry {
-            file_name,
-            category: OverrideCategory::TypeTextLength,
-            count: count_some_match_arms(text),
-            unit: "lookup arms",
-        }];
-    }
-
     if file_name.contains("_text_overrides_") {
         let lookup_entries = count_some_match_arms(text) + count_static_override_table_rows(text);
         if lookup_entries > 0 {
@@ -730,7 +710,6 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
             OverrideCategory::TextLookup,
             OverrideCategory::SvgTextMetrics,
             OverrideCategory::FontMetrics,
-            OverrideCategory::TypeTextLength,
             OverrideCategory::HandCuratedHelpers,
         ] {
             let metadata = category.metadata();

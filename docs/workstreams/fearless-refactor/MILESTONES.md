@@ -164,6 +164,10 @@ Progress:
 - Mindmap/Architecture/C4 stage attribution is recorded in
   `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`; Architecture
   layout remains the largest observed stage gap after the C4 parse cleanup.
+- Current Mindmap/Architecture same-machine canary pipeline timing is recorded in
+  `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`; both
+  canaries show strong local layout-stage improvement, with `parse/mindmap_medium` still noisy but
+  not yet a parser optimization target.
 - Architecture layout's legacy JSON compatibility model has been trimmed of unused fields, and the
   dead top-level group separation helper was removed without disturbing DOM parity.
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero
@@ -432,6 +436,10 @@ Progress:
 - The stale Mindmap HTML width override table and `gen-mindmap-text-overrides` command were
   deleted after removing shared text-measurer leakage proved the stable Mindmap layout path did
   not need those 291 generated lookup entries.
+- C4 moved its three stable SVG bbox line-height rules into the C4 owner module and deleted the
+  generated `c4_text_overrides_11_12_2.rs` module. C4 also moved its 17 type-line `textLength`
+  pins into the owner module and deleted the generated `c4_type_textlength_11_12_2.rs` module,
+  so the type-line `textLength` logic now lives only in owner code.
 - Redundant public Sankey padding component helpers were collapsed into private constants, leaving
   only the actual `showValues`-aware public padding lookup in the helper footprint.
 - Kanban removed a redundant label line-height helper by reusing the existing foreignObject

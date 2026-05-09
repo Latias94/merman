@@ -70,6 +70,29 @@ fn c4_config_font_weight(cfg: &serde_json::Value, type_key: &str) -> String {
     c4_config_string(cfg, &format!("{type_key}FontWeight")).unwrap_or_else(|| "normal".to_string())
 }
 
+fn c4_type_text_length_px(type_c4_shape: &str) -> Option<f64> {
+    match type_c4_shape {
+        "component" => Some(73.0),
+        "component_db" => Some(93.0),
+        "container" => Some(63.0),
+        "container_db" => Some(83.0),
+        "external_component" => Some(122.0),
+        "external_component_db" => Some(142.0),
+        "external_container" => Some(112.0),
+        "external_container_db" => Some(132.0),
+        "external_container_queue" => Some(152.0),
+        "external_person" => Some(99.0),
+        "external_system" => Some(101.0),
+        "external_system_db" => Some(121.0),
+        "external_system_queue" => Some(141.0),
+        "person" => Some(50.0),
+        "system" => Some(51.0),
+        "system_db" => Some(71.0),
+        "system_queue" => Some(91.0),
+        _ => None,
+    }
+}
+
 struct C4TspanText<'a> {
     content: &'a str,
     x: f64,
@@ -445,10 +468,7 @@ pub(super) fn render_c4_diagram_svg_typed(
 
         let type_family = c4_config_font_family(effective_config, &s.type_c4_shape);
         let type_size = c4_config_font_size(effective_config, &s.type_c4_shape, 14.0) - 2.0;
-        let type_text_length =
-            crate::generated::c4_type_textlength_11_12_2::c4_type_text_length_px_11_12_2(
-                &s.type_c4_shape,
-            )
+        let type_text_length = c4_type_text_length_px(&s.type_c4_shape)
             .unwrap_or_else(|| s.type_block.width.round().max(0.0));
         let _ = write!(
             &mut out,
@@ -793,4 +813,26 @@ pub(super) fn render_c4_diagram_svg(
         measurer,
         options,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::c4_type_text_length_px;
+
+    #[test]
+    fn c4_type_text_length_rules_stay_local() {
+        let cases = [
+            ("component", Some(73.0)),
+            ("component_db", Some(93.0)),
+            ("container", Some(63.0)),
+            ("external_container_queue", Some(152.0)),
+            ("person", Some(50.0)),
+            ("system_queue", Some(91.0)),
+            ("unknown", None),
+        ];
+
+        for (shape, expected) in cases {
+            assert_eq!(c4_type_text_length_px(shape), expected, "{shape}");
+        }
+    }
 }

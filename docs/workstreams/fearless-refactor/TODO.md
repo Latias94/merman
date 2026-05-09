@@ -196,6 +196,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`, and the follow-up
   layout tick-cache cleanup is recorded in
   `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`.
+  Mindmap/Architecture canary status: current local Criterion pipeline evidence is recorded in
+  `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`; both
+  canaries show strong local layout-stage improvement, while `parse/mindmap_medium` stays noisy
+  enough that parser work is still not the next priority.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 
@@ -534,6 +538,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Gitgraph moved branch-label correction control flow into the `gitgraph` owner module and
   reclassified the remaining bbox correction data as text metric lookup entries, reducing the
   helper footprint to 0 while keeping measured correction data visible.
+  C4 moved its three stable SVG bbox line-height rules into the C4 owner module and deleted the
+  generated `c4_text_overrides_11_12_2.rs` module, leaving only the remaining text lookup tables.
+  C4 also moved its 17 type-line `textLength` pins into the owner module and deleted the generated
+  `c4_type_textlength_11_12_2.rs` module, so that logic now lives only in owner code.
+  The single Timeline text lookup was rechecked by disabling it and running
+  `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; it still guards the
+  `upstream_long_word_wrap` root `max-width`, which drifts from `961px` to `961.5px` without the
+  lookup.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-block-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
@@ -612,6 +624,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`, with
   `layout/xychart_medium` at `55.129-60.551 us` and a `-13.698%` midpoint change in the local
   Criterion analysis.
+- [x] Refresh Mindmap/Architecture canary pipeline timing after the cleanup pass.
+  Evidence: `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`
+  records a current same-machine Criterion run for `mindmap_medium` and `architecture_medium`;
+  both canaries show strong local layout-stage improvement, and the longer sample now serves as the
+  default local checkpoint.
+- [x] Move C4 typed textLength pins into the owner module.
+  Evidence: `crates/merman-render/src/svg/parity/c4.rs` now owns the `textLength` mapping logic
+  directly, and the generated `c4_type_textlength_11_12_2.rs` module was deleted.
 
 ## P3: Public API and CLI Cleanup
 

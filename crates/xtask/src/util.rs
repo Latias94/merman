@@ -13,22 +13,6 @@ pub(crate) fn is_file_with_extension(path: &Path, ext: &str) -> bool {
     path.is_file() && has_extension(path, ext)
 }
 
-pub(crate) fn fmt_f64(v: f64) -> String {
-    // Keep output stable and human-readable:
-    // - round to 3 decimals
-    // - trim trailing zeros
-    // - keep at least 1 decimal place (e.g. `73.0`, not `73`)
-    let rounded = (v * 1000.0).round() / 1000.0;
-    let mut s = format!("{rounded:.3}");
-    while s.ends_with('0') {
-        s.pop();
-    }
-    if s.ends_with('.') {
-        s.push('0');
-    }
-    if s == "-0.0" { "0.0".to_string() } else { s }
-}
-
 pub(crate) fn read_text(path: &Path) -> Result<String, XtaskError> {
     fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
         path: path.display().to_string(),

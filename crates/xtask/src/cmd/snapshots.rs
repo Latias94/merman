@@ -541,25 +541,6 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
         ));
     }
 
-    // Verify generated C4 type textLength table.
-    let expected_c4_textlength =
-        PathBuf::from("crates/merman-render/src/generated/c4_type_textlength_11_12_2.rs");
-    let actual_c4_textlength = tmp_dir.join("c4_type_textlength_11_12_2.actual.rs");
-    super::gen_c4_textlength(vec![
-        "--in".to_string(),
-        "fixtures/upstream-svgs/c4".to_string(),
-        "--out".to_string(),
-        actual_c4_textlength.display().to_string(),
-    ])?;
-    if read_text_normalized(&expected_c4_textlength)?
-        != read_text_normalized(&actual_c4_textlength)?
-    {
-        failures.push(format!(
-            "c4 textLength table mismatch: regenerate with `cargo run -p xtask -- gen-c4-textlength` ({})",
-            expected_c4_textlength.display()
-        ));
-    }
-
     // Verify generated Flowchart font metrics table.
     let expected_flowchart_font_metrics =
         PathBuf::from("crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs");

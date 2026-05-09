@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-09
+## Snapshot: 2026-05-10
 
 Command:
 
@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `24`.
+Generated override modules scanned: `22`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -62,7 +62,11 @@ HTML width tables are no longer consulted by the generic vendored text measurer,
 sites now live in their owning diagram modules. The stale Mindmap HTML width table was deleted
 after layout snapshots proved the stable Mindmap path does not use it, reducing text lookup debt by
 291 entries while preventing shared text measurement from leaking fixture-specific widths across
-diagrams.
+diagrams. C4 then moved its three per-line SVG bbox height rules into the C4 owner module and
+deleted the generated `c4_text_overrides_11_12_2.rs` module, reducing text lookup debt by another
+3 entries. C4 then moved its 17 type-line `textLength` pins into the C4 owner module and deleted
+the generated `c4_type_textlength_11_12_2.rs` module, so C4 type-line `textLength` now lives in
+owner code instead of the override inventory.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
 helpers before the remaining Sankey node geometry moved back to the `sankey` owner module.
 Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
@@ -97,7 +101,6 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 | Text metric lookup overrides | render parity workstream | Delete entries once vendored/shared text measurement returns the upstream dimensions without fixture-specific lookup arms. |
 | SVG text metric tables | render parity workstream | Replace with shared font metrics or browser-probe imports, then delete stale rows. |
 | Font metric tables | shared text measurement owner | Regenerate or trim when better vendored font/probe data covers the drift; remove only if a real measurement backend becomes the default. |
-| Typed textLength lookups | C4 renderer owner | Delete once C4 type-line measurement is computed from shared text measurement or Mermaid stops emitting the pinned `textLength`. |
 | Hand-curated helper overrides | diagram renderer owner | Replace with repeatable generated data or typed model/layout computations as soon as a reliable source exists. |
 | Manual raw SVG/path bridges | diagram-specific `svg/parity` module owner | Delete once typed layout/path emission reproduces the upstream literal behavior; keep local owner/removal notes beside each bridge. |
 
@@ -148,12 +151,11 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `883`.
+Total lookup entries reported by `xtask`: `880`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
-| `c4_text_overrides_11_12_2.rs` | 3 |
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
@@ -174,12 +176,6 @@ Total lookup entries reported by `xtask`: `883`.
 | file | table rows |
 | --- | ---: |
 | `font_metrics_flowchart_11_12_2.rs` | 3774 |
-
-### Typed TextLength Lookups
-
-| file | lookup arms |
-| --- | ---: |
-| `c4_type_textlength_11_12_2.rs` | 17 |
 
 ### Hand-Curated Helper Overrides
 

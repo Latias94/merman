@@ -3,16 +3,23 @@
 This document records completed performance work and the current prioritized backlog.
 For the actively maintained plan and targets, see `docs/performance/PERF_PLAN.md`.
 
-## Current snapshot (2026-02-17)
+## Current snapshot (2026-05-10)
 
 Latest committed reports:
-- Stage attribution: `docs/performance/spotcheck_2026-02-17_after_bench_fix.md`
+- Cross-repo stage attribution:
+  `docs/performance/spotcheck_2026-05-09_mindmap_architecture_c4_stage_mmdr.md`
+- Same-machine canary pipeline run:
+  `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`
 - End-to-end comparison: `docs/performance/COMPARISON.md`
 
 Key takeaways:
-- `architecture_medium` and `mindmap_medium` are the main end-to-end gaps (see `docs/performance/COMPARISON.md`).
-- `render` remains a consistent cross-diagram gap (spotcheck gmean `~1.46x` on the medium canaries).
-- `class` is already faster end-to-end than mmdr on the medium canary.
+- `architecture_medium` and `mindmap_medium` remain the main canaries.
+- The latest local canary run shows strong layout-stage improvement for both canaries, and the
+  longer sample is now the default local checkpoint.
+- The latest cross-repo stage attribution still leaves Architecture layout as the largest observed
+  gap; re-run it after the next Architecture layout cleanup.
+- `parse/mindmap_medium` showed a small local regression band in the short canary run, so validate
+  it with a longer run before treating parse as the limiting stage.
 
 ## Completed (selected)
 
@@ -52,6 +59,8 @@ Goal:
 Approach:
 - Focus on safe Rust + representation changes first (no unsafe in `manatee`).
 - Use timing toggles (`MANATEE_COSE_TIMING=1`, `MERMAN_MINDMAP_LAYOUT_TIMING=1`) when validating hypotheses.
+- Re-run `spotcheck_2026-05-10_mindmap_architecture_canary_pipeline.md` with a longer Criterion
+  preset before claiming durable layout movement.
 
 ### P2: Architecture layout + render
 
@@ -61,6 +70,8 @@ Goal:
 Approach:
 - Keep cutting string-keyed maps/clones in layout.
 - Treat render emission as part of the canary, not an afterthought.
+- Re-run the merman-vs-mmdr stage spotcheck after layout changes, because the local canary only
+  proves same-machine movement.
 
 ### P3: Parse (targeted)
 

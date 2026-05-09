@@ -3,8 +3,16 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
-## 2026-05-09
+## 2026-05-10
 
+- Recorded the current Mindmap/Architecture local pipeline canary in
+  `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`, preserving
+  the strong local layout-stage signal and the small `parse/mindmap_medium` watch item.
+- Moved the three stable C4 SVG bbox line-height rules into the C4 owner module, deleted
+  `c4_text_overrides_11_12_2.rs`, moved the 17 C4 type-line `textLength` pins into the owner
+  module, and kept the type-line `textLength` logic in owner code.
+- Rechecked the lone Timeline text lookup and documented that it still guards the
+  `upstream_long_word_wrap` root `max-width` parity pin.
 - Removed the thin render-side UTC helper in Gantt and called the shared core time helper
   directly.
 - Turned the Class SVG root placeholder lookup into an explicit render error instead of a local

@@ -137,6 +137,33 @@ struct TextMeasure {
     line_count: usize,
 }
 
+fn js_round_pos(v: f64) -> f64 {
+    if !(v.is_finite() && v >= 0.0) {
+        0.0
+    } else {
+        (v + 0.5).floor()
+    }
+}
+
+fn c4_svg_bbox_line_height_px(style: &TextStyle) -> f64 {
+    // C4 in Mermaid@11.12.2 uses `calculateTextDimensions(...).height`, which is measured via
+    // SVG `getBBox()` and rounded with `Math.round`. Upstream fixtures show stable, integer
+    // per-line heights for the default C4 fonts:
+    // - 12px -> 14px
+    // - 14px -> 16px
+    // - 16px -> 17px
+    //
+    // These do not match our generic deterministic SVG line-height approximation (`1.1em`),
+    // so C4 owns the small rule directly instead of keeping it in generated parity data.
+    let fs = js_round_pos(style.font_size.max(1.0)) as i64;
+    match fs {
+        12 => 14.0,
+        14 => 16.0,
+        16 => 17.0,
+        _ => js_round_pos(style.font_size.max(1.0) * 1.1),
+    }
+}
+
 fn measure_c4_text(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -147,29 +174,6 @@ fn measure_c4_text(
     // Mermaid's `calculateTextWidth/Height` (used by C4) draws SVG `<text>` nodes, calls
     // `getBBox()`, and then applies `Math.round(...)` per line. To keep C4 layout + viewport
     // parity with upstream SVG baselines, we mirror that integer rounding behavior here.
-    fn js_round_pos(v: f64) -> f64 {
-        if !(v.is_finite() && v >= 0.0) {
-            0.0
-        } else {
-            (v + 0.5).floor()
-        }
-    }
-
-    fn c4_svg_bbox_line_height_px(style: &TextStyle) -> f64 {
-        // C4 in Mermaid@11.12.2 uses `calculateTextDimensions(...).height`, which is measured via
-        // SVG `getBBox()` and rounded with `Math.round`. Upstream fixtures show stable, integer
-        // per-line heights for the default C4 fonts:
-        // - 12px -> 14px
-        // - 14px -> 16px
-        // - 16px -> 17px
-        //
-        // These do not match our generic deterministic SVG line-height approximation (`1.1em`),
-        // so we treat them as C4-specific constants to keep layout bounds and root viewBox parity.
-        let fs = js_round_pos(style.font_size.max(1.0)) as i64;
-        crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(fs)
-            .unwrap_or_else(|| js_round_pos(style.font_size.max(1.0) * 1.1))
-    }
-
     if wrap {
         let m = measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
         return TextMeasure {
@@ -1042,23 +1046,23 @@ pub(crate) fn layout_c4_diagram(
 
 #[cfg(test)]
 mod tests {
+    use super::{TextStyle, c4_svg_bbox_line_height_px};
+
     #[test]
-    fn c4_svg_bbox_line_height_overrides_are_generated() {
-        assert_eq!(
-            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(12),
-            Some(14.0)
-        );
-        assert_eq!(
-            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(14),
-            Some(16.0)
-        );
-        assert_eq!(
-            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(16),
-            Some(17.0)
-        );
-        assert_eq!(
-            crate::generated::c4_text_overrides_11_12_2::lookup_c4_svg_bbox_line_height_px(15),
-            None
-        );
+    fn c4_svg_bbox_line_height_uses_owner_rules() {
+        fn style(font_size: f64) -> TextStyle {
+            TextStyle {
+                font_size,
+                ..Default::default()
+            }
+        }
+
+        assert_eq!(c4_svg_bbox_line_height_px(&style(12.0)), 14.0);
+
+        assert_eq!(c4_svg_bbox_line_height_px(&style(14.0)), 16.0);
+
+        assert_eq!(c4_svg_bbox_line_height_px(&style(16.0)), 17.0);
+
+        assert_eq!(c4_svg_bbox_line_height_px(&style(15.0)), 17.0);
     }
 }

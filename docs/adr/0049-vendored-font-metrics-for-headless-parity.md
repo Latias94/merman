@@ -30,13 +30,8 @@ For Mermaid `@11.12.3`, `merman-render` vendors a small set of DOM-derived font 
 
 Currently, this is limited to **C4 type-line `textLength`** values for built-in shape types.
 
-The values are generated from upstream SVG baselines via:
-
-- `cargo run -p xtask -- gen-c4-textlength`
-
-The generated output is checked by:
-
-- `cargo run -p xtask -- verify-generated`
+The values now live as owner code in `crates/merman-render/src/svg/parity/c4.rs` and are checked
+by the C4 parity tests and DOM compare gates.
 
 ## Alternatives Considered
 
@@ -56,8 +51,7 @@ The generated output is checked by:
 ## Consequences
 
 - We gain deterministic SVG DOM parity for C4 fixtures under the pinned Mermaid version.
-- We accept that metric vendoring is **version-scoped** and must be regenerated when baselines
-  update.
+- We accept that metric pinning is **version-scoped** and must be revised when baselines update.
 - We keep the scope small and explicitly documented to avoid a “vendored metrics sprawl”.
 
 ## Follow-ups
@@ -65,4 +59,3 @@ The generated output is checked by:
 - Extend the generator to cover additional metric-derived attributes only when they block parity.
 - Re-evaluate full Rust-side text measurement if we need robust parity across arbitrary fonts or
   user-specified font overrides.
-

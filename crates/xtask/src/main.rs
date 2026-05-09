@@ -157,7 +157,6 @@ fn main() -> Result<(), XtaskError> {
         "gen-state-svgs" => cmd::gen_state_svgs(args.collect()),
         "gen-class-svgs" => cmd::gen_class_svgs(args.collect()),
         "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
-        "gen-c4-textlength" => cmd::gen_c4_textlength(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
         "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "gen-er-text-overrides" => cmd::gen_er_text_overrides(args.collect()),
