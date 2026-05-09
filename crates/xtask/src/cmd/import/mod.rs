@@ -7,11 +7,13 @@ use std::sync::OnceLock;
 mod cypress;
 mod docs;
 mod examples;
+mod fixture_files;
 mod html;
 mod pkg_tests;
 
 pub(crate) use cypress::import_upstream_cypress;
 pub(crate) use docs::import_upstream_docs;
 pub(crate) use examples::import_upstream_examples;
+pub(crate) use fixture_files::{cleanup_fixture_files, defer_fixture_files};
 pub(crate) use html::import_upstream_html;
 pub(crate) use pkg_tests::import_upstream_pkg_tests;

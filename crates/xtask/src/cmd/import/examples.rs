@@ -274,79 +274,15 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     }
 
     fn cleanup_fixture_files(f: &CreatedFixture) {
-        let _ = fs::remove_file(&f.path);
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.golden.json", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.layout.golden.json", f.stem)),
-        );
+        crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
     }
 
     fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool) {
-        let deferred_fixture_dir = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&f.diagram_dir);
-        let _ = fs::create_dir_all(&deferred_fixture_dir);
-
-        let deferred_fixture_path = deferred_fixture_dir.join(format!("{}.mmd", f.stem));
-        if deferred_fixture_path.exists() {
-            let _ = fs::remove_file(&f.path);
-        } else {
-            let _ = fs::rename(&f.path, &deferred_fixture_path)
-                .or_else(|_| fs::copy(&f.path, &deferred_fixture_path).map(|_| ()))
-                .and_then(|_| fs::remove_file(&f.path));
-        }
-
-        if keep_upstream_svg {
-            let upstream_svg_path = crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            if upstream_svg_path.exists() {
-                let deferred_svg_dir = crate::cmd::fixtures_root()
-                    .join("_deferred")
-                    .join("upstream-svgs")
-                    .join(&f.diagram_dir);
-                let _ = fs::create_dir_all(&deferred_svg_dir);
-
-                let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
-                if deferred_svg_path.exists() {
-                    let _ = fs::remove_file(&upstream_svg_path);
-                } else {
-                    let _ = fs::rename(&upstream_svg_path, &deferred_svg_path)
-                        .or_else(|_| fs::copy(&upstream_svg_path, &deferred_svg_path).map(|_| ()))
-                        .and_then(|_| fs::remove_file(&upstream_svg_path));
-                }
-            }
-        } else {
-            let _ = fs::remove_file(
-                crate::cmd::fixtures_root()
-                    .join("upstream-svgs")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.svg", f.stem)),
-            );
-        }
-
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.golden.json", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.layout.golden.json", f.stem)),
+        let _ = crate::cmd::import::defer_fixture_files(
+            &f.diagram_dir,
+            &f.stem,
+            &f.path,
+            keep_upstream_svg,
         );
     }
 

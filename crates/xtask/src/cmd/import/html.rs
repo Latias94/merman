@@ -685,40 +685,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         }
 
         fn defer_fixture_files_keep_baselines(f: &CreatedFixture) {
-            let deferred_dir = crate::cmd::fixtures_root()
-                .join("_deferred")
-                .join(&f.diagram_dir);
-            let deferred_svg_dir = crate::cmd::fixtures_root()
-                .join("_deferred")
-                .join("upstream-svgs")
-                .join(&f.diagram_dir);
-            let _ = fs::create_dir_all(&deferred_dir);
-            let _ = fs::create_dir_all(&deferred_svg_dir);
-
-            let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
-            let _ = fs::remove_file(&deferred_mmd_path);
-            let _ = fs::rename(&f.path, &deferred_mmd_path);
-
-            let svg_path = crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            if svg_path.exists() {
-                let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
-                let _ = fs::remove_file(&deferred_svg_path);
-                let _ = fs::rename(&svg_path, &deferred_svg_path);
-            }
-
-            let _ = fs::remove_file(
-                crate::cmd::fixtures_root()
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.golden.json", f.stem)),
-            );
-            let _ = fs::remove_file(
-                crate::cmd::fixtures_root()
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.layout.golden.json", f.stem)),
-            );
+            let _ = crate::cmd::import::defer_fixture_files(&f.diagram_dir, &f.stem, &f.path, true);
         }
 
         let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Added a shared import fixture-file helper module so cleanup and defer logic now lives in one
+  place while the cypress, docs, examples, html, and pkg_tests modules keep thin policy wrappers.
+  Revalidated the refactor with `cargo run -p xtask -- verify --strict`.
 - Removed stale `workspace_root` plumbing from `xtask` fixture, snapshot, compare, debug,
   generate, import, and override helpers after centralizing project-root helpers, restoring the
   strict gate including workspace clippy.

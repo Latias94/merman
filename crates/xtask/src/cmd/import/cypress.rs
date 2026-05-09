@@ -2843,90 +2843,15 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     fn cleanup_fixture_files(f: &CreatedFixture) {
-        let _ = fs::remove_file(&f.path);
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.golden.json", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.layout.golden.json", f.stem)),
-        );
+        crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
     }
 
     fn defer_fixture_files_keep_baselines(f: &CreatedFixture) {
-        let deferred_dir = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&f.diagram_dir);
-        let deferred_svg_dir = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join("upstream-svgs")
-            .join(&f.diagram_dir);
-        let _ = fs::create_dir_all(&deferred_dir);
-        let _ = fs::create_dir_all(&deferred_svg_dir);
-
-        let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
-        let _ = fs::remove_file(&deferred_mmd_path);
-        let _ = fs::rename(&f.path, &deferred_mmd_path);
-
-        let svg_path = crate::cmd::fixtures_root()
-            .join("upstream-svgs")
-            .join(&f.diagram_dir)
-            .join(format!("{}.svg", f.stem));
-        let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
-        let _ = fs::remove_file(&deferred_svg_path);
-        let _ = fs::rename(&svg_path, &deferred_svg_path);
-
-        // We do not keep snapshots for deferred fixtures in the main fixture corpus.
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.golden.json", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.layout.golden.json", f.stem)),
-        );
+        let _ = crate::cmd::import::defer_fixture_files(&f.diagram_dir, &f.stem, &f.path, true);
     }
 
     fn defer_fixture_files_no_baselines(f: &CreatedFixture) -> PathBuf {
-        let deferred_dir = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&f.diagram_dir);
-        let _ = fs::create_dir_all(&deferred_dir);
-
-        let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
-        let _ = fs::remove_file(&deferred_mmd_path);
-        let _ = fs::rename(&f.path, &deferred_mmd_path);
-
-        // Ensure we don't leave any partially-generated artifacts in the main corpus.
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.golden.json", f.stem)),
-        );
-        let _ = fs::remove_file(
-            crate::cmd::fixtures_root()
-                .join(&f.diagram_dir)
-                .join(format!("{}.layout.golden.json", f.stem)),
-        );
-
-        deferred_mmd_path
+        crate::cmd::import::defer_fixture_files(&f.diagram_dir, &f.stem, &f.path, false)
     }
 
     let mut created: Vec<CreatedFixture> = Vec::new();
