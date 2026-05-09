@@ -223,13 +223,13 @@ impl StateDb {
     }
 
     fn ensure_state(&mut self, id: &str) -> &mut StateRecord {
-        let id = id.trim();
-        if !self.states.contains_key(id) {
-            self.state_order.push(id.to_string());
-            self.states.insert(
-                id.to_string(),
-                StateRecord {
-                    id: id.to_string(),
+        let id = id.trim().to_string();
+        match self.states.entry(id.clone()) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                self.state_order.push(id.clone());
+                entry.insert(StateRecord {
+                    id,
                     ty: "default".to_string(),
                     descriptions: Vec::new(),
                     doc: None,
@@ -238,10 +238,9 @@ impl StateDb {
                     styles: Vec::new(),
                     text_styles: Vec::new(),
                     start: None,
-                },
-            );
+                })
+            }
         }
-        self.states.get_mut(id).unwrap()
     }
 
     fn add_description(&mut self, id: &str, descr: &str) {

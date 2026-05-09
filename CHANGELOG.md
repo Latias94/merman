@@ -74,6 +74,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `large_enum_variant` lint allowance while keeping serialized layout output stable.
 - Core parser lint hygiene: scope the LALRPOP generated `empty_line_after_outer_attr` allowance to
   parser wrapper modules instead of the whole `merman-core` crate.
+- State semantic DB: use a single `HashMap::entry` path when creating state records, removing an
+  insert-then-unwrap lookup.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
