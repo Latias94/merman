@@ -7,23 +7,11 @@ pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_cypress_mindmap_spec_a_root_with_a_shape_002" => {
-            Some(("5 5 89.734375 64", "89.7344"))
-        }
-        "upstream_cypress_mindmap_spec_a_root_with_an_icon_005" => {
-            Some(("5 5 89.734375 64", "89.7344"))
-        }
         "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003" => {
             Some(("5 5 260 112", "260"))
         }
         "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_long_words_that_exceed_width_004" => {
             Some(("5 5 458.5 136", "458.5"))
-        }
-        "upstream_cypress_mindmap_spec_adding_children_015" => {
-            Some(("5 5 394.80145263671875 54", "394.801"))
-        }
-        "upstream_cypress_mindmap_spec_adding_grand_children_016" => {
-            Some(("5 5 305.62548828125 210.70932006835938", "305.625"))
         }
         "upstream_cypress_mindmap_spec_blang_and_cloud_shape_006" => Some((
             "6.561412811279297 6.599998474121094 503.568115234375 100",
@@ -40,8 +28,6 @@ pub fn lookup_mindmap_root_viewport_override(
             Some(("5 5 615.91748046875 440.98748779296875", "615.917"))
         }
         "upstream_cypress_mindmap_spec_circle_shape_013" => Some(("5 5 111.3125 74", "111.312")),
-        "upstream_cypress_mindmap_spec_default_shape_014" => Some(("5 5 121.3125 54", "121.312")),
-        "upstream_cypress_mindmap_spec_example_001" => Some(("5 5 89.734375 54", "89.7344")),
         "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017" => {
             Some(("5 5 553.4945068359375 112", "553.495"))
         }
@@ -58,23 +44,12 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010" => {
             Some(("5 5 373.2288513183594 146", "373.229"))
         }
-        "upstream_decorations_and_descriptions" => {
-            Some(("5 5 467.0743713378906 383.4874267578125", "467.074"))
-        }
-        "upstream_docs_mindmap_classes_023" => {
-            Some(("5 5 217.6907958984375 243.04266357421875", "217.691"))
-        }
         "upstream_docs_mindmap_circle_011" => Some(("5 5 129.078125 129.078125", "129.078")),
         "upstream_docs_mindmap_cloud_015" => Some((
             "7.269050598144531 6.441379547119141 143.2079849243164 101.05145263671875",
             "143.208",
         )),
-        "upstream_docs_mindmap_default_019" => Some(("5 5 222.265625 54", "222.266")),
         "upstream_docs_mindmap_hexagon_017" => Some(("5 5 204.6432342529297 64", "204.643")),
-        "upstream_docs_mindmap_icons_021" => Some(("5 5 287.67645263671875 74", "287.676")),
-        "upstream_docs_example_icons_br" => {
-            Some(("5 5 756.3554077148438 720.9426879882812", "756.355"))
-        }
         "upstream_docs_mindmap_bang_013" => Some((
             "8.327735900878906 6.599998474121094 186.38671875 100",
             "186.387",
@@ -82,30 +57,12 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_docs_mindmap_markdown_strings_028" => {
             Some(("5 5 787.6028442382812 132.77752685546875", "787.603"))
         }
-        "upstream_docs_mindmap_rounded_square_009" => Some(("5 5 210.15625 74", "210.156")),
-        "upstream_docs_mindmap_square_007" => Some(("5 5 156.5 64", "156.5")),
-        "upstream_whitespace_and_comments" => {
-            Some(("5 5 317.027587890625 345.3640441894531", "317.028"))
-        }
         "upstream_node_types" => Some((
             "7.709373474121094 5 412.6386413574219 268.28924560546875",
             "412.639",
         )),
-        "mmdr_tests_mindmap_basic" => Some(("5 5 530.9208984375 72.1875", "530.921")),
-        "upstream_cypress_mindmap_tidy_tree_spec_example_001" => {
-            Some(("5 5 311.59832763671875 106.109375", "311.598"))
-        }
-        "upstream_cypress_mindmap_tidy_tree_spec_2_tidy_tree_should_render_a_simple_mindmap_002" => {
-            Some(("5 5 409.72393798828125 373.72052001953125", "409.724"))
-        }
         "upstream_cypress_mindmap_tidy_tree_spec_3_tidy_tree_should_render_a_mindmap_with_different_shapes_003" => {
             Some(("5 5 1144.203369140625 700.1749877929688", "1144.2"))
-        }
-        "upstream_cypress_mindmap_tidy_tree_spec_4_tidy_tree_should_render_a_mindmap_with_children_004" => {
-            Some(("5 5 687.355224609375 479.513671875", "687.355"))
-        }
-        "upstream_docs_tidy_tree_example_usage_001" => {
-            Some(("5 5 409.72393798828125 373.72052001953125", "409.724"))
         }
         "upstream_docs_tidy_tree_example_usage_002" => {
             Some(("5 5 796.6170043945312 671.435546875", "796.617"))
@@ -119,7 +76,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002" => {
             Some(("5 5 260 112", "260"))
         }
-        "stress_deep_nesting_001" => Some(("5 5 765.265869140625 767.9276733398438", "765.266")),
         "stress_long_labels_br_icons_002" => {
             Some(("5 5 650.4656982421875 701.2064819335938", "650.466"))
         }
@@ -130,9 +86,7 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_unicode_punct_004" => Some(("5 5 525.7081298828125 541.6168212890625", "525.708")),
         "stress_many_siblings_005" => Some(("5 5 581.7508544921875 406.9787902832031", "581.751")),
         "stress_multiline_nodes_006" => Some(("5 5 408.6500244140625 547.2468872070312", "408.65")),
-        "stress_icon_decorators_007" => Some(("5 5 327.7567138671875 524.3125", "327.757")),
         "stress_wrap_long_word_008" => Some(("5 5 1126.3408203125 324.1378173828125", "1126.34")),
-        "stress_balanced_tree_009" => Some(("5 5 670.5387573242188 510.44244384765625", "670.539")),
         "stress_mixed_br_and_shapes_010" => {
             Some(("5 5 360.8953552246094 522.654541015625", "360.895"))
         }
@@ -168,9 +122,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_mindmap_proto_like_ids_022" => {
             Some(("5 5 142.109375 461.2441101074219", "142.109"))
         }
-        "stress_mindmap_icon_class_order_023" => {
-            Some(("5 5 358.48895263671875 72.1875", "358.489"))
-        }
         "stress_mindmap_wide_tree_mixed_labels_024" => Some((
             "5 6.599998474121094 710.1619873046875 462.2999572753906",
             "710.162",
@@ -178,27 +129,12 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_mindmap_icons_multi_packs_025" => {
             Some(("5 5 362.785400390625 267.94415283203125", "362.785"))
         }
-        "stress_mindmap_classes_children_attach_026" => {
-            Some(("5 5 291.471923828125 448.67669677734375", "291.472"))
-        }
-        "stress_mindmap_unclear_indent_with_decorators_027" => {
-            Some(("5 5 284.63507080078125 291.4797058105469", "284.635"))
-        }
         "stress_mindmap_shapes_with_ids_and_labels_028" => {
             Some(("5 5 563.7918701171875 368.91632080078125", "563.792"))
         }
         "stress_mindmap_unicode_rtl_mixed_029" => Some(("5 5 260 582.5546875", "260")),
         "stress_mindmap_markdown_vs_verbatim_030" => {
             Some(("5 5 427.04827880859375 264.58648681640625", "427.048"))
-        }
-        "stress_mindmap_br_variants_031" => {
-            Some(("5 5 342.3634948730469 317.0894470214844", "342.363"))
-        }
-        "stress_mindmap_trailing_spaces_and_comments_032" => {
-            Some(("5 5 94.859375 266.7139587402344", "94.8594"))
-        }
-        "stress_mindmap_proto_constructor_ids_033" => {
-            Some(("5 5 146.7076416015625 355.7449035644531", "146.708"))
         }
         "stress_mindmap_html_sanitization_links_034" => {
             Some(("5 5 259.00909423828125 250.58885192871094", "259.009"))

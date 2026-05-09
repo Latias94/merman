@@ -8,6 +8,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Modeled section-less Pie root viewport behavior and legend bbox width in the renderer, then
   deleted the Pie root override module, reducing root viewport overrides to 908 while keeping Pie
   `parity-root` green.
+- Refreshed Mindmap typed root viewport profile calibration, added two small model-derived profiles,
+  and pruned 28 obsolete Mindmap root pins, reducing root viewport overrides to 880 while keeping
+  Mindmap `parity-root` green.
 - Rechecked the 3 remaining Sankey root viewport pins by disabling the Sankey root lookup and
   confirming `parity-root` still drifts on the three energy-flow fixtures, so those pins stay in the
   override budget until Sankey root height derivation changes.

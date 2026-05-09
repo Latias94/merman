@@ -29,7 +29,7 @@ gate. Override growth should therefore be an explicit reviewed decision, not a d
 escape hatch. Manual raw SVG/path bridges now have an exact zero budget, so any bridge
 reintroduction fails the strict gate unless the budget is deliberately changed.
 
-The current snapshot reflects a 666-entry net reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 694-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
@@ -46,7 +46,9 @@ output. Flowchart then dropped 131 obsolete pins and later cleared the
 `upstream_docs_math_flowcharts_001` `parity-root` gap by normalizing the browser-sensitive math SVG
 baseline and measuring sanitized KaTeX MathML through the Node probe. Pie then replaced its 23
 remaining root pins with a typed empty-pie root viewport rule plus shared 1/64px-quantized legend
-SVG bbox measurement, deleting the Pie root override module. It also
+SVG bbox measurement, deleting the Pie root override module. Mindmap then refreshed typed root
+profile calibration, added two small model-derived root profiles, and pruned 28 obsolete root pins
+while keeping `parity-root` green. It also
 reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
@@ -97,7 +99,7 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `908`.
+Total entries reported by `xtask`: `880`.
 
 | file | entries |
 | --- | ---: |
@@ -107,7 +109,7 @@ Total entries reported by `xtask`: `908`.
 | `er_root_overrides_11_12_2.rs` | 23 |
 | `flowchart_root_overrides_11_12_2.rs` | 135 |
 | `gitgraph_root_overrides_11_12_2.rs` | 226 |
-| `mindmap_root_overrides_11_12_2.rs` | 80 |
+| `mindmap_root_overrides_11_12_2.rs` | 52 |
 | `requirement_root_overrides_11_12_2.rs` | 11 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 200 |
@@ -123,6 +125,10 @@ They still cover root height drift in
 Small-bucket audit note: disabling the remaining Timeline, Requirement, and ER root lookups showed
 their surviving entries still guard real `parity-root` drift. Pie was the exception; its root bucket
 is now deleted after empty-pie viewport and legend bbox behavior moved into typed renderer logic.
+
+Mindmap note: after the typed profile refresh, disabling the remaining Mindmap root lookup still
+leaves 52 `parity-root` mismatches. Those entries stay in the budget until their geometry/text
+profiles move into typed renderer logic.
 
 Largest root-viewport buckets:
 

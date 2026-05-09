@@ -497,7 +497,7 @@ Progress:
   parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
-- Root viewport footprint dropped 666 entries net so far: 19 architecture pins after
+- Root viewport footprint dropped 694 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
   calibration covered the remaining Kanban `parity-root` profiles, plus 4 sankey pins now covered
@@ -514,7 +514,9 @@ Progress:
   baseline and measuring sanitized KaTeX MathML through the Node probe, so Flowchart `parity-root`
   is green without root override growth. Pie then replaced its 23 remaining root pins with a typed
   empty-pie root viewport rule plus shared 1/64px-quantized legend SVG bbox measurement, deleting
-  the Pie root override module.
+  the Pie root override module. Mindmap then refreshed typed root viewport profile calibration,
+  added two small model-derived root profiles, and pruned 28 obsolete root pins while keeping
+  `parity-root` green.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 

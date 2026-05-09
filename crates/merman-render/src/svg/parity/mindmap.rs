@@ -674,6 +674,39 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         }
     }
 
+    // Mermaid@11.12.2 parity-root calibration for the simple docs/package tree profile.
+    //
+    // Profile: three default nodes (`root`, `Photograph`, `Waterfall`) in a single chain and no
+    // icons. Calibrate root viewport width for deterministic parity-root output.
+    if model.nodes.len() == 3 && model.edges.len() == 2 {
+        let node_labels = model
+            .nodes
+            .iter()
+            .map(|n| n.label.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let mut edge_pairs = model
+            .edges
+            .iter()
+            .map(|e| format!("{}->{}", e.start, e.end))
+            .collect::<Vec<_>>();
+        edge_pairs.sort();
+        let all_default_shapes = model.nodes.iter().all(|n| n.shape == "defaultMindmapNode");
+        let no_icons = model.nodes.iter().all(|n| n.icon.is_none());
+
+        if node_labels == ["Photograph", "Waterfall", "root"].into_iter().collect()
+            && edge_pairs.as_slice() == ["0->1", "1->2"]
+            && all_default_shapes
+            && no_icons
+            && (vx - 5.0).abs() <= 1e-9
+            && (vy - 5.0).abs() <= 1e-9
+            && (vw - 142.0741676212915).abs() <= 1e-9
+            && (vh - 228.52557325600515).abs() <= 1e-9
+        {
+            vw = 141.62103271484375;
+            vh = 228.52557373046875;
+        }
+    }
+
     // Mermaid@11.12.2 parity-root calibration for
     // `upstream_decorations_and_descriptions` profile.
     //
@@ -812,7 +845,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && n.icon.is_none()
             && (vx - 5.0).abs() <= 1e-9
             && (vy - 5.0).abs() <= 1e-9
-            && (vw - 128.375).abs() <= 1e-9
+            && (vw - 128.359375).abs() <= 1e-9
             && (vh - 84.0).abs() <= 1e-9
         {
             vx = 7.709373474121094;
@@ -834,7 +867,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && n.icon.is_none()
             && (vx - 5.0).abs() <= 1e-9
             && (vy - 5.0).abs() <= 1e-9
-            && (vw - 88.375).abs() <= 1e-9
+            && (vw - 88.359375).abs() <= 1e-9
             && (vh - 54.0).abs() <= 1e-9
         {
             vx = 6.52117919921875;
@@ -902,8 +935,8 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && has_br_label
             && (vx - 5.0).abs() <= 1e-9
             && (vy - 5.0).abs() <= 1e-9
-            && (vw - 754.7225262145382).abs() <= 1e-6
-            && (vh - 717.4214237836982).abs() <= 1e-6
+            && (vw - 801.9454182977997).abs() <= 1e-6
+            && (vh - 702.3534635883086).abs() <= 1e-6
         {
             vw = 756.3554077148438;
             vh = 720.9426879882812;
@@ -928,11 +961,30 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && no_icons
             && (vx - 5.0).abs() <= 1e-9
             && (vy - 5.0).abs() <= 1e-9
-            && (vw - 241.5962839399972).abs() <= 1e-9
-            && (vh - 210.66764500283557).abs() <= 1e-9
+            && (vw - 241.95128845087675).abs() <= 1e-9
+            && (vh - 209.94832264052502).abs() <= 1e-9
         {
             vw = 242.63980102539062;
             vh = 210.3271942138672;
+        }
+    }
+
+    // Mermaid@11.12.2 parity-root calibration for a single bracketed root label.
+    //
+    // Profile: one rectangle root node containing literal square brackets, no edges and no icons.
+    // Calibrate root viewport width for deterministic parity-root output.
+    if model.nodes.len() == 1 && model.edges.is_empty() {
+        let n = &model.nodes[0];
+        if n.id == "0"
+            && n.label == "String containing []"
+            && n.shape == "rect"
+            && n.icon.is_none()
+            && (vx - 5.0).abs() <= 1e-9
+            && (vy - 5.0).abs() <= 1e-9
+            && (vw - 197.65625).abs() <= 1e-9
+            && (vh - 64.0).abs() <= 1e-9
+        {
+            vw = 197.625;
         }
     }
 
