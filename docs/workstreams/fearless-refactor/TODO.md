@@ -461,9 +461,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   obsolete pins and gained one missing docs root pin, making Class `parity-root` green with a
   165-entry net reduction. Gitgraph then dropped 6 obsolete pins while staying green under
   `parity-root`, and Sequence dropped 32 obsolete pins while staying green under `parity-root`.
-  Flowchart then dropped 131 obsolete pins without adding new `parity-root` failures; the only
-  remaining Flowchart `parity-root` gap is the pre-existing
-  `upstream_docs_math_flowcharts_001` root max-width mismatch. One additional hand-curated
+  Flowchart then dropped 131 obsolete pins without adding new `parity-root` failures. The later
+  `upstream_docs_math_flowcharts_001` math baseline normalization and sanitized KaTeX probe fix
+  cleared the remaining Flowchart `parity-root` mismatch without growing the root table. One
+  additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header
@@ -523,8 +524,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and
   `compare-treemap-svgs --check-dom --dom-decimals 3` still pass. Flowchart `parity-root`
-  was checked separately before and after pruning; both reports contain only
-  `upstream_docs_math_flowcharts_001`.
+  now also passes after the math baseline normalization and sanitized KaTeX probe fix.
 - [x] Prevent override tables from becoming the default fix for model bugs.
   Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
   category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.

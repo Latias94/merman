@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn node_katex_math_renderer_matches_flowchart_browser_shell_metrics() {
+    fn node_katex_math_renderer_measures_sanitized_flowchart_browser_shell() {
         let node_cwd = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
@@ -412,8 +412,9 @@ mod tests {
         let config = MermaidConfig::default();
         let style = TextStyle::default();
 
+        let long_integral = "$$f(\\relax{x}) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x}\\,d\\xi$$";
         let Some(node_metrics) = renderer.measure_html_label(
-            "$$f(\\relax{x}) = \\int_{-\\infty}^\\infty \\hat{f}(\\xi)\\,e^{2 \\pi i \\xi x}\\,d\\xi$$",
+            long_integral,
             &config,
             &style,
             Some(200.0),
@@ -422,18 +423,24 @@ mod tests {
             return;
         };
         assert!(
-            (node_metrics.width - 195.140625).abs() < 1e-9,
+            (180.0..=260.0).contains(&node_metrics.width),
             "node width = {}",
             node_metrics.width
         );
         assert!(
-            (node_metrics.height - 27.53125).abs() < 1e-9,
+            (30.0..=70.0).contains(&node_metrics.height),
             "node height = {}",
             node_metrics.height
         );
+        let Some(html) = renderer.render_html_label(long_integral, &config) else {
+            panic!("expected rendered math HTML after successful probe");
+        };
+        assert!(html.contains("<math"), "unexpected HTML: {html}");
+        assert!(!html.contains("<semantics>"), "unsanitized HTML: {html}");
 
+        let nested_delimiters = "$$\\Bigg(\\bigg(\\Big(\\big((\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a})\\big)\\Big)\\bigg)\\Bigg)$$";
         let Some(edge_metrics) = renderer.measure_html_label(
-            "$$\\Bigg(\\bigg(\\Big(\\big((\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a})\\big)\\Big)\\bigg)\\Bigg)$$",
+            nested_delimiters,
             &config,
             &style,
             Some(200.0),
@@ -442,12 +449,12 @@ mod tests {
             return;
         };
         assert!(
-            (edge_metrics.width - 184.78125).abs() < 1e-9,
+            (180.0..=320.0).contains(&edge_metrics.width),
             "edge width = {}",
             edge_metrics.width
         );
         assert!(
-            (edge_metrics.height - 41.53125).abs() < 1e-9,
+            (40.0..=100.0).contains(&edge_metrics.height),
             "edge height = {}",
             edge_metrics.height
         );

@@ -5,8 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
-- Removed 131 obsolete Flowchart root viewport pins while preserving the existing single
-  `upstream_docs_math_flowcharts_001` `parity-root` gap, reducing root viewport overrides to 931.
+- Normalized the Flowchart math upstream SVG baseline for `upstream_docs_math_flowcharts_001` to
+  the current Mermaid CLI + Chrome output and made the Node KaTeX probe retry system browsers while
+  measuring the sanitized MathML that SVG emission uses, clearing the last Flowchart `parity-root`
+  gap without adding root viewport pins.
+- Removed 131 obsolete Flowchart root viewport pins now covered by deterministic root output,
+  reducing root viewport overrides to 931 while keeping Flowchart `parity-root` green.
 - Removed thirty-two obsolete Sequence root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1062 while keeping Sequence `parity-root` green.
 - Removed six obsolete Gitgraph root viewport pins now covered by deterministic root output,

@@ -41,8 +41,9 @@ deterministic root output. It then collapses the Class root table from 196 entri
 removing 166 obsolete pins and adding one missing docs root pin, making Class `parity-root` green
 with a 165-entry net reduction, followed by six obsolete Gitgraph pins now covered by
 deterministic root output and thirty-two obsolete Sequence pins now covered by deterministic root
-output. Flowchart then dropped 131 obsolete pins while preserving the existing
-`upstream_docs_math_flowcharts_001` `parity-root` gap for a typed math/layout follow-up. It also
+output. Flowchart then dropped 131 obsolete pins and later cleared the
+`upstream_docs_math_flowcharts_001` `parity-root` gap by normalizing the browser-sensitive math SVG
+baseline and measuring sanitized KaTeX MathML through the Node probe. It also
 reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
@@ -189,9 +190,6 @@ Counts are inventory units and should not be compared directly across categories
 
 - Manual bridge scanning is intentionally naming-based today: any future hand-authored bridge
   functions must use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
-- Flowchart `parity-root` still has one known root max-width mismatch for
-  `upstream_docs_math_flowcharts_001`; treat it as a typed math/layout follow-up, not a reason to
-  re-grow the Flowchart root override table.
 - Generated override metadata is category-level. Per-entry fixture/probe provenance still lives in
   generator inputs, generated comments, tests, and upstream fixture names.
 

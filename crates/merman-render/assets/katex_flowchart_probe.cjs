@@ -42,6 +42,61 @@ function renderKatexHtml(text, config) {
     );
 }
 
+function browserExecutableCandidates() {
+  const candidates = [];
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    candidates.push(process.env.PUPPETEER_EXECUTABLE_PATH);
+  }
+
+  if (process.platform === 'win32') {
+    candidates.push(
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+    );
+  } else if (process.platform === 'darwin') {
+    candidates.push(
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+    );
+  } else {
+    candidates.push(
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/snap/bin/chromium'
+    );
+  }
+
+  return [...new Set(candidates)].filter((candidate) => fs.existsSync(candidate));
+}
+
+async function launchBrowser(puppeteer, launchOptions) {
+  const candidates = browserExecutableCandidates();
+  const shouldTryDefault = !process.env.PUPPETEER_EXECUTABLE_PATH;
+  let firstError;
+
+  if (shouldTryDefault) {
+    try {
+      return await puppeteer.launch(launchOptions);
+    } catch (error) {
+      firstError = error;
+    }
+  }
+
+  for (const executablePath of candidates) {
+    try {
+      return await puppeteer.launch({ ...launchOptions, executablePath });
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  throw firstError || new Error('no browser executable candidate found');
+}
+
 async function measureHtml(html, styleCss, maxWidthPx) {
   const puppeteer = requireFromCwd('puppeteer');
   const mermaidCliIndexHtml = path.join(
@@ -52,7 +107,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
     'dist',
     'index.html'
   );
-  const browser = await puppeteer.launch({
+  const browser = await launchBrowser(puppeteer, {
     headless: 'shell',
     args: [
       '--no-sandbox',
@@ -102,12 +157,21 @@ async function measureHtml(html, styleCss, maxWidthPx) {
         div.setAttribute('xmlns', XHTML_NS);
         fo.appendChild(div);
 
+        const sanitizeRenderedMathHtml = (html) => {
+          const cleaned =
+            typeof DOMPurify !== 'undefined'
+              ? DOMPurify.sanitize(html, { FORBID_TAGS: ['style'] }).toString()
+              : html;
+          return cleaned.replace(/<\/?semantics>/g, '');
+        };
+        const sanitizedHtml = sanitizeRenderedMathHtml(payload.html);
+
         const span = document.createElementNS(XHTML_NS, 'span');
         span.className = 'nodeLabel';
         if (payload.styleCss) {
           span.setAttribute('style', payload.styleCss);
         }
-        span.innerHTML = payload.html;
+        span.innerHTML = sanitizedHtml;
         div.appendChild(span);
         host.appendChild(svg);
 
@@ -124,6 +188,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
         }
 
         return {
+          html: sanitizedHtml,
           width: bbox.width,
           height: bbox.height,
         };
