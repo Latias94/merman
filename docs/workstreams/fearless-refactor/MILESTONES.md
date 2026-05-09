@@ -449,7 +449,9 @@ Progress:
   generated module. Pie moved its remaining legend rectangle/spacing values into `pie` owner
   constants and deleted the now-empty generated module. Sankey moved its remaining node
   width/padding values into `sankey` owner constants and deleted the now-empty generated module,
-  reducing the helper footprint to 32.
+  reducing the helper footprint to 32. Journey moved its fixed viewBox/title/legend/face geometry
+  into `journey` owner constants and deleted the now-empty generated module, reducing the helper
+  footprint to 26.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

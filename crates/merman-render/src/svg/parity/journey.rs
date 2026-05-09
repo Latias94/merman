@@ -1,5 +1,7 @@
 use super::*;
-use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
+use crate::journey::{
+    JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
+};
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 
 fn fmt_task_face_y(v: Option<f64>) -> String {
@@ -161,7 +163,7 @@ pub(super) fn render_journey_diagram_svg_model(
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
-        min_y: -journey_text_overrides::journey_viewbox_top_pad_px(),
+        min_y: -JOURNEY_VIEWBOX_TOP_PAD_PX,
         max_x: 100.0,
         max_y: 100.0,
     });
@@ -174,7 +176,7 @@ pub(super) fn render_journey_diagram_svg_model(
     // `layout.title` empty. Upstream still accounts for the title when sizing the root viewBox,
     // so mirror that here to keep `parity-root` stable.
     if title_from_meta {
-        vb_h += journey_text_overrides::journey_title_extra_height_px();
+        vb_h += JOURNEY_TITLE_EXTRA_HEIGHT_PX;
     }
 
     let task_font_size = effective_config
@@ -474,10 +476,10 @@ pub(super) fn render_journey_diagram_svg_model(
             r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
             cx = fmt(task.face_cx),
             cy = fmt_task_face_y(task.face_cy),
-            r = fmt(journey_text_overrides::journey_face_radius_px()),
+            r = fmt(JOURNEY_FACE_RADIUS_PX),
         );
         out.push_str("<g>");
-        let eye_dx = journey_text_overrides::journey_face_radius_px() / 3.0;
+        let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
         let eye_r = 1.5;
         let _ = write!(
             &mut out,

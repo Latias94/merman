@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::generated::journey_text_overrides_11_12_2 as journey_text_overrides;
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
     JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
@@ -8,6 +7,13 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::{BTreeMap, BTreeSet};
+
+const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
+pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;
+pub(crate) const JOURNEY_TITLE_EXTRA_HEIGHT_PX: f64 = 70.0;
+pub(crate) const JOURNEY_FACE_RADIUS_PX: f64 = 15.0;
+const JOURNEY_FACE_BASE_Y_PX: f64 = 300.0;
+const JOURNEY_FACE_SCORE_STEP_Y_PX: f64 = 30.0;
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -184,7 +190,7 @@ pub fn layout_journey_diagram_typed(
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
-    let legend_circle_r = journey_text_overrides::journey_legend_circle_r_px();
+    let legend_circle_r = JOURNEY_LEGEND_CIRCLE_R_PX;
     let legend_line_step_y = 20.0;
     let mut y_pos = 60.0;
     for actor in actors.iter() {
@@ -277,15 +283,13 @@ pub fn layout_journey_diagram_typed(
         }
 
         let center_x = x + cell_w / 2.0;
-        let max_height = journey_text_overrides::journey_face_base_y_px()
-            + 5.0 * journey_text_overrides::journey_face_score_step_y_px();
+        let max_height = JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX;
         let face_cy = if task.score_is_nan {
             None
         } else {
             Some(
-                journey_text_overrides::journey_face_base_y_px()
-                    + (5_i64.saturating_sub(task.score) as f64)
-                        * journey_text_overrides::journey_face_score_step_y_px(),
+                JOURNEY_FACE_BASE_Y_PX
+                    + (5_i64.saturating_sub(task.score) as f64) * JOURNEY_FACE_SCORE_STEP_Y_PX,
             )
         };
         let mouth = if task.score_is_nan {
@@ -310,7 +314,7 @@ pub fn layout_journey_diagram_typed(
                 color,
                 cx,
                 cy: task_y,
-                r: journey_text_overrides::journey_legend_circle_r_px(),
+                r: JOURNEY_LEGEND_CIRCLE_R_PX,
             });
             cx += 10.0;
         }
@@ -345,8 +349,7 @@ pub fn layout_journey_diagram_typed(
     let stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
         0.0
     } else {
-        journey_text_overrides::journey_face_base_y_px()
-            + 5.0 * journey_text_overrides::journey_face_score_step_y_px()
+        JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX
     });
 
     let height = (stopy - 0.0 + 2.0 * diagram_margin_y).max(1.0);
@@ -358,12 +361,12 @@ pub fn layout_journey_diagram_typed(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let extra_vert_for_title = if title.is_some() {
-        journey_text_overrides::journey_title_extra_height_px()
+        JOURNEY_TITLE_EXTRA_HEIGHT_PX
     } else {
         0.0
     };
 
-    let viewbox_top_pad = journey_text_overrides::journey_viewbox_top_pad_px();
+    let viewbox_top_pad = JOURNEY_VIEWBOX_TOP_PAD_PX;
     let bounds = Bounds {
         min_x: 0.0,
         min_y: -viewbox_top_pad,
@@ -406,22 +409,12 @@ pub fn layout_journey_diagram_typed(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn journey_text_constants_are_generated() {
-        assert_eq!(
-            crate::generated::journey_text_overrides_11_12_2::journey_viewbox_top_pad_px(),
-            25.0
-        );
-        assert_eq!(
-            crate::generated::journey_text_overrides_11_12_2::journey_title_extra_height_px(),
-            70.0
-        );
-        assert_eq!(
-            crate::generated::journey_text_overrides_11_12_2::journey_legend_circle_r_px(),
-            7.0
-        );
-        assert_eq!(
-            crate::generated::journey_text_overrides_11_12_2::journey_face_radius_px(),
-            15.0
-        );
+    fn journey_geometry_constants_match_mermaid() {
+        assert_eq!(super::JOURNEY_VIEWBOX_TOP_PAD_PX, 25.0);
+        assert_eq!(super::JOURNEY_TITLE_EXTRA_HEIGHT_PX, 70.0);
+        assert_eq!(super::JOURNEY_LEGEND_CIRCLE_R_PX, 7.0);
+        assert_eq!(super::JOURNEY_FACE_RADIUS_PX, 15.0);
+        assert_eq!(super::JOURNEY_FACE_BASE_Y_PX, 300.0);
+        assert_eq!(super::JOURNEY_FACE_SCORE_STEP_Y_PX, 30.0);
     }
 }
