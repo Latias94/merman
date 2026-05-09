@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so
+  State and Flowchart no longer duplicate the same low-level conversion code.
 - Collapsed repeated Flowchart RoughJS stroke dash parsing into a shared private helper and
   narrowed Flowchart node helper internals that no longer need sibling-module visibility.
 - Collapsed duplicated Flowchart RoughJS op-set SVG path serialization into a single private

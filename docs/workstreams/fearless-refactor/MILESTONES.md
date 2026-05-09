@@ -404,6 +404,8 @@ Progress:
   private helpers, leaving the label entry points thin and easier to audit.
 - Narrowed the State link sanitizer's internal URL parsing helpers to file-private visibility, so
   only the public allowlist entry point remains exported.
+- Moved RoughJS hex parsing and `opsToPath` formatting into a shared parity helper layer consumed
+  by both State and Flowchart renderers.
 - Collapsed repeated Flowchart RoughJS op-set-to-SVG-path serializers into one private helper while
   preserving RoughJS `opsToPath` formatting and call ordering.
 - Collapsed repeated Flowchart RoughJS stroke dash parsing into one private helper and narrowed the
