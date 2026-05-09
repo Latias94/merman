@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Made `xtask report-overrides` print zero-count categories with metadata and `no entries`, so
+  helper/bridge elimination remains visible in strict-gate logs instead of disappearing from the
+  report.
 - Reclassified Gitgraph bbox correction data as text metric lookup entries and moved branch-label
   correction control flow back into the `gitgraph` owner module, reducing the helper footprint to
   zero while keeping the measured correction table visible in override reporting.

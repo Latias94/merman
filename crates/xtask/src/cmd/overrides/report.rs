@@ -410,9 +410,6 @@ fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory
         .iter()
         .filter(|entry| entry.category == category)
         .collect();
-    if category_entries.is_empty() {
-        return;
-    }
 
     let total: usize = category_entries.iter().map(|entry| entry.count).sum();
     let metadata = category.metadata();
@@ -422,8 +419,12 @@ fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory
     println!("- allowed use: {}", metadata.allowed_use);
     println!("- expected removal: {}", metadata.expected_removal);
     println!("- total: {total} {}", category.total_unit());
-    for entry in category_entries {
-        println!("- {}: {} {}", entry.file_name, entry.count, entry.unit);
+    if category_entries.is_empty() {
+        println!("- no entries");
+    } else {
+        for entry in category_entries {
+            println!("- {}: {} {}", entry.file_name, entry.count, entry.unit);
+        }
     }
     println!();
 }

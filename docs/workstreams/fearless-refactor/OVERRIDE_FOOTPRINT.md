@@ -20,8 +20,8 @@ Manual raw SVG/path bridge files scanned: `0`.
 ### Category Metadata Snapshot
 
 `xtask report-overrides` now prints category-level owner, source, allowed-use, and expected-removal
-metadata before each count table. This keeps removal criteria visible in CI logs and drift reviews,
-not only in policy prose.
+metadata for every category, including zero-count categories. This keeps removal criteria and
+successful eliminations visible in CI logs and drift reviews, not only in policy prose.
 
 The same category totals are encoded as no-growth budgets in
 `cargo run -p xtask -- report-overrides --check-no-growth`, which is part of the strict release

@@ -467,7 +467,8 @@ Progress:
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
-  metadata for generated override categories and manual raw SVG/path bridge categories.
+  metadata for generated override categories and manual raw SVG/path bridge categories, including
+  zero-count categories.
 - `xtask report-overrides` now counts restricted-visibility helper functions, so changing helper
   visibility cannot hide hand-curated helper footprint.
 - C4 and XYChart now have current exact pipeline bench smoke coverage in
