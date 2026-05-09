@@ -207,6 +207,9 @@ Progress:
 - Introduced `text/overrides.rs` as the text override lookup boundary and moved flowchart text
   override lookup tests next to that owner.
 - Moved timeline long-word override lookup and regression tests next to `timeline.rs`.
+- Kept shared vendored text measurement free of ER, Mindmap, and Block fixture-specific HTML width
+  tables; ER and Block now run their generated lookups only inside their owning diagram modules,
+  and the stale Mindmap HTML width table was deleted.
 - Override lookup tests are now colocated with the text override boundary or their diagram owners.
 
 Exit criteria:
@@ -410,6 +413,9 @@ Progress:
 - `xtask report-overrides` now counts rows in generated `*_OVERRIDES_*` binary-search tables as
   text metric lookup entries, so generated table debt is tracked separately from hand-curated
   helper constants.
+- The stale Mindmap HTML width override table and `gen-mindmap-text-overrides` command were
+  deleted after removing shared text-measurer leakage proved the stable Mindmap layout path did
+  not need those 291 generated lookup entries.
 - Redundant public Sankey padding component helpers were collapsed into private constants, leaving
   only the actual `showValues`-aware public padding lookup in the helper footprint.
 - Kanban removed a redundant label line-height helper by reusing the existing foreignObject

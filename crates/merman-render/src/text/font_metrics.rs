@@ -942,25 +942,12 @@ fn vendored_measure_wrapped_impl(
     };
 
     let html_width_override_px = |line: &str| -> Option<f64> {
-        // Several Mermaid diagram baselines record the final HTML label width via
-        // `getBoundingClientRect()` into `foreignObject width="..."` (1/64px lattice). For
-        // strict XML parity and viewport calculations we treat those as the source of truth when
-        // available.
-        overrides::lookup_flowchart_html_width_px(table.font_key, font_size, line).or_else(|| {
-            if max_width.is_some() {
-                return None;
-            }
-            if table.font_key != "trebuchetms,verdana,arial,sans-serif" {
-                return None;
-            }
-            // ER / Mindmap / Block generated HTML-width tables are diagram-specific raw DOM
-            // baselines. They are valid for unwrapped `measure_wrapped(..., None, HtmlLike)`
-            // callers in those diagrams, but leaking them into explicit wrapped-flowchart
-            // measurements can hijack short common strings like `plain`.
-            overrides::lookup_er_html_width_px(font_size, line)
-                .or_else(|| overrides::lookup_mindmap_html_width_px(font_size, line))
-                .or_else(|| overrides::lookup_block_html_width_px(font_size, line))
-        })
+        // Flowchart baselines record final HTML label widths via `getBoundingClientRect()` into
+        // `foreignObject width="..."` (1/64px lattice). Keep those shared because Flowchart label
+        // measurement flows through the generic text API. Other diagram-specific generated tables
+        // must stay in their owning renderer modules so ordinary text measurement cannot be
+        // hijacked by fixture strings from ER, Mindmap, or Block diagrams.
+        overrides::lookup_flowchart_html_width_px(table.font_key, font_size, line)
     };
 
     // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:

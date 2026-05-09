@@ -216,7 +216,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - `text/metrics.rs` (flowchart-aware HTML/Markdown/SVG measurement done)
   - `text/html_label.rs` (defer until HTML label measurement needs another split)
   - `text/svg_text.rs` (defer until SVG text emission/measurement needs another split)
-  - `text/overrides.rs` (text override lookup boundary started)
+  - `text/overrides.rs` (shared flowchart/sequence lookup boundary done; remaining
+    diagram-specific generated HTML width tables stay in diagram owners)
   - `text/font_metrics.rs` (vendored browser/font measurer done)
 - [x] Keep public re-exports stable from `text.rs` or `text/mod.rs`.
   Evidence: first text split keeps existing `crate::text::*` callers unchanged.
@@ -231,6 +232,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `DeterministicTextMeasurer` now lives in `text/deterministic.rs`; browser/font
   compatibility measurement lives behind `VendoredFontMetricsTextMeasurer` in
   `text/font_metrics.rs`.
+- [x] Keep diagram-specific HTML width overrides out of generic text measurement.
+  Evidence: `VendoredFontMetricsTextMeasurer` now only applies shared/Flowchart HTML width
+  overrides. ER and Block apply their generated HTML width tables in their owning renderer modules,
+  while the stale Mindmap HTML width table and generator were deleted after layout snapshots proved
+  the stable Mindmap path does not need it. Regression tests cover both no-leak generic text
+  behavior and owner-local ER/Block parity lookup behavior.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -463,7 +470,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `parity-root`, and Sequence dropped 32 obsolete pins while staying green under `parity-root`.
   Flowchart then dropped 131 obsolete pins without adding new `parity-root` failures. The later
   `upstream_docs_math_flowcharts_001` math baseline normalization and sanitized KaTeX probe fix
-  cleared the remaining Flowchart `parity-root` mismatch without growing the root table. One
+  cleared the remaining Flowchart `parity-root` mismatch without growing the root table. The stale
+  Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
+  leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
+  entries. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

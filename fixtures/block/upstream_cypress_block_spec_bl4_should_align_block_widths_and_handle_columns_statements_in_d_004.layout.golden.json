@@ -5,67 +5,67 @@
       "nodes": [
         {
           "id": "id-<id>-2",
-          "x": 79.2,
-          "y": -68.8,
-          "width": 158.4,
-          "height": 129.6,
+          "x": 76.266,
+          "y": -66.844,
+          "width": 152.531,
+          "height": 125.688,
           "is_cluster": false
         },
         {
           "id": "id-<id>-1",
-          "x": 79.2,
-          "y": -99.2,
-          "width": 142.4,
-          "height": 52.8,
+          "x": 76.266,
+          "y": -96.266,
+          "width": 136.531,
+          "height": 50.844,
           "is_cluster": false
         },
         {
           "id": "id1",
-          "x": 34.4,
-          "y": -99.2,
-          "width": 36.8,
-          "height": 36.8,
+          "x": 33.422,
+          "y": -96.266,
+          "width": 34.844,
+          "height": 34.844,
           "is_cluster": false
         },
         {
           "id": "id2",
-          "x": 79.2,
-          "y": -99.2,
-          "width": 36.8,
-          "height": 36.8,
+          "x": 76.266,
+          "y": -96.266,
+          "width": 34.844,
+          "height": 34.844,
           "is_cluster": false
         },
         {
           "id": "id2.1",
-          "x": 124.0,
-          "y": -99.2,
-          "width": 36.8,
-          "height": 36.8,
+          "x": 119.109,
+          "y": -96.266,
+          "width": 34.844,
+          "height": 34.844,
           "is_cluster": false
         },
         {
           "id": "id48",
-          "x": 79.2,
-          "y": -38.4,
-          "width": 142.4,
-          "height": 52.8,
+          "x": 76.266,
+          "y": -37.422,
+          "width": 136.531,
+          "height": 50.844,
           "is_cluster": false
         },
         {
           "id": "id3",
-          "x": 79.2,
-          "y": 68.8,
-          "width": 158.4,
-          "height": 129.6,
+          "x": 76.266,
+          "y": 66.844,
+          "width": 152.531,
+          "height": 125.688,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -133.6,
-        "max_x": 158.4,
-        "max_y": 133.6
+        "min_y": -129.688,
+        "max_x": 152.531,
+        "max_y": 129.688
       }
     }
   }

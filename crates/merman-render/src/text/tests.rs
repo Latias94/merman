@@ -230,7 +230,7 @@ fn flowchart_html_wrapped_measurement_does_not_leak_other_diagram_overrides() {
     let unwrapped = measurer.measure_wrapped("plain", &style, None, WrapMode::HtmlLike);
     assert_eq!(wrapped.width, 35.34375);
     assert_eq!(wrapped.height, 24.0);
-    assert_eq!(unwrapped.width, 144.359375);
+    assert_eq!(unwrapped.width, 35.34375);
 }
 
 #[test]

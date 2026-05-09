@@ -5,33 +5,33 @@
       "nodes": [
         {
           "id": "fit",
-          "x": 100.64,
+          "x": 111.078,
           "y": -50.4,
-          "width": 201.28,
+          "width": 222.156,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "overflow",
-          "x": 152.96,
+          "x": 168.617,
           "y": -16.8,
-          "width": 305.92,
+          "width": 337.234,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "short",
-          "x": 48.32,
+          "x": 53.539,
           "y": 16.8,
-          "width": 96.64,
+          "width": 107.078,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "also_overflow",
-          "x": 205.28,
+          "x": 226.156,
           "y": 16.8,
-          "width": 201.28,
+          "width": 222.156,
           "height": 25.6,
           "is_cluster": false
         }
@@ -40,7 +40,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -63.2,
-        "max_x": 305.92,
+        "max_x": 337.234,
         "max_y": 29.6
       }
     }

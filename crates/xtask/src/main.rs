@@ -161,7 +161,6 @@ fn main() -> Result<(), XtaskError> {
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
         "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "gen-er-text-overrides" => cmd::gen_er_text_overrides(args.collect()),
-        "gen-mindmap-text-overrides" => cmd::gen_mindmap_text_overrides(args.collect()),
         "gen-gantt-text-overrides" => cmd::gen_gantt_text_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),

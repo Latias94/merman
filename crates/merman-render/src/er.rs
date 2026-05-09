@@ -108,11 +108,22 @@ pub(crate) fn er_html_label_metrics(
     let has_inline_html =
         lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
 
+    let apply_width_override = |metrics: &mut TextMetrics| {
+        if let Some(width) =
+            crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
+        {
+            metrics.width = width.max(0.0);
+        }
+    };
+
     if (text.contains('<') || text.contains('>')) && !has_inline_html {
-        return measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+        let mut metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+        apply_width_override(&mut metrics);
+        return metrics;
     }
 
     let mut metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    apply_width_override(&mut metrics);
     if text.contains('`') {
         let svg_bbox_w = measurer.measure_svg_simple_text_bbox_width_px(text, style);
         metrics.width = crate::text::round_to_1_64_px(metrics.width.max(svg_bbox_w));
@@ -1022,7 +1033,25 @@ pub fn layout_er_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
     use serde_json::json;
+
+    fn default_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        }
+    }
+
+    #[test]
+    fn er_html_label_metrics_use_er_owned_width_overrides() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let metrics = super::er_html_label_metrics("type<T>", &measurer, &default_style());
+
+        assert_eq!(metrics.width, 57.953125);
+        assert_eq!(metrics.height, 24.0);
+    }
 
     #[test]
     fn er_drawrect_clamp_overrides_are_generated() {

@@ -5,67 +5,67 @@
       "nodes": [
         {
           "id": "Frontend",
-          "x": 32.88,
-          "y": -59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 36.75,
+          "y": -61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "blockArrowId6",
-          "x": 106.64,
-          "y": -59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 118.25,
+          "y": -61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "Backend",
-          "x": 180.4,
-          "y": -59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 199.75,
+          "y": -61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "down",
-          "x": 180.4,
+          "x": 199.75,
           "y": 0.0,
-          "width": 65.76,
-          "height": 51.454,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "Disk",
-          "x": 32.88,
-          "y": 59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 36.75,
+          "y": 61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "left",
-          "x": 106.64,
-          "y": 59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 118.25,
+          "y": 61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         },
         {
           "id": "Database",
-          "x": 180.4,
-          "y": 59.454,
-          "width": 65.76,
-          "height": 51.454,
+          "x": 199.75,
+          "y": 61.371,
+          "width": 73.5,
+          "height": 53.371,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -85.182,
-        "max_x": 213.28,
-        "max_y": 85.182
+        "min_y": -88.056,
+        "max_x": 236.5,
+        "max_y": 88.056
       }
     }
   }

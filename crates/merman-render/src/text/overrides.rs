@@ -60,18 +60,6 @@ pub(crate) fn lookup_flowchart_svg_bbox_x_px(
     )
 }
 
-pub(crate) fn lookup_er_html_width_px(font_size_px: f64, text: &str) -> Option<f64> {
-    crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size_px, text)
-}
-
-pub(crate) fn lookup_mindmap_html_width_px(font_size_px: f64, text: &str) -> Option<f64> {
-    crate::generated::mindmap_text_overrides_11_12_2::lookup_html_width_px(font_size_px, text)
-}
-
-pub(crate) fn lookup_block_html_width_px(font_size_px: f64, text: &str) -> Option<f64> {
-    crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(font_size_px, text)
-}
-
 pub(crate) fn lookup_sequence_svg_override_em(font_key: &str, text: &str) -> Option<(f64, f64)> {
     crate::generated::svg_overrides_sequence_11_12_2::lookup_svg_override_em(font_key, text)
 }

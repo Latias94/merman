@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved ER and Block HTML width override ownership out of the shared vendored text measurer and
+  back into the owning diagram modules, then deleted the stale Mindmap HTML width override table
+  and generator. Generic HTML text measurement can no longer be hijacked by diagram-specific
+  fixture strings, and text lookup debt is down by 291 entries.
 - Tightened the manual raw SVG/path bridge no-growth budget from 1 to 0 and added a regression
   test, so strict verification now rejects any bridge reintroduction unless the budget is
   intentionally reviewed.

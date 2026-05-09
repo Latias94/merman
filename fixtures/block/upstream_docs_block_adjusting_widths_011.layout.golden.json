@@ -5,121 +5,121 @@
       "nodes": [
         {
           "id": "a",
-          "x": 156.08,
+          "x": 153.766,
           "y": -83.2,
-          "width": 312.16,
+          "width": 307.531,
           "height": 75.2,
           "is_cluster": false
         },
         {
           "id": "group1",
-          "x": 102.72,
+          "x": 101.177,
           "y": -0.0,
-          "width": 205.44,
+          "width": 202.354,
           "height": 75.2,
           "is_cluster": false
         },
         {
           "id": "h",
-          "x": 53.36,
+          "x": 52.589,
           "y": -16.8,
-          "width": 90.72,
+          "width": 89.177,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "i",
-          "x": 152.08,
+          "x": 149.766,
           "y": -16.8,
-          "width": 90.72,
+          "width": 89.177,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "j",
-          "x": 53.36,
+          "x": 52.589,
           "y": 16.8,
-          "width": 90.72,
+          "width": 89.177,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "k",
-          "x": 152.08,
+          "x": 149.766,
           "y": 16.8,
-          "width": 90.72,
+          "width": 89.177,
           "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 262.8,
+          "x": 258.943,
           "y": -0.0,
-          "width": 98.72,
+          "width": 97.177,
           "height": 75.2,
           "is_cluster": false
         },
         {
           "id": "group2",
-          "x": 156.08,
+          "x": 153.766,
           "y": 83.2,
-          "width": 312.16,
+          "width": 307.531,
           "height": 75.2,
           "is_cluster": false
         },
         {
           "id": "l",
-          "x": 25.726,
+          "x": 25.395,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "m",
-          "x": 69.177,
+          "x": 68.185,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "n",
-          "x": 112.629,
+          "x": 110.975,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "o",
-          "x": 156.08,
+          "x": 153.766,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "p",
-          "x": 199.531,
+          "x": 196.556,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "q",
-          "x": 242.983,
+          "x": 239.346,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         },
         {
           "id": "r",
-          "x": 286.434,
+          "x": 282.136,
           "y": 83.2,
-          "width": 35.451,
+          "width": 34.79,
           "height": 59.2,
           "is_cluster": false
         }
@@ -128,7 +128,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -120.8,
-        "max_x": 312.16,
+        "max_x": 307.531,
         "max_y": 120.8
       }
     }

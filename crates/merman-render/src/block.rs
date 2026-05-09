@@ -73,6 +73,26 @@ pub(crate) fn block_label_is_effectively_empty(text: &str) -> bool {
             .all(|ch| ch != '\u{00A0}' && ch.is_whitespace())
 }
 
+fn block_html_label_metrics_px(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> (f64, f64) {
+    let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    let svg_metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
+    let width =
+        crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
+            .unwrap_or(html_metrics.width)
+            .max(0.0);
+    let height = crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
+        style.font_size,
+        text,
+    )
+    .unwrap_or(svg_metrics.height)
+    .max(0.0);
+    (width, height)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlockArrowPoint {
     pub(crate) x: f64,
@@ -594,18 +614,7 @@ fn to_sized_block(
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
     } else {
-        let label_bbox_html =
-            measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
-        let label_bbox_svg =
-            measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
-        (
-            label_bbox_html.width.max(0.0),
-            crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
-                text_style.font_size,
-                &label_decoded,
-            )
-            .unwrap_or(label_bbox_svg.height.max(0.0)),
-        )
+        block_html_label_metrics_px(&label_decoded, measurer, text_style)
     };
     let shape_label_height = label_height;
 
@@ -912,19 +921,13 @@ pub fn layout_block_diagram_typed(
             None
         } else {
             let edge_label = decode_block_label_html(&e.label);
-            let width_metrics =
-                measurer.measure_wrapped(&edge_label, &text_style, None, WrapMode::HtmlLike);
-            let height_metrics =
-                measurer.measure_wrapped(&edge_label, &text_style, None, WrapMode::SvgLike);
+            let (label_width, label_height) =
+                block_html_label_metrics_px(&edge_label, measurer, &text_style);
             Some(LayoutLabel {
                 x: mid.x,
                 y: mid.y,
-                width: width_metrics.width.max(1.0),
-                height: crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
-                    text_style.font_size,
-                    &edge_label,
-                )
-                .unwrap_or(height_metrics.height.max(1.0)),
+                width: label_width.max(1.0),
+                height: label_height.max(1.0),
             })
         };
 
@@ -951,4 +954,32 @@ pub fn layout_block_diagram_typed(
         edges,
         bounds,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+
+    fn default_style(font_size: f64) -> TextStyle {
+        TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size,
+            font_weight: None,
+        }
+    }
+
+    #[test]
+    fn block_label_metrics_use_block_owned_width_and_height_overrides() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = default_style(24.0);
+
+        let (width, height) = super::block_html_label_metrics_px(
+            "Font size precedence should widen this block",
+            &measurer,
+            &style,
+        );
+
+        assert_eq!(width, 487.890625);
+        assert_eq!(height, 28.0);
+    }
 }

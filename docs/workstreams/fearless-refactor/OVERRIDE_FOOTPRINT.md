@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `27`.
+Generated override modules scanned: `26`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -48,8 +48,13 @@ baseline and measuring sanitized KaTeX MathML through the Node probe. It also
 reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
-in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
-hand-curated helper functions.
+in `block`, `er`, and `gantt` are now counted as text metric lookup entries instead of
+hand-curated helper functions. Text lookup ownership has also tightened: ER and Block generated
+HTML width tables are no longer consulted by the generic vendored text measurer, and their call
+sites now live in their owning diagram modules. The stale Mindmap HTML width table was deleted
+after layout snapshots proved the stable Mindmap path does not use it, reducing text lookup debt by
+291 entries while preventing shared text measurement from leaking fixture-specific widths across
+diagrams.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
 helpers before the remaining Sankey node geometry moved back to the `sankey` owner module.
 Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
@@ -117,7 +122,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `1174`.
+Total lookup entries reported by `xtask`: `883`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -128,7 +133,6 @@ Total lookup entries reported by `xtask`: `1174`.
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gantt_text_overrides_11_12_2.rs` | 44 |
 | `gitgraph_text_overrides_11_12_2.rs` | 34 |
-| `mindmap_text_overrides_11_12_2.rs` | 291 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
