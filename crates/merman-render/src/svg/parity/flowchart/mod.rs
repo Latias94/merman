@@ -4,7 +4,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 mod css;
 mod debug_svg;
 mod edge;
-mod edge_bbox;
 mod edge_geom;
 mod hierarchy;
 mod label;

@@ -224,7 +224,7 @@ pub(in crate::svg::parity::flowchart) fn maybe_pad_cyclic_special_basis_route(
     );
 }
 
-pub(in crate::svg::parity::flowchart) fn maybe_pad_cyclic_special_basis_route_for_layout_clusters(
+fn maybe_pad_cyclic_special_basis_route_for_layout_clusters(
     layout_clusters_by_id: &rustc_hash::FxHashMap<&str, &LayoutCluster>,
     edge: &crate::flowchart::FlowEdge,
     points: &mut Vec<crate::model::LayoutPoint>,

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Deleted the unused Flowchart `edge_bbox` helper module and narrowed the remaining cyclic-special
+  basis helper visibility after Flowchart tests, clippy, and SVG DOM parity stayed green.
 - Moved ER and Block HTML width override ownership out of the shared vendored text measurer and
   back into the owning diagram modules, then deleted the stale Mindmap HTML width override table
   and generator. Generic HTML text measurement can no longer be hijacked by diagram-specific
