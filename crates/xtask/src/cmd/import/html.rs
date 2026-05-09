@@ -57,12 +57,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
                 workspace_root.join(p)
             }
         })
-        .unwrap_or_else(|| {
-            workspace_root
-                .join("repo-ref")
-                .join("mermaid")
-                .join("demos")
-        });
+        .unwrap_or_else(|| crate::cmd::mermaid_repo_root().join("demos"));
     if !html_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
             "upstream html root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",

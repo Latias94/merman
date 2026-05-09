@@ -50,9 +50,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             }
         })
         .unwrap_or_else(|| {
-            workspace_root
-                .join("repo-ref")
-                .join("mermaid")
+            crate::cmd::mermaid_repo_root()
                 .join("packages")
                 .join("examples")
                 .join("src")

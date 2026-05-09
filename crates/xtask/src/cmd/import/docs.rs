@@ -57,13 +57,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 workspace_root.join(p)
             }
         })
-        .unwrap_or_else(|| {
-            workspace_root
-                .join("repo-ref")
-                .join("mermaid")
-                .join("docs")
-                .join("syntax")
-        });
+        .unwrap_or_else(|| crate::cmd::mermaid_repo_root().join("docs").join("syntax"));
     if !docs_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
             "upstream docs root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",

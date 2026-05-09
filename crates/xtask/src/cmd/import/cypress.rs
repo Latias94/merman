@@ -58,9 +58,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             }
         })
         .unwrap_or_else(|| {
-            workspace_root
-                .join("repo-ref")
-                .join("mermaid")
+            crate::cmd::mermaid_repo_root()
                 .join("cypress")
                 .join("integration")
                 .join("rendering")

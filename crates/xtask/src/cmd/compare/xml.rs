@@ -83,7 +83,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = crate::cmd::workspace_root();
 
     let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
-        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let node_cwd = crate::cmd::mermaid_cli_root();
         if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
             Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
                 node_cwd,

@@ -174,7 +174,7 @@ fn check_upstream_renderability_for_parser_only(
         .display()
         .to_string();
 
-    let tools_root = workspace_root.join("tools").join("mermaid-cli");
+    let tools_root = crate::cmd::mermaid_cli_root();
     let mmdc = crate::cmd::find_mmdc(&tools_root).ok_or_else(|| {
         XtaskError::UpstreamSvgFailed(format!(
             "mmdc not found under {} (run: `cargo run -p xtask -- gen-upstream-svgs --install`)",

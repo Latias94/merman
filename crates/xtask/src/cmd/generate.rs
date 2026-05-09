@@ -139,7 +139,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_root =
         out_root.unwrap_or_else(|| workspace_root.join("fixtures").join("upstream-svgs"));
 
-    let tools_root = workspace_root.join("tools").join("mermaid-cli");
+    let tools_root = crate::cmd::mermaid_cli_root();
     let node_modules = tools_root.join("node_modules");
     if install || !node_modules.exists() {
         let npm_cmd = if tools_root.join("package-lock.json").is_file() {
@@ -187,7 +187,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     ) -> Result<(), XtaskError> {
         let fixtures_dir = fixtures_root.join(diagram);
         let out_dir = out_root.join(diagram);
-        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let node_cwd = crate::cmd::mermaid_cli_root();
         let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
         let seeded_script = if use_seeded_renderer {
             Some(ensure_seeded_upstream_svg_renderer_script(workspace_root)?)
@@ -1438,7 +1438,12 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let schema_path = schema_path.unwrap_or_else(|| {
-        PathBuf::from("repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml")
+        crate::cmd::mermaid_repo_root()
+            .join("packages")
+            .join("mermaid")
+            .join("src")
+            .join("schemas")
+            .join("config.schema.yaml")
     });
     let out_path = out_path
         .unwrap_or_else(|| PathBuf::from("crates/merman-core/src/generated/default_config.json"));
@@ -1491,8 +1496,11 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
         i += 1;
     }
 
-    let src_path =
-        src_path.unwrap_or_else(|| PathBuf::from("repo-ref/dompurify/dist/purify.cjs.js"));
+    let src_path = src_path.unwrap_or_else(|| {
+        crate::cmd::dompurify_repo_root()
+            .join("dist")
+            .join("purify.cjs.js")
+    });
     let out_path = out_path
         .unwrap_or_else(|| PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs"));
 

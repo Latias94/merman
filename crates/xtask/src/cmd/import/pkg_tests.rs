@@ -49,9 +49,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
     let workspace_root = crate::cmd::workspace_root();
 
-    let default_src_root = workspace_root
-        .join("repo-ref")
-        .join("mermaid")
+    let default_src_root = crate::cmd::mermaid_repo_root()
         .join("packages")
         .join("mermaid")
         .join("src");

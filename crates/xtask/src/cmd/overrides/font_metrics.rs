@@ -529,8 +529,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             ));
         };
 
-        let workspace_root = crate::cmd::workspace_root();
-        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let node_cwd = crate::cmd::mermaid_cli_root();
 
         // Group by `(font_key, font_size_px)` to minimize browser round-trips.
         let mut groups: BTreeMap<(String, i64), Vec<usize>> = BTreeMap::new();
@@ -1286,8 +1285,7 @@ const strings = input.strings;
             ));
         };
 
-        let workspace_root = crate::cmd::workspace_root();
-        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let node_cwd = crate::cmd::mermaid_cli_root();
 
         let mut out: BTreeMap<String, FontTable> = BTreeMap::new();
         for (font_key, ss) in samples_by_font {
@@ -1705,8 +1703,7 @@ const strings = input.strings;
                 "browser measurement requires --browser-exe on this platform".into(),
             ));
         };
-        let workspace_root = crate::cmd::workspace_root();
-        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let node_cwd = crate::cmd::mermaid_cli_root();
 
         for (font_key, html) in &html_tables {
             let Some(font_family) = font_family_by_key.get(font_key) else {

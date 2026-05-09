@@ -751,8 +751,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
         ));
     };
 
-    let workspace_root = crate::cmd::workspace_root();
-    let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+    let node_cwd = crate::cmd::mermaid_cli_root();
 
     // font_key => (text => (size_key, left_em, right_em))
     let mut best_by_font: BTreeMap<String, BTreeMap<String, (usize, f64, f64)>> = BTreeMap::new();
