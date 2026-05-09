@@ -110,7 +110,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         + model.notes.len().saturating_mul(256)
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let root_open = write_class_svg_root_open(&mut out, model, diagram_id, aria_roledescription);
+    let root_open = write_class_svg_root_open(&mut out, model, diagram_id, aria_roledescription)?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style></style>");

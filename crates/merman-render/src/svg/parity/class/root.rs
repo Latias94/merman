@@ -18,7 +18,7 @@ pub(super) fn write_class_svg_root_open(
     model: &ClassSvgModel,
     diagram_id: &str,
     aria_roledescription: &str,
-) -> ClassSvgRootOpen {
+) -> crate::Result<ClassSvgRootOpen> {
     let has_acc_title = model
         .acc_title
         .as_deref()
@@ -49,11 +49,15 @@ pub(super) fn write_class_svg_root_open(
 
     let viewbox_pos = out
         .find(VIEWBOX_PLACEHOLDER)
-        .expect("class svg root must contain viewBox placeholder");
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "class svg root missing viewBox placeholder".to_string(),
+        })?;
     let viewbox_placeholder_range = viewbox_pos..(viewbox_pos + VIEWBOX_PLACEHOLDER.len());
-    let max_width_pos = out
-        .find(MAX_WIDTH_PLACEHOLDER)
-        .expect("class svg root must contain max-width placeholder");
+    let max_width_pos =
+        out.find(MAX_WIDTH_PLACEHOLDER)
+            .ok_or_else(|| crate::Error::InvalidModel {
+                message: "class svg root missing max-width placeholder".to_string(),
+            })?;
     let max_width_placeholder_range = max_width_pos..(max_width_pos + MAX_WIDTH_PLACEHOLDER.len());
 
     if has_acc_title {
@@ -75,10 +79,10 @@ pub(super) fn write_class_svg_root_open(
         out.push_str("</desc>");
     }
 
-    ClassSvgRootOpen {
+    Ok(ClassSvgRootOpen {
         viewbox_placeholder_range,
         max_width_placeholder_range,
         has_acc_title,
         has_acc_descr,
-    }
+    })
 }

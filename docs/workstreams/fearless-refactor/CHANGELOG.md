@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Turned the Class SVG root placeholder lookup into an explicit render error instead of a local
+  expect panic.
 - Replaced Gantt fixed-date and duration regex invariant unwraps with explicit fallible branches.
 - Centralized zero-offset timezone construction behind `merman_core::time::utc_fixed_offset()` and
   reused it in runtime/Gantt code paths.
