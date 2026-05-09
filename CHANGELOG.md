@@ -98,6 +98,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   with explicit optional branches.
 - Core time cleanup: centralize UTC fixed-offset construction behind a shared helper and reuse it
   across Gantt/runtime code paths.
+- Gantt parser cleanup: replace fixed-date and duration regex invariant unwraps with explicit
+  fallible branches.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

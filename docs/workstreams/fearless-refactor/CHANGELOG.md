@@ -5,6 +5,7 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Replaced Gantt fixed-date and duration regex invariant unwraps with explicit fallible branches.
 - Centralized zero-offset timezone construction behind `merman_core::time::utc_fixed_offset()` and
   reused it in runtime/Gantt code paths.
 - Replaced local character-scan and delimiter-stack unwraps in preprocess, Gantt date formatting,

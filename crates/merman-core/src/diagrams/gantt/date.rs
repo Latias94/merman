@@ -630,7 +630,11 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
             diagram_type: "gantt".to_string(),
             message: format!("Invalid date:{s}"),
         })?;
-        return Ok(local_from_naive(d.and_hms_opt(0, 0, 0).unwrap()));
+        let midnight = d.and_hms_opt(0, 0, 0).ok_or_else(|| Error::DiagramParse {
+            diagram_type: "gantt".to_string(),
+            message: format!("Invalid date:{s}"),
+        })?;
+        return Ok(local_from_naive(midnight));
     }
 
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
@@ -967,8 +971,14 @@ pub(super) fn parse_duration(str_: &str) -> (f64, String) {
     let Some(caps) = re.captures(str_.trim()) else {
         return (f64::NAN, "ms".to_string());
     };
-    let value: f64 = caps.get(1).unwrap().as_str().parse().unwrap_or(f64::NAN);
-    let unit = caps.get(2).unwrap().as_str().to_string();
+    let Some(value_cap) = caps.get(1) else {
+        return (f64::NAN, "ms".to_string());
+    };
+    let Some(unit_cap) = caps.get(2) else {
+        return (f64::NAN, "ms".to_string());
+    };
+    let value: f64 = value_cap.as_str().parse().unwrap_or(f64::NAN);
+    let unit = unit_cap.as_str().to_string();
     (value, unit)
 }
 
