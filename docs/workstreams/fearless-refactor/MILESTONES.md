@@ -370,6 +370,8 @@ Progress:
 - Replaced flowchart label, node layout, recursive layout, place-graph, and cluster rect argument
   bundles with request/context structs, removing the `flowchart/mod.rs` module-level
   `clippy::too_many_arguments` allow.
+- Narrowed the split Flowchart parity context and helper API by deleting unused
+  style/class/cluster wrappers and context fields that were only initialized.
 - Replaced core flowchart semantic and state layout long-argument helpers with context structs, and
   made `StateDb::add_state` merge `StateStmt` directly; source code no longer carries
   `clippy::too_many_arguments` allows.

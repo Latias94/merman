@@ -28,13 +28,6 @@ pub(super) fn flowchart_edge_marker_start_base(
     }
 }
 
-#[allow(dead_code)]
-pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
-    let mut out = String::new();
-    super::css::write_flowchart_edge_class_attr(&mut out, edge);
-    out
-}
-
 pub(super) fn flowchart_resolve_stroke_for_marker(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],

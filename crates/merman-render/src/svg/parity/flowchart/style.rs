@@ -2,26 +2,6 @@
 
 use super::*;
 
-#[allow(dead_code)]
-pub(in crate::svg::parity) fn flowchart_inline_style_for_classes(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[String],
-) -> String {
-    let mut out = String::new();
-    for c in classes {
-        let Some(decls) = class_defs.get(c) else {
-            continue;
-        };
-        for d in decls {
-            let Some((k, v)) = parse_style_decl(d) else {
-                continue;
-            };
-            let _ = write!(&mut out, "{k}:{v} !important;");
-        }
-    }
-    out.trim_end_matches(';').to_string()
-}
-
 #[derive(Debug, Clone)]
 pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     pub(super) node_style: String,

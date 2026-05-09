@@ -377,8 +377,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         font_weight: None,
     };
 
-    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
-
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
             model.nodes.len() + extra_nodes.len(),
@@ -495,7 +493,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         diagram_id,
         tx,
         ty,
-        diagram_type,
         measurer,
         config: effective_config,
         math_renderer: options.math_renderer.as_deref(),
@@ -507,7 +504,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         default_edge_interpolate,
         default_edge_style,
         trace_edge_id: std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok(),
-        node_order,
         subgraph_order,
         edge_order,
         nodes_by_id,
@@ -526,7 +522,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_wrap_mode,
         edge_wrap_mode,
         text_style,
-        diagram_title,
     };
 
     let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =

@@ -8,8 +8,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) diagram_id: &'a str,
-    #[allow(dead_code)]
-    pub(in crate::svg::parity::flowchart) diagram_type: &'static str,
     pub(in crate::svg::parity::flowchart) tx: f64,
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
@@ -24,8 +22,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<String>,
-    #[allow(dead_code)]
-    pub(in crate::svg::parity::flowchart) node_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) edge_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) nodes_by_id:
@@ -50,8 +46,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) text_style: TextStyle,
-    #[allow(dead_code)]
-    pub(in crate::svg::parity::flowchart) diagram_title: Option<&'a str>,
 }
 
 #[derive(Debug, Default, Clone)]

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Narrowed Flowchart parity context/API surface by deleting unused style/class/cluster wrappers and
+  removing context fields that were only initialized, leaving the flowchart parity subtree free of
+  non-generated `dead_code` allows.
 - Removed stale core parser helpers: the unused `BlockDb` id generator, old Flowchart
   collect/merge helpers, and an unnecessary `TitleKind` dead-code allow.
 - Removed unused no-bounds D3 curve path wrappers from `svg/parity/curve.rs`; active renderers now
