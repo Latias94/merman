@@ -5,7 +5,7 @@ use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
 use std::fmt::Write as _;
 
-pub(super) fn is_self_loop_label_node_id(id: &str) -> bool {
+fn is_self_loop_label_node_id(id: &str) -> bool {
     let mut parts = id.split("---");
     let Some(a) = parts.next() else {
         return false;
@@ -39,7 +39,7 @@ pub(super) fn try_render_self_loop_label_placeholder(
     true
 }
 
-pub(super) fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::MermaidConfig) -> bool {
+fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::MermaidConfig) -> bool {
     let _config = config;
 
     let href = href.trim();
@@ -67,7 +67,7 @@ pub(super) fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::Merm
     !lower[..scheme_end].contains(':')
 }
 
-pub(super) fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
+fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
     escape_xml_into(out, base);
     for c in classes {
         let t = c.trim();

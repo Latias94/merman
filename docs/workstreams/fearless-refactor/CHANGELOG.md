@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed repeated Flowchart RoughJS stroke dash parsing into a shared private helper and
+  narrowed Flowchart node helper internals that no longer need sibling-module visibility.
 - Collapsed duplicated Flowchart RoughJS op-set SVG path serialization into a single private
   helper after Flowchart DOM parity and the strict gate stayed green.
 - Narrowed State link sanitizer internals to file-private helpers after the State parity gate and

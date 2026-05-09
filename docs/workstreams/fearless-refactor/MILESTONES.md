@@ -406,6 +406,8 @@ Progress:
   only the public allowlist entry point remains exported.
 - Collapsed repeated Flowchart RoughJS op-set-to-SVG-path serializers into one private helper while
   preserving RoughJS `opsToPath` formatting and call ordering.
+- Collapsed repeated Flowchart RoughJS stroke dash parsing into one private helper and narrowed the
+  node helper visibility for same-file internals.
 - Removed the remaining generated `dead_code` allowances after clippy proved the generated
   override modules no longer need that blanket exception.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline

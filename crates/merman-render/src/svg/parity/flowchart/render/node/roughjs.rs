@@ -55,6 +55,18 @@ fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
     out.trim_end().to_string()
 }
 
+fn parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
+    let dash = stroke_dasharray.trim().replace(',', " ");
+    let mut nums = dash
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f32>().ok());
+    match (nums.next(), nums.next()) {
+        (Some(a), Some(b)) => (a as f64, b as f64),
+        (Some(a), None) => (a as f64, a as f64),
+        _ => (0.0, 0.0),
+    }
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
@@ -65,16 +77,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
 ) -> Option<(String, String)> {
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
-    let dash = stroke_dasharray.trim().replace(',', " ");
-    let nums: Vec<f32> = dash
-        .split_whitespace()
-        .filter_map(|t| t.parse::<f32>().ok())
-        .collect();
-    let (dash0, dash1) = match nums.as_slice() {
-        [a] => (*a, *a),
-        [a, b, ..] => (*a, *b),
-        _ => (0.0, 0.0),
-    };
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
         .seed(seed)
         .roughness(0.0)
@@ -83,7 +86,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
         .fill_style(roughr::core::FillStyle::Solid)
         .stroke(stroke)
         .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+        .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
         .fill_line_dash(vec![0.0, 0.0])
         .fill_line_dash_offset(0.0)
@@ -164,16 +167,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     // `pointsOnPath(...)` step which can overflow on complex paths.
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
-    let dash = stroke_dasharray.trim().replace(',', " ");
-    let nums: Vec<f32> = dash
-        .split_whitespace()
-        .filter_map(|t| t.parse::<f32>().ok())
-        .collect();
-    let (dash0, dash1) = match nums.as_slice() {
-        [a] => (*a, *a),
-        [a, b, ..] => (*a, *b),
-        _ => (0.0, 0.0),
-    };
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
         .seed(seed)
         .roughness(0.0)
@@ -182,7 +176,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
         .fill_style(roughr::core::FillStyle::Solid)
         .stroke(stroke)
         .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+        .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
         .fill_line_dash(vec![0.0, 0.0])
         .fill_line_dash_offset(0.0)
@@ -233,23 +227,14 @@ pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
     seed: u64,
 ) -> Option<String> {
     let stroke = parse_hex_color_to_srgba(stroke)?;
-    let dash = stroke_dasharray.trim().replace(',', " ");
-    let nums: Vec<f32> = dash
-        .split_whitespace()
-        .filter_map(|t| t.parse::<f32>().ok())
-        .collect();
-    let (dash0, dash1) = match nums.as_slice() {
-        [a] => (*a, *a),
-        [a, b, ..] => (*a, *b),
-        _ => (0.0, 0.0),
-    };
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
         .seed(seed)
         .roughness(0.0)
         .bowing(1.0)
         .stroke(stroke)
         .stroke_width(stroke_width)
-        .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+        .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
         .disable_multi_stroke(false)
         .build()
