@@ -44,9 +44,7 @@ pub(crate) fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskE
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join("quadrantchart");
     let upstream_dir = workspace_root
         .join("fixtures")

@@ -33,9 +33,7 @@ pub(crate) fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskEr
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     if let Some(f) = fixture.as_deref() {
         let upstream_default = workspace_root
@@ -278,9 +276,7 @@ pub(crate) fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), Xta
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     if let Some(f) = fixture.as_deref() {
         let upstream_default = workspace_root
@@ -588,9 +584,7 @@ pub(crate) fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskErr
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     if let Some(f) = fixture.as_deref() {
         let upstream_default = workspace_root
@@ -1128,9 +1122,7 @@ pub(crate) fn debug_flowchart_data_points(args: Vec<String>) -> Result<(), Xtask
         return Err(XtaskError::Usage);
     };
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     if let Some(f) = fixture.as_deref() {
         let upstream_default = workspace_root
@@ -1324,9 +1316,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         return Err(XtaskError::Usage);
     };
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     let fixture_name = fixture
         .as_deref()

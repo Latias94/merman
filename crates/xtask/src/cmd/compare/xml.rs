@@ -80,9 +80,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             _ => Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default()),
         };
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");

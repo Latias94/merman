@@ -1,5 +1,5 @@
 use crate::XtaskError;
-use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram, workspace_root};
+use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram};
 use crate::util::*;
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -144,7 +144,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         }
     }
 
-    let workspace_root = workspace_root();
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
@@ -277,7 +277,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         return Err(XtaskError::Usage);
     }
 
-    let workspace_root = workspace_root();
+    let workspace_root = crate::cmd::workspace_root();
     let alignment_dir = workspace_root.join("docs").join("alignment");
     let fixtures_root = workspace_root.join("fixtures");
 
@@ -536,7 +536,7 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = workspace_root();
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
@@ -723,8 +723,9 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts, workspace_root};
+    use super::{MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts};
     use crate::cmd::is_parser_only_fixture;
+    use crate::cmd::workspace_root;
 
     #[test]
     fn collect_mmd_fixtures_honors_snapshot_scan_policy() {

@@ -2,7 +2,6 @@
 
 use crate::XtaskError;
 use std::fs;
-use std::path::PathBuf;
 
 use super::diagrams::*;
 
@@ -122,9 +121,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         out.trim_matches('_').to_string()
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let compare_dir = workspace_root.join("target").join("compare");
     fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
         path: compare_dir.display().to_string(),

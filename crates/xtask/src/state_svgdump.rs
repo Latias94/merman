@@ -247,9 +247,7 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         .filter(|s| !s.is_empty())
         .ok_or(XtaskError::Usage)?;
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join("state");
     let upstream_dir = workspace_root
         .join("fixtures")

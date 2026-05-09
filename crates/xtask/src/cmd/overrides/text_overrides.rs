@@ -7,9 +7,7 @@ use std::path::PathBuf;
 pub(crate) fn gen_er_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     use std::collections::{BTreeMap, BTreeSet};
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     let mut in_dir: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
@@ -414,9 +412,7 @@ pub(crate) fn gen_er_text_overrides(args: Vec<String>) -> Result<(), XtaskError>
 pub(crate) fn gen_gantt_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     use std::collections::{BTreeMap, BTreeSet};
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     let mut in_dir: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;

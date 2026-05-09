@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Revalidated the workspace-root helper cleanup with `cargo run -p xtask -- verify --strict`,
+  which covers workspace clippy, nextest, snapshot gates, and SVG parity checks.
+- Moved `xtask` workspace-root discovery into a dedicated `cmd::paths` module and routed the
+  remaining `compare`, `debug`, `generate`, `import`, `overrides`, `verify`, `snapshots`, and
+  `state_svgdump` call sites through it, deleting the last repeated `CARGO_MANIFEST_DIR`
+  parent-walking code from the command layer.
 - Centralized snapshot update diagram selector matching so semantic and layout snapshot generation
   share the same directory alias rules and scoped error-fixture behavior.
 - Centralized `xtask` `.mmd` fixture discovery for semantic snapshots, layout snapshots, and

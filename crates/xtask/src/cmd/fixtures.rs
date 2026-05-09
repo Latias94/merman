@@ -1,12 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub(crate) fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-}
-
 pub(crate) fn fixtures_root_for_diagram(workspace_root: &Path, diagram: &str) -> PathBuf {
     if diagram == "all" {
         workspace_root.join("fixtures")

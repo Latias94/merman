@@ -32,9 +32,7 @@ pub(crate) fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), Xtask
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     if let Some(f) = fixture.as_deref() {
         let upstream_default = workspace_root

@@ -126,9 +126,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_root = fixtures_root
         .map(|p| {
             if p.is_absolute() {
@@ -508,9 +506,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let baseline_root = workspace_root.join("fixtures").join("upstream-svgs");
     let out_root = workspace_root.join("target").join("upstream-svgs-check");
 
@@ -1094,9 +1090,7 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
 
     let fixtures_dir = workspace_root.join("fixtures").join("er");
@@ -1191,9 +1185,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("debug-svgs"));
 
     fn gen_one(
@@ -1633,9 +1625,7 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
 
     let fixtures_dir = workspace_root.join("fixtures").join("flowchart");
@@ -1720,9 +1710,7 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
 
     let fixtures_dir = workspace_root.join("fixtures").join("state");
@@ -1808,9 +1796,7 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
 
     let fixtures_dir = workspace_root.join("fixtures").join("class");
@@ -1902,9 +1888,7 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
 
     let fixtures_dir = workspace_root.join("fixtures").join("c4");

@@ -1,7 +1,7 @@
 //! Gap audits and corpus health checks.
 
 use crate::XtaskError;
-use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, workspace_root};
+use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures};
 use crate::util::*;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -338,7 +338,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = workspace_root();
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_root = workspace_root.join("fixtures");
     let deferred_root = fixtures_root.join("_deferred");
 

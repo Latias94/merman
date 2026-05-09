@@ -170,9 +170,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         Ok((viewbox, max_width, services, junctions, groups))
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join("architecture");
     let upstream_dir = workspace_root
         .join("fixtures")
@@ -693,9 +691,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         })
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join("architecture");
     let upstream_dir = workspace_root
         .join("fixtures")

@@ -47,11 +47,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
+    let workspace_root = crate::cmd::workspace_root();
 
     let default_src_root = workspace_root
         .join("repo-ref")

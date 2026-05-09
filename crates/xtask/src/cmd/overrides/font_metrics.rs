@@ -529,9 +529,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             ));
         };
 
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..");
+        let workspace_root = crate::cmd::workspace_root();
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
 
         // Group by `(font_key, font_size_px)` to minimize browser round-trips.
@@ -1288,9 +1286,7 @@ const strings = input.strings;
             ));
         };
 
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..");
+        let workspace_root = crate::cmd::workspace_root();
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
 
         let mut out: BTreeMap<String, FontTable> = BTreeMap::new();
@@ -1709,9 +1705,7 @@ const strings = input.strings;
                 "browser measurement requires --browser-exe on this platform".into(),
             ));
         };
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..");
+        let workspace_root = crate::cmd::workspace_root();
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
 
         for (font_key, html) in &html_tables {

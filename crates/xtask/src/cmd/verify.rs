@@ -1,6 +1,5 @@
 use crate::XtaskError;
 use crate::cmd;
-use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug, Default)]
@@ -54,9 +53,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --strict        shorthand for --clippy --all-features --check-overrides");
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
 
     fn run_checked(what: &str, cmd: &mut Command) -> Result<(), XtaskError> {
         let status = cmd.status().map_err(|e| {

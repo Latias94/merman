@@ -39,11 +39,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
+    let workspace_root = crate::cmd::workspace_root();
 
     let examples_root = examples_root
         .map(|p| {

@@ -229,9 +229,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
         return Err(XtaskError::Usage);
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join(&diagram);
     let mmd_path = fixtures_dir.join(format!("{fixture}.mmd"));
     let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {

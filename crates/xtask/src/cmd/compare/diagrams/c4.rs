@@ -44,9 +44,7 @@ pub(crate) fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = workspace_root.join("fixtures").join("c4");
     let upstream_dir = workspace_root
         .join("fixtures")
