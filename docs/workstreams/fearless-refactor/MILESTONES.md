@@ -453,7 +453,9 @@ Progress:
   into `journey` owner constants and deleted the now-empty generated module, reducing the helper
   footprint to 26. Kanban moved its section padding, label foreignObject height, and item row
   heights into `kanban` owner constants and deleted the now-empty generated module, reducing the
-  helper footprint to 21.
+  helper footprint to 21. Treemap moved its section spacing geometry into `treemap` owner constants
+  and kept the remaining `Item A1` leaf-fit browser tolerance beside the SVG parity loop, deleting
+  the now-empty generated module and reducing the helper footprint to 18.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

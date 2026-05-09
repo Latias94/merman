@@ -1,10 +1,12 @@
-use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
 use merman_core::diagrams::treemap::{
     TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
 };
 use serde_json::Value;
+
+pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
+pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
 
 #[derive(Debug, Clone)]
 struct HierNode {
@@ -367,18 +369,17 @@ fn position_node(
 
     let has_children = true;
     let padding_top = if has_children {
-        treemap_text_overrides::treemap_section_header_height_px()
-            + treemap_text_overrides::treemap_section_inner_padding_px()
+        TREEMAP_SECTION_HEADER_HEIGHT_PX + TREEMAP_SECTION_INNER_PADDING_PX
     } else {
         0.0
     };
     let padding_lr = if has_children {
-        treemap_text_overrides::treemap_section_inner_padding_px()
+        TREEMAP_SECTION_INNER_PADDING_PX
     } else {
         0.0
     };
     let padding_bottom = if has_children {
-        treemap_text_overrides::treemap_section_inner_padding_px()
+        TREEMAP_SECTION_INNER_PADDING_PX
     } else {
         0.0
     };
@@ -422,12 +423,12 @@ pub fn layout_treemap_diagram_typed(
     };
 
     let width = if cfg.node_width > 0.0 {
-        cfg.node_width * treemap_text_overrides::treemap_section_inner_padding_px()
+        cfg.node_width * TREEMAP_SECTION_INNER_PADDING_PX
     } else {
         960.0
     };
     let height = if cfg.node_height > 0.0 {
-        cfg.node_height * treemap_text_overrides::treemap_section_inner_padding_px()
+        cfg.node_height * TREEMAP_SECTION_INNER_PADDING_PX
     } else {
         500.0
     };
@@ -516,20 +517,8 @@ pub fn layout_treemap_diagram_typed(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn treemap_text_constants_are_generated() {
-        assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_section_inner_padding_px(),
-            10.0
-        );
-        assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_section_header_height_px(),
-            25.0
-        );
-        assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_leaf_label_fit_tolerance_px(
-                "Item A1", 34.0, 117.0
-            ),
-            0.9
-        );
+    fn treemap_geometry_constants_match_mermaid() {
+        assert_eq!(super::TREEMAP_SECTION_INNER_PADDING_PX, 10.0);
+        assert_eq!(super::TREEMAP_SECTION_HEADER_HEIGHT_PX, 25.0);
     }
 }

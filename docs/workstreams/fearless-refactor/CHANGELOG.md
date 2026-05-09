@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Treemap section spacing geometry into `treemap` owner constants and kept the remaining
+  `Item A1` leaf-fit browser tolerance beside the SVG parity loop, deleting the now-empty Treemap
+  text override module and reducing helper footprint to 18.
 - Moved Kanban section padding, label foreignObject height, and item row heights into `kanban`
   owner constants, deleting the now-empty Kanban text override module and reducing helper
   footprint to 21.

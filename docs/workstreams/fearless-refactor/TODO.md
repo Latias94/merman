@@ -480,9 +480,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   owner constants and deleted the now-empty generated module, reducing the helper footprint to 26.
   Kanban moved its section padding, label foreignObject height, and item row heights into `kanban`
   owner constants and deleted the now-empty generated module, reducing the helper footprint to 21.
+  Treemap moved its section spacing geometry into `treemap` owner constants and kept the remaining
+  `Item A1` leaf-fit browser tolerance beside the SVG parity loop, deleting the now-empty
+  generated module and reducing the helper footprint to 18.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
-  `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
-  `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.
+  `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+  `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and
+  `compare-treemap-svgs --check-dom --dom-decimals 3` still pass.
 - [x] Prevent override tables from becoming the default fix for model bugs.
   Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
   category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.
