@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the obsolete flowchart straight-except-one-endpoint helper after full flowchart DOM
+  parity stayed green without it.
 - Revalidated the full `cargo bench -p merman --features render` gate after the first 20-minute
   attempt timed out, and recorded the successful run in
   `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.

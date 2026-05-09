@@ -400,6 +400,8 @@ Progress:
   override modules no longer need that blanket exception.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
   fully moved into `edge_geom` and root SVG emission.
+- Deleted the obsolete Flowchart straight-except-one-endpoint basis helper after full flowchart DOM
+  parity stayed green without the special case.
 - Removed unused no-bounds D3 curve wrappers, leaving `curve.rs` with only active path-and-bounds
   entrypoints plus the still-used basis/linear path helpers.
 - Removed the remaining dead xtask debug helpers and stale scratch structs after equivalent

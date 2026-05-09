@@ -428,6 +428,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   helpers and the old flowchart width estimator; `crates/xtask/src/cmd/overrides/svg.rs` dropped
   an unused `SampleKey`. `cargo nextest run -p xtask` and `cargo clippy -p xtask --all-targets
   --all-features -- -D warnings` passed afterward.
+- [x] Remove the obsolete flowchart straight-except-one-endpoint helper after flowchart parity
+  stayed green.
+  Evidence: `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` no longer keeps the
+  `maybe_collapse_straight_except_one_endpoint` special case or its support helpers, and
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+  --filter flowchart` stayed green without it.
 
 ## P2: Override Hygiene
 
