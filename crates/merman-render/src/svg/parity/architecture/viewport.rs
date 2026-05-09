@@ -1,4 +1,4 @@
-use crate::generated::architecture_text_overrides_11_12_2::architecture_service_label_bottom_extension_px;
+use crate::architecture::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
 use crate::model::Bounds;
 
 use super::super::{apply_root_viewport_override, fmt, fmt_string, svg_emitted_bounds_from_svg};
@@ -178,7 +178,7 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
 
                 if uses_unknown_fallback && !has_icon_text {
                     vb_min_x -= 0.00390625;
-                    vb_min_y += architecture_service_label_bottom_extension_px();
+                    vb_min_y += ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
                     vb_w += 0.2578125;
                     vb_h += 6.1875;
                 }

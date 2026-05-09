@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Architecture text bbox formulas, canvas-label width scale, service label extension, and
+  default wrap width into `architecture` owner constants/functions, deleting the now-empty
+  Architecture text override module and reducing helper footprint to 6.
 - Moved Sequence note wrap slack, text line-height math, and frame padding geometry into
   `sequence` owner constants/functions, deleting the now-empty Sequence text override module and
   reducing helper footprint to 12.

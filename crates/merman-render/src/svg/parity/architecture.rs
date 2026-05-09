@@ -1,5 +1,10 @@
 use super::*;
-use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
+use crate::architecture::{
+    ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
+    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
+    architecture_create_text_compound_label_extra_bottom_px,
+    architecture_create_text_root_label_extra_bottom_px,
+};
 
 mod edges;
 mod foreign_object;
@@ -242,7 +247,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         };
     let singleton_icon_text_offset_y = |service_id: &str| {
         if singleton_icon_text_service_id == Some(service_id) {
-            architecture_text_overrides::architecture_service_label_bottom_extension_px()
+            ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX
         } else {
             0.0
         }
@@ -267,11 +272,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 bbox_right_root = bbox_right_root.max(r);
             }
             let line_count_root = lines.len().max(1);
-            let label_extra_bottom_root =
-                architecture_text_overrides::architecture_create_text_root_label_extra_bottom_px(
-                    svg_font_size_px,
-                    line_count_root,
-                );
+            let label_extra_bottom_root = architecture_create_text_root_label_extra_bottom_px(
+                svg_font_size_px,
+                line_count_root,
+            );
 
             // Cytoscape compound sizing uses the Architecture `fontSize` and does not apply the
             // same `createText(...)` wrapping behavior. For group rectangles (`node.boundingBox()`),
@@ -284,14 +288,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 // Approximate Cytoscape `boundingBox()` label extents by applying a small scale
                 // factor and mirroring the observed 0.5px lattice in Chromium.
                 let m = text_measurer.measure(s, &compound_text_style);
-                let mut half = (m.width.max(0.0)
-                    * architecture_text_overrides::architecture_cytoscape_canvas_label_width_scale(
-                    ))
-                    / 2.0;
+                let mut half =
+                    (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
                 half = (half * 2.0).round() / 2.0;
                 (half, half)
             };
-            let label_extra_bottom_compound = architecture_text_overrides::
+            let label_extra_bottom_compound =
                 architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
 
             // Mermaid places the service label in a `<g transform="translate(iconSize/2, iconSize)">`

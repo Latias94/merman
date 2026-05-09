@@ -486,6 +486,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Sequence moved its note wrap slack, text line-height math, and frame padding geometry into
   `sequence` owner constants/functions and deleted the now-empty generated module, reducing the
   helper footprint to 12.
+  Architecture moved its text bbox formulas, canvas-label width scale, service label extension,
+  and default wrap width into `architecture` owner constants/functions and deleted the now-empty
+  generated module, reducing the helper footprint to 6.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-sequence-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,

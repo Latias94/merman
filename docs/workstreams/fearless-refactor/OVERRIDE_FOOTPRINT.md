@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `29`.
+Generated override modules scanned: `28`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -58,7 +58,9 @@ kept the remaining `Item A1` leaf-fit browser tolerance beside the SVG parity lo
 now-empty generated module and bringing the hand-curated helper total to 18. Sequence moved its
 note wrap slack, text line-height math, and frame padding geometry into `sequence` owner constants
 and functions, deleting the now-empty generated module and bringing the hand-curated helper total
-to 12.
+to 12. Architecture moved its text bbox formulas, canvas-label width scale, service label
+extension, and default wrap width into `architecture` owner constants/functions, deleting the
+now-empty generated module and bringing the hand-curated helper total to 6.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -135,11 +137,10 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `12`.
+Total helper functions reported by `xtask`: `6`.
 
 | file | helper functions |
 | --- | ---: |
-| `architecture_text_overrides_11_12_2.rs` | 6 |
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 
 ### Manual Raw SVG/Path Bridges

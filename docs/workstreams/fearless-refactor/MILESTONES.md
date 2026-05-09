@@ -458,7 +458,9 @@ Progress:
   the now-empty generated module and reducing the helper footprint to 18. Sequence moved its note
   wrap slack, text line-height math, and frame padding geometry into `sequence` owner
   constants/functions and deleted the now-empty generated module, reducing the helper footprint to
-  12.
+  12. Architecture moved its text bbox formulas, canvas-label width scale, service label extension,
+  and default wrap width into `architecture` owner constants/functions and deleted the now-empty
+  generated module, reducing the helper footprint to 6.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

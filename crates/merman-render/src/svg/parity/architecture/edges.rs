@@ -1,6 +1,9 @@
 use std::fmt::Write as _;
 
-use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
+use crate::architecture::{
+    ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
+    architecture_create_text_bbox_height_px,
+};
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer};
 
@@ -64,7 +67,7 @@ fn architecture_edge_label_plan(
     let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
         wrap_width
     } else {
-        architecture_text_overrides::architecture_create_text_default_wrap_width_px()
+        ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX
     };
     let lines = wrap_svg_words_to_lines(label, wrap_width, text_measurer, &settings.text_style);
 
@@ -80,10 +83,7 @@ fn architecture_edge_label_plan(
         bbox_w = bbox_w.max(m.width);
     }
     let line_count = lines.len().max(1);
-    let bbox_h = architecture_text_overrides::architecture_create_text_bbox_height_px(
-        settings.svg_font_size_px,
-        line_count,
-    );
+    let bbox_h = architecture_create_text_bbox_height_px(settings.svg_font_size_px, line_count);
     let half_bbox_h = bbox_h / 2.0;
 
     let (dominant_baseline, transform) = match axis {
@@ -165,8 +165,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     let junction_bounds = ctx.junction_bounds;
 
     let group_edge_shift = settings.padding_px + 4.0;
-    let group_edge_label_bottom_px =
-        architecture_text_overrides::architecture_service_label_bottom_extension_px();
+    let group_edge_label_bottom_px = ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
     let layout_edge_points: Vec<(f64, f64, f64, f64, f64, f64)> = layout

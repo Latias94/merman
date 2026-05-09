@@ -1,4 +1,3 @@
-use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
 use crate::json::from_value_ref;
 use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::TextMeasurer;
@@ -8,6 +7,29 @@ use merman_core::diagrams::architecture::ArchitectureDiagramRenderModel;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Deserialize;
 use serde_json::Value;
+
+pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
+pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
+pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
+
+pub(crate) fn architecture_create_text_bbox_height_px(font_size_px: f64, line_count: usize) -> f64 {
+    let font_size_px = font_size_px.max(1.0);
+    let extra_lines = line_count.max(1).saturating_sub(1) as f64;
+    font_size_px * ((19.0 / 16.0) + extra_lines * 1.1)
+}
+
+pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
+    font_size_px: f64,
+    line_count: usize,
+) -> f64 {
+    let font_size_px = font_size_px.max(1.0);
+    let extra_lines = line_count.max(1).saturating_sub(1) as f64;
+    font_size_px * ((24.1875 / 16.0) + extra_lines * 1.1)
+}
+
+pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * (17.0 / 16.0)
+}
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -350,9 +372,8 @@ fn layout_architecture_diagram_model(
             // In practice, Cytoscape canvas metrics run slightly wider than our SVG-oriented
             // deterministic table, but a small scale factor keeps relocation centers stable
             // without requiring a browser.
-            let label_half = (m.width.max(0.0)
-                * architecture_text_overrides::architecture_cytoscape_canvas_label_width_scale())
-                / 2.0;
+            let label_half =
+                (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
             half_w = half_w.max(label_half + border);
             // Cytoscape bounding boxes land on 0.5px increments in Chromium; mirror that so
             // relocation centers match upstream baselines more closely.
@@ -1568,36 +1589,21 @@ fn layout_architecture_diagram_model(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn architecture_text_constants_are_generated() {
-        assert!((crate::generated::architecture_text_overrides_11_12_2::
-            architecture_create_text_bbox_height_px(16.0, 2)
-            - 36.6)
-            .abs()
-            < 1e-9);
+    fn architecture_text_constants_match_mermaid() {
+        assert!((super::architecture_create_text_bbox_height_px(16.0, 2) - 36.6).abs() < 1e-9);
         assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_create_text_compound_label_extra_bottom_px(16.0),
+            super::architecture_create_text_compound_label_extra_bottom_px(16.0),
             17.0
         );
         assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_create_text_root_label_extra_bottom_px(16.0, 1),
+            super::architecture_create_text_root_label_extra_bottom_px(16.0, 1),
             24.1875
         );
         assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_cytoscape_canvas_label_width_scale(),
+            super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
             1.055
         );
-        assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_service_label_bottom_extension_px(),
-            18.0
-        );
-        assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_create_text_default_wrap_width_px(),
-            200.0
-        );
+        assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
+        assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
     }
 }

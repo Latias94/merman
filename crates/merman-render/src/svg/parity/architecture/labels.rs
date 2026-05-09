@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 
-use crate::generated::architecture_text_overrides_11_12_2 as architecture_text_overrides;
+use crate::architecture::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 
 use super::super::{decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
 
@@ -53,7 +53,7 @@ pub(super) fn wrap_svg_words_to_lines(
     let max_width_px = if max_width_px.is_finite() && max_width_px > 0.0 {
         max_width_px
     } else {
-        architecture_text_overrides::architecture_create_text_default_wrap_width_px()
+        ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX
     };
 
     fn line_to_string(line: &[SvgWord]) -> String {
