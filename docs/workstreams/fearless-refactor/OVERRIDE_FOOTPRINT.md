@@ -28,15 +28,15 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 106-entry reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 122-entry reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
 deterministic emitted bounds and nine obsolete Timeline pins that now match deterministic root
 output, then twelve obsolete Pie pins and twelve obsolete ER pins that also match deterministic
-root output, and thirty-five obsolete Requirement pins now covered by deterministic root output. It
-also reflects the final manual raw SVG/path bridge removal, so manual bridge scanning now reports
-zero bridge files.
+root output, thirty-five obsolete Requirement pins, and sixteen obsolete C4 pins now covered by
+deterministic root output. It also reflects the final manual raw SVG/path bridge removal, so manual
+bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.
@@ -80,13 +80,13 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1468`.
+Total entries reported by `xtask`: `1452`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 101 |
 | `block_root_overrides_11_12_2.rs` | 119 |
-| `c4_root_overrides_11_12_2.rs` | 51 |
+| `c4_root_overrides_11_12_2.rs` | 35 |
 | `class_root_overrides_11_12_2.rs` | 196 |
 | `er_root_overrides_11_12_2.rs` | 23 |
 | `flowchart_root_overrides_11_12_2.rs` | 266 |
