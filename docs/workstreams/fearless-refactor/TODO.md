@@ -489,7 +489,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Architecture moved its text bbox formulas, canvas-label width scale, service label extension,
   and default wrap width into `architecture` owner constants/functions and deleted the now-empty
   generated module, reducing the helper footprint to 6.
+  Gitgraph moved branch-label correction control flow into the `gitgraph` owner module and
+  reclassified the remaining bbox correction data as text metric lookup entries, reducing the
+  helper footprint to 0 while keeping measured correction data visible.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
+  `compare-gitgraph-svgs --check-dom --dom-decimals 3`,
   `compare-sequence-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and

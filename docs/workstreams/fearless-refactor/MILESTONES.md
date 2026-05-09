@@ -460,7 +460,10 @@ Progress:
   constants/functions and deleted the now-empty generated module, reducing the helper footprint to
   12. Architecture moved its text bbox formulas, canvas-label width scale, service label extension,
   and default wrap width into `architecture` owner constants/functions and deleted the now-empty
-  generated module, reducing the helper footprint to 6.
+  generated module, reducing the helper footprint to 6. Gitgraph moved branch-label correction
+  control flow into the `gitgraph` owner module and reclassified the remaining bbox correction data
+  as text metric lookup entries, reducing the helper footprint to 0 while preserving measured-data
+  visibility in override reporting.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

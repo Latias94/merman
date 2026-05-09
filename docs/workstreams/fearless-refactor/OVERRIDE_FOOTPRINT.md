@@ -60,7 +60,9 @@ note wrap slack, text line-height math, and frame padding geometry into `sequenc
 and functions, deleting the now-empty generated module and bringing the hand-curated helper total
 to 12. Architecture moved its text bbox formulas, canvas-label width scale, service label
 extension, and default wrap width into `architecture` owner constants/functions, deleting the
-now-empty generated module and bringing the hand-curated helper total to 6.
+now-empty generated module and bringing the hand-curated helper total to 6. Gitgraph then moved
+its branch-label correction control flow into the `gitgraph` owner module and reclassified its
+bbox correction data as text metric lookup entries, bringing the hand-curated helper total to 0.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -102,7 +104,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `1140`.
+Total lookup entries reported by `xtask`: `1174`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -112,6 +114,7 @@ Total lookup entries reported by `xtask`: `1140`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gantt_text_overrides_11_12_2.rs` | 44 |
+| `gitgraph_text_overrides_11_12_2.rs` | 34 |
 | `mindmap_text_overrides_11_12_2.rs` | 291 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
@@ -137,11 +140,9 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `6`.
+Total helper functions reported by `xtask`: `0`.
 
-| file | helper functions |
-| --- | ---: |
-| `gitgraph_text_overrides_11_12_2.rs` | 6 |
+No hand-curated helper override modules remain.
 
 ### Manual Raw SVG/Path Bridges
 

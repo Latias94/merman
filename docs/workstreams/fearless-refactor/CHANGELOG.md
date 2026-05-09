@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Reclassified Gitgraph bbox correction data as text metric lookup entries and moved branch-label
+  correction control flow back into the `gitgraph` owner module, reducing the helper footprint to
+  zero while keeping the measured correction table visible in override reporting.
 - Moved Architecture text bbox formulas, canvas-label width scale, service label extension, and
   default wrap width into `architecture` owner constants/functions, deleting the now-empty
   Architecture text override module and reducing helper footprint to 6.

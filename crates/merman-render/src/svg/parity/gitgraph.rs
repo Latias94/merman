@@ -109,7 +109,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 
     fn gitgraph_simple_text_bbox_width_correction_px(text: &str) -> f64 {
         let extra = crate::generated::gitgraph_text_overrides_11_12_2::
-            lookup_gitgraph_simple_text_bbox_width_extra_px(text);
+            lookup_gitgraph_simple_text_bbox_width_extra_px(text)
+            .unwrap_or(0.0);
 
         let Some(first) = text.chars().next() else {
             return extra;
@@ -125,11 +126,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     fn gitgraph_simple_text_bbox_width_correction_left_px(ch: char) -> f64 {
         crate::generated::gitgraph_text_overrides_11_12_2::
             lookup_gitgraph_simple_text_bbox_width_left_px(ch)
+            .unwrap_or(0.0)
     }
 
     fn gitgraph_simple_text_bbox_width_correction_right_px(ch: char) -> f64 {
         crate::generated::gitgraph_text_overrides_11_12_2::
             lookup_gitgraph_simple_text_bbox_width_right_px(ch)
+            .unwrap_or(0.0)
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -837,22 +840,22 @@ mod tests {
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_extra_px("7-c64d8fd"),
-            5.0 / 2048.0
+            Some(5.0 / 2048.0)
         );
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_left_px('A'),
-            2304.0 / 2048.0
+            Some(2304.0 / 2048.0)
         );
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_right_px('C'),
-            -500.0 / 2048.0
+            Some(-500.0 / 2048.0)
         );
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_extra_px("unknown"),
-            0.0
+            None
         );
     }
 }
