@@ -41,10 +41,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-191.484375 -34.72539138793945 699.484375 250.8622283935547",
             "699.484375",
         )),
-        "upstream_merges_spec" => Some((
-            "-146.375 -34.72539138793945 654.375 341.15484619140625",
-            "654.375",
-        )),
         "upstream_docs_gitgraph_cherry_pick_commit_from_another_branch_010" => {
             Some(("-117.421875 -19 575.421875 251.5328826904297", "575.421875"))
         }
@@ -447,9 +443,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_cypress_gitgraph_spec_33_should_render_a_simple_gitgraph_overlapping_commits_036" => {
             Some(("-118.34375 -19 526.34375 147.94357299804688", "526.34375"))
         }
-        "upstream_cypress_gitgraph_spec_34_should_render_a_simple_gitgraph_with_two_branches_from_same_c_037" => {
-            Some(("-145.125 -19 453.125 262.35137939453125", "453.125"))
-        }
         "upstream_cypress_gitgraph_spec_35_should_render_a_simple_gitgraph_with_two_branches_from_same_c_038" => {
             Some((
                 "-62.7565803527832 -8 360.381591796875 346",
@@ -470,18 +463,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         }
         "upstream_cypress_gitgraph_spec_40_should_render_a_simple_gitgraph_with_cherry_pick_merge_commit_043" => {
             Some(("-114.078125 -19 388.8828125 219", "388.8828125"))
-        }
-        "upstream_cypress_gitgraph_spec_41_should_render_default_gitgraph_with_parallelcommits_set_to_fa_044" => {
-            Some((
-                "-117.421875 -19 525.421875 262.35137939453125",
-                "525.421875",
-            ))
-        }
-        "upstream_cypress_gitgraph_spec_42_should_render_gitgraph_with_parallel_commits_045" => {
-            Some((
-                "-117.421875 -19 325.421875 262.35137939453125",
-                "325.421875",
-            ))
         }
         "upstream_cypress_gitgraph_spec_43_should_render_gitgraph_with_parallel_commits_vertical_branch_046" => {
             Some((
@@ -611,12 +592,6 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "-117.421875 -54.72539138793945 475.421875 181.37156677246094",
                 "475.421875",
             ))
-        }
-        "upstream_cypress_gitgraph_spec_77_should_show_branch_lines_when_showbranches_is_true_default_081" => {
-            Some(("-87.421875 -19 395.421875 105.5", "395.421875"))
-        }
-        "upstream_cypress_gitgraph_spec_78_should_hide_branch_lines_when_showbranches_is_false_082" => {
-            Some(("-8 -18 286 104.5", "286"))
         }
         "upstream_cypress_gitgraph_spec_87_should_show_branches_with_tb_orientation_when_showbranches_is_091" => {
             Some(("-35.5 -8 147.2109375 296", "147.2109375"))

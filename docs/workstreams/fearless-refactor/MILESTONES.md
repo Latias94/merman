@@ -477,7 +477,7 @@ Progress:
   parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
-- Root viewport footprint dropped 474 entries net so far: 19 architecture pins after
+- Root viewport footprint dropped 480 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
   calibration covered the remaining Kanban `parity-root` profiles, plus 4 sankey pins now covered
@@ -487,7 +487,8 @@ Progress:
   covered by deterministic root output. The Block root override table was then deleted after all
   119 entries proved obsolete under `parity-root`, followed by 68 State pins now covered by
   deterministic root output. The Class root table then dropped 166 obsolete pins and gained one
-  missing docs root pin, making Class `parity-root` green with a 165-entry net reduction.
+  missing docs root pin, making Class `parity-root` green with a 165-entry net reduction. Gitgraph
+  then dropped 6 obsolete pins while staying green under `parity-root`.
 - The current flowchart degenerate path bridge documents its owner and removal criteria near the
   implementation.
 
