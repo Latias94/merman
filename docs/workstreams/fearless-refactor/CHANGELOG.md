@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed local layout and tree-construction unwraps from State renderer edge post-processing and
+  Treemap hierarchy construction, keeping the same DOM outputs while avoiding local panics.
 - Removed redundant `accDescr` brace scans from the Class and ER lexer paths by reusing the
   already-trimmed leading whitespace offset.
 - Replaced BlockDB's insert-then-unwrap block creation with a single `HashMap::entry` path while

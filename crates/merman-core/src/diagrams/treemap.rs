@@ -381,12 +381,13 @@ fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
         if stack.is_empty() {
             roots.push(idx);
         } else {
-            let parent_idx = stack.last().unwrap().0;
+            let parent_idx = stack[stack.len() - 1].0;
             let parent = &mut arena.nodes[parent_idx];
-            if parent.children.is_none() {
-                parent.children = Some(Vec::new());
+            if let Some(children) = parent.children.as_mut() {
+                children.push(idx);
+            } else {
+                parent.children = Some(vec![idx]);
             }
-            parent.children.as_mut().unwrap().push(idx);
         }
 
         if item.item_type != ItemType::Leaf {

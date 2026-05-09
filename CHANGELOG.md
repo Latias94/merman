@@ -87,6 +87,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Block semantic DB: use `HashMap::entry` for block creation and remove the local
   ensure-block existence expect.
 - Class/ER parser cleanup: remove redundant `accDescr` brace scans in the lexer paths.
+- State/Treemap cleanup: remove local layout and tree-construction unwraps from production
+  paths.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

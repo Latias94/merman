@@ -1736,7 +1736,7 @@ fn layout_state_diagram_v2_inner(
             let start_target = if e.points.len() >= 3 {
                 e.points[1].clone()
             } else {
-                e.points.last().unwrap().clone()
+                e.points[e.points.len() - 1].clone()
             };
             let end_target = if e.points.len() >= 3 {
                 e.points[e.points.len() - 2].clone()
