@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed State raw/non-raw context resolution behind shared helper implementations, removed
+  now-unused wrappers, and narrowed `state_strip_note_group` to file-private visibility after State
+  DOM parity and the strict gate stayed green.
 - Inlined `prefer_fast_state_viewport_bounds` into the two State viewport call sites after
   `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` and
   `cargo run -p xtask -- verify --strict` stayed green.
