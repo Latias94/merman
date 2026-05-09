@@ -200,6 +200,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`; both
   canaries show strong local layout-stage improvement, while `parse/mindmap_medium` stays noisy
   enough that parser work is still not the next priority.
+  Standard canary stage attribution with an explicit mmdr toolchain is recorded in
+  `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`; it keeps
+  Architecture layout as the clearest remaining gap and render fixed-cost as the broad secondary
+  signal.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 

@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Made the mmdr benchmark helper scripts lockfile-aware and added `--mmdr-toolchain` so the
+  reference checkout can run under a compatible Rust toolchain while this workspace remains pinned.
+  Recorded a fresh standard-canary stage spotcheck in
+  `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, keeping
+  Architecture layout and broad render fixed-cost as the current performance signals.
 - Added a shared import fixture-file helper module so cleanup and defer logic now lives in one
   place while the cypress, docs, examples, html, and pkg_tests modules keep thin policy wrappers.
   Revalidated the refactor with `cargo run -p xtask -- verify --strict`.

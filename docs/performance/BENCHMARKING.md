@@ -53,6 +53,14 @@ The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkou
 If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
 binary will only run its smoke validation path.
 
+Both comparison helpers add `--locked` when the target repo has `Cargo.lock`, so benchmark runs do
+not silently drift to newer registry dependencies. If the local `mermaid-rs-renderer` checkout needs
+a newer Rust toolchain than this workspace's `rust-toolchain.toml`, pass it explicitly, for example:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
+```
+
 If you prefer keeping comparison artifacts out of the docs tree, pass `--out` explicitly, e.g.:
 
 ```bash
@@ -94,6 +102,9 @@ For lower-noise spotchecks, use the `long` preset:
 ```bash
 python tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium
 ```
+
+The stage spot-check helper accepts the same `--mmdr-toolchain` option when the reference checkout
+needs a newer toolchain.
 
 ## Recommendations
 

@@ -54,6 +54,8 @@ python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js 
 Notes:
 
 - `--skip-mermaid-js` is recommended by default to avoid extra noise from puppeteer/Chromium.
+- Add `--mmdr-toolchain 1.92.0` when the local `mermaid-rs-renderer` checkout does not compile
+  under this workspace's pinned Rust toolchain. The reports record that parameter.
 - Keep `docs/performance/COMPARISON.md` up-to-date at major checkpoints; for ad-hoc experiments
   prefer writing to `target/bench/`.
 

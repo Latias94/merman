@@ -142,8 +142,15 @@ def cargo_bench_cmd(
     package: str | None,
     features: str | None,
     bench: str,
+    locked: bool,
+    toolchain: str | None,
 ) -> list[str]:
-    cmd = ["cargo", "bench"]
+    cmd = ["cargo"]
+    if toolchain:
+        cmd.append(f"+{toolchain}")
+    cmd.append("bench")
+    if locked:
+        cmd.append("--locked")
     if package:
         cmd.extend(["-p", package])
     if features:
@@ -200,6 +207,14 @@ def main(argv: list[str]) -> int:
         help="Path to a local checkout of mermaid-rs-renderer.",
     )
     ap.add_argument(
+        "--mmdr-toolchain",
+        default=None,
+        help=(
+            "Optional rustup toolchain for mermaid-rs-renderer cargo commands "
+            "(e.g. 1.92.0)."
+        ),
+    )
+    ap.add_argument(
         "--out",
         default="",
         help="Optional output Markdown path (relative to repo root).",
@@ -220,6 +235,8 @@ def main(argv: list[str]) -> int:
     repo_root = Path(__file__).resolve().parents[2]
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
     mmdr_bench_env = {"MMDR_RUN_CRITERION_BENCHES": "1"}
+    repo_locked = (repo_root / "Cargo.lock").exists()
+    mmdr_locked = (mmdr_dir / "Cargo.lock").exists()
 
     fixtures = [x.strip() for x in args.fixtures.split(",") if x.strip()]
     if not fixtures:
@@ -246,6 +263,8 @@ def main(argv: list[str]) -> int:
                     package="merman",
                     features="render",
                     bench="pipeline",
+                    locked=repo_locked,
+                    toolchain=None,
                 ),
                 cwd=repo_root,
             )
@@ -260,6 +279,8 @@ def main(argv: list[str]) -> int:
                     package=None,
                     features=None,
                     bench="renderer",
+                    locked=mmdr_locked,
+                    toolchain=args.mmdr_toolchain,
                 ),
                 cwd=mmdr_dir,
                 env=mmdr_bench_env,
@@ -279,6 +300,7 @@ def main(argv: list[str]) -> int:
     lines.append(f"- sample-size: `{args.sample_size}`")
     lines.append(f"- warm-up: `{args.warm_up}s`")
     lines.append(f"- measurement: `{args.measurement}s`")
+    lines.append(f"- mmdr-toolchain: `{args.mmdr_toolchain or 'default'}`")
     lines.append(f"- fixtures: `{', '.join(fixtures)}`")
     lines.append("")
     lines.append("## Results (mid estimate)")

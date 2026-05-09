@@ -272,8 +272,12 @@ def list_criterion_benches(
     package: str | None,
     features: str | None,
     env: dict[str, str] | None = None,
+    toolchain: str | None = None,
 ) -> set[str]:
-    cmd: list[str] = ["cargo", "bench"]
+    cmd: list[str] = ["cargo"]
+    if toolchain:
+        cmd.append(f"+{toolchain}")
+    cmd.append("bench")
     if package:
         cmd.extend(["-p", package])
     if features:
@@ -445,6 +449,14 @@ def main(argv: list[str]) -> int:
         help="Path to a local checkout of mermaid-rs-renderer (default: repo-ref/mermaid-rs-renderer).",
     )
     ap.add_argument(
+        "--mmdr-toolchain",
+        default=None,
+        help=(
+            "Optional rustup toolchain for mermaid-rs-renderer cargo commands "
+            "(e.g. 1.92.0)."
+        ),
+    )
+    ap.add_argument(
         "--mermaid-cli-dir",
         default="tools/mermaid-cli",
         help="Path to the local Node toolchain used for upstream Mermaid rendering (default: tools/mermaid-cli).",
@@ -501,6 +513,7 @@ def main(argv: list[str]) -> int:
         bench_bin="pipeline",
         package="merman",
         features="render",
+        toolchain=None,
     )
     mmdr_benches = list_criterion_benches(
         cwd=mmdr_dir,
@@ -508,6 +521,7 @@ def main(argv: list[str]) -> int:
         package=None,
         features=None,
         env=mmdr_bench_env,
+        toolchain=args.mmdr_toolchain,
     )
     missing_merman = sorted(b for b in requested if b not in merman_benches)
     missing_mmdr = sorted(b for b in requested if b not in mmdr_benches)
@@ -528,8 +542,14 @@ def main(argv: list[str]) -> int:
         features: str | None,
         exact: str,
         env: dict[str, str] | None = None,
+        toolchain: str | None = None,
     ) -> str:
-        cmd: list[str] = ["cargo", "bench"]
+        cmd: list[str] = ["cargo"]
+        if toolchain:
+            cmd.append(f"+{toolchain}")
+        cmd.append("bench")
+        if (cwd / "Cargo.lock").exists():
+            cmd.append("--locked")
         if package:
             cmd.extend(["-p", package])
         if features:
@@ -569,6 +589,7 @@ def main(argv: list[str]) -> int:
             package="merman",
             features="render",
             exact=exact,
+            toolchain=None,
         )
         merman_out_all.append(out)
         merman_times.update(parse_criterion_times(out, prefix=prefix))
@@ -584,6 +605,7 @@ def main(argv: list[str]) -> int:
             features=None,
             exact=exact,
             env=mmdr_bench_env,
+            toolchain=args.mmdr_toolchain,
         )
         mmdr_times.update(parse_criterion_times(out, prefix=prefix))
 
@@ -698,6 +720,7 @@ def main(argv: list[str]) -> int:
         f"- Machine: \"{platform.machine()}\"",
         f"- CPU: \"{best_effort_cpu_model()}\"",
         f"- Python: \"{platform.python_version()}\"",
+        f"- mmdr toolchain: \"{args.mmdr_toolchain or 'default'}\"",
     ]
     if mermaid_js_meta.get("node"):
         env_lines.append(f"- Node: \"{mermaid_js_meta['node']}\"")
