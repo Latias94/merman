@@ -2,7 +2,7 @@
 
 grammar;
 
-use crate::diagrams::state::{ClickStmt, Note, StateStmt, Stmt, Tok};
+use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
 
 extern {
   type Location = usize;
@@ -87,11 +87,11 @@ Statement: Stmt = {
   HideEmptyDescription => Stmt::Noop,
   ScaleWidth => Stmt::Noop,
 
-  <s1:IdStatement> "-->" <s2:IdStatement> <d:OptDescr> => Stmt::Relation {
+  <s1:IdStatement> "-->" <s2:IdStatement> <d:OptDescr> => Stmt::Relation(Box::new(RelationStmt {
     state1: s1,
     state2: s2,
     description: d,
-  },
+  })),
 
   <mut s:IdStatement> <d:OptDescr> => {
     s.description = d;

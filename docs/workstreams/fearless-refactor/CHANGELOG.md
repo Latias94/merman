@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Boxed State AST relation statement payloads behind a dedicated `RelationStmt` and removed the
+  state `large_enum_variant` lint allowance without changing parser or render output.
 - Boxed the standalone Flowchart AST node statement variant and removed its
   `large_enum_variant` lint allowance while keeping the parser/build path unchanged.
 - Added a lint-allow audit for the remaining source-level allowances, including the confirmed

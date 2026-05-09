@@ -49,28 +49,21 @@ impl StateStmt {
     }
 }
 
-#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub(crate) struct RelationStmt {
+    pub state1: StateStmt,
+    pub state2: StateStmt,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Noop,
     State(StateStmt),
-    Relation {
-        state1: StateStmt,
-        state2: StateStmt,
-        description: Option<String>,
-    },
-    ClassDef {
-        id: String,
-        classes: String,
-    },
-    ApplyClass {
-        ids: String,
-        class_name: String,
-    },
-    Style {
-        ids: String,
-        styles: String,
-    },
+    Relation(Box<RelationStmt>),
+    ClassDef { id: String, classes: String },
+    ApplyClass { ids: String, class_name: String },
+    Style { ids: String, styles: String },
     Direction(String),
     AccTitle(String),
     AccDescr(String),

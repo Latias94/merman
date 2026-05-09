@@ -162,13 +162,9 @@ impl StateDb {
     fn translate_doc(&mut self, parent_id: &str, doc: &mut [Stmt]) {
         for stmt in doc.iter_mut() {
             match stmt {
-                Stmt::Relation {
-                    state1,
-                    state2,
-                    description: _,
-                } => {
-                    self.translate_state_ref(parent_id, state1, true);
-                    self.translate_state_ref(parent_id, state2, false);
+                Stmt::Relation(relation) => {
+                    self.translate_state_ref(parent_id, &mut relation.state1, true);
+                    self.translate_state_ref(parent_id, &mut relation.state2, false);
                 }
                 Stmt::State(s) => {
                     self.translate_state_ref(parent_id, s, true);
@@ -199,11 +195,11 @@ impl StateDb {
                 Stmt::State(s) => {
                     self.add_state(&s);
                 }
-                Stmt::Relation {
-                    state1,
-                    state2,
-                    description,
-                } => self.add_relation(&state1, &state2, description.as_deref()),
+                Stmt::Relation(relation) => self.add_relation(
+                    &relation.state1,
+                    &relation.state2,
+                    relation.description.as_deref(),
+                ),
                 Stmt::ClassDef { id, classes } => self.add_style_class(&id, &classes),
                 Stmt::ApplyClass { ids, class_name } => self.set_css_class(&ids, &class_name),
                 Stmt::Style { ids, styles } => self.handle_style_def(&ids, &styles),
@@ -722,20 +718,17 @@ fn build_layout_data_typed(
         for item in doc {
             match item {
                 Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
-                Stmt::Relation {
-                    state1,
-                    state2,
-                    description,
-                } => {
-                    data_fetcher(ctx, parent, state1, alt_flag)?;
-                    data_fetcher(ctx, parent, state2, alt_flag)?;
+                Stmt::Relation(relation) => {
+                    let relation = relation.as_ref();
+                    data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
+                    data_fetcher(ctx, parent, &relation.state2, alt_flag)?;
 
-                    let edge_label_raw = description.clone().unwrap_or_default();
+                    let edge_label_raw = relation.description.clone().unwrap_or_default();
                     let edge_label = sanitize_text(&edge_label_raw, ctx.config);
                     ctx.edges.push(StateDiagramRenderEdge {
                         id: format!("edge{}", *ctx.graph_item_count),
-                        start: state1.id.clone(),
-                        end: state2.id.clone(),
+                        start: relation.state1.id.clone(),
+                        end: relation.state2.id.clone(),
                         arrow_type_end: "arrow_barb".to_string(),
                         classes: CSS_EDGE.to_string(),
                         label: edge_label,
@@ -1065,20 +1058,17 @@ fn build_layout_data(
         for item in doc {
             match item {
                 Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
-                Stmt::Relation {
-                    state1,
-                    state2,
-                    description,
-                } => {
-                    data_fetcher(ctx, parent, state1, alt_flag)?;
-                    data_fetcher(ctx, parent, state2, alt_flag)?;
+                Stmt::Relation(relation) => {
+                    let relation = relation.as_ref();
+                    data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
+                    data_fetcher(ctx, parent, &relation.state2, alt_flag)?;
 
-                    let edge_label_raw = description.clone().unwrap_or_default();
+                    let edge_label_raw = relation.description.clone().unwrap_or_default();
                     let edge_label = sanitize_text(&edge_label_raw, ctx.config);
                     ctx.edges.push(json!({
                         "id": format!("edge{}", *ctx.graph_item_count),
-                        "start": state1.id,
-                        "end": state2.id,
+                        "start": relation.state1.id,
+                        "end": relation.state2.id,
                         "arrowhead": "normal",
                         "arrowTypeEnd": "arrow_barb",
                         "style": G_EDGE_STYLE,
@@ -1431,15 +1421,11 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
             "doc": s.doc.as_ref().map(|d| d.iter().map(stmt_to_json).collect::<Vec<_>>()),
             "classes": s.classes,
         }),
-        Stmt::Relation {
-            state1,
-            state2,
-            description,
-        } => json!({
+        Stmt::Relation(relation) => json!({
             "stmt": "relation",
-            "state1": { "id": state1.id, "type": state1.ty, "classes": state1.classes },
-            "state2": { "id": state2.id, "type": state2.ty, "classes": state2.classes },
-            "description": description,
+            "state1": { "id": relation.state1.id, "type": relation.state1.ty, "classes": relation.state1.classes },
+            "state2": { "id": relation.state2.id, "type": relation.state2.ty, "classes": relation.state2.classes },
+            "description": relation.description,
         }),
         Stmt::ClassDef { id, classes } => {
             json!({ "stmt": "classDef", "id": id, "classes": classes })

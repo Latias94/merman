@@ -51,14 +51,14 @@ fn assign_divider_ids(stmts: &mut [Stmt], cnt: &mut usize) {
                     assign_divider_ids(doc, cnt);
                 }
             }
-            Stmt::Relation { state1, state2, .. } => {
-                if state1.ty == "divider" && state1.id == "__divider__" {
+            Stmt::Relation(relation) => {
+                if relation.state1.ty == "divider" && relation.state1.id == "__divider__" {
                     *cnt += 1;
-                    state1.id = format!("divider-id-{cnt}");
+                    relation.state1.id = format!("divider-id-{cnt}");
                 }
-                if state2.ty == "divider" && state2.id == "__divider__" {
+                if relation.state2.ty == "divider" && relation.state2.id == "__divider__" {
                     *cnt += 1;
-                    state2.id = format!("divider-id-{cnt}");
+                    relation.state2.id = format!("divider-id-{cnt}");
                 }
             }
             _ => {}
