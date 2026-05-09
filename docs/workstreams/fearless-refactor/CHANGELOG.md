@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed duplicated Flowchart RoughJS op-set SVG path serialization into a single private
+  helper after Flowchart DOM parity and the strict gate stayed green.
 - Narrowed State link sanitizer internals to file-private helpers after the State parity gate and
   strict gate stayed green.
 - Collapsed the duplicated State label HTML line-wrapping and entity-preservation logic behind

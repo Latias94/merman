@@ -31,6 +31,30 @@ fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
     ))
 }
 
+// Rough.js' generator emits path data via `opsToPath(...)`, which uses `Number.toString()`
+// precision (not Mermaid's usual 3-decimal `fmt(...)` formatting). Avoid quantization here.
+fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+    let mut out = String::new();
+    for op in &opset.ops {
+        match op.op {
+            roughr::core::OpType::Move => {
+                let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+            }
+            roughr::core::OpType::BCurveTo => {
+                let _ = write!(
+                    &mut out,
+                    "C{} {}, {} {}, {} {} ",
+                    op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                );
+            }
+            roughr::core::OpType::LineTo => {
+                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+            }
+        }
+    }
+    out.trim_end().to_string()
+}
+
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
@@ -67,30 +91,6 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
         .disable_multi_stroke_fill(false)
         .build()
         .ok()?;
-
-    // Rough.js' generator emits path data via `opsToPath(...)`, which uses `Number.toString()`
-    // precision (not Mermaid's usual 3-decimal `fmt(...)` formatting). Avoid quantization here.
-    fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        out.trim_end().to_string()
-    }
 
     // Rough.js `generator.path(...)`:
     // - `sets = pointsOnPath(d, 1, distance)`
@@ -191,28 +191,6 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
         .build()
         .ok()?;
 
-    fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        out.trim_end().to_string()
-    }
-
     // Keep call ordering consistent with RoughJS: stroke pass advances the PRNG before fill.
     let mut stroke_opts = base_options.clone();
     let stroke_opset =
@@ -277,28 +255,6 @@ pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
         .build()
         .ok()?;
 
-    fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        out.trim_end().to_string()
-    }
-
     let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
     Some(ops_to_svg_path_d(&opset))
 }
@@ -315,25 +271,7 @@ pub(in crate::svg::parity) fn roughjs_circle_path_d(diameter: f64, seed: u64) ->
         .build()
         .ok()?;
     let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
-    let mut out = String::new();
-    for op in &opset.ops {
-        match op.op {
-            roughr::core::OpType::Move => {
-                let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-            }
-            roughr::core::OpType::BCurveTo => {
-                let _ = write!(
-                    &mut out,
-                    "C{} {}, {} {}, {} {} ",
-                    op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                );
-            }
-            roughr::core::OpType::LineTo => {
-                let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-            }
-        }
-    }
-    Some(out.trim_end().to_string())
+    Some(ops_to_svg_path_d(&opset))
 }
 
 pub(in crate::svg::parity) struct RoughRectSpec<'a> {
@@ -390,29 +328,10 @@ pub(in crate::svg::parity) fn roughjs_paths_for_rect(
     let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
     let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
 
-    fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        out.trim_end().to_string()
-    }
-
-    Some((ops_to_d(&fill_opset), ops_to_d(&stroke_opset)))
+    Some((
+        ops_to_svg_path_d(&fill_opset),
+        ops_to_svg_path_d(&stroke_opset),
+    ))
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
@@ -450,27 +369,8 @@ pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     let outline_opset = roughr::renderer::polygon::<f64>(&pts, &mut opts);
     let fill_opset = roughr::renderer::solid_fill_polygon(&vec![pts.clone()], &mut opts);
 
-    fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
-        let mut out = String::new();
-        for op in &opset.ops {
-            match op.op {
-                roughr::core::OpType::Move => {
-                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
-                }
-                roughr::core::OpType::BCurveTo => {
-                    let _ = write!(
-                        &mut out,
-                        "C{} {}, {} {}, {} {} ",
-                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
-                    );
-                }
-                roughr::core::OpType::LineTo => {
-                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
-                }
-            }
-        }
-        out.trim_end().to_string()
-    }
-
-    Some((ops_to_d(&fill_opset), ops_to_d(&outline_opset)))
+    Some((
+        ops_to_svg_path_d(&fill_opset),
+        ops_to_svg_path_d(&outline_opset),
+    ))
 }

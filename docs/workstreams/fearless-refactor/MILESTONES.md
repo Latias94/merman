@@ -404,6 +404,8 @@ Progress:
   private helpers, leaving the label entry points thin and easier to audit.
 - Narrowed the State link sanitizer's internal URL parsing helpers to file-private visibility, so
   only the public allowlist entry point remains exported.
+- Collapsed repeated Flowchart RoughJS op-set-to-SVG-path serializers into one private helper while
+  preserving RoughJS `opsToPath` formatting and call ordering.
 - Removed the remaining generated `dead_code` allowances after clippy proved the generated
   override modules no longer need that blanket exception.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
