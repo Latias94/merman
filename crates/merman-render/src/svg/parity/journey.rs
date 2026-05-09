@@ -214,7 +214,9 @@ pub(super) fn render_journey_diagram_svg_model(
         let mut i = 0usize;
         while i < b.len() {
             if b[i] != b'<' {
-                let ch = text[i..].chars().next().unwrap();
+                let Some(ch) = text.get(i..).and_then(|rest| rest.chars().next()) else {
+                    break;
+                };
                 cur.push(ch);
                 i += ch.len_utf8();
                 continue;

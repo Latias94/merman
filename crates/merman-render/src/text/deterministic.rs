@@ -13,10 +13,14 @@ impl DeterministicTextMeasurer {
         let mut out = String::with_capacity(text.len());
         let mut i = 0usize;
         while i < text.len() {
+            let Some(rest) = text.get(i..) else {
+                break;
+            };
+
             // Mirror Mermaid's `lineBreakRegex = /<br\\s*\\/?>/gi` behavior:
             // - allow ASCII whitespace between `br` and the optional `/` or `>`
             // - do NOT accept extra characters (e.g. `<br \\t/>` should *not* count as a break)
-            if text[i..].starts_with('<') {
+            if rest.starts_with('<') {
                 let bytes = text.as_bytes();
                 if i + 3 < bytes.len()
                     && matches!(bytes[i + 1], b'b' | b'B')
@@ -37,7 +41,9 @@ impl DeterministicTextMeasurer {
                 }
             }
 
-            let ch = text[i..].chars().next().unwrap();
+            let Some(ch) = rest.chars().next() else {
+                break;
+            };
             out.push(ch);
             i += ch.len_utf8();
         }

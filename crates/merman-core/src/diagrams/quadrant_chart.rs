@@ -213,11 +213,17 @@ fn is_valid_px(value: &str) -> bool {
     !num.is_empty() && num.chars().all(|c| c.is_ascii_digit())
 }
 
+fn next_char_at(s: &str, idx: usize) -> Option<char> {
+    s.get(idx..)?.chars().next()
+}
+
 fn strip_inline_comment(line: &str) -> &str {
     let mut in_quotes = false;
     let mut i = 0usize;
     while i + 1 < line.len() {
-        let ch = line[i..].chars().next().unwrap();
+        let Some(ch) = next_char_at(line, i) else {
+            break;
+        };
         if ch == '"' {
             in_quotes = !in_quotes;
             i += 1;
@@ -259,7 +265,9 @@ fn split_axis_text(s: &str) -> Option<(String, Option<String>)> {
     let mut in_quotes = false;
     let mut i = 0usize;
     while i < s.len() {
-        let ch = s[i..].chars().next().unwrap();
+        let Some(ch) = next_char_at(s, i) else {
+            break;
+        };
         if ch == '"' {
             in_quotes = !in_quotes;
             i += 1;
@@ -335,7 +343,9 @@ fn find_point_colon(s: &str) -> Option<usize> {
     let mut in_quotes = false;
     let mut i = 0usize;
     while i < s.len() {
-        let ch = s[i..].chars().next().unwrap();
+        let Some(ch) = next_char_at(s, i) else {
+            break;
+        };
         if ch == '"' {
             in_quotes = !in_quotes;
             i += 1;
@@ -344,7 +354,9 @@ fn find_point_colon(s: &str) -> Option<usize> {
         if !in_quotes && ch == ':' {
             let mut j = i + 1;
             while j < s.len() {
-                let c2 = s[j..].chars().next().unwrap();
+                let Some(c2) = next_char_at(s, j) else {
+                    break;
+                };
                 if c2.is_whitespace() {
                     j += c2.len_utf8();
                     continue;
@@ -413,7 +425,9 @@ fn split_semicolons(line: &str) -> Vec<&str> {
     let mut start = 0usize;
     let mut i = 0usize;
     while i < line.len() {
-        let ch = line[i..].chars().next().unwrap();
+        let Some(ch) = next_char_at(line, i) else {
+            break;
+        };
         if ch == '"' {
             in_quotes = !in_quotes;
             i += 1;

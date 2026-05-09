@@ -407,11 +407,12 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                         .last()
                         .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
                 {
-                    let opener = stack.pop().unwrap();
-                    tokens[opener.token_index] = open_tag(want).to_string();
-                    tokens.push(close_tag(want).to_string());
-                    i += run_len;
-                    continue;
+                    if let Some(opener) = stack.pop() {
+                        tokens[opener.token_index] = open_tag(want).to_string();
+                        tokens.push(close_tag(want).to_string());
+                        i += run_len;
+                        continue;
+                    }
                 }
                 if can_open {
                     let token_index = tokens.len();

@@ -93,6 +93,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `Option::get_or_insert`.
 - Architecture foreign-object cleanup: replace stack-close expects with explicit split-off
   handling.
+- Core/render scanner cleanup: replace local character-scan and delimiter-stack unwraps in
+  preprocess, Gantt, QuadrantChart, Timeline, Journey, Flowchart labels, and Markdown label helpers
+  with explicit optional branches.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

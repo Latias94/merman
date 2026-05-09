@@ -194,7 +194,7 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
         config.set_value("gantt.displayMode", Value::String(dm));
     }
 
-    let stripped = &input[caps.get(0).unwrap().end()..];
+    let stripped = caps.get(0).map_or(input, |m| &input[m.end()..]);
     Ok((stripped, title, config))
 }
 

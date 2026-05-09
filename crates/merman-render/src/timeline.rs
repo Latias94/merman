@@ -84,20 +84,28 @@ fn section_class(full_section: i64) -> String {
     format!("section-{}", section_index(full_section))
 }
 
+fn next_char_at(text: &str, idx: usize) -> Option<char> {
+    text.get(idx..)?.chars().next()
+}
+
 fn wrap_tokens(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut buf = String::new();
     let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        let ch = text[i..].chars().next().unwrap();
+        let Some(ch) = next_char_at(text, i) else {
+            break;
+        };
         if ch.is_whitespace() {
             if !buf.is_empty() {
                 out.push(std::mem::take(&mut buf));
             }
             // Coalesce any whitespace run into a single token.
             while i < bytes.len() {
-                let c = text[i..].chars().next().unwrap();
+                let Some(c) = next_char_at(text, i) else {
+                    break;
+                };
                 if !c.is_whitespace() {
                     break;
                 }
@@ -107,7 +115,9 @@ fn wrap_tokens(text: &str) -> Vec<String> {
             continue;
         }
 
-        let rest = &text[i..];
+        let Some(rest) = text.get(i..) else {
+            break;
+        };
         if rest.starts_with("<br>") || rest.starts_with("<br/>") || rest.starts_with("<br />") {
             if !buf.is_empty() {
                 out.push(std::mem::take(&mut buf));

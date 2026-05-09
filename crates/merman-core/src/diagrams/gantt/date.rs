@@ -94,7 +94,9 @@ fn tokenize_dayjs_format(fmt: &str) -> Vec<DayjsFormatItem> {
             }
         }
 
-        let rest = &fmt[i..];
+        let Some(rest) = fmt.get(i..) else {
+            break;
+        };
         let mut matched: Option<(&str, DayjsToken)> = None;
         for (pat, tok) in tokens {
             if rest.starts_with(pat) {
@@ -106,7 +108,9 @@ fn tokenize_dayjs_format(fmt: &str) -> Vec<DayjsFormatItem> {
             out.push(DayjsFormatItem::Token(tok));
             i += pat.len();
         } else {
-            let ch = rest.chars().next().unwrap();
+            let Some(ch) = rest.chars().next() else {
+                break;
+            };
             push_lit(&mut out, &ch.to_string());
             i += ch.len_utf8();
         }

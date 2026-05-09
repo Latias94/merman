@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Replaced local character-scan and delimiter-stack unwraps in preprocess, Gantt date formatting,
+  QuadrantChart parsing, Timeline/Journey wrapping, Flowchart labels, and shared Markdown label
+  helpers with explicit optional branches.
 - Reworked the Architecture foreign-object close-tag handling to use `split_off` and explicit
   fallback branches instead of stack-pop expects.
 - Replaced the `svg::parity::path_bounds` initialize-then-unwrap helper with

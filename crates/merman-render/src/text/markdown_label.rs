@@ -221,11 +221,12 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
                     .last()
                     .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
             {
-                let opener = stack.pop().unwrap();
-                tokens[opener.token_index] = open_tag(want).to_string();
-                tokens.push(close_tag(want).to_string());
-                i += run_len;
-                continue;
+                if let Some(opener) = stack.pop() {
+                    tokens[opener.token_index] = open_tag(want).to_string();
+                    tokens.push(close_tag(want).to_string());
+                    i += run_len;
+                    continue;
+                }
             }
             if ch == '*' && can_close {
                 if run_len == 1
@@ -233,23 +234,25 @@ fn mermaid_markdown_paragraph_to_html(label: &str, markdown_auto_wrap: bool) -> 
                         .last()
                         .is_some_and(|d| d.ty == Ty::Strong && d.ch == '*' && d.run_len == 2)
                 {
-                    let opener = stack.pop().unwrap();
-                    tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
-                    tokens.push(close_tag(Ty::Em).to_string());
-                    i += 1;
-                    continue;
+                    if let Some(opener) = stack.pop() {
+                        tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
+                        tokens.push(close_tag(Ty::Em).to_string());
+                        i += 1;
+                        continue;
+                    }
                 }
                 if run_len == 2
                     && stack
                         .last()
                         .is_some_and(|d| d.ty == Ty::Em && d.ch == '*' && d.run_len == 1)
                 {
-                    let opener = stack.pop().unwrap();
-                    tokens[opener.token_index] = open_tag(Ty::Em).to_string();
-                    tokens.push(close_tag(Ty::Em).to_string());
-                    tokens.push("*".to_string());
-                    i += 2;
-                    continue;
+                    if let Some(opener) = stack.pop() {
+                        tokens[opener.token_index] = open_tag(Ty::Em).to_string();
+                        tokens.push(close_tag(Ty::Em).to_string());
+                        tokens.push("*".to_string());
+                        i += 2;
+                        continue;
+                    }
                 }
             }
             if can_open {
@@ -591,11 +594,12 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
                     .last()
                     .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
             {
-                let opener = stack.pop().unwrap();
-                tokens[opener.token_index] = open_tag(want).to_string();
-                tokens.push(close_tag(want).to_string());
-                i += run_len;
-                continue;
+                if let Some(opener) = stack.pop() {
+                    tokens[opener.token_index] = open_tag(want).to_string();
+                    tokens.push(close_tag(want).to_string());
+                    i += run_len;
+                    continue;
+                }
             }
             if ch == '*' && can_close {
                 if run_len == 1
@@ -603,23 +607,25 @@ fn mermaid_markdown_paragraph_to_xhtml(label: &str, markdown_auto_wrap: bool) ->
                         .last()
                         .is_some_and(|d| d.ty == Ty::Strong && d.ch == '*' && d.run_len == 2)
                 {
-                    let opener = stack.pop().unwrap();
-                    tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
-                    tokens.push(close_tag(Ty::Em).to_string());
-                    i += 1;
-                    continue;
+                    if let Some(opener) = stack.pop() {
+                        tokens[opener.token_index] = format!("*{}", open_tag(Ty::Em));
+                        tokens.push(close_tag(Ty::Em).to_string());
+                        i += 1;
+                        continue;
+                    }
                 }
                 if run_len == 2
                     && stack
                         .last()
                         .is_some_and(|d| d.ty == Ty::Em && d.ch == '*' && d.run_len == 1)
                 {
-                    let opener = stack.pop().unwrap();
-                    tokens[opener.token_index] = open_tag(Ty::Em).to_string();
-                    tokens.push(close_tag(Ty::Em).to_string());
-                    tokens.push("*".to_string());
-                    i += 2;
-                    continue;
+                    if let Some(opener) = stack.pop() {
+                        tokens[opener.token_index] = open_tag(Ty::Em).to_string();
+                        tokens.push(close_tag(Ty::Em).to_string());
+                        tokens.push("*".to_string());
+                        i += 2;
+                        continue;
+                    }
                 }
             }
             if can_open {
