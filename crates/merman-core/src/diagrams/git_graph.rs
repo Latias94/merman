@@ -328,12 +328,11 @@ impl GitGraphDb {
             });
         }
 
-        let current_head_id = self.branches.get(&current_branch).cloned().unwrap_or(None);
-        let current_commit = current_head_id
-            .as_ref()
-            .and_then(|id| self.commits.get(id))
-            .cloned();
-        if current_commit.is_none() {
+        let Some(current_head_id) = self
+            .branches
+            .get(&current_branch)
+            .and_then(|id| id.as_ref())
+        else {
             return Err(Error::DiagramParse {
                 diagram_type: "gitGraph".to_string(),
                 message: format!(
@@ -341,7 +340,16 @@ impl GitGraphDb {
                     current_branch
                 ),
             });
-        }
+        };
+        let Some(current_commit) = self.commits.get(current_head_id).cloned() else {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: format!(
+                    "Incorrect usage of \"merge\". Current branch ({})has no commits",
+                    current_branch
+                ),
+            });
+        };
 
         if !self.branches.contains_key(&other_branch) {
             return Err(Error::DiagramParse {
@@ -353,12 +361,8 @@ impl GitGraphDb {
             });
         }
 
-        let other_head_id = self.branches.get(&other_branch).cloned().unwrap_or(None);
-        let other_commit = other_head_id
-            .as_ref()
-            .and_then(|id| self.commits.get(id))
-            .cloned();
-        if other_commit.is_none() {
+        let Some(other_head_id) = self.branches.get(&other_branch).and_then(|id| id.as_ref())
+        else {
             return Err(Error::DiagramParse {
                 diagram_type: "gitGraph".to_string(),
                 message: format!(
@@ -366,10 +370,16 @@ impl GitGraphDb {
                     other_branch
                 ),
             });
-        }
-
-        let current_commit = current_commit.unwrap();
-        let other_commit = other_commit.unwrap();
+        };
+        let Some(other_commit) = self.commits.get(other_head_id).cloned() else {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message: format!(
+                    "Incorrect usage of \"merge\". Branch to be merged ({}) has no commits",
+                    other_branch
+                ),
+            });
+        };
 
         if current_commit.branch == other_branch {
             return Err(Error::DiagramParse {
@@ -397,7 +407,7 @@ impl GitGraphDb {
             }
         }
 
-        let verified_branch = other_head_id.unwrap_or_default();
+        let verified_branch = other_head_id.clone();
         let merge_commit_id = match merge_db.id.clone() {
             Some(id) => id,
             None => {
@@ -439,7 +449,7 @@ impl GitGraphDb {
         cp.target_id = sanitize_text(&cp.target_id, config);
         cp.parent = sanitize_text(&cp.parent, config);
 
-        if cp.id.is_empty() || !self.commits.contains_key(&cp.id) {
+        if cp.id.is_empty() {
             return Err(Error::DiagramParse {
                 diagram_type: "gitGraph".to_string(),
                 message:
@@ -448,7 +458,14 @@ impl GitGraphDb {
             });
         }
 
-        let source_commit = self.commits.get(&cp.id).cloned().unwrap();
+        let Some(source_commit) = self.commits.get(&cp.id).cloned() else {
+            return Err(Error::DiagramParse {
+                diagram_type: "gitGraph".to_string(),
+                message:
+                    "Incorrect usage of \"cherryPick\". Source commit id should exist and provided"
+                        .to_string(),
+            });
+        };
         if !cp.parent.is_empty() && !(source_commit.parents.iter().any(|p| p == &cp.parent)) {
             return Err(Error::DiagramParse {
                 diagram_type: "gitGraph".to_string(),
