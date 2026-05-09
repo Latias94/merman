@@ -545,7 +545,11 @@ fn layout_prepared(
     let extracted_ids: Vec<String> = prepared.extracted.keys().cloned().collect();
     let mut extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)> = BTreeMap::new();
     for id in extracted_ids {
-        let sub = prepared.extracted.get_mut(&id).expect("exists");
+        let Some(sub) = prepared.extracted.get_mut(&id) else {
+            return Err(Error::InvalidModel {
+                message: format!("missing extracted cluster graph: {id}"),
+            });
+        };
         let (sub_frag, sub_bounds) = layout_prepared(sub, node_label_metrics_by_id)?;
 
         // Mermaid injects the extracted cluster root back into the recursive child graph before

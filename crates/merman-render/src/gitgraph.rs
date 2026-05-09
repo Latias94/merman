@@ -95,10 +95,6 @@ fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
         .max(1.0)
 }
 
-fn commit_symbol_type(commit: &GitGraphCommit) -> i64 {
-    commit.custom_type.unwrap_or(commit.commit_type)
-}
-
 #[derive(Debug, Clone, Copy)]
 struct CommitPosition {
     x: f64,
@@ -818,11 +814,7 @@ pub fn layout_gitgraph_diagram_typed(
     }
 
     for c in &commits {
-        let commit = commits_by_id
-            .get(c.id.as_str())
-            .copied()
-            .expect("layout commit must have a source render commit");
-        let r = if commit_symbol_type(commit) == COMMIT_TYPE_MERGE {
+        let r = if c.custom_type.unwrap_or(c.commit_type) == COMMIT_TYPE_MERGE {
             9.0
         } else {
             10.0

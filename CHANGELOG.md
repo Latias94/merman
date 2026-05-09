@@ -82,6 +82,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   local insert/lookup unwraps.
 - GitGraph semantic DB: replace merge/cherry-pick production unwraps with explicit validation
   branches while preserving existing parser errors.
+- Render layout cleanup: remove local invariant expects from GitGraph bounds calculation and
+  recursive Class/State extracted-graph layout.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed local render-layout invariant expects from GitGraph bounds calculation and Class/State
+  recursive extracted-graph layout, turning inconsistent graph state into explicit layout errors.
 - Replaced GitGraph merge and cherry-pick semantic DB unwraps with explicit validation branches
   while preserving GitGraph parser errors and SVG DOM parity.
 - Centralized C4 shape, boundary, and relation record creation behind DB helpers and removed local

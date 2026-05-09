@@ -693,7 +693,11 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
     let extracted_ids: Vec<String> = prepared.extracted.keys().cloned().collect();
     let mut extracted_fragments: HashMap<String, (LayoutFragments, Rect)> = HashMap::new();
     for id in extracted_ids {
-        let sub = prepared.extracted.get_mut(&id).expect("exists");
+        let Some(sub) = prepared.extracted.get_mut(&id) else {
+            return Err(Error::InvalidModel {
+                message: format!("missing extracted cluster graph: {id}"),
+            });
+        };
         let (sub_frag, sub_bounds) = layout_prepared(sub)?;
         extracted_fragments.insert(id, (sub_frag, sub_bounds));
     }
