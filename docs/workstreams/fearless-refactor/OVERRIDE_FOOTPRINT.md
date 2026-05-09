@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `37`.
+Generated override modules scanned: `36`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -41,8 +41,10 @@ helpers; the remaining public Sankey helper is the actual `showValues`-aware pad
 layout tests and render code.
 Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
 text y literals, Sequence now derives its note padding total from the existing note gap, Journey
-inlined its single-use legend placement and mouth offset values, and Radar inlined its remaining
-legend box size and label x-offset literals, bringing the hand-curated helper total to 50.
+inlined its single-use legend placement and mouth offset values, Radar inlined its remaining
+legend box size and label x-offset literals, and XYChart inlined its bar data-label scale and inset
+literals, deleting the empty generated override module and bringing the hand-curated helper total
+to 48.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -119,7 +121,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `50`.
+Total helper functions reported by `xtask`: `48`.
 
 | file | helper functions |
 | --- | ---: |
@@ -132,7 +134,6 @@ Total helper functions reported by `xtask`: `50`.
 | `sankey_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 8 |
 | `treemap_text_overrides_11_12_2.rs` | 8 |
-| `xychart_text_overrides_11_12_2.rs` | 2 |
 
 ### Manual Raw SVG/Path Bridges
 

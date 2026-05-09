@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed XYChart bar data-label scale and inset helpers by inlining the fixed values in the SVG
+  renderer, deleting the now-empty generated override module and reducing the helper footprint to
+  48.
 - Removed Pie's single-use margin, center, radius, legend label font size, title y, and legend
   text y helpers by inlining the fixed values at the layout/render call sites, reducing the
   hand-curated helper footprint to 50.

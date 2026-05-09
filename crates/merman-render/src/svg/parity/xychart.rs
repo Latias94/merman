@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::xychart_text_overrides_11_12_2 as xychart_text_overrides;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
@@ -175,10 +174,8 @@ pub(super) fn render_xychart_diagram_svg(
 
                 // Optional bar data labels (Mermaid emits these in the renderer, not the DB).
                 if layout.show_data_label {
-                    let bar_data_label_scale_factor =
-                        xychart_text_overrides::xychart_bar_data_label_scale_factor();
-                    let bar_data_label_inset_px =
-                        xychart_text_overrides::xychart_bar_data_label_inset_px();
+                    let bar_data_label_scale_factor = 0.7;
+                    let bar_data_label_inset_px = 10.0;
 
                     #[derive(Clone)]
                     struct BarItem<'a> {
@@ -342,21 +339,4 @@ pub(super) fn render_xychart_diagram_svg(
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.push_str("</svg>\n");
     Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::generated::xychart_text_overrides_11_12_2 as xychart_text_overrides;
-
-    #[test]
-    fn xychart_bar_data_label_constants_are_generated() {
-        assert_eq!(
-            xychart_text_overrides::xychart_bar_data_label_scale_factor(),
-            0.7
-        );
-        assert_eq!(
-            xychart_text_overrides::xychart_bar_data_label_inset_px(),
-            10.0
-        );
-    }
 }
