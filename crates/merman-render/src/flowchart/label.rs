@@ -184,7 +184,9 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                             continue;
                         }
                     }
-                    let ch = html[i..].chars().next().unwrap();
+                    let Some(ch) = html[i..].chars().next() else {
+                        break;
+                    };
                     text_buf.push(ch);
                     i += ch.len_utf8();
                 }
@@ -692,7 +694,9 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                         if is_tag_start(rest) {
                             let Some(rel_end) = rest.find('>') else {
                                 // Malformed tag; treat as text.
-                                let ch = rest.chars().next().unwrap();
+                                let Some(ch) = rest.chars().next() else {
+                                    break;
+                                };
                                 out.push(ch);
                                 prev_kind = Some(TokKind::Text);
                                 i += ch.len_utf8();

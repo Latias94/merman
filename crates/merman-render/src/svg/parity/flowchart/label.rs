@@ -218,7 +218,9 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                     continue;
                 }
             }
-            let ch = input[i..].chars().next().unwrap();
+            let Some(ch) = input[i..].chars().next() else {
+                break;
+            };
             out.push(ch);
             i += ch.len_utf8();
         }

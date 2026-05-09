@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Replaced Flowchart HTML label scanner unwraps with explicit UTF-8 character advances while
+  preserving Flowchart render tests and SVG DOM parity.
 - Replaced the Gantt d3-time-format fractional-second parser's peek-then-unwrap loop with an
   explicit peek/advance loop while preserving Gantt DOM parity.
 - Replaced StateDB's insert-then-unwrap state lookup with a single `HashMap::entry` path while
