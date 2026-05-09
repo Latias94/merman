@@ -142,7 +142,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 println!();
                 println!("Options:");
                 println!(
-                    "  --check-no-growth  fail if any category grows beyond the explicit budget"
+                    "  --check-no-growth  fail if any category grows beyond the explicit budget or root viewport lookups bypass the shared helper"
                 );
                 return Ok(());
             }
@@ -202,6 +202,8 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     if check_no_growth {
         check_override_no_growth(&entries)?;
         println!("Override growth check: ok");
+        check_root_viewport_lookup_usage(&parity_dir, &source_root)?;
+        println!("Root viewport override usage check: ok");
         println!();
     }
 
@@ -211,6 +213,9 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         "- Generated module counts cover `crates/merman-render/src/generated`, while manual bridge counts cover hand-authored path-bridge helpers under `crates/merman-render/src/svg/parity`."
     );
     println!("- Root viewport entries count match arms returning `Some((viewBox, max_width))`.");
+    println!(
+        "- Root viewport lookups in parity renderers must be applied through `apply_root_viewport_override`."
+    );
     println!(
         "- Text lookup entries count generated or hand-curated `=> Some(...)` parity branches and rows in `*_OVERRIDES_*` lookup tables."
     );
@@ -241,6 +246,108 @@ fn check_override_no_growth(entries: &[OverrideFootprintEntry]) -> Result<(), Xt
         "override footprint grew beyond the explicit no-growth budget:\n{}",
         failures.join("\n")
     )))
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct RootViewportLookupViolation {
+    file_name: String,
+    line_number: usize,
+    line: String,
+}
+
+fn check_root_viewport_lookup_usage(
+    parity_dir: &Path,
+    source_root: &Path,
+) -> Result<(), XtaskError> {
+    let mut files = collect_parity_rs_files(parity_dir)?;
+    files.sort();
+
+    let mut violations = Vec::new();
+    for path in files {
+        let Some(file_name) = path.strip_prefix(source_root).ok().map(report_path_name) else {
+            continue;
+        };
+        let text = read_text(&path)?;
+        violations.extend(find_root_viewport_lookup_violations(&file_name, &text));
+    }
+
+    if violations.is_empty() {
+        return Ok(());
+    }
+
+    let details = violations
+        .iter()
+        .map(|violation| {
+            format!(
+                "{}:{}: {}",
+                violation.file_name,
+                violation.line_number,
+                violation.line.trim()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(XtaskError::VerifyFailed(format!(
+        "root viewport override lookup bypassed shared helper:\n{details}"
+    )))
+}
+
+fn find_root_viewport_lookup_violations(
+    file_name: &str,
+    text: &str,
+) -> Vec<RootViewportLookupViolation> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r#"\blookup_[A-Za-z0-9_]+_root_viewport_override\b"#).expect("valid regex")
+    });
+
+    let mut violations = Vec::new();
+    let mut apply_call_depth: Option<i32> = None;
+    for (line_index, line) in text.lines().enumerate() {
+        let code = strip_line_comment(line);
+        let mut delta_input = None;
+        if apply_call_depth.is_none() {
+            if let Some(start) = code.find("apply_root_viewport_override(") {
+                apply_call_depth = Some(0);
+                delta_input = Some(&code[start..]);
+            }
+        } else {
+            delta_input = Some(code);
+        }
+
+        if re.is_match(code) && apply_call_depth.is_none() {
+            violations.push(RootViewportLookupViolation {
+                file_name: file_name.to_string(),
+                line_number: line_index + 1,
+                line: line.to_string(),
+            });
+        }
+
+        if let (Some(depth), Some(delta_input)) = (apply_call_depth.as_mut(), delta_input) {
+            *depth += paren_delta(delta_input);
+            if *depth <= 0 {
+                apply_call_depth = None;
+            }
+        }
+    }
+
+    violations
+}
+
+fn strip_line_comment(line: &str) -> &str {
+    line.split_once("//").map_or(line, |(code, _)| code)
+}
+
+fn paren_delta(text: &str) -> i32 {
+    let mut delta = 0;
+    for ch in text.chars() {
+        match ch {
+            '(' => delta += 1,
+            ')' => delta -= 1,
+            _ => {}
+        }
+    }
+    delta
 }
 
 fn collect_generated_override_footprint_entries(
@@ -519,7 +626,8 @@ mod tests {
     use super::{
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
         classify_generated_override_file, count_manual_bridge_functions,
-        count_static_override_table_rows, count_visible_functions, report_path_name,
+        count_static_override_table_rows, count_visible_functions,
+        find_root_viewport_lookup_violations, report_path_name,
     };
     use std::path::Path;
 
@@ -675,5 +783,55 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
         let msg = err.to_string();
         assert!(msg.contains("Manual raw SVG/path bridges grew"));
         assert!(msg.contains("budget 0"));
+    }
+
+    #[test]
+    fn root_viewport_lookup_usage_accepts_shared_helper_call() {
+        let text = r#"
+fn apply(diagram_id: &str) {
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut width_attr,
+        &mut height_attr,
+        &mut max_width_attr,
+        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
+    );
+}
+"#;
+
+        assert!(find_root_viewport_lookup_violations("state/render.rs", text).is_empty());
+    }
+
+    #[test]
+    fn root_viewport_lookup_usage_rejects_direct_lookup_call() {
+        let text = r#"
+fn apply(diagram_id: &str) {
+    if let Some((viewbox, max_w)) =
+        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
+}
+"#;
+
+        let violations = find_root_viewport_lookup_violations("state/render.rs", text);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].file_name, "state/render.rs");
+        assert_eq!(violations[0].line_number, 4);
+    }
+
+    #[test]
+    fn root_viewport_lookup_usage_ignores_line_comments() {
+        let text = r#"
+fn apply() {
+    // crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override
+}
+"#;
+
+        assert!(find_root_viewport_lookup_violations("state/render.rs", text).is_empty());
     }
 }
