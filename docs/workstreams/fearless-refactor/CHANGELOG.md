@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant flowchart cluster-run edge helper after cluster DOM parity stayed green
+  without the special case.
 - Removed the obsolete flowchart degenerate path helper after targeted `edges_to_from_subgraphs`
   and `subgraph_spec` DOM parity checks stayed green without the special case.
 - Made the mmdr benchmark helper scripts lockfile-aware and added `--mmdr-toolchain` so the

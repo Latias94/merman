@@ -464,6 +464,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Count restricted-visibility helper functions in helper footprint.
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
+- [x] Remove the redundant flowchart cluster-run helper after cluster parity stayed green.
+  Evidence: `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` no longer keeps the
+  `maybe_remove_redundant_cluster_run_point` special case, and
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+  --filter cluster` stayed green without it.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
   Evidence: root viewport footprint is down 795 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path

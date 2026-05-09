@@ -197,10 +197,9 @@ fn flowchart_compute_edge_path_geom_impl(
         intersect_for_layout_shape, is_rounded_intersect_shift_shape,
         line_with_offset_for_edge_type, maybe_collapse_straight_except_one_endpoint,
         maybe_fix_corners, maybe_insert_midpoint_for_basis, maybe_normalize_selfedge_loop_points,
-        maybe_pad_cyclic_special_basis_route, maybe_remove_redundant_cluster_run_point,
-        maybe_snap_data_point_to_f32, maybe_snap_shallow_basis_triplet_y_to_f32,
-        maybe_truncate_data_point, normalize_cyclic_special_data_points,
-        write_flowchart_edge_trace,
+        maybe_pad_cyclic_special_basis_route, maybe_snap_data_point_to_f32,
+        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
+        normalize_cyclic_special_data_points, write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -378,10 +377,6 @@ fn flowchart_compute_edge_path_geom_impl(
         && points_for_render.len() > 4
     {
         maybe_collapse_straight_except_one_endpoint(points_for_render);
-    }
-
-    if is_basis && is_cluster_edge {
-        maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
     if is_basis

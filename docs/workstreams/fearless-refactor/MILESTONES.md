@@ -533,6 +533,8 @@ Progress:
   31 Architecture root pins that still guard real `parity-root` drift.
 - The obsolete flowchart degenerate path helper was removed after the `edges_to_from_subgraphs`
   and `subgraph_spec` flowchart DOM parity checks stayed green without it.
+- The redundant flowchart cluster-run helper was removed after the cluster flowchart DOM parity
+  check stayed green without the special case.
 
 Exit criteria:
 
