@@ -65,7 +65,9 @@ fn decode_html_characters_like(input: &str) -> String {
             }
         }
 
-        let ch = without_ctrl[i..].chars().next().expect("valid utf-8");
+        let Some(ch) = without_ctrl.get(i..).and_then(|rest| rest.chars().next()) else {
+            break;
+        };
         out.push(ch);
         i += ch.len_utf8();
     }

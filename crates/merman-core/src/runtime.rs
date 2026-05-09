@@ -36,7 +36,7 @@ pub(crate) fn today_naive_local() -> NaiveDate {
 pub(crate) fn datetime_from_naive_local(naive: NaiveDateTime) -> chrono::DateTime<FixedOffset> {
     if let Some(mins) = FIXED_LOCAL_OFFSET_MINUTES.with(|cell| cell.get()) {
         let offset = FixedOffset::east_opt(mins.saturating_mul(60))
-            .unwrap_or_else(|| FixedOffset::east_opt(0).expect("UTC offset must be valid"));
+            .unwrap_or_else(crate::time::utc_fixed_offset);
         return offset
             .from_local_datetime(&naive)
             .single()
@@ -50,7 +50,7 @@ pub(crate) fn datetime_from_naive_local(naive: NaiveDateTime) -> chrono::DateTim
         chrono::LocalResult::Ambiguous(a, _b) => a.fixed_offset(),
         chrono::LocalResult::None => chrono::DateTime::<FixedOffset>::from_naive_utc_and_offset(
             naive,
-            FixedOffset::east_opt(0).expect("UTC offset must be valid"),
+            crate::time::utc_fixed_offset(),
         ),
     }
 }
@@ -60,7 +60,7 @@ pub(crate) fn datetime_to_local_fixed(
 ) -> chrono::DateTime<FixedOffset> {
     if let Some(mins) = FIXED_LOCAL_OFFSET_MINUTES.with(|cell| cell.get()) {
         let offset = FixedOffset::east_opt(mins.saturating_mul(60))
-            .unwrap_or_else(|| FixedOffset::east_opt(0).expect("UTC offset must be valid"));
+            .unwrap_or_else(crate::time::utc_fixed_offset);
         return dt.with_timezone(&offset);
     }
 

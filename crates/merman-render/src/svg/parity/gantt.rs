@@ -26,8 +26,7 @@ fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 
 
 fn gantt_start_of_day_ms(ms: i64) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt_fixed_utc =
-        dt_utc.with_timezone(&chrono::FixedOffset::east_opt(0).expect("UTC offset must be valid"));
+    let dt_fixed_utc = dt_utc.with_timezone(&merman_core::time::utc_fixed_offset());
     let dt = merman_core::time::datetime_to_local_fixed(dt_fixed_utc);
     let d = dt.date_naive();
     let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);

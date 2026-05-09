@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset, NaiveDateTime};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, Offset};
 
 /// Overrides the "local timezone offset" (in minutes) for the current thread.
 ///
@@ -31,4 +31,9 @@ pub fn datetime_to_local_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffse
 /// Returns the `NaiveDateTime` for an absolute instant under the active local-time semantics.
 pub fn datetime_to_naive_local(dt: DateTime<FixedOffset>) -> NaiveDateTime {
     crate::runtime::datetime_to_naive_local(dt)
+}
+
+/// Returns the UTC fixed offset without fallible construction.
+pub fn utc_fixed_offset() -> FixedOffset {
+    chrono::Utc.fix()
 }

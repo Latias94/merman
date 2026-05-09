@@ -17,7 +17,7 @@ const DEFAULT_WIDTH: f64 = 1184.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
 fn utc_offset() -> FixedOffset {
-    FixedOffset::east_opt(0).expect("UTC offset must be valid")
+    merman_core::time::utc_fixed_offset()
 }
 
 fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {

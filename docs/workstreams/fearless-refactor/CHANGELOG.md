@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Centralized zero-offset timezone construction behind `merman_core::time::utc_fixed_offset()` and
+  reused it in runtime/Gantt code paths.
 - Replaced local character-scan and delimiter-stack unwraps in preprocess, Gantt date formatting,
   QuadrantChart parsing, Timeline/Journey wrapping, Flowchart labels, and shared Markdown label
   helpers with explicit optional branches.

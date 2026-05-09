@@ -549,7 +549,7 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
 
     if let Some(ms) = parts.unix_ms {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-        return Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap()));
+        return Some(dt.with_timezone(&crate::time::utc_fixed_offset()));
     }
 
     let base_date = crate::runtime::today_naive_local();
@@ -741,7 +741,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         if sep == '-' && js_date_only_is_iso_utc(year_str, month_str, day_str) {
             let dt_utc =
                 chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc);
-            return Some(dt_utc.with_timezone(&FixedOffset::east_opt(0)?));
+            return Some(dt_utc.with_timezone(&crate::time::utc_fixed_offset()));
         }
         return Some(local_from_naive(naive));
     }
@@ -940,7 +940,7 @@ pub(super) fn get_start_date(
     if (fmt == "x" || fmt == "X") && !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
         if let Ok(ms) = s.parse::<i64>() {
             if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) {
-                return Ok(Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap())));
+                return Ok(Some(dt.with_timezone(&crate::time::utc_fixed_offset())));
             }
         }
     }
