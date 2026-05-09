@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Centralized C4 shape, boundary, and relation record creation behind DB helpers and removed local
+  C4 insert/lookup unwraps while preserving C4 parser tests and SVG DOM parity.
 - Replaced Flowchart HTML label scanner unwraps with explicit UTF-8 character advances while
   preserving Flowchart render tests and SVG DOM parity.
 - Replaced the Gantt d3-time-format fractional-second parser's peek-then-unwrap loop with an

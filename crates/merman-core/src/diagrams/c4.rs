@@ -233,6 +233,49 @@ impl C4Db {
         self.boundaries.push(obj);
     }
 
+    fn ensure_shape(&mut self, alias: &str) -> &mut Map<String, Value> {
+        let shapes = &mut self.shapes;
+        let idx = *self
+            .shape_index
+            .entry(alias.to_string())
+            .or_insert_with(|| {
+                let idx = shapes.len();
+                let mut obj = Map::new();
+                obj.insert("alias".to_string(), json!(alias));
+                shapes.push(obj);
+                idx
+            });
+        &mut shapes[idx]
+    }
+
+    fn ensure_boundary(&mut self, alias: &str) -> &mut Map<String, Value> {
+        let boundaries = &mut self.boundaries;
+        let idx = *self
+            .boundary_index
+            .entry(alias.to_string())
+            .or_insert_with(|| {
+                let idx = boundaries.len();
+                let mut obj = Map::new();
+                obj.insert("alias".to_string(), json!(alias));
+                boundaries.push(obj);
+                idx
+            });
+        &mut boundaries[idx]
+    }
+
+    fn ensure_relation(&mut self, from: &str, to: &str) -> &mut Map<String, Value> {
+        if let Some(idx) = self
+            .rels
+            .iter()
+            .position(|r| r.get("from") == Some(&json!(from)) && r.get("to") == Some(&json!(to)))
+        {
+            return &mut self.rels[idx];
+        }
+        self.rels.push(Map::new());
+        let idx = self.rels.len() - 1;
+        &mut self.rels[idx]
+    }
+
     fn set_c4_type(&mut self, raw: &str, config: &MermaidConfig) {
         self.c4_type = sanitize_text(raw, config);
     }
@@ -250,27 +293,14 @@ impl C4Db {
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let descr = args.get(2).cloned();
 
-        let idx = match self.shape_index.get(&alias).copied() {
-            Some(idx) => idx,
-            None => {
-                let idx = self.shapes.len();
-                self.shape_index.insert(alias.clone(), idx);
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                self.shapes.push(obj);
-                idx
-            }
-        };
-
-        let obj = self.shapes.get_mut(idx).unwrap();
+        let current_boundary = self.current_boundary.clone();
+        let wrap_enabled = self.wrap_enabled;
+        let obj = self.ensure_shape(&alias);
         obj.insert("label".to_string(), wrap_text(label));
         apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
         obj.insert("typeC4Shape".to_string(), wrap_text(json!(type_c4_shape)));
-        obj.insert(
-            "parentBoundary".to_string(),
-            json!(self.current_boundary.clone()),
-        );
-        obj.insert("wrap".to_string(), json!(self.wrap_enabled));
+        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
 
         apply_kv_value(obj, "sprite", args.get(3))?;
         apply_kv_value(obj, "tags", args.get(4))?;
@@ -284,28 +314,15 @@ impl C4Db {
         let techn = args.get(2).cloned();
         let descr = args.get(3).cloned();
 
-        let idx = match self.shape_index.get(&alias).copied() {
-            Some(idx) => idx,
-            None => {
-                let idx = self.shapes.len();
-                self.shape_index.insert(alias.clone(), idx);
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                self.shapes.push(obj);
-                idx
-            }
-        };
-
-        let obj = self.shapes.get_mut(idx).unwrap();
+        let current_boundary = self.current_boundary.clone();
+        let wrap_enabled = self.wrap_enabled;
+        let obj = self.ensure_shape(&alias);
         obj.insert("label".to_string(), wrap_text(label));
         apply_text_field_or_kv(obj, "techn", techn.unwrap_or_else(|| json!("")))?;
         apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
         obj.insert("typeC4Shape".to_string(), wrap_text(json!(type_c4_shape)));
-        obj.insert(
-            "parentBoundary".to_string(),
-            json!(self.current_boundary.clone()),
-        );
-        obj.insert("wrap".to_string(), json!(self.wrap_enabled));
+        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
 
         apply_kv_value(obj, "sprite", args.get(4))?;
         apply_kv_value(obj, "tags", args.get(5))?;
@@ -324,19 +341,9 @@ impl C4Db {
         let tags = args.get(3).cloned();
         let link = args.get(4).cloned();
 
-        let idx = match self.boundary_index.get(&alias).copied() {
-            Some(idx) => idx,
-            None => {
-                let idx = self.boundaries.len();
-                self.boundary_index.insert(alias.clone(), idx);
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                self.boundaries.push(obj);
-                idx
-            }
-        };
-
-        let obj = self.boundaries.get_mut(idx).unwrap();
+        let current_boundary = self.current_boundary.clone();
+        let wrap_enabled = self.wrap_enabled;
+        let obj = self.ensure_boundary(&alias);
         obj.insert("label".to_string(), wrap_text(label));
         let ty = boundary_type.unwrap_or_else(|| json!("system"));
         apply_text_field_or_kv(obj, "type", ty)?;
@@ -344,11 +351,8 @@ impl C4Db {
         apply_kv_value(obj, "tags", tags.as_ref())?;
         apply_kv_value(obj, "link", link.as_ref())?;
 
-        obj.insert(
-            "parentBoundary".to_string(),
-            json!(self.current_boundary.clone()),
-        );
-        obj.insert("wrap".to_string(), json!(self.wrap_enabled));
+        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
 
         self.parent_boundary = self.current_boundary.clone();
         self.current_boundary = alias;
@@ -369,19 +373,9 @@ impl C4Db {
         let tags = args.get(5).cloned();
         let link = args.get(6).cloned();
 
-        let idx = match self.boundary_index.get(&alias).copied() {
-            Some(idx) => idx,
-            None => {
-                let idx = self.boundaries.len();
-                self.boundary_index.insert(alias.clone(), idx);
-                let mut obj = Map::new();
-                obj.insert("alias".to_string(), json!(alias));
-                self.boundaries.push(obj);
-                idx
-            }
-        };
-
-        let obj = self.boundaries.get_mut(idx).unwrap();
+        let current_boundary = self.current_boundary.clone();
+        let wrap_enabled = self.wrap_enabled;
+        let obj = self.ensure_boundary(&alias);
         obj.insert("label".to_string(), wrap_text(label));
 
         let ty = node_label_type.unwrap_or_else(|| json!("node"));
@@ -391,11 +385,8 @@ impl C4Db {
         apply_kv_value(obj, "link", link.as_ref())?;
 
         obj.insert("nodeType".to_string(), json!(node_type));
-        obj.insert(
-            "parentBoundary".to_string(),
-            json!(self.current_boundary.clone()),
-        );
-        obj.insert("wrap".to_string(), json!(self.wrap_enabled));
+        obj.insert("parentBoundary".to_string(), json!(current_boundary));
+        obj.insert("wrap".to_string(), json!(wrap_enabled));
 
         self.parent_boundary = self.current_boundary.clone();
         self.current_boundary = alias;
@@ -418,17 +409,8 @@ impl C4Db {
             return Ok(());
         };
 
-        let existing_idx = self
-            .rels
-            .iter()
-            .position(|r| r.get("from") == Some(&json!(from)) && r.get("to") == Some(&json!(to)));
-
-        let rel = if let Some(idx) = existing_idx {
-            self.rels.get_mut(idx).unwrap()
-        } else {
-            self.rels.push(Map::new());
-            self.rels.last_mut().unwrap()
-        };
+        let wrap_enabled = self.wrap_enabled;
+        let rel = self.ensure_relation(&from, &to);
 
         rel.insert("type".to_string(), json!(rel_type));
         rel.insert("from".to_string(), json!(from));
@@ -443,7 +425,7 @@ impl C4Db {
         apply_kv_value(rel, "sprite", args.get(5))?;
         apply_kv_value(rel, "tags", args.get(6))?;
         apply_kv_value(rel, "link", args.get(7))?;
-        rel.insert("wrap".to_string(), json!(self.wrap_enabled));
+        rel.insert("wrap".to_string(), json!(wrap_enabled));
         Ok(())
     }
 
@@ -1167,10 +1149,10 @@ fn parse_args_csv(input: &str) -> Result<Vec<Value>> {
         }
         let (seg, rest) = split_next_arg(cur);
         out.push(parse_arg(seg.trim())?);
-        if rest.is_none() {
+        let Some(rest) = rest else {
             break;
-        }
-        cur = rest.unwrap();
+        };
+        cur = rest;
     }
     Ok(out)
 }
