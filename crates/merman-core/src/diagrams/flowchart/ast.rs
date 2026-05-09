@@ -18,13 +18,9 @@ pub(crate) struct ClassAssignStmt {
     pub class_name: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) enum ClickAction {
-    Callback {
-        function_name: String,
-        function_args: Option<String>,
-    },
+    Callback,
     Link {
         href: String,
         target: Option<String>,

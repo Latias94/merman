@@ -375,6 +375,8 @@ Progress:
 - Replaced core flowchart semantic and state layout long-argument helpers with context structs, and
   made `StateDb::add_state` merge `StateStmt` directly; source code no longer carries
   `clippy::too_many_arguments` allows.
+- Collapsed Flowchart callback AST actions to the semantic callback flag used by rendering,
+  removing the last non-generated `dead_code` allow from the core/render source tree.
 - Removed stale core parser helpers left behind by typed pipeline cleanup: `BlockDb` no longer has
   an unused id generator, and Flowchart no longer keeps obsolete collect/merge helpers.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram

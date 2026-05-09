@@ -70,7 +70,7 @@ impl<'a> FlowchartSemanticContext<'a> {
                                     self.nodes[idx].link_target = target.clone();
                                 }
                             }
-                            ClickAction::Callback { .. } => {
+                            ClickAction::Callback => {
                                 if self.security_level_loose {
                                     if let Some(&idx) = self.node_index.get(id) {
                                         self.nodes[idx].have_callback = true;

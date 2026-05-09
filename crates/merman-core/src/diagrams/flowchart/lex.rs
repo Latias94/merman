@@ -331,30 +331,19 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
                 message: "Invalid click statement".to_string(),
             });
         }
-        let function_name = p.s[start..p.i].to_string();
-
-        let mut function_args: Option<String> = None;
         p.skip_ws();
         if p.peek() == Some(b'(') {
             p.i += 1;
-            let args_start = p.i;
             while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
                 p.i += 1;
             }
-            let args = p.s[args_start..p.i].to_string();
             if p.peek() == Some(b')') {
                 p.i += 1;
-            }
-            if !args.trim().is_empty() {
-                function_args = Some(args);
             }
         }
 
         tooltip = p.take_quoted();
-        action = ClickAction::Callback {
-            function_name,
-            function_args,
-        };
+        action = ClickAction::Callback;
         return Ok(ClickStmt {
             ids,
             tooltip,
@@ -377,16 +366,13 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
         });
     }
 
-    let Some(function_name) = p.take_word() else {
+    let Some(_function_name) = p.take_word() else {
         return Err(LexError {
             message: "Invalid click statement".to_string(),
         });
     };
     tooltip = p.take_quoted();
-    action = ClickAction::Callback {
-        function_name,
-        function_args: None,
-    };
+    action = ClickAction::Callback;
     Ok(ClickStmt {
         ids,
         tooltip,
@@ -451,13 +437,7 @@ mod tests {
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert!(function_args.is_none());
-            }
+            ClickAction::Callback => {}
             _ => panic!("expected callback action"),
         }
     }
@@ -468,13 +448,7 @@ mod tests {
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert!(function_args.is_none());
-            }
+            ClickAction::Callback => {}
             _ => panic!("expected callback action"),
         }
     }
@@ -483,13 +457,7 @@ mod tests {
     fn parse_click_stmt_parses_call_callback_with_args() {
         let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)").unwrap();
         match stmt.action {
-            ClickAction::Callback {
-                function_name,
-                function_args,
-            } => {
-                assert_eq!(function_name, "callback");
-                assert_eq!(function_args.as_deref(), Some("\"test0\", test1, test2"));
-            }
+            ClickAction::Callback => {}
             _ => panic!("expected callback action"),
         }
     }
