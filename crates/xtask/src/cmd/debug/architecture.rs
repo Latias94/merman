@@ -170,7 +170,6 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         Ok((viewbox, max_width, services, junctions, groups))
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = crate::cmd::fixtures_root().join("architecture");
     let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
@@ -689,7 +688,6 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         })
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let fixtures_dir = crate::cmd::fixtures_root().join("architecture");
     let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")

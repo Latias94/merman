@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed stale `workspace_root` plumbing from `xtask` fixture, snapshot, compare, debug,
+  generate, import, and override helpers after centralizing project-root helpers, restoring the
+  strict gate including workspace clippy.
 - Added project-root helpers in `cmd::paths` for `fixtures`, `target`, `repo-ref/mermaid`,
   `repo-ref/dompurify`, and `tools/mermaid-cli`, then routed the `generate`, `audit`,
   `compare/xml`, `compare/flowchart`, `overrides`, and import call sites through them, deleting

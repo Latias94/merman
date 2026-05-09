@@ -232,7 +232,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     // (after `encodeEntities(...)`), not from the final decoded SVG glyphs. To match upstream,
     // include raw strings extracted from our pinned fixture corpus as additional override seeds.
     if mode == "sequence" {
-        let workspace_root = crate::cmd::workspace_root();
         let fixtures_dir = crate::cmd::fixtures_root().join("sequence");
 
         let engine = merman::Engine::new();

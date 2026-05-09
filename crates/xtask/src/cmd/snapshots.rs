@@ -144,8 +144,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         }
     }
 
-    let workspace_root = crate::cmd::workspace_root();
-    let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
+    let fixtures_root = fixtures_root_for_diagram(&diagram);
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {
@@ -536,8 +535,7 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
-    let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
+    let fixtures_root = fixtures_root_for_diagram(&diagram);
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {

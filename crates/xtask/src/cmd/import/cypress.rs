@@ -2605,8 +2605,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         ));
     }
 
-    let report_path = crate::cmd::target_root()
-        .join("import-upstream-cypress.report.txt");
+    let report_path = crate::cmd::target_root().join("import-upstream-cypress.report.txt");
     let mut report_lines: Vec<String> = Vec::new();
 
     fn deferred_with_baselines_reason(
@@ -2843,7 +2842,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             || first.contains(r#"style="max-width: 16px"#)
     }
 
-    fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
+    fn cleanup_fixture_files(f: &CreatedFixture) {
         let _ = fs::remove_file(&f.path);
         let _ = fs::remove_file(
             crate::cmd::fixtures_root()
@@ -2863,7 +2862,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         );
     }
 
-    fn defer_fixture_files_keep_baselines(workspace_root: &Path, f: &CreatedFixture) {
+    fn defer_fixture_files_keep_baselines(f: &CreatedFixture) {
         let deferred_dir = crate::cmd::fixtures_root()
             .join("_deferred")
             .join(&f.diagram_dir);
@@ -2899,7 +2898,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         );
     }
 
-    fn defer_fixture_files_no_baselines(workspace_root: &Path, f: &CreatedFixture) -> PathBuf {
+    fn defer_fixture_files_no_baselines(f: &CreatedFixture) -> PathBuf {
         let deferred_dir = crate::cmd::fixtures_root()
             .join("_deferred")
             .join(&f.diagram_dir);
@@ -3018,7 +3017,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (deferred for --with-baselines): {} ({reason})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
 
@@ -3032,7 +3031,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 f.source_call,
                 f.source_test_name.clone().unwrap_or_default(),
             ));
-            let deferred_path = defer_fixture_files_no_baselines(&workspace_root, &f);
+            let deferred_path = defer_fixture_files_no_baselines(&f);
             imported_deferred += 1;
             skipped.push(format!(
                 "skip (deferred without baselines): {} ({reason})",
@@ -3091,7 +3090,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                         msg.lines().next().unwrap_or("unknown upstream error"),
                     ));
 
-                    let deferred_path = defer_fixture_files_no_baselines(&workspace_root, &f);
+                    let deferred_path = defer_fixture_files_no_baselines(&f);
                     imported_deferred += 1;
                     skipped.push(format!(
                         "skip (deferred without baselines): {} ({reason})",
@@ -3114,7 +3113,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                         f.path.display(),
                         msg.lines().next().unwrap_or("unknown upstream error")
                     ));
-                    cleanup_fixture_files(&workspace_root, &f);
+                    cleanup_fixture_files(&f);
                 }
                 continue;
             }
@@ -3139,7 +3138,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
 
@@ -3157,7 +3156,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (deferred for --with-baselines): {} ({reason})",
                 f.path.display(),
             ));
-            defer_fixture_files_keep_baselines(&workspace_root, &f);
+            defer_fixture_files_keep_baselines(&f);
             imported_deferred += 1;
             existing.insert(fixture_text.clone(), deferred_out_path);
             continue;
@@ -3182,7 +3181,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
 
@@ -3205,7 +3204,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (layout snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
 
@@ -3238,7 +3237,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "skip (svg dom parity mismatch; deferred): {} ({msg_head})",
                 f.path.display(),
             ));
-            defer_fixture_files_keep_baselines(&workspace_root, &f);
+            defer_fixture_files_keep_baselines(&f);
             imported_deferred += 1;
             existing.insert(fixture_text.clone(), deferred_out_path);
             continue;

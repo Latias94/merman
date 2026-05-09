@@ -885,7 +885,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             svg.contains("aria-roledescription=\"error\"")
         }
 
-        fn cleanup_fixture_and_svg(workspace_root: &Path, f: &CreatedFixture) {
+        fn cleanup_fixture_and_svg(f: &CreatedFixture) {
             let _ = fs::remove_file(&f.path);
             let _ = fs::remove_file(
                 crate::cmd::fixtures_root()
@@ -905,11 +905,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             );
         }
 
-        fn defer_fixture_and_svg(
-            workspace_root: &Path,
-            f: &CreatedFixture,
-            keep_upstream_svg: bool,
-        ) {
+        fn defer_fixture_and_svg(f: &CreatedFixture, keep_upstream_svg: bool) {
             let deferred_fixture_dir = crate::cmd::fixtures_root()
                 .join("_deferred")
                 .join(&f.diagram_dir);
@@ -977,7 +973,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "defer (upstream svg generation failed): {} ({err})",
                     f.path.display()
                 ));
-                defer_fixture_and_svg(&workspace_root, f, false);
+                defer_fixture_and_svg(f, false);
                 continue;
             }
 
@@ -990,7 +986,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "defer (upstream rendered error diagram): {}",
                     f.path.display()
                 ));
-                defer_fixture_and_svg(&workspace_root, f, true);
+                defer_fixture_and_svg(f, true);
                 continue;
             }
 
@@ -1004,7 +1000,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "skip (snapshot update failed): {} ({err})",
                     f.path.display()
                 ));
-                cleanup_fixture_and_svg(&workspace_root, f);
+                cleanup_fixture_and_svg(f);
                 continue;
             }
 
@@ -1018,7 +1014,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "skip (layout snapshot update failed): {} ({err})",
                     f.path.display()
                 ));
-                cleanup_fixture_and_svg(&workspace_root, f);
+                cleanup_fixture_and_svg(f);
                 continue;
             }
 
@@ -1038,7 +1034,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                     "skip (svg dom parity mismatch): {} ({err})",
                     f.path.display()
                 ));
-                cleanup_fixture_and_svg(&workspace_root, f);
+                cleanup_fixture_and_svg(f);
                 continue;
             }
 

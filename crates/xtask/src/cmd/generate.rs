@@ -135,9 +135,8 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 workspace_root.join(p)
             }
         })
-        .unwrap_or_else(|| crate::cmd::fixtures_root());
-    let out_root =
-        out_root.unwrap_or_else(|| crate::cmd::fixtures_root().join("upstream-svgs"));
+        .unwrap_or_else(crate::cmd::fixtures_root);
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::fixtures_root().join("upstream-svgs"));
 
     let tools_root = crate::cmd::mermaid_cli_root();
     let node_modules = tools_root.join("node_modules");
@@ -190,7 +189,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let node_cwd = crate::cmd::mermaid_cli_root();
         let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
         let seeded_script = if use_seeded_renderer {
-            Some(ensure_seeded_upstream_svg_renderer_script(workspace_root)?)
+            Some(ensure_seeded_upstream_svg_renderer_script()?)
         } else {
             None
         };
@@ -506,7 +505,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let baseline_root = crate::cmd::fixtures_root().join("upstream-svgs");
     let out_root = crate::cmd::target_root().join("upstream-svgs-check");
 
@@ -527,7 +525,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     gen_upstream_svgs(gen_args)?;
 
     struct UpstreamSvgCheck<'a> {
-        workspace_root: &'a Path,
         baseline_root: &'a Path,
         out_root: &'a Path,
         diagram: &'a str,
@@ -539,7 +536,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
         let UpstreamSvgCheck {
-            workspace_root,
             baseline_root,
             out_root,
             diagram,
@@ -674,7 +670,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "treemap",
             ] {
                 if let Err(err) = check_one(UpstreamSvgCheck {
-                    workspace_root: &workspace_root,
                     baseline_root: &baseline_root,
                     out_root: &out_root,
                     diagram: d,
@@ -696,7 +691,6 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
         | "block" | "radar" | "quadrantchart" | "treemap" | "mindmap" | "architecture" => {
             check_one(UpstreamSvgCheck {
-                workspace_root: &workspace_root,
                 baseline_root: &baseline_root,
                 out_root: &out_root,
                 diagram: diagram.as_str(),
@@ -723,9 +717,7 @@ pub(crate) fn find_mmdc(tools_root: &Path) -> Option<PathBuf> {
     None
 }
 
-pub(crate) fn ensure_seeded_upstream_svg_renderer_script(
-    workspace_root: &Path,
-) -> Result<PathBuf, XtaskError> {
+pub(crate) fn ensure_seeded_upstream_svg_renderer_script() -> Result<PathBuf, XtaskError> {
     const JS: &str = r#"
 const fs = require('fs');
 const path = require('path');
@@ -1090,7 +1082,6 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
     let fixtures_dir = crate::cmd::fixtures_root().join("er");
@@ -1185,15 +1176,9 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
-    fn gen_one(
-        workspace_root: &Path,
-        out_root: &Path,
-        diagram: &str,
-        filter: Option<&str>,
-    ) -> Result<(), XtaskError> {
+    fn gen_one(out_root: &Path, diagram: &str, filter: Option<&str>) -> Result<(), XtaskError> {
         let (fixtures_dir, out_dir) = match diagram {
             "flowchart" | "flowchart-v2" | "flowchartV2" => (
                 crate::cmd::fixtures_root().join("flowchart"),
@@ -1207,10 +1192,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 crate::cmd::fixtures_root().join("class"),
                 out_root.join("class"),
             ),
-            "er" | "erDiagram" => (
-                crate::cmd::fixtures_root().join("er"),
-                out_root.join("er"),
-            ),
+            "er" | "erDiagram" => (crate::cmd::fixtures_root().join("er"), out_root.join("er")),
             "sequence" => (
                 crate::cmd::fixtures_root().join("sequence"),
                 out_root.join("sequence"),
@@ -1401,7 +1383,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut failures: Vec<String> = Vec::new();
     for d in diagrams {
-        if let Err(err) = gen_one(&workspace_root, &out_root, d, filter) {
+        if let Err(err) = gen_one(&out_root, d, filter) {
             failures.push(format!("{d}: {err}"));
         }
     }
@@ -1633,7 +1615,6 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
     let fixtures_dir = crate::cmd::fixtures_root().join("flowchart");
@@ -1718,7 +1699,6 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
     let fixtures_dir = crate::cmd::fixtures_root().join("state");
@@ -1804,7 +1784,6 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
     let fixtures_dir = crate::cmd::fixtures_root().join("class");
@@ -1896,7 +1875,6 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
     let fixtures_dir = crate::cmd::fixtures_root().join("c4");

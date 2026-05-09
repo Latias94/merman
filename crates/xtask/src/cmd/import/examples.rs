@@ -273,7 +273,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             || first.contains(r#"style="max-width: 16px"#)
     }
 
-    fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
+    fn cleanup_fixture_files(f: &CreatedFixture) {
         let _ = fs::remove_file(&f.path);
         let _ = fs::remove_file(
             crate::cmd::fixtures_root()
@@ -293,7 +293,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         );
     }
 
-    fn defer_fixture_files(workspace_root: &Path, f: &CreatedFixture, keep_upstream_svg: bool) {
+    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool) {
         let deferred_fixture_dir = crate::cmd::fixtures_root()
             .join("_deferred")
             .join(&f.diagram_dir);
@@ -484,8 +484,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         }
     }
 
-    let report_path = crate::cmd::target_root()
-        .join("import-upstream-examples.report.txt");
+    let report_path = crate::cmd::target_root().join("import-upstream-examples.report.txt");
     let mut report_lines: Vec<String> = Vec::new();
     let mut report_total_candidates: usize = 0;
     let mut report_skip_duplicate_content: usize = 0;
@@ -577,7 +576,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (deferred for --with-baselines): {} ({reason})",
                 f.path.display(),
             ));
-            defer_fixture_files(&workspace_root, &f, false);
+            defer_fixture_files(&f, false);
             continue;
         }
 
@@ -607,7 +606,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     f.path.display(),
                     msg.lines().next().unwrap_or("unknown upstream error")
                 ));
-                defer_fixture_files(&workspace_root, &f, false);
+                defer_fixture_files(&f, false);
                 continue;
             }
             Err(other) => return Err(other),
@@ -630,7 +629,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
                 f.path.display(),
             ));
-            defer_fixture_files(&workspace_root, &f, true);
+            defer_fixture_files(&f, true);
             continue;
         }
 
@@ -652,7 +651,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
         if let Err(err) = super::super::update_layout_snapshots(vec![
@@ -673,7 +672,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                 "skip (layout snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&workspace_root, &f);
+            cleanup_fixture_files(&f);
             continue;
         }
 

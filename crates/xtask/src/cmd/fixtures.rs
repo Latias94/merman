@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub(crate) fn fixtures_root_for_diagram(workspace_root: &Path, diagram: &str) -> PathBuf {
+pub(crate) fn fixtures_root_for_diagram(diagram: &str) -> PathBuf {
     if diagram == "all" {
         crate::cmd::fixtures_root()
     } else {

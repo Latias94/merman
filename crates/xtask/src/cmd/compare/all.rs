@@ -121,7 +121,6 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         out.trim_matches('_').to_string()
     }
 
-    let workspace_root = crate::cmd::workspace_root();
     let compare_dir = crate::cmd::target_root().join("compare");
     fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
         path: compare_dir.display().to_string(),
