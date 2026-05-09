@@ -15,6 +15,14 @@ Last updated: 2026-05-09.
 | `crates/merman-core/src/diagrams/state/mod.rs` | `clippy::empty_line_after_outer_attr`, `clippy::filter_map_identity` | Required for generated LALRPOP parser code. Removing these makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `state_grammar.rs` around generated `___ToTriple` helpers and `items.into_iter().filter_map(|i| i).collect()`. | Regenerate or patch the grammar output so the generated parser emits `.flatten()` and no blank line after generated outer attributes, then remove the wrapper allowances. |
 | `crates/merman-core/src/diagrams/flowchart.rs` | `clippy::empty_line_after_outer_attr`, `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `flowchart_grammar.rs` with empty-line output around generated tuple helpers, `result_large_err` around the parser return type, and `type_complexity` around generated link segment tuple helpers. | Audit only after changing the generated parser/error/output shape; do not treat this as local hand-written cleanup. |
 | `crates/merman-core/src/diagrams/sequence/mod.rs` | `clippy::empty_line_after_outer_attr`, `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `sequence_grammar.rs` with empty-line output around generated tuple helpers and `type_complexity` around generated participant tuple helpers. | Audit only after changing the generated parser/error/output shape; do not treat this as local hand-written cleanup. |
+| `crates/merman-render/src/trig_tables.rs` | `clippy::excessive_precision` | Required for Node/V8-generated trig constants used by strict Flowchart stadium arc point parity. The literals intentionally keep the source measurement precision, and the module is `#[rustfmt::skip]` to preserve table readability. | Regenerate the table from the documented Node/V8 source if the upstream point generation changes; do not trim precision only to satisfy clippy because strict `data-points` parity is sensitive at tiny deltas. |
+
+## Generated Exclusions
+
+- `crates/merman-render/src/generated/mod.rs` keeps `#![allow(clippy::all)]` as the umbrella for
+  xtask-generated parity tables. The override budget and generated module inventory are enforced by
+  `xtask report-overrides --check-no-growth`; individual table rows should be reduced by deleting
+  generated data, not by hand-editing generated lint allowances.
 
 ## Recently Removed
 
