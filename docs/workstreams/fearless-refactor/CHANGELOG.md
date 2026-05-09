@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed the dead Architecture icon text bbox helper, leaving Architecture text overrides focused
+  on production layout/SVG parity call sites and reducing the helper footprint to 37.
 - Removed Sankey SVG-only label font/gap/dy helpers by inlining the fixed values in the renderer,
   leaving only node geometry and padding helpers and reducing the helper footprint to 38.
 - Removed Sequence self-only frame min pad helpers by inlining the fixed values in block geometry,

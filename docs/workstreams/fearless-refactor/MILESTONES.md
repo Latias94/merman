@@ -444,7 +444,8 @@ Progress:
   override module. Treemap now inlines its section header label/value sizing literals, leaving only
   the shared section spacing helpers and leaf-fit tolerance. Sequence now inlines its self-only
   frame min pad literals in block geometry. Sankey now inlines its SVG-only label font/gap/dy
-  literals, leaving only node geometry and padding helpers and reducing the helper footprint to 38.
+  literals, leaving only node geometry and padding helpers. Architecture also deleted a dead icon
+  text bbox helper, reducing the helper footprint to 37.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

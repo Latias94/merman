@@ -1569,11 +1569,6 @@ fn layout_architecture_diagram_model(
 mod tests {
     #[test]
     fn architecture_text_constants_are_generated() {
-        assert_eq!(
-            crate::generated::architecture_text_overrides_11_12_2::
-                architecture_icon_text_bbox_height_px(16.0, 1),
-            19.0
-        );
         assert!((crate::generated::architecture_text_overrides_11_12_2::
             architecture_create_text_bbox_height_px(16.0, 2)
             - 36.6)
