@@ -3,6 +3,11 @@ use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
 
+const NO_MAX_WIDTH_SENTINEL: &str = "__NO_MAX_WIDTH__";
+const EMPTY_PIE_VIEWBOX: &str = "0 0 -Infinity 450";
+const EMPTY_PIE_WIDTH: &str = "-Infinity";
+const EMPTY_PIE_HEIGHT: &str = "450";
+
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
@@ -20,6 +25,27 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     let x = radius * angle.sin();
     let y = -radius * angle.cos();
     (x, y)
+}
+
+fn apply_empty_pie_root_viewport(
+    model: &PieDiagramRenderModel,
+    viewbox_attr: &mut String,
+    width_attr: &mut String,
+    height_attr: &mut String,
+    max_width_attr: &mut String,
+) -> bool {
+    if !model.sections.is_empty() {
+        return false;
+    }
+
+    // Mermaid@11.12.3 keeps section-less pie diagrams in its D3 root path. That path serializes a
+    // `-Infinity` viewBox width and omits `max-width`; model it once instead of pinning every empty
+    // fixture spelling separately.
+    *viewbox_attr = EMPTY_PIE_VIEWBOX.to_string();
+    *width_attr = EMPTY_PIE_WIDTH.to_string();
+    *height_attr = EMPTY_PIE_HEIGHT.to_string();
+    *max_width_attr = NO_MAX_WIDTH_SENTINEL.to_string();
+    true
 }
 
 pub(super) fn render_pie_diagram_svg(
@@ -52,8 +78,6 @@ pub(super) fn render_pie_diagram_svg_model(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    const NO_MAX_WIDTH_SENTINEL: &str = "__NO_MAX_WIDTH__";
-
     let mut max_w_attr = super::fmt_max_width_px(vb_w);
     let mut viewbox_attr = format!(
         "{} {} {} {}",
@@ -64,14 +88,22 @@ pub(super) fn render_pie_diagram_svg_model(
     );
     let mut w_attr = super::fmt(vb_w).to_string();
     let mut h_attr = super::fmt(vb_h).to_string();
-    apply_root_viewport_override(
-        diagram_id,
+    if !apply_empty_pie_root_viewport(
+        model,
         &mut viewbox_attr,
         &mut w_attr,
         &mut h_attr,
         &mut max_w_attr,
-        crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
-    );
+    ) {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
+        );
+    }
 
     let style_attr = if max_w_attr == NO_MAX_WIDTH_SENTINEL {
         "background-color: white;".to_string()
@@ -236,4 +268,30 @@ pub(super) fn render_pie_diagram_svg_model(
 
     out.push_str("</g></svg>\n");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_pie_root_viewport_is_model_derived() {
+        let model = PieDiagramRenderModel::default();
+        let mut viewbox = "0 0 512 450".to_string();
+        let mut width = "512".to_string();
+        let mut height = "450".to_string();
+        let mut max_width = "512".to_string();
+
+        assert!(apply_empty_pie_root_viewport(
+            &model,
+            &mut viewbox,
+            &mut width,
+            &mut height,
+            &mut max_width,
+        ));
+        assert_eq!(viewbox, EMPTY_PIE_VIEWBOX);
+        assert_eq!(width, EMPTY_PIE_WIDTH);
+        assert_eq!(height, EMPTY_PIE_HEIGHT);
+        assert_eq!(max_width, NO_MAX_WIDTH_SENTINEL);
+    }
 }
