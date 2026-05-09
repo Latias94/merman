@@ -248,14 +248,12 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         .ok_or(XtaskError::Usage)?;
 
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join("state");
-    let upstream_dir = workspace_root
-        .join("fixtures")
+    let fixtures_dir = crate::cmd::fixtures_root().join("state");
+    let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
         .join("state");
     let out_path = out_path.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
+        crate::cmd::target_root()
             .join("analyze")
             .join("state")
             .join(format!("{fixture}.md"))

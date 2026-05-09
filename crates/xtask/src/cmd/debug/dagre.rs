@@ -230,7 +230,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join(&diagram);
+    let fixtures_dir = crate::cmd::fixtures_root().join(&diagram);
     let mmd_path = fixtures_dir.join(format!("{fixture}.mmd"));
     let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {
         path: mmd_path.display().to_string(),
@@ -238,8 +238,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     })?;
 
     let out_dir = out_dir.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
+        crate::cmd::target_root()
             .join("compare")
             .join("dagre-layout")
     });

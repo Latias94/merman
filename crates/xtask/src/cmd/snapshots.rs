@@ -279,7 +279,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
     let workspace_root = crate::cmd::workspace_root();
     let alignment_dir = workspace_root.join("docs").join("alignment");
-    let fixtures_root = workspace_root.join("fixtures");
+    let fixtures_root = crate::cmd::fixtures_root();
 
     let mut failures: Vec<String> = Vec::new();
 

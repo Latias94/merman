@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 pub(crate) fn fixtures_root_for_diagram(workspace_root: &Path, diagram: &str) -> PathBuf {
     if diagram == "all" {
-        workspace_root.join("fixtures")
+        crate::cmd::fixtures_root()
     } else {
-        workspace_root.join("fixtures").join(diagram)
+        crate::cmd::fixtures_root().join(diagram)
     }
 }
 

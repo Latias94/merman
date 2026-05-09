@@ -12,14 +12,12 @@ pub(crate) fn compare_diagram_paths(
     out_path: Option<PathBuf>,
 ) -> CompareDiagramPaths {
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join(diagram);
-    let upstream_dir = workspace_root
-        .join("fixtures")
+    let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
+    let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
         .join(diagram);
     let out_path = out_path.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
+        crate::cmd::target_root()
             .join("compare")
             .join(format!("{diagram}_report.md"))
     });

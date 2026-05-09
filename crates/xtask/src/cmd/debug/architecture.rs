@@ -171,14 +171,12 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join("architecture");
-    let upstream_dir = workspace_root
-        .join("fixtures")
+    let fixtures_dir = crate::cmd::fixtures_root().join("architecture");
+    let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
         .join("architecture");
     let out_dir = out_dir.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
+        crate::cmd::target_root()
             .join("debug")
             .join("architecture-delta")
     });
@@ -692,14 +690,12 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join("architecture");
-    let upstream_dir = workspace_root
-        .join("fixtures")
+    let fixtures_dir = crate::cmd::fixtures_root().join("architecture");
+    let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
         .join("architecture");
     let out_dir = out_dir.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
+        crate::cmd::target_root()
             .join("debug")
             .join("architecture-delta")
     });

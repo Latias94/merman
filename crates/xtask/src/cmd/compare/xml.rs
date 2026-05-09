@@ -120,17 +120,17 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let upstream_root = resolve_root(
         &workspace_root,
         upstream_root_arg,
-        workspace_root.join("fixtures").join("upstream-svgs"),
+        crate::cmd::fixtures_root().join("upstream-svgs"),
     );
     let fixtures_root = resolve_root(
         &workspace_root,
         fixtures_root_arg,
-        workspace_root.join("fixtures"),
+        crate::cmd::fixtures_root(),
     );
     let out_root = resolve_root(
         &workspace_root,
         out_root_arg,
-        workspace_root.join("target").join("compare").join("xml"),
+        crate::cmd::target_root().join("compare").join("xml"),
     );
 
     fn sanitize_svg_id(raw: &str) -> String {

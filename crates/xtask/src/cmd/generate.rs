@@ -135,9 +135,9 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 workspace_root.join(p)
             }
         })
-        .unwrap_or_else(|| workspace_root.join("fixtures"));
+        .unwrap_or_else(|| crate::cmd::fixtures_root());
     let out_root =
-        out_root.unwrap_or_else(|| workspace_root.join("fixtures").join("upstream-svgs"));
+        out_root.unwrap_or_else(|| crate::cmd::fixtures_root().join("upstream-svgs"));
 
     let tools_root = crate::cmd::mermaid_cli_root();
     let node_modules = tools_root.join("node_modules");
@@ -507,8 +507,8 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let baseline_root = workspace_root.join("fixtures").join("upstream-svgs");
-    let out_root = workspace_root.join("target").join("upstream-svgs-check");
+    let baseline_root = crate::cmd::fixtures_root().join("upstream-svgs");
+    let out_root = crate::cmd::target_root().join("upstream-svgs-check");
 
     let mut gen_args: Vec<String> = vec![
         "--diagram".to_string(),
@@ -548,7 +548,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_mode,
             dom_decimals,
         } = ctx;
-        let fixtures_dir = workspace_root.join("fixtures").join(diagram);
+        let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
         let baseline_dir = baseline_root.join(diagram);
         let out_dir = out_root.join(diagram);
 
@@ -969,7 +969,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
 });
 "#;
 
-    let dir = workspace_root.join("target").join("xtask-js");
+    let dir = crate::cmd::target_root().join("xtask-js");
     fs::create_dir_all(&dir).map_err(|source| XtaskError::WriteFile {
         path: dir.display().to_string(),
         source,
@@ -1091,9 +1091,9 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
-    let fixtures_dir = workspace_root.join("fixtures").join("er");
+    let fixtures_dir = crate::cmd::fixtures_root().join("er");
     let out_dir = out_root.join("er");
 
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
@@ -1186,7 +1186,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("debug-svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
     fn gen_one(
         workspace_root: &Path,
@@ -1196,35 +1196,35 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     ) -> Result<(), XtaskError> {
         let (fixtures_dir, out_dir) = match diagram {
             "flowchart" | "flowchart-v2" | "flowchartV2" => (
-                workspace_root.join("fixtures").join("flowchart"),
+                crate::cmd::fixtures_root().join("flowchart"),
                 out_root.join("flowchart"),
             ),
             "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
-                workspace_root.join("fixtures").join("state"),
+                crate::cmd::fixtures_root().join("state"),
                 out_root.join("state"),
             ),
             "class" | "classDiagram" => (
-                workspace_root.join("fixtures").join("class"),
+                crate::cmd::fixtures_root().join("class"),
                 out_root.join("class"),
             ),
             "er" | "erDiagram" => (
-                workspace_root.join("fixtures").join("er"),
+                crate::cmd::fixtures_root().join("er"),
                 out_root.join("er"),
             ),
             "sequence" => (
-                workspace_root.join("fixtures").join("sequence"),
+                crate::cmd::fixtures_root().join("sequence"),
                 out_root.join("sequence"),
             ),
             "info" => (
-                workspace_root.join("fixtures").join("info"),
+                crate::cmd::fixtures_root().join("info"),
                 out_root.join("info"),
             ),
             "pie" => (
-                workspace_root.join("fixtures").join("pie"),
+                crate::cmd::fixtures_root().join("pie"),
                 out_root.join("pie"),
             ),
             "packet" => (
-                workspace_root.join("fixtures").join("packet"),
+                crate::cmd::fixtures_root().join("packet"),
                 out_root.join("packet"),
             ),
             other => {
@@ -1634,9 +1634,9 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
-    let fixtures_dir = workspace_root.join("fixtures").join("flowchart");
+    let fixtures_dir = crate::cmd::fixtures_root().join("flowchart");
     let out_dir = out_root.join("flowchart");
 
     let engine = merman::Engine::new();
@@ -1719,9 +1719,9 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
-    let fixtures_dir = workspace_root.join("fixtures").join("state");
+    let fixtures_dir = crate::cmd::fixtures_root().join("state");
     let out_dir = out_root.join("state");
 
     let engine = merman::Engine::new();
@@ -1805,9 +1805,9 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
-    let fixtures_dir = workspace_root.join("fixtures").join("class");
+    let fixtures_dir = crate::cmd::fixtures_root().join("class");
     let out_dir = out_root.join("class");
 
     let engine = merman::Engine::new();
@@ -1897,9 +1897,9 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+    let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("svgs"));
 
-    let fixtures_dir = workspace_root.join("fixtures").join("c4");
+    let fixtures_dir = crate::cmd::fixtures_root().join("c4");
     let out_dir = out_root.join("c4");
 
     // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the

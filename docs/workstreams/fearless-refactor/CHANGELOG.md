@@ -5,10 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
-- Added `repo-ref` and Mermaid CLI path helpers in `cmd::paths` and routed the `generate`,
-  `audit`, `compare/xml`, `compare/flowchart`, `overrides`, and import call sites through them,
-  deleting the repeated `repo-ref/mermaid`, `repo-ref/dompurify`, and `tools/mermaid-cli`
-  scaffolding from the command layer.
+- Added project-root helpers in `cmd::paths` for `fixtures`, `target`, `repo-ref/mermaid`,
+  `repo-ref/dompurify`, and `tools/mermaid-cli`, then routed the `generate`, `audit`,
+  `compare/xml`, `compare/flowchart`, `overrides`, and import call sites through them, deleting
+  the repeated workspace-root path scaffolding from the command layer.
 - Added a shared `xtask` compare-diagram path helper so the per-diagram SVG compare commands now
   build fixture, upstream, report, and output directories through one owner instead of repeating
   the same workspace-root path scaffolding.

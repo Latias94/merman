@@ -339,11 +339,11 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let workspace_root = crate::cmd::workspace_root();
-    let fixtures_root = workspace_root.join("fixtures");
+    let fixtures_root = crate::cmd::fixtures_root();
     let deferred_root = fixtures_root.join("_deferred");
 
     let out_path =
-        out_path.unwrap_or_else(|| workspace_root.join("target").join("audit").join("gaps.md"));
+        out_path.unwrap_or_else(|| crate::cmd::target_root().join("audit").join("gaps.md"));
 
     let engine = merman::Engine::new()
         .with_fixed_today(Some(
@@ -503,8 +503,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     if check_upstream_render && parser_only_total > 0 {
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
-        let out_root = workspace_root
-            .join("target")
+        let out_root = crate::cmd::target_root()
             .join("audit")
             .join("upstream-render");
         let out_root_rel = out_root.strip_prefix(&workspace_root).unwrap_or(&out_root);
@@ -764,8 +763,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     if check_upstream_render_deferred_ok && !deferred_ok.is_empty() {
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
-        let out_root = workspace_root
-            .join("target")
+        let out_root = crate::cmd::target_root()
             .join("audit")
             .join("upstream-render-deferred-ok");
         let out_root_rel = out_root.strip_prefix(&workspace_root).unwrap_or(&out_root);

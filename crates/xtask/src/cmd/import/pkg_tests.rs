@@ -825,7 +825,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
     let mut imported = 0usize;
     for c in candidates {
-        let fixtures_dir = workspace_root.join("fixtures").join(&c.diagram_dir);
+        let fixtures_dir = crate::cmd::fixtures_root().join(&c.diagram_dir);
         if !fixtures_dir.is_dir() {
             skipped.push(format!(
                 "skip (fixtures dir missing): {}",
@@ -888,20 +888,17 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         fn cleanup_fixture_and_svg(workspace_root: &Path, f: &CreatedFixture) {
             let _ = fs::remove_file(&f.path);
             let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
+                crate::cmd::fixtures_root()
                     .join(&f.diagram_dir)
                     .join(format!("{}.golden.json", f.stem)),
             );
             let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
+                crate::cmd::fixtures_root()
                     .join(&f.diagram_dir)
                     .join(format!("{}.layout.golden.json", f.stem)),
             );
             let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
+                crate::cmd::fixtures_root()
                     .join("upstream-svgs")
                     .join(&f.diagram_dir)
                     .join(format!("{}.svg", f.stem)),
@@ -913,8 +910,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             f: &CreatedFixture,
             keep_upstream_svg: bool,
         ) {
-            let deferred_fixture_dir = workspace_root
-                .join("fixtures")
+            let deferred_fixture_dir = crate::cmd::fixtures_root()
                 .join("_deferred")
                 .join(&f.diagram_dir);
             let _ = fs::create_dir_all(&deferred_fixture_dir);
@@ -929,15 +925,13 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             }
 
             if keep_upstream_svg {
-                let upstream_svg_path = workspace_root
-                    .join("fixtures")
+                let upstream_svg_path = crate::cmd::fixtures_root()
                     .join("upstream-svgs")
                     .join(&f.diagram_dir)
                     .join(format!("{}.svg", f.stem));
 
                 if upstream_svg_path.exists() {
-                    let deferred_svg_dir = workspace_root
-                        .join("fixtures")
+                    let deferred_svg_dir = crate::cmd::fixtures_root()
                         .join("_deferred")
                         .join("upstream-svgs")
                         .join(&f.diagram_dir);
@@ -957,14 +951,12 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             }
 
             let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
+                crate::cmd::fixtures_root()
                     .join(&f.diagram_dir)
                     .join(format!("{}.golden.json", f.stem)),
             );
             let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
+                crate::cmd::fixtures_root()
                     .join(&f.diagram_dir)
                     .join(format!("{}.layout.golden.json", f.stem)),
             );
@@ -989,8 +981,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 continue;
             }
 
-            let svg_path = workspace_root
-                .join("fixtures")
+            let svg_path = crate::cmd::fixtures_root()
                 .join("upstream-svgs")
                 .join(&f.diagram_dir)
                 .join(format!("{}.svg", f.stem));

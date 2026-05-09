@@ -10,6 +10,14 @@ pub(crate) fn repo_ref_root() -> PathBuf {
     workspace_root().join("repo-ref")
 }
 
+pub(crate) fn fixtures_root() -> PathBuf {
+    workspace_root().join("fixtures")
+}
+
+pub(crate) fn target_root() -> PathBuf {
+    workspace_root().join("target")
+}
+
 pub(crate) fn mermaid_repo_root() -> PathBuf {
     repo_ref_root().join("mermaid")
 }
