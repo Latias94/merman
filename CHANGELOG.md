@@ -65,6 +65,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: avoid cloning block label fragments when probing hyphenated long-word wraps.
 - `xtask` font metrics generator: make the ridge solver testable and remove its
   `needless_range_loop` lint allowance.
+- Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
+  compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
   deserializing layout input from semantic JSON.
 - Gantt render pipeline: parse a typed render model for layout/render-only flows and reuse it in

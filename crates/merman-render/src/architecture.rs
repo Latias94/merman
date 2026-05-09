@@ -975,7 +975,9 @@ fn layout_architecture_diagram_model(
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
                 if arr.len() == 1 {
-                    prev.insert(dir.to_string(), arr.pop().unwrap().1);
+                    if let Some((_, node_ids)) = arr.pop() {
+                        prev.insert(dir.to_string(), node_ids);
+                    }
                     continue;
                 }
                 for i in 0..arr.len().saturating_sub(1) {

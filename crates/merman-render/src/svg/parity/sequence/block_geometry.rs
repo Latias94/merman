@@ -102,8 +102,8 @@ pub(super) fn frame_x_from_message_ids<'a>(
     if geom_max_x.is_finite() {
         x2 = x2.max(geom_max_x);
     }
-    if matches!(self_only_actor, Some(a) if !a.is_empty()) {
-        if let Some(n) = actor_nodes_by_id.get(self_only_actor.unwrap()).copied() {
+    if let Some(actor_id) = self_only_actor.filter(|id| !id.is_empty()) {
+        if let Some(n) = actor_nodes_by_id.get(actor_id).copied() {
             let left = n.x - n.width / 2.0;
             let right = n.x + n.width / 2.0;
             let min_x1 = left - 5.0;

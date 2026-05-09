@@ -6,7 +6,7 @@ use crate::model::{
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use chrono::{Datelike, FixedOffset, Timelike};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
@@ -1041,11 +1041,13 @@ pub fn layout_gantt_diagram_typed(
         let mut section_order: Vec<String> = Vec::new();
         let mut section_map: HashMap<String, Vec<usize>> = HashMap::new();
         for (idx, t) in m.tasks.iter().enumerate() {
-            if !section_map.contains_key(&t.section) {
-                section_order.push(t.section.clone());
-                section_map.insert(t.section.clone(), Vec::new());
+            match section_map.entry(t.section.clone()) {
+                Entry::Occupied(mut entry) => entry.get_mut().push(idx),
+                Entry::Vacant(entry) => {
+                    section_order.push(entry.key().clone());
+                    entry.insert(vec![idx]);
+                }
             }
-            section_map.get_mut(&t.section).unwrap().push(idx);
         }
 
         let mut order_offset: i64 = 0;
