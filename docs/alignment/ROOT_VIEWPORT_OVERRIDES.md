@@ -56,6 +56,8 @@ All modules are registered in `crates/merman-render/src/generated/mod.rs`.
 
 Deleted buckets are intentionally absent from this list. Class and Pie root viewport behavior is
 now covered by typed renderer calibration instead of generated fixture-scoped root maps.
+Architecture still has a small generated map, but it was pruned to 31 entries on 2026-05-09 after
+the nested-groups and reasonable-height root viewport profiles moved into renderer logic.
 
 ## Where They Are Applied
 
@@ -111,8 +113,12 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
 
-## Current Status (2026-02-11)
+## Current Status (2026-05-09)
 
-As of 2026-02-11, small fixture-scoped root viewport overrides are in use for the pinned Mermaid baseline.
-They exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces small
-numeric drift that is not worth globalizing into layout/render logic.
+Small fixture-scoped root viewport overrides remain in use for the pinned Mermaid baseline. They
+exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces
+deterministic drift that is not yet worth globalizing into layout/render logic.
+
+Current root viewport inventory is tracked by
+`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 779 total
+root viewport entries, including 31 Architecture entries.

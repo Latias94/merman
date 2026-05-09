@@ -29,7 +29,7 @@ gate. Override growth should therefore be an explicit reviewed decision, not a d
 escape hatch. Manual raw SVG/path bridges now have an exact zero budget, so any bridge
 reintroduction fails the strict gate unless the budget is deliberately changed.
 
-The current snapshot reflects a 725-entry net reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 795-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
@@ -50,7 +50,9 @@ SVG bbox measurement, deleting the Pie root override module. Mindmap then refres
 profile calibration, added two small model-derived root profiles, and pruned 28 obsolete root pins
 while keeping `parity-root` green. Class then moved its remaining 31 root viewport pins into typed
 profile calibration and namespace render-mode rules, deleting the Class root override module while
-keeping `parity-root` green. It also
+keeping `parity-root` green. Architecture then added default root viewport calibration for the
+nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31
+Architecture root pins that still guard measured `parity-root` drift. It also
 reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
@@ -101,11 +103,11 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `849`.
+Total entries reported by `xtask`: `779`.
 
 | file | entries |
 | --- | ---: |
-| `architecture_root_overrides_11_12_2.rs` | 101 |
+| `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 23 |
 | `flowchart_root_overrides_11_12_2.rs` | 135 |
@@ -136,7 +138,8 @@ Largest root-viewport buckets:
 - `gitgraph`: 226
 - `sequence`: 200
 - `flowchart`: 135
-- `architecture`: 101
+- `state`: 54
+- `mindmap`: 52
 
 ### Text Metric Lookup Overrides
 
@@ -221,7 +224,7 @@ Counts are inventory units and should not be compared directly across categories
 - Keep any future temporary raw SVG/path bridge functions named `maybe_override_*` and documented
   with owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
-  `gitgraph`, `sequence`, and `architecture`.
+  `gitgraph`, `sequence`, `state`, and `mindmap`.
 - Do not spend another cleanup pass on the 3 remaining Sankey root pins until Sankey root height
   derivation changes; the May 2026 recheck proved they still guard real `parity-root` drift.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.

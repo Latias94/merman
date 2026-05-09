@@ -455,7 +455,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: root viewport footprint is down 725 entries net so far: 19 `architecture` entries after
+  Evidence: root viewport footprint is down 795 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
@@ -484,7 +484,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   confirmed the remaining Timeline, Requirement, and ER root pins still fail when their lookups are
   disabled. Class then moved its remaining 31 root viewport pins into typed profile calibration and
   namespace render-mode rules, deleting the Class root override module while keeping `parity-root`
-  green. The stale
+  green. Architecture then added default root viewport calibration for nested-groups and
+  reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31 Architecture
+  root pins that still fail when the lookup is disabled. The stale
   Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
   leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
   entries. One

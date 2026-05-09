@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Added default Architecture root viewport calibration for nested-groups and reasonable-height
+  profiles, then pruned 70 obsolete Architecture root pins, reducing root viewport overrides to 779
+  while keeping Architecture `parity-root` green.
 - Moved the remaining Class root viewport pins into typed profile calibration and model-derived
   namespace render-mode selection, then deleted the Class root override module, reducing root
   viewport overrides to 849 while keeping Class `parity-root` green.

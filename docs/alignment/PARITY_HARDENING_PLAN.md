@@ -46,7 +46,9 @@ Largest fixture buckets:
 
 This is the original hardening-plan snapshot. The current live override inventory is maintained in
 `docs/workstreams/fearless-refactor/OVERRIDE_FOOTPRINT.md`; as of 2026-05-09 the Class root
-override module has been deleted after typed viewport calibration replaced its remaining entries.
+override module has been deleted after typed viewport calibration replaced its remaining entries,
+and the Architecture root table has been pruned to 31 remaining entries after two default root
+viewport profile calibrations landed.
 
 Root viewport overrides:
 

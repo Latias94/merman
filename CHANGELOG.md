@@ -149,6 +149,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Architecture renderer: move SVG root opening, accessibility title/description emission, empty
   diagram fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.
+- Architecture renderer: add default root viewport calibration for nested-groups and
+  reasonable-height profiles, then prune obsolete generated Architecture root pins from 101 to 31.
 - Sequence renderer: start the actor/participant split by moving actor label emission into
   `svg/parity/sequence/actors.rs`.
 - Sequence renderer: move pre-actor box/rect frame emission into
