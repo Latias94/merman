@@ -466,7 +466,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   x-offset literals. Pie now inlines its fixed margin, center, radius, legend label font size,
   title y, and legend text y literals, leaving only the shared legend rectangle size and spacing
   helpers. XYChart now inlines its bar data-label scale and inset literals, deleting the empty
-  generated override module and reducing the helper footprint to 48.
+  generated override module. Treemap now inlines its section header label/value sizing literals,
+  leaving only the shared section spacing helpers and leaf-fit tolerance and reducing the helper
+  footprint to 43.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

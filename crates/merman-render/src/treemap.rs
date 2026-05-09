@@ -526,17 +526,10 @@ mod tests {
             25.0
         );
         assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::
-                treemap_section_header_label_inset_x_px(),
-            6.0
-        );
-        assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_section_label_font_size_px(),
-            12.0
-        );
-        assert_eq!(
-            crate::generated::treemap_text_overrides_11_12_2::treemap_section_value_font_size_px(),
-            10.0
+            crate::generated::treemap_text_overrides_11_12_2::treemap_leaf_label_fit_tolerance_px(
+                "Item A1", 34.0, 117.0
+            ),
+            0.9
         );
     }
 }

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed Treemap section header label/value sizing helpers by inlining the fixed values in the
+  renderer, leaving only the shared spacing helpers and leaf-fit tolerance and reducing the helper
+  footprint to 43.
 - Removed XYChart bar data-label scale and inset helpers by inlining the fixed values in the SVG
   renderer, deleting the now-empty generated override module and reducing the helper footprint to
   48.

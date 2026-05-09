@@ -441,7 +441,9 @@ Progress:
   Pie now inlines its fixed margin, center, radius, legend label font size, title y, and legend
   text y literals while keeping only the shared legend rectangle size and spacing helpers.
   XYChart now inlines its bar data-label scale and inset literals, deleting the empty generated
-  override module and reducing the helper footprint to 48.
+  override module. Treemap now inlines its section header label/value sizing literals, leaving only
+  the shared section spacing helpers and leaf-fit tolerance and reducing the helper footprint to
+  43.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

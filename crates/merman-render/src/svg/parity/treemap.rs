@@ -564,14 +564,12 @@ pub(super) fn render_treemap_diagram_svg(
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
     let section_header_height = treemap_text_overrides::treemap_section_header_height_px();
     let section_header_center_y = section_header_height / 2.0;
-    let section_label_inset_x = treemap_text_overrides::treemap_section_header_label_inset_x_px();
-    let section_label_font_size = treemap_text_overrides::treemap_section_label_font_size_px();
-    let section_value_font_size = treemap_text_overrides::treemap_section_value_font_size_px();
+    let section_label_inset_x: f64 = 6.0;
+    let section_label_font_size: f64 = 12.0;
+    let section_value_font_size: f64 = 10.0;
     let section_inner_padding = treemap_text_overrides::treemap_section_inner_padding_px();
-    let section_label_reserved_value_width =
-        treemap_text_overrides::treemap_section_label_reserved_value_width_px();
-    let section_label_min_visible_width =
-        treemap_text_overrides::treemap_section_label_min_visible_width_px();
+    let section_label_reserved_value_width: f64 = 30.0;
+    let section_label_min_visible_width: f64 = 15.0;
 
     for (i, section) in layout.sections.iter().enumerate() {
         let w = section.x1 - section.x0;
