@@ -144,165 +144,177 @@ pub fn layout_parsed_render_layout_only(
 
     match (&parsed.model, diagram_type) {
         (RenderSemanticModel::Mindmap(model), "mindmap") => Ok(LayoutDiagram::MindmapDiagram(
-            mindmap::layout_mindmap_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer.as_ref(),
-                options.use_manatee_layout,
-            )?,
-        )),
-        (RenderSemanticModel::Architecture(model), "architecture") => Ok(
-            LayoutDiagram::ArchitectureDiagram(architecture::layout_architecture_diagram_typed(
+            Box::new(mindmap::layout_mindmap_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
                 options.use_manatee_layout,
             )?),
-        ),
+        )),
+        (RenderSemanticModel::Architecture(model), "architecture") => {
+            Ok(LayoutDiagram::ArchitectureDiagram(Box::new(
+                architecture::layout_architecture_diagram_typed(
+                    model,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                    options.use_manatee_layout,
+                )?,
+            )))
+        }
         (RenderSemanticModel::Flowchart(model), "flowchart-v2" | "flowchart" | "flowchart-elk") => {
-            Ok(LayoutDiagram::FlowchartV2(
+            Ok(LayoutDiagram::FlowchartV2(Box::new(
                 flowchart::layout_flowchart_v2_typed(
                     model,
                     &parsed.meta.effective_config,
                     options.text_measurer.as_ref(),
                     options.math_renderer.as_deref(),
                 )?,
-            ))
+            )))
         }
         (RenderSemanticModel::State(model), "stateDiagram" | "state") => Ok(
-            LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2_typed(
+            LayoutDiagram::StateDiagramV2(Box::new(state::layout_state_diagram_v2_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?),
+            )?)),
         ),
         (RenderSemanticModel::Sequence(model), "sequence" | "zenuml") => Ok(
-            LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram_typed(
+            LayoutDiagram::SequenceDiagram(Box::new(sequence::layout_sequence_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?),
+            )?)),
         ),
-        (RenderSemanticModel::Class(model), "classDiagram" | "class") => Ok(
-            LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2_typed_with_config(
-                model,
-                &parsed.meta.effective_config,
-                options.text_measurer.as_ref(),
-            )?),
-        ),
-        (RenderSemanticModel::C4(model), "c4") => {
-            Ok(LayoutDiagram::C4Diagram(c4::layout_c4_diagram_typed(
+        (RenderSemanticModel::Class(model), "classDiagram" | "class") => {
+            Ok(LayoutDiagram::ClassDiagramV2(Box::new(
+                class::layout_class_diagram_v2_typed_with_config(
+                    model,
+                    &parsed.meta.effective_config,
+                    options.text_measurer.as_ref(),
+                )?,
+            )))
+        }
+        (RenderSemanticModel::C4(model), "c4") => Ok(LayoutDiagram::C4Diagram(Box::new(
+            c4::layout_c4_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
                 options.viewport_width,
                 options.viewport_height,
-            )?))
-        }
+            )?,
+        ))),
         (RenderSemanticModel::Kanban(model), "kanban") => Ok(LayoutDiagram::KanbanDiagram(
-            kanban::layout_kanban_diagram_typed(
+            Box::new(kanban::layout_kanban_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?,
+            )?),
         )),
-        (RenderSemanticModel::Gantt(model), "gantt") => Ok(LayoutDiagram::GanttDiagram(
+        (RenderSemanticModel::Gantt(model), "gantt") => Ok(LayoutDiagram::GanttDiagram(Box::new(
             gantt::layout_gantt_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        (RenderSemanticModel::Pie(model), "pie") => Ok(LayoutDiagram::PieDiagram(
+        ))),
+        (RenderSemanticModel::Pie(model), "pie") => Ok(LayoutDiagram::PieDiagram(Box::new(
             pie::layout_pie_diagram_typed(model, effective_config, options.text_measurer.as_ref())?,
-        )),
+        ))),
         (RenderSemanticModel::Packet(model), "packet") => Ok(LayoutDiagram::PacketDiagram(
-            packet::layout_packet_diagram_typed(
+            Box::new(packet::layout_packet_diagram_typed(
                 model,
                 title,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?,
+            )?),
         )),
         (RenderSemanticModel::Timeline(model), "timeline") => Ok(LayoutDiagram::TimelineDiagram(
-            timeline::layout_timeline_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer.as_ref(),
-            )?,
-        )),
-        (RenderSemanticModel::Journey(model), "journey") => Ok(LayoutDiagram::JourneyDiagram(
-            journey::layout_journey_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer.as_ref(),
-            )?,
-        )),
-        (RenderSemanticModel::Requirement(model), "requirement") => Ok(
-            LayoutDiagram::RequirementDiagram(requirement::layout_requirement_diagram_typed(
+            Box::new(timeline::layout_timeline_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?),
-        ),
-        (RenderSemanticModel::Sankey(model), "sankey") => Ok(LayoutDiagram::SankeyDiagram(
-            sankey::layout_sankey_diagram_typed(
+        )),
+        (RenderSemanticModel::Journey(model), "journey") => Ok(LayoutDiagram::JourneyDiagram(
+            Box::new(journey::layout_journey_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?,
+            )?),
         )),
-        (RenderSemanticModel::Radar(model), "radar") => Ok(LayoutDiagram::RadarDiagram(
+        (RenderSemanticModel::Requirement(model), "requirement") => {
+            Ok(LayoutDiagram::RequirementDiagram(Box::new(
+                requirement::layout_requirement_diagram_typed(
+                    model,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?,
+            )))
+        }
+        (RenderSemanticModel::Sankey(model), "sankey") => Ok(LayoutDiagram::SankeyDiagram(
+            Box::new(sankey::layout_sankey_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
+        )),
+        (RenderSemanticModel::Radar(model), "radar") => Ok(LayoutDiagram::RadarDiagram(Box::new(
             radar::layout_radar_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        (RenderSemanticModel::Info(model), "info") => {
-            Ok(LayoutDiagram::InfoDiagram(info::layout_info_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer.as_ref(),
-            )?))
-        }
-        (RenderSemanticModel::Treemap(model), "treemap") => Ok(LayoutDiagram::TreemapDiagram(
-            treemap::layout_treemap_diagram_typed(
+        ))),
+        (RenderSemanticModel::Info(model), "info") => Ok(LayoutDiagram::InfoDiagram(Box::new(
+            info::layout_info_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
+        ))),
+        (RenderSemanticModel::Treemap(model), "treemap") => Ok(LayoutDiagram::TreemapDiagram(
+            Box::new(treemap::layout_treemap_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
         )),
-        (RenderSemanticModel::Block(model), "block") => Ok(LayoutDiagram::BlockDiagram(
+        (RenderSemanticModel::Block(model), "block") => Ok(LayoutDiagram::BlockDiagram(Box::new(
             block::layout_block_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
-        )),
+        ))),
         (RenderSemanticModel::Er(model), "er" | "erDiagram") => Ok(LayoutDiagram::ErDiagram(
-            er::layout_er_diagram_typed(model, effective_config, options.text_measurer.as_ref())?,
-        )),
-        (RenderSemanticModel::QuadrantChart(model), "quadrantChart") => Ok(
-            LayoutDiagram::QuadrantChartDiagram(quadrantchart::layout_quadrantchart_diagram_typed(
+            Box::new(er::layout_er_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?),
-        ),
+        )),
+        (RenderSemanticModel::QuadrantChart(model), "quadrantChart") => {
+            Ok(LayoutDiagram::QuadrantChartDiagram(Box::new(
+                quadrantchart::layout_quadrantchart_diagram_typed(
+                    model,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?,
+            )))
+        }
         (RenderSemanticModel::XyChart(model), "xychart") => Ok(LayoutDiagram::XyChartDiagram(
-            xychart::layout_xychart_diagram_typed(
+            Box::new(xychart::layout_xychart_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?,
+            )?),
         )),
         (RenderSemanticModel::GitGraph(model), "gitGraph") => Ok(LayoutDiagram::GitGraphDiagram(
-            gitgraph::layout_gitgraph_diagram_typed(
+            Box::new(gitgraph::layout_gitgraph_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
-            )?,
+            )?),
         )),
         (RenderSemanticModel::Json(semantic), _) => layout_json_by_type(
             diagram_type,
@@ -327,156 +339,176 @@ fn layout_json_by_type(
     let effective_config_value = effective_config.as_value();
 
     match diagram_type {
-        "error" => Ok(LayoutDiagram::ErrorDiagram(error::layout_error_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "block" => Ok(LayoutDiagram::BlockDiagram(block::layout_block_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "architecture" => Ok(LayoutDiagram::ArchitectureDiagram(
+        "error" => Ok(LayoutDiagram::ErrorDiagram(Box::new(
+            error::layout_error_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "block" => Ok(LayoutDiagram::BlockDiagram(Box::new(
+            block::layout_block_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "architecture" => Ok(LayoutDiagram::ArchitectureDiagram(Box::new(
             architecture::layout_architecture_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
                 options.use_manatee_layout,
             )?,
-        )),
-        "requirement" => Ok(LayoutDiagram::RequirementDiagram(
+        ))),
+        "requirement" => Ok(LayoutDiagram::RequirementDiagram(Box::new(
             requirement::layout_requirement_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "radar" => Ok(LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "treemap" => Ok(LayoutDiagram::TreemapDiagram(
+        ))),
+        "radar" => Ok(LayoutDiagram::RadarDiagram(Box::new(
+            radar::layout_radar_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "treemap" => Ok(LayoutDiagram::TreemapDiagram(Box::new(
             treemap::layout_treemap_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "flowchart-v2" => Ok(LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
-            semantic,
-            effective_config,
-            options.text_measurer.as_ref(),
-            options.math_renderer.as_deref(),
-        )?)),
-        "stateDiagram" => Ok(LayoutDiagram::StateDiagramV2(
+        ))),
+        "flowchart-v2" => Ok(LayoutDiagram::FlowchartV2(Box::new(
+            flowchart::layout_flowchart_v2(
+                semantic,
+                effective_config,
+                options.text_measurer.as_ref(),
+                options.math_renderer.as_deref(),
+            )?,
+        ))),
+        "stateDiagram" => Ok(LayoutDiagram::StateDiagramV2(Box::new(
             state::layout_state_diagram_v2(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "classDiagram" | "class" => Ok(LayoutDiagram::ClassDiagramV2(
+        ))),
+        "classDiagram" | "class" => Ok(LayoutDiagram::ClassDiagramV2(Box::new(
             class::layout_class_diagram_v2_with_config(
                 semantic,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "er" | "erDiagram" => Ok(LayoutDiagram::ErDiagram(er::layout_er_diagram(
+        ))),
+        "er" | "erDiagram" => Ok(LayoutDiagram::ErDiagram(Box::new(er::layout_er_diagram(
             semantic,
             effective_config_value,
             options.text_measurer.as_ref(),
-        )?)),
-        "sequence" | "zenuml" => Ok(LayoutDiagram::SequenceDiagram(
+        )?))),
+        "sequence" | "zenuml" => Ok(LayoutDiagram::SequenceDiagram(Box::new(
             sequence::layout_sequence_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "info" => Ok(LayoutDiagram::InfoDiagram(info::layout_info_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "packet" => Ok(LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
-            semantic,
-            title,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "timeline" => Ok(LayoutDiagram::TimelineDiagram(
+        ))),
+        "info" => Ok(LayoutDiagram::InfoDiagram(Box::new(
+            info::layout_info_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "packet" => Ok(LayoutDiagram::PacketDiagram(Box::new(
+            packet::layout_packet_diagram(
+                semantic,
+                title,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "timeline" => Ok(LayoutDiagram::TimelineDiagram(Box::new(
             timeline::layout_timeline_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "gantt" => Ok(LayoutDiagram::GanttDiagram(gantt::layout_gantt_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "c4" => Ok(LayoutDiagram::C4Diagram(c4::layout_c4_diagram(
+        ))),
+        "gantt" => Ok(LayoutDiagram::GanttDiagram(Box::new(
+            gantt::layout_gantt_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "c4" => Ok(LayoutDiagram::C4Diagram(Box::new(c4::layout_c4_diagram(
             semantic,
             effective_config_value,
             options.text_measurer.as_ref(),
             options.viewport_width,
             options.viewport_height,
-        )?)),
-        "journey" => Ok(LayoutDiagram::JourneyDiagram(
+        )?))),
+        "journey" => Ok(LayoutDiagram::JourneyDiagram(Box::new(
             journey::layout_journey_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "gitGraph" => Ok(LayoutDiagram::GitGraphDiagram(
+        ))),
+        "gitGraph" => Ok(LayoutDiagram::GitGraphDiagram(Box::new(
             gitgraph::layout_gitgraph_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "kanban" => Ok(LayoutDiagram::KanbanDiagram(kanban::layout_kanban_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "pie" => Ok(LayoutDiagram::PieDiagram(pie::layout_pie_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
-        "xychart" => Ok(LayoutDiagram::XyChartDiagram(
+        ))),
+        "kanban" => Ok(LayoutDiagram::KanbanDiagram(Box::new(
+            kanban::layout_kanban_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "pie" => Ok(LayoutDiagram::PieDiagram(Box::new(
+            pie::layout_pie_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "xychart" => Ok(LayoutDiagram::XyChartDiagram(Box::new(
             xychart::layout_xychart_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "quadrantChart" => Ok(LayoutDiagram::QuadrantChartDiagram(
+        ))),
+        "quadrantChart" => Ok(LayoutDiagram::QuadrantChartDiagram(Box::new(
             quadrantchart::layout_quadrantchart_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
-        )),
-        "mindmap" => Ok(LayoutDiagram::MindmapDiagram(
+        ))),
+        "mindmap" => Ok(LayoutDiagram::MindmapDiagram(Box::new(
             mindmap::layout_mindmap_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
                 options.use_manatee_layout,
             )?,
-        )),
-        "sankey" => Ok(LayoutDiagram::SankeyDiagram(sankey::layout_sankey_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer.as_ref(),
-        )?)),
+        ))),
+        "sankey" => Ok(LayoutDiagram::SankeyDiagram(Box::new(
+            sankey::layout_sankey_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
         other => Err(Error::UnsupportedDiagram {
             diagram_type: other.to_string(),
         }),

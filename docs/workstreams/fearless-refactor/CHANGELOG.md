@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Boxed public `LayoutDiagram` payloads and removed the render model `large_enum_variant`
+  allowance while preserving serialized layout shape.
 - Boxed State AST relation statement payloads behind a dedicated `RelationStmt` and removed the
   state `large_enum_variant` lint allowance without changing parser or render output.
 - Boxed the standalone Flowchart AST node statement variant and removed its

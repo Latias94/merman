@@ -24,7 +24,7 @@ fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
-    layout
+    *layout
 }
 
 fn rect_from_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {

@@ -70,6 +70,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `large_enum_variant` lint allowance.
 - State parser AST: box relation statement payloads behind a dedicated relation struct and remove
   the local `large_enum_variant` lint allowance.
+- Render layout API: box `LayoutDiagram` payloads and remove the public layout enum
+  `large_enum_variant` lint allowance while keeping serialized layout output stable.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

@@ -13,10 +13,12 @@ Last updated: 2026-05-09.
 | `crates/merman-core/src/diagrams/state/mod.rs` | `clippy::filter_map_identity` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `state_grammar.rs` at `items.into_iter().filter_map(|i| i).collect()`. | Regenerate or patch the grammar output so the generated parser emits `.flatten()` instead of `filter_map(identity)`, then remove the wrapper allowance. |
 | `crates/merman-core/src/diagrams/flowchart.rs` | `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `flowchart_grammar.rs` with `result_large_err` around the parser return type and `type_complexity` around generated link segment tuple helpers. | Audit only after changing the generated parser/error shape; do not treat this as local hand-written cleanup. |
 | `crates/merman-core/src/diagrams/sequence/mod.rs` | `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `sequence_grammar.rs` with `type_complexity` around generated participant tuple helpers. | Audit only after changing the generated parser/error shape; do not treat this as local hand-written cleanup. |
-| `crates/merman-render/src/model.rs` | `clippy::large_enum_variant` | Structural layout API issue on `LayoutDiagram`. The enum is public, serialized, and widely matched by render dispatch, tests, and xtask tooling. | Design a boxed layout enum migration with serde compatibility checks and layout snapshot evidence before removing. |
 
 ## Recently Removed
 
+- `crates/merman-render/src/model.rs`: removed `clippy::large_enum_variant` from public
+  `LayoutDiagram` by boxing diagram layout payloads while preserving serde layout shape under
+  layout snapshot and SVG parity checks.
 - `crates/merman-core/src/diagrams/state/ast.rs`: removed `clippy::large_enum_variant` from
   `state::Stmt` by moving relation payloads behind a boxed `RelationStmt`, preserving state parser
   behavior under State tests and SVG DOM parity checks.
