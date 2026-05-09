@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed the duplicated State label HTML line-wrapping and entity-preservation logic behind
+  shared private helpers, kept the public State label entry points thin, and revalidated State DOM
+  parity plus the strict gate.
 - Collapsed State raw/non-raw context resolution behind shared helper implementations, removed
   now-unused wrappers, and narrowed `state_strip_note_group` to file-private visibility after State
   DOM parity and the strict gate stayed green.

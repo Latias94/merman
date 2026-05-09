@@ -468,208 +468,123 @@ pub(super) fn state_node_label_html_with_style(raw: &str, span_style: Option<&st
     )
 }
 
-pub(super) fn html_paragraph_with_br(raw: &str) -> String {
-    fn escape_amp_preserving_entities(raw: &str) -> String {
-        fn is_valid_entity(entity: &str) -> bool {
-            if entity.is_empty() {
-                return false;
-            }
-            if let Some(hex) = entity
-                .strip_prefix("#x")
-                .or_else(|| entity.strip_prefix("#X"))
-            {
-                return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-            }
-            if let Some(dec) = entity.strip_prefix('#') {
-                return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-            }
-            let mut it = entity.chars();
-            let Some(first) = it.next() else {
-                return false;
-            };
-            if !first.is_ascii_alphabetic() {
-                return false;
-            }
-            it.all(|c| c.is_ascii_alphanumeric())
-        }
-
-        let mut out = String::with_capacity(raw.len());
-        let mut i = 0usize;
-        while let Some(rel) = raw[i..].find('&') {
-            let amp = i + rel;
-            out.push_str(&raw[i..amp]);
-            let tail = &raw[amp + 1..];
-            if let Some(semi_rel) = tail.find(';') {
-                let semi = amp + 1 + semi_rel;
-                let entity = &raw[amp + 1..semi];
-                if is_valid_entity(entity) {
-                    out.push_str(&raw[amp..=semi]);
-                    i = semi + 1;
-                    continue;
-                }
-            }
-            out.push_str("&amp;");
-            i = amp + 1;
-        }
-        out.push_str(&raw[i..]);
-        out
+fn state_is_valid_html_entity(entity: &str) -> bool {
+    if entity.is_empty() {
+        return false;
     }
+    if let Some(hex) = entity
+        .strip_prefix("#x")
+        .or_else(|| entity.strip_prefix("#X"))
+    {
+        return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
+    }
+    if let Some(dec) = entity.strip_prefix('#') {
+        return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
+    }
+    let mut it = entity.chars();
+    let Some(first) = it.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    it.all(|c| c.is_ascii_alphanumeric())
+}
 
-    fn normalize_br_tags(raw: &str) -> String {
-        let bytes = raw.as_bytes();
-        let mut out = String::with_capacity(raw.len());
-        let mut cur = 0usize;
-        let mut i = 0usize;
-        while i + 2 < bytes.len() {
-            if bytes[i] != b'<' {
+fn state_escape_amp_preserving_entities(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut i = 0usize;
+    while let Some(rel) = raw[i..].find('&') {
+        let amp = i + rel;
+        out.push_str(&raw[i..amp]);
+        let tail = &raw[amp + 1..];
+        if let Some(semi_rel) = tail.find(';') {
+            let semi = amp + 1 + semi_rel;
+            let entity = &raw[amp + 1..semi];
+            if state_is_valid_html_entity(entity) {
+                out.push_str(&raw[amp..=semi]);
+                i = semi + 1;
+                continue;
+            }
+        }
+        out.push_str("&amp;");
+        i = amp + 1;
+    }
+    out.push_str(&raw[i..]);
+    out
+}
+
+fn state_normalize_br_tags(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len());
+    let mut cur = 0usize;
+    let mut i = 0usize;
+    while i + 2 < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        let b1 = bytes[i + 1];
+        let b2 = bytes[i + 2];
+        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+            i += 1;
+            continue;
+        }
+        let next = bytes.get(i + 3).copied();
+        if let Some(n) = next {
+            if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
                 i += 1;
                 continue;
             }
-            let b1 = bytes[i + 1];
-            let b2 = bytes[i + 2];
-            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-                i += 1;
-                continue;
-            }
-            let next = bytes.get(i + 3).copied();
-            if let Some(n) = next {
-                if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
-                    i += 1;
-                    continue;
-                }
-            }
-            if i > cur {
-                out.push_str(&raw[cur..i]);
-            }
-            let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
-                cur = i;
-                break;
-            };
-            out.push('\n');
-            i = i + end_rel + 1;
+        }
+        if i > cur {
+            out.push_str(&raw[cur..i]);
+        }
+        let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
             cur = i;
-        }
-        if cur < raw.len() {
-            out.push_str(&raw[cur..]);
-        }
-        out
+            break;
+        };
+        out.push('\n');
+        i = i + end_rel + 1;
+        cur = i;
     }
+    if cur < raw.len() {
+        out.push_str(&raw[cur..]);
+    }
+    out
+}
 
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    let normalized = normalize_br_tags(decoded.as_ref());
-    let lines: Vec<&str> = normalized.split('\n').collect();
-    let mut out = String::new();
-    out.push_str("<p>");
-    for (idx, line) in lines.iter().enumerate() {
+fn write_state_html_lines_with_br(out: &mut String, normalized: &str) {
+    for (idx, line) in normalized.split('\n').enumerate() {
         if idx > 0 {
             out.push_str("<br />");
         }
         // State diagram labels are sanitized upstream (entities + limited tags). Preserve entities
         // like `&lt;` without double-escaping, while still making stray `&` XML-safe.
-        out.push_str(&escape_amp_preserving_entities(line));
+        out.push_str(&state_escape_amp_preserving_entities(line));
     }
-    out.push_str("</p>");
+}
+
+fn state_html_with_br(raw: &str, wrap_paragraph: bool) -> String {
+    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+    let normalized = state_normalize_br_tags(decoded.as_ref());
+    let mut out = String::new();
+    if wrap_paragraph {
+        out.push_str("<p>");
+    }
+    write_state_html_lines_with_br(&mut out, &normalized);
+    if wrap_paragraph {
+        out.push_str("</p>");
+    }
     out
 }
 
-pub(super) fn html_inline_with_br(raw: &str) -> String {
-    fn escape_amp_preserving_entities(raw: &str) -> String {
-        fn is_valid_entity(entity: &str) -> bool {
-            if entity.is_empty() {
-                return false;
-            }
-            if let Some(hex) = entity
-                .strip_prefix("#x")
-                .or_else(|| entity.strip_prefix("#X"))
-            {
-                return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-            }
-            if let Some(dec) = entity.strip_prefix('#') {
-                return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-            }
-            let mut it = entity.chars();
-            let Some(first) = it.next() else {
-                return false;
-            };
-            if !first.is_ascii_alphabetic() {
-                return false;
-            }
-            it.all(|c| c.is_ascii_alphanumeric())
-        }
+fn html_paragraph_with_br(raw: &str) -> String {
+    state_html_with_br(raw, true)
+}
 
-        let mut out = String::with_capacity(raw.len());
-        let mut i = 0usize;
-        while let Some(rel) = raw[i..].find('&') {
-            let amp = i + rel;
-            out.push_str(&raw[i..amp]);
-            let tail = &raw[amp + 1..];
-            if let Some(semi_rel) = tail.find(';') {
-                let semi = amp + 1 + semi_rel;
-                let entity = &raw[amp + 1..semi];
-                if is_valid_entity(entity) {
-                    out.push_str(&raw[amp..=semi]);
-                    i = semi + 1;
-                    continue;
-                }
-            }
-            out.push_str("&amp;");
-            i = amp + 1;
-        }
-        out.push_str(&raw[i..]);
-        out
-    }
-
-    fn normalize_br_tags(raw: &str) -> String {
-        let bytes = raw.as_bytes();
-        let mut out = String::with_capacity(raw.len());
-        let mut cur = 0usize;
-        let mut i = 0usize;
-        while i + 2 < bytes.len() {
-            if bytes[i] != b'<' {
-                i += 1;
-                continue;
-            }
-            let b1 = bytes[i + 1];
-            let b2 = bytes[i + 2];
-            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-                i += 1;
-                continue;
-            }
-            let next = bytes.get(i + 3).copied();
-            if let Some(n) = next {
-                if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
-                    i += 1;
-                    continue;
-                }
-            }
-            if i > cur {
-                out.push_str(&raw[cur..i]);
-            }
-            let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
-                cur = i;
-                break;
-            };
-            out.push('\n');
-            i = i + end_rel + 1;
-            cur = i;
-        }
-        if cur < raw.len() {
-            out.push_str(&raw[cur..]);
-        }
-        out
-    }
-
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    let normalized = normalize_br_tags(decoded.as_ref());
-    let lines: Vec<&str> = normalized.split('\n').collect();
-    let mut out = String::new();
-    for (idx, line) in lines.iter().enumerate() {
-        if idx > 0 {
-            out.push_str("<br />");
-        }
-        out.push_str(&escape_amp_preserving_entities(line));
-    }
-    out
+fn html_inline_with_br(raw: &str) -> String {
+    state_html_with_br(raw, false)
 }
 
 pub(super) fn state_node_label_html(raw: &str) -> String {
