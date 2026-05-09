@@ -1,98 +1,10 @@
 use crate::XtaskError;
+use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram, workspace_root};
 use crate::util::*;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::fs;
-use std::path::{Path, PathBuf};
-
-#[derive(Clone, Copy, Debug, Default)]
-struct MmdFixtureScan<'a> {
-    filter: Option<&'a str>,
-    skip_private_dirs: bool,
-    skip_parser_only: bool,
-    skip_upstream_svgs: bool,
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-}
-
-fn fixtures_root_for_diagram(workspace_root: &Path, diagram: &str) -> PathBuf {
-    if diagram == "all" {
-        workspace_root.join("fixtures")
-    } else {
-        workspace_root.join("fixtures").join(diagram)
-    }
-}
-
-fn path_file_name_contains(path: &Path, needle: &str) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.contains(needle))
-}
-
-fn is_parser_only_fixture(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-}
-
-fn is_private_fixture_dir(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.starts_with('_'))
-}
-
-fn is_upstream_svg_dir(path: &Path) -> bool {
-    path.file_name().is_some_and(|n| n == "upstream-svgs")
-}
-
-fn collect_mmd_fixtures(root: &Path, scan: MmdFixtureScan<'_>) -> Vec<PathBuf> {
-    let root = root.to_path_buf();
-    let mut out = Vec::new();
-    let mut stack = vec![root.clone()];
-    while let Some(dir) = stack.pop() {
-        if dir != root && scan.skip_private_dirs && is_private_fixture_dir(&dir) {
-            continue;
-        }
-        if dir != root && scan.skip_upstream_svgs && is_upstream_svg_dir(&dir) {
-            continue;
-        }
-
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if scan.skip_private_dirs && is_private_fixture_dir(&path) {
-                    continue;
-                }
-                if scan.skip_upstream_svgs && is_upstream_svg_dir(&path) {
-                    continue;
-                }
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "mmd") {
-                continue;
-            }
-            if scan.skip_parser_only && is_parser_only_fixture(&path) {
-                continue;
-            }
-            if let Some(filter) = scan.filter {
-                if !path_file_name_contains(&path, filter) {
-                    continue;
-                }
-            }
-            out.push(path);
-        }
-    }
-    out.sort();
-    out
-}
+use std::path::PathBuf;
 
 fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
     // `--diagram <dir>` is a directory selector. Fixtures in that directory can still parse into
@@ -238,6 +150,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         &fixtures_root,
         MmdFixtureScan {
             filter: filter.as_deref(),
+            recursive: true,
             skip_private_dirs: true,
             skip_parser_only: true,
             skip_upstream_svgs: true,
@@ -437,6 +350,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {
+            recursive: true,
             skip_private_dirs: true,
             skip_upstream_svgs: true,
             ..MmdFixtureScan::default()
@@ -628,6 +542,7 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         &fixtures_root,
         MmdFixtureScan {
             filter: filter.as_deref(),
+            recursive: true,
             skip_private_dirs: true,
             skip_upstream_svgs: true,
             ..MmdFixtureScan::default()
@@ -808,10 +723,8 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        MmdFixtureScan, collect_mmd_fixtures, is_parser_only_fixture, snapshot_selector_accepts,
-        workspace_root,
-    };
+    use super::{MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts, workspace_root};
+    use crate::cmd::is_parser_only_fixture;
 
     #[test]
     fn collect_mmd_fixtures_honors_snapshot_scan_policy() {
@@ -819,6 +732,7 @@ mod tests {
         let files = collect_mmd_fixtures(
             &fixtures_root,
             MmdFixtureScan {
+                recursive: true,
                 skip_private_dirs: true,
                 skip_upstream_svgs: true,
                 ..MmdFixtureScan::default()
@@ -852,6 +766,7 @@ mod tests {
             MmdFixtureScan {
                 skip_private_dirs: true,
                 skip_parser_only: true,
+                recursive: true,
                 skip_upstream_svgs: true,
                 ..MmdFixtureScan::default()
             },
@@ -870,6 +785,7 @@ mod tests {
             &fixtures_root,
             MmdFixtureScan {
                 filter: Some("upstream_sankey_allows_proto_id_sankey_header_parser_only_spec"),
+                recursive: true,
                 skip_private_dirs: true,
                 skip_upstream_svgs: true,
                 ..MmdFixtureScan::default()

@@ -1,6 +1,7 @@
 //! Gap audits and corpus health checks.
 
 use crate::XtaskError;
+use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, workspace_root};
 use crate::util::*;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -25,12 +26,6 @@ struct DeferredParseErr {
     path: PathBuf,
     expected_group: String,
     message_key: String,
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
 }
 
 fn sanitize_svg_id(raw: &str) -> String {
@@ -68,29 +63,6 @@ fn wait_with_timeout(
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-}
-
-fn collect_mmd_files_recursive(root: &Path) -> Result<Vec<PathBuf>, XtaskError> {
-    let mut out: Vec<PathBuf> = Vec::new();
-    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir).map_err(|source| XtaskError::ReadFile {
-            path: dir.display().to_string(),
-            source,
-        })?;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if is_file_with_extension(&path, "mmd") {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-    Ok(out)
 }
 
 fn top_level_dir_under(root: &Path, path: &Path) -> Option<String> {
@@ -381,7 +353,13 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
 
     // 1) Parser-only fixtures (not part of parity gates).
     let mut parser_only_by_diagram: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
-    let all_fixture_mmds = collect_mmd_files_recursive(&fixtures_root)?;
+    let all_fixture_mmds = collect_mmd_fixtures(
+        &fixtures_root,
+        MmdFixtureScan {
+            recursive: true,
+            ..MmdFixtureScan::default()
+        },
+    );
     for p in all_fixture_mmds {
         let Some(top) = top_level_dir_under(&fixtures_root, &p) else {
             continue;
@@ -410,7 +388,13 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let mut deferred_ok: Vec<DeferredParseOk> = Vec::new();
     let mut deferred_err: Vec<DeferredParseErr> = Vec::new();
     if deferred_root.exists() {
-        let deferred_files = collect_mmd_files_recursive(&deferred_root)?;
+        let deferred_files = collect_mmd_fixtures(
+            &deferred_root,
+            MmdFixtureScan {
+                recursive: true,
+                ..MmdFixtureScan::default()
+            },
+        );
         for p in deferred_files {
             let Some(expected_group) = top_level_dir_under(&deferred_root, &p) else {
                 continue;

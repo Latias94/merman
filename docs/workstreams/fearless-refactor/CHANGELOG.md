@@ -14,6 +14,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   commands through it, deleting repeated parser-only scan loops across the compare diagram modules.
 - Reused the same fixture listing helper in upstream SVG generation and the Architecture debug
   tooling, keeping the diagram-specific exclusions local while deleting the shared scan boilerplate.
+- Promoted recursive `.mmd` fixture discovery into the shared `xtask` fixture helper and moved
+  snapshot generation plus `audit-gaps` onto it, so parser-only, deferred, and upstream-SVG scan
+  policy is no longer reimplemented per command.
 - Extracted a shared `xtask` fixture-to-SVG export helper and refactored `gen-debug-svgs` plus
   the ER, Flowchart, State, Class, and C4 generators onto it, removing repeated scan/read/write
   loops from the command layer.
