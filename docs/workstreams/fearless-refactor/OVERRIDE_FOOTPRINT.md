@@ -133,6 +133,11 @@ Mindmap note: after the typed profile refresh, disabling the remaining Mindmap r
 leaves 52 `parity-root` mismatches. Those entries stay in the budget until their geometry/text
 profiles move into typed renderer logic.
 
+Gitgraph and Flowchart audit note: a 2026-05-09 recheck confirmed that disabling the Gitgraph
+direct root lookup still leaves all 226 Gitgraph root entries failing, and disabling the shared
+root override helper still leaves all 135 Flowchart root entries failing. These buckets need
+root-viewport derivation work before table pruning, not another blind deletion pass.
+
 Largest root-viewport buckets:
 
 - `gitgraph`: 226
@@ -227,4 +232,7 @@ Counts are inventory units and should not be compared directly across categories
   `gitgraph`, `sequence`, `state`, and `mindmap`.
 - Do not spend another cleanup pass on the 3 remaining Sankey root pins until Sankey root height
   derivation changes; the May 2026 recheck proved they still guard real `parity-root` drift.
+- Do not spend another blind table-pruning pass on Gitgraph or Flowchart root pins until their root
+  viewport derivation changes; the May 2026 recheck proved both buckets still guard real
+  `parity-root` drift.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.
