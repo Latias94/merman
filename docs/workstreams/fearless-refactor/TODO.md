@@ -448,14 +448,15 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: 71 root viewport overrides have been removed so far: 19 `architecture` entries after
+  Evidence: 106 root viewport overrides have been removed so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
   bounds, 9 `timeline` entries now covered by deterministic root output, and 12 `pie` entries now
   covered by deterministic root output, plus 12 `er` entries now covered by deterministic root
-  output. One additional hand-curated `kanban` helper was removed by reusing the existing
-  foreignObject height constant, and the XYChart bar data-label helpers were
+  output and 35 `requirement` entries now covered by deterministic root output. One additional
+  hand-curated `kanban` helper was removed by reusing the existing foreignObject height constant,
+  and the XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header
   center-y helper, Pie collapsed its center point into one helper for both axes, and Radar dropped
   a redundant legend baseline-y helper. Pie also dropped two derived legend-position helpers,
@@ -501,6 +502,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-gitgraph-svgs --check-dom --dom-decimals 3`,
   `compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-sankey-svgs --check-dom --dom-decimals 3`,
   `compare-sequence-svgs --check-dom --dom-decimals 3`,
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
