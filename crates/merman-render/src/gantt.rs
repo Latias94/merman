@@ -870,7 +870,8 @@ fn format_axis_tick_label(d: chrono::DateTime<FixedOffset>, axis_format: &str) -
                     tmp.push('.');
                     while let Some(peek) = it.peek().copied() {
                         if peek.is_ascii_digit() {
-                            tmp.push(it.next().unwrap());
+                            tmp.push(peek);
+                            it.next();
                         } else {
                             break;
                         }

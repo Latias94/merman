@@ -76,6 +76,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   parser wrapper modules instead of the whole `merman-core` crate.
 - State semantic DB: use a single `HashMap::entry` path when creating state records, removing an
   insert-then-unwrap lookup.
+- Gantt formatting: avoid a peek-then-unwrap loop while parsing fractional-second directives.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Replaced the Gantt d3-time-format fractional-second parser's peek-then-unwrap loop with an
+  explicit peek/advance loop while preserving Gantt DOM parity.
 - Replaced StateDB's insert-then-unwrap state lookup with a single `HashMap::entry` path while
   preserving State parser tests and SVG DOM parity.
 - Scoped the LALRPOP generated `empty_line_after_outer_attr` allowance to parser wrapper modules
