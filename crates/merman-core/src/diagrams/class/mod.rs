@@ -1,4 +1,8 @@
-lalrpop_util::lalrpop_mod!(class_grammar, "/diagrams/class_grammar.rs");
+lalrpop_util::lalrpop_mod!(
+    #[allow(clippy::empty_line_after_outer_attr)]
+    class_grammar,
+    "/diagrams/class_grammar.rs"
+);
 
 pub(crate) const LINE_SOLID: i32 = 0;
 pub(crate) const LINE_DOTTED: i32 = 1;

@@ -1,8 +1,4 @@
 #![forbid(unsafe_code)]
-// LALRPOP generates code that can contain an "empty line after outer attribute" in its output.
-// We keep the generated sources as-is and suppress this lint at the crate level.
-#![allow(clippy::empty_line_after_outer_attr)]
-
 //! Mermaid parser + semantic model (headless).
 //!
 //! Design goals:

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Scoped the LALRPOP generated `empty_line_after_outer_attr` allowance to parser wrapper modules
+  and removed the broad `merman-core` crate-level allowance.
 - Boxed public `LayoutDiagram` payloads and removed the render model `large_enum_variant`
   allowance while preserving serialized layout shape.
 - Boxed State AST relation statement payloads behind a dedicated `RelationStmt` and removed the

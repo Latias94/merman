@@ -2,7 +2,11 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-lalrpop_util::lalrpop_mod!(er_grammar, "/diagrams/er_grammar.rs");
+lalrpop_util::lalrpop_mod!(
+    #[allow(clippy::empty_line_after_outer_attr)]
+    er_grammar,
+    "/diagrams/er_grammar.rs"
+);
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ErDiagramRenderModel {

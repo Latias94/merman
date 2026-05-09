@@ -5,7 +5,11 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 lalrpop_util::lalrpop_mod!(
-    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    #[allow(
+        clippy::empty_line_after_outer_attr,
+        clippy::type_complexity,
+        clippy::result_large_err
+    )]
     flowchart_grammar,
     "/diagrams/flowchart_grammar.rs"
 );

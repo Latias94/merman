@@ -1,5 +1,9 @@
 lalrpop_util::lalrpop_mod!(
-    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    #[allow(
+        clippy::empty_line_after_outer_attr,
+        clippy::type_complexity,
+        clippy::result_large_err
+    )]
     sequence_grammar,
     "/diagrams/sequence_grammar.rs"
 );

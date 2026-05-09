@@ -16,7 +16,7 @@ pub use parse::{parse_state, parse_state_model_for_render};
 pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
 
 lalrpop_util::lalrpop_mod!(
-    #[allow(clippy::filter_map_identity)]
+    #[allow(clippy::empty_line_after_outer_attr, clippy::filter_map_identity)]
     state_grammar,
     "/diagrams/state_grammar.rs"
 );
