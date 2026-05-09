@@ -475,6 +475,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: removing `maybe_remove_redundant_cluster_run_point` caused
   `cargo run -p xtask -- verify --strict` to fail with flowchart DOM mismatches on the same
   subgraph/cluster edge families, so the special case stays in place.
+- [x] Delete the flowchart cyclic-special basis helper after proving the strict gate stays green.
+  Evidence: removing `maybe_pad_cyclic_special_basis_route` from
+  `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` kept
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+  --filter flowchart` green and `cargo run -p xtask -- verify --strict` passed.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
   Evidence: root viewport footprint is down 795 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path

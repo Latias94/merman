@@ -537,6 +537,9 @@ Progress:
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
   it produced the same cluster/subgraph flowchart DOM mismatches.
+- The flowchart cyclic-special basis helper was deleted after strict-gate rechecks stayed green
+  without it, removing `maybe_pad_cyclic_special_basis_route` from
+  `svg/parity/flowchart/edge_geom/basis.rs`.
 
 Exit criteria:
 

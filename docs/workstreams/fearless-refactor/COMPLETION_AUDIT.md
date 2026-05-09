@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `README.md`, `GATES.md`, and `MILESTONES.md` all document `cargo clippy` and `cargo run -p xtask -- verify --strict` as release-level gates. The latest `cargo run -p xtask -- verify --strict` passed after the flowchart helper rechecks were restored. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed, and the flowchart DOM rechecks proved that the degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed after removing the flowchart cyclic-special basis helper, and the degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -30,14 +30,14 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
 | Performance evidence | `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
-| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md` | Covered for the recheck decision; removal not accepted where parity failed |
+| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, plus the removed cyclic-special basis helper in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` | Covered for the recheck decision; one helper was removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
 | Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md` | Covered |
 
 ## What Was Verified Recently
 
-- `cargo run -p xtask -- verify --strict` passed after the flowchart helper restorations.
+- `cargo run -p xtask -- verify --strict` passed after the flowchart helper restorations and the cyclic-special basis helper removal.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passed during the helper recheck.
-- Flowchart DOM spotchecks for `edges_to_from_subgraphs`, `subgraph_spec`, and `cluster` were green while the helpers were temporarily disabled, but the later strict-gate run showed that the helpers are still required for full parity.
+- Flowchart DOM spotchecks for `edges_to_from_subgraphs`, `subgraph_spec`, and `cluster` were green while the helpers were temporarily disabled, and the later strict-gate run showed that the cyclic-special basis helper could stay deleted while the degenerate-path and cluster-run helpers remain required for full parity.
 
 ## Remaining Gaps
 
