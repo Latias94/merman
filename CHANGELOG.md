@@ -63,6 +63,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence renderer: render non-wrapped actor, message, and note label lines from borrowed `<br>`
   splits instead of collecting temporary `String` lines.
 - Sequence renderer: avoid cloning block label fragments when probing hyphenated long-word wraps.
+- `xtask` font metrics generator: make the ridge solver testable and remove its
+  `needless_range_loop` lint allowance.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
   deserializing layout input from semantic JSON.
 - Gantt render pipeline: parse a typed render model for layout/render-only flows and reuse it in

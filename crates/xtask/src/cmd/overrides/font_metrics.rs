@@ -9,6 +9,64 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+fn solve_ridge(at_a: &mut [Vec<f64>], at_b: &mut [f64]) -> Vec<f64> {
+    let n = at_b.len();
+    let mut i = 0;
+    while i < n {
+        // Pivot.
+        let mut pivot = i;
+        let mut best = at_a[i][i].abs();
+        let mut r = i + 1;
+        while r < n {
+            let v = at_a[r][i].abs();
+            if v > best {
+                best = v;
+                pivot = r;
+            }
+            r += 1;
+        }
+        if pivot != i {
+            at_a.swap(i, pivot);
+            at_b.swap(i, pivot);
+        }
+
+        let diag = at_a[i][i];
+        if diag.abs() < 1e-12 {
+            i += 1;
+            continue;
+        }
+        let inv = 1.0 / diag;
+        let mut c = i;
+        while c < n {
+            at_a[i][c] *= inv;
+            c += 1;
+        }
+        at_b[i] *= inv;
+
+        let mut r = 0;
+        while r < n {
+            if r == i {
+                r += 1;
+                continue;
+            }
+            let factor = at_a[r][i];
+            if factor.abs() < 1e-12 {
+                r += 1;
+                continue;
+            }
+            let mut c = i;
+            while c < n {
+                at_a[r][c] -= factor * at_a[i][c];
+                c += 1;
+            }
+            at_b[r] -= factor * at_b[i];
+            r += 1;
+        }
+        i += 1;
+    }
+    at_b.to_vec()
+}
+
 pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     let mut in_dir: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
@@ -571,52 +629,6 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 eprintln!("    text={:?} width_px={}", s.text, s.width_px);
             }
         }
-    }
-
-    #[allow(clippy::needless_range_loop)]
-    fn solve_ridge(at_a: &mut [Vec<f64>], at_b: &mut [f64]) -> Vec<f64> {
-        let n = at_b.len();
-        for i in 0..n {
-            // Pivot.
-            let mut pivot = i;
-            let mut best = at_a[i][i].abs();
-            for r in (i + 1)..n {
-                let v = at_a[r][i].abs();
-                if v > best {
-                    best = v;
-                    pivot = r;
-                }
-            }
-            if pivot != i {
-                at_a.swap(i, pivot);
-                at_b.swap(i, pivot);
-            }
-
-            let diag = at_a[i][i];
-            if diag.abs() < 1e-12 {
-                continue;
-            }
-            let inv = 1.0 / diag;
-            for c in i..n {
-                at_a[i][c] *= inv;
-            }
-            at_b[i] *= inv;
-
-            for r in 0..n {
-                if r == i {
-                    continue;
-                }
-                let factor = at_a[r][i];
-                if factor.abs() < 1e-12 {
-                    continue;
-                }
-                for c in i..n {
-                    at_a[r][c] -= factor * at_a[i][c];
-                }
-                at_b[r] -= factor * at_b[i];
-            }
-        }
-        at_b.to_vec()
     }
 
     // Group by font key and fit widths in `em`, separately for:
@@ -1987,4 +1999,38 @@ const strings = input.strings;
     })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::solve_ridge;
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "actual={actual}, expected={expected}"
+        );
+    }
+
+    #[test]
+    fn solve_ridge_solves_small_dense_system() {
+        let mut at_a = vec![vec![2.0, 1.0], vec![1.0, 3.0]];
+        let mut at_b = vec![1.0, 2.0];
+
+        let solution = solve_ridge(&mut at_a, &mut at_b);
+
+        assert_close(solution[0], 0.2);
+        assert_close(solution[1], 0.6);
+    }
+
+    #[test]
+    fn solve_ridge_pivots_away_from_zero_diagonal() {
+        let mut at_a = vec![vec![0.0, 2.0], vec![1.0, 1.0]];
+        let mut at_b = vec![4.0, 3.0];
+
+        let solution = solve_ridge(&mut at_a, &mut at_b);
+
+        assert_close(solution[0], 1.0);
+        assert_close(solution[1], 2.0);
+    }
 }

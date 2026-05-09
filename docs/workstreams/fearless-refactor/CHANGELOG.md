@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Made the `xtask` font-metrics ridge solver module-local and covered it with focused tests, then
+  removed its `needless_range_loop` lint allowance.
 - Added an override-report gate that rejects root viewport lookup call sites outside the shared
   root override helper contract.
 - Routed both State root viewport override paths through the shared root override helper while
