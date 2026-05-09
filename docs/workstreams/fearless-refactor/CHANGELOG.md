@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed Radar legend box size and label x-offset helpers by inlining the fixed values at the
+  render call sites, reducing the hand-curated helper footprint to 56.
 - Removed single-use Journey legend placement and mouth offset helpers by inlining the upstream
   fixed values at the layout call sites, reducing the hand-curated helper footprint to 58.
 - Refreshed `OVERRIDE_FOOTPRINT.md` after `xtask verify --strict` so the snapshot now reports zero

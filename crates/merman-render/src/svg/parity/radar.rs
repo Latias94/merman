@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::radar_text_overrides_11_12_2 as radar_text_overrides;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
@@ -398,7 +397,7 @@ pub(super) fn render_radar_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<rect width="{size}" height="{size}" class="radarLegendBox-{idx}"/>"#,
-            size = fmt_display(radar_text_overrides::radar_legend_box_size_px()),
+            size = fmt_display(12.0),
             idx = item.class_index
         );
         let label = model
@@ -409,7 +408,7 @@ pub(super) fn render_radar_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}" class="radarLegendText">{text}</text>"#,
-            x = fmt_display(radar_text_overrides::radar_legend_label_x_px()),
+            x = fmt_display(16.0),
             y = fmt_display(0.0),
             text = escape_xml(label)
         );

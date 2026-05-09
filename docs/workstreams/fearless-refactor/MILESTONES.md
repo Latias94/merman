@@ -436,8 +436,9 @@ Progress:
 - XYChart now uses one shared bar data-label inset helper for both bar orientations, reducing the
   helper footprint to 67.
 - Pie now derives its outer radius from the slice radius, Sequence now derives its note padding
-  total from the existing note gap, and Journey inlines its single-use legend placement and mouth
-  offset values, reducing the helper footprint to 58.
+  total from the existing note gap, Journey inlines its single-use legend placement and mouth
+  offset values, and Radar inlines its remaining legend box size and label x-offset literals,
+  reducing the helper footprint to 56.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
