@@ -5,9 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
-- Extracted a shared `xtask` fixture-to-SVG export helper and refactored the ER, Flowchart,
-  State, Class, and C4 generators onto it, removing repeated scan/read/write loops from the
-  command layer.
+- Extracted a shared `xtask` fixture-to-SVG export helper and refactored `gen-debug-svgs` plus
+  the ER, Flowchart, State, Class, and C4 generators onto it, removing repeated scan/read/write
+  loops from the command layer.
 - Recorded the current Mindmap/Architecture local pipeline canary in
   `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`, preserving
   the strong local layout-stage signal and the small `parse/mindmap_medium` watch item.

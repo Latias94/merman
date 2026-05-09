@@ -1320,78 +1320,26 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let mut mmd_files: Vec<PathBuf> = Vec::new();
-        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-            return Err(XtaskError::DebugSvgFailed(format!(
-                "failed to list fixtures directory {}",
-                fixtures_dir.display()
-            )));
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "mmd") {
-                continue;
-            }
-            if let Some(f) = filter {
-                if !path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains(f))
-                {
-                    continue;
-                }
-            }
-            mmd_files.push(path);
-        }
-        mmd_files.sort();
-
-        if mmd_files.is_empty() {
-            return Err(XtaskError::DebugSvgFailed(format!(
-                "no .mmd fixtures matched under {}",
-                fixtures_dir.display()
-            )));
-        }
-
-        fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
-            path: out_dir.display().to_string(),
-            source,
-        })?;
-
         let engine = merman::Engine::new();
-        let mut failures: Vec<String> = Vec::new();
+        let layout_opts = merman_render::LayoutOptions::default();
 
-        for mmd_path in mmd_files {
-            let text = match fs::read_to_string(&mmd_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
+        export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, _stem, text| {
             let parsed = match futures::executor::block_on(
-                engine.parse_diagram(&text, merman::ParseOptions::default()),
+                engine.parse_diagram(text, merman::ParseOptions::default()),
             ) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
+                    return Err(format!("no diagram detected in {}", mmd_path.display()));
                 }
                 Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
+                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
                 }
             };
 
-            let layout_opts = merman_render::LayoutOptions::default();
             let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
                 Ok(v) => v,
                 Err(err) => {
-                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                    continue;
+                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
                 }
             };
 
@@ -1524,28 +1472,11 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
             let svg = match svg {
                 Ok(v) => v,
-                Err(err) => {
-                    failures.push(err.to_string());
-                    continue;
-                }
+                Err(err) => return Err(err.to_string()),
             };
 
-            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-                failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-                continue;
-            };
-            let out_path = out_dir.join(format!("{stem}.svg"));
-            if let Err(err) = fs::write(&out_path, svg) {
-                failures.push(format!("failed to write {}: {err}", out_path.display()));
-                continue;
-            }
-        }
-
-        if failures.is_empty() {
-            return Ok(());
-        }
-
-        Err(XtaskError::DebugSvgFailed(failures.join("\n")))
+            Ok(svg)
+        })
     }
 
     let filter = filter.as_deref();
