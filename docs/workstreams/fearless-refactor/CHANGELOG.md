@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Boxed the standalone Flowchart AST node statement variant and removed its
+  `large_enum_variant` lint allowance while keeping the parser/build path unchanged.
 - Added a lint-allow audit for the remaining source-level allowances, including the confirmed
   generated State parser `filter_map_identity` allowance and the larger enum migration candidates.
 - Removed local production unwraps from Architecture alignment flattening, Gantt compact section

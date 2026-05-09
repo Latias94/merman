@@ -56,7 +56,7 @@ impl FlowchartBuildState {
                     }
                 }
                 Stmt::Node(n) => {
-                    let mut n = n.clone();
+                    let mut n = n.as_ref().clone();
                     self.vertex_calls.push(n.id.clone());
                     if n.shape_data.is_some() {
                         self.vertex_calls.push(n.id.clone());

@@ -60,11 +60,10 @@ pub(crate) struct SubgraphBlock {
     pub statements: Vec<Stmt>,
 }
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Chain { nodes: Vec<Node>, edges: Vec<Edge> },
-    Node(Node),
+    Node(Box<Node>),
     Subgraph(SubgraphBlock),
     Direction(String),
     Style(StyleStmt),
