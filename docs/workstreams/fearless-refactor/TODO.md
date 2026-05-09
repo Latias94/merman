@@ -448,7 +448,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: root viewport footprint is down 512 entries net so far: 19 `architecture` entries after
+  Evidence: root viewport footprint is down 643 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
@@ -461,7 +461,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   obsolete pins and gained one missing docs root pin, making Class `parity-root` green with a
   165-entry net reduction. Gitgraph then dropped 6 obsolete pins while staying green under
   `parity-root`, and Sequence dropped 32 obsolete pins while staying green under `parity-root`.
-  One additional hand-curated
+  Flowchart then dropped 131 obsolete pins without adding new `parity-root` failures; the only
+  remaining Flowchart `parity-root` gap is the pre-existing
+  `upstream_docs_math_flowcharts_001` root max-width mismatch. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header
@@ -510,6 +512,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `compare-flowchart-svgs --check-dom --dom-decimals 3`,
   `compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
@@ -519,7 +522,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and
-  `compare-treemap-svgs --check-dom --dom-decimals 3` still pass.
+  `compare-treemap-svgs --check-dom --dom-decimals 3` still pass. Flowchart `parity-root`
+  was checked separately before and after pruning; both reports contain only
+  `upstream_docs_math_flowcharts_001`.
 - [x] Prevent override tables from becoming the default fix for model bugs.
   Evidence: `xtask report-overrides --check-no-growth` now fails when any generated/manual override
   category grows beyond the explicit budget, and `xtask verify --strict` includes that gate.

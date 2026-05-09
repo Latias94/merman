@@ -28,7 +28,7 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 512-entry net reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 643-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
@@ -41,7 +41,9 @@ deterministic root output. It then collapses the Class root table from 196 entri
 removing 166 obsolete pins and adding one missing docs root pin, making Class `parity-root` green
 with a 165-entry net reduction, followed by six obsolete Gitgraph pins now covered by
 deterministic root output and thirty-two obsolete Sequence pins now covered by deterministic root
-output. It also reflects the final manual raw SVG/path bridge
+output. Flowchart then dropped 131 obsolete pins while preserving the existing
+`upstream_docs_math_flowcharts_001` `parity-root` gap for a typed math/layout follow-up. It also
+reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
@@ -86,7 +88,7 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1062`.
+Total entries reported by `xtask`: `931`.
 
 | file | entries |
 | --- | ---: |
@@ -94,7 +96,7 @@ Total entries reported by `xtask`: `1062`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `class_root_overrides_11_12_2.rs` | 31 |
 | `er_root_overrides_11_12_2.rs` | 23 |
-| `flowchart_root_overrides_11_12_2.rs` | 266 |
+| `flowchart_root_overrides_11_12_2.rs` | 135 |
 | `gitgraph_root_overrides_11_12_2.rs` | 226 |
 | `mindmap_root_overrides_11_12_2.rs` | 80 |
 | `pie_root_overrides_11_12_2.rs` | 23 |
@@ -106,9 +108,9 @@ Total entries reported by `xtask`: `1062`.
 
 Largest root-viewport buckets:
 
-- `flowchart`: 266
 - `gitgraph`: 226
 - `sequence`: 200
+- `flowchart`: 135
 - `architecture`: 101
 
 ### Text Metric Lookup Overrides
@@ -187,6 +189,9 @@ Counts are inventory units and should not be compared directly across categories
 
 - Manual bridge scanning is intentionally naming-based today: any future hand-authored bridge
   functions must use `maybe_override_*` under `crates/merman-render/src/svg/parity/` to be visible.
+- Flowchart `parity-root` still has one known root max-width mismatch for
+  `upstream_docs_math_flowcharts_001`; treat it as a typed math/layout follow-up, not a reason to
+  re-grow the Flowchart root override table.
 - Generated override metadata is category-level. Per-entry fixture/probe provenance still lives in
   generator inputs, generated comments, tests, and upstream fixture names.
 

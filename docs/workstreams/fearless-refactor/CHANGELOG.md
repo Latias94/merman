@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed 131 obsolete Flowchart root viewport pins while preserving the existing single
+  `upstream_docs_math_flowcharts_001` `parity-root` gap, reducing root viewport overrides to 931.
 - Removed thirty-two obsolete Sequence root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1062 while keeping Sequence `parity-root` green.
 - Removed six obsolete Gitgraph root viewport pins now covered by deterministic root output,
