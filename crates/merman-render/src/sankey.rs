@@ -1,4 +1,3 @@
-use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
@@ -7,6 +6,10 @@ use merman_core::diagrams::sankey::SankeyDiagramRenderModel;
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+
+const SANKEY_NODE_WIDTH_PX: f64 = 10.0;
+const SANKEY_NODE_PADDING_BASE_PX: f64 = 10.0;
+const SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX: f64 = 15.0;
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -84,6 +87,15 @@ fn f64_cmp(a: f64, b: f64) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Equal)
 }
 
+fn sankey_node_padding_px(show_values: bool) -> f64 {
+    SANKEY_NODE_PADDING_BASE_PX
+        + if show_values {
+            SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX
+        } else {
+            0.0
+        }
+}
+
 pub fn layout_sankey_diagram(
     semantic: &Value,
     effective_config: &Value,
@@ -110,8 +122,8 @@ pub fn layout_sankey_diagram_typed(
     };
     let align = parse_align(effective_config);
 
-    let dx = sankey_text_overrides::sankey_node_width_px();
-    let dy = sankey_text_overrides::sankey_node_padding_px(show_values);
+    let dx = SANKEY_NODE_WIDTH_PX;
+    let dy = sankey_node_padding_px(show_values);
     let iterations = 6usize;
 
     let mut nodes: Vec<Node> = model
@@ -651,19 +663,18 @@ pub fn layout_sankey_diagram_typed(
 #[cfg(test)]
 mod tests {
     use super::layout_sankey_diagram;
-    use crate::generated::sankey_text_overrides_11_12_2 as sankey_text_overrides;
     use crate::text::DeterministicTextMeasurer;
     use serde_json::json;
 
     #[test]
-    fn sankey_text_constants_are_generated() {
-        assert_eq!(sankey_text_overrides::sankey_node_width_px(), 10.0);
-        assert_eq!(sankey_text_overrides::sankey_node_padding_px(true), 25.0);
-        assert_eq!(sankey_text_overrides::sankey_node_padding_px(false), 10.0);
+    fn sankey_node_geometry_constants_match_mermaid() {
+        assert_eq!(super::SANKEY_NODE_WIDTH_PX, 10.0);
+        assert_eq!(super::sankey_node_padding_px(true), 25.0);
+        assert_eq!(super::sankey_node_padding_px(false), 10.0);
     }
 
     #[test]
-    fn sankey_layout_uses_generated_node_geometry() {
+    fn sankey_layout_uses_mermaid_node_geometry() {
         let semantic = json!({
             "graph": {
                 "nodes": [{"id": "A"}, {"id": "B"}],
@@ -676,13 +687,10 @@ mod tests {
         };
 
         let default_layout = layout_sankey_diagram(&semantic, &json!({}), &measurer).unwrap();
-        assert_eq!(
-            default_layout.node_width,
-            sankey_text_overrides::sankey_node_width_px()
-        );
+        assert_eq!(default_layout.node_width, super::SANKEY_NODE_WIDTH_PX);
         assert_eq!(
             default_layout.node_padding,
-            sankey_text_overrides::sankey_node_padding_px(true)
+            super::sankey_node_padding_px(true)
         );
 
         let hidden_values_layout = layout_sankey_diagram(
@@ -693,7 +701,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             hidden_values_layout.node_padding,
-            sankey_text_overrides::sankey_node_padding_px(false)
+            super::sankey_node_padding_px(false)
         );
     }
 }

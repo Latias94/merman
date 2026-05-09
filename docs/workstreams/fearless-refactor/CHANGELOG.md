@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Sankey node width/padding values into `sankey` owner constants and a private padding helper,
+  deleting the now-empty Sankey text override module and reducing helper footprint to 32.
 - Moved Pie's remaining legend rectangle/spacing values into `pie` owner constants shared by
   layout and SVG, deleting the now-empty Pie text override module and reducing helper footprint to
   34.

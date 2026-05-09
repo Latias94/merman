@@ -431,9 +431,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   tables as text metric lookup entries, so `block`, `er`, `gantt`, and `mindmap` table data no
   longer appear as hand-curated helper functions in `OVERRIDE_FOOTPRINT.md`.
 - [x] Remove redundant public helper decomposition in hand-curated overrides.
-  Evidence: `sankey_text_overrides_11_12_2.rs` now keeps the padding base/extra values as private
-  constants and exposes only `sankey_node_padding_px(show_values)`, reducing helper footprint
-  without changing layout behavior.
+  Evidence: Sankey first collapsed redundant padding component helpers, then moved its remaining
+  node geometry values into `sankey` owner constants and deleted the now-empty generated module,
+  reducing helper footprint without changing layout behavior.
 - [x] Add owner/removal notes for current temporary raw SVG/path bridges.
   Evidence: `svg/parity/flowchart/edge_geom/degenerate_path.rs` documents the current flowchart
   degenerate path bridge owner and removal criteria.
@@ -474,7 +474,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   footprint to 37. Radar inlines its final legend row spacing value in layout and deletes the
   now-empty generated module, reducing the helper footprint to 36. Pie moved its remaining legend
   rectangle/spacing values into `pie` owner constants and deleted the now-empty generated module,
-  reducing the helper footprint to 34.
+  reducing the helper footprint to 34. Sankey moved its remaining node width/padding values into
+  `sankey` owner constants and deleted the now-empty generated module, reducing the helper
+  footprint to 32.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

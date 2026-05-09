@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `34`.
+Generated override modules scanned: `33`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -37,8 +37,7 @@ It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` bin
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
 hand-curated helper functions.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
-helpers; the remaining public Sankey helper is the actual `showValues`-aware padding lookup used by
-layout tests and render code.
+helpers before the remaining Sankey node geometry moved back to the `sankey` owner module.
 Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
 text y literals, Sequence now derives its note padding total from the existing note gap, Journey
 inlined its single-use legend placement and mouth offset values, Radar inlined its remaining
@@ -48,7 +47,9 @@ literals in block geometry, Sankey inlined its SVG-only label font/gap/dy litera
 inlined its section header label/value sizing literals, Architecture deleted a dead icon text bbox
 helper, and Radar inlined its final legend row spacing value and deleted the now-empty generated
 module. Pie also moved its remaining legend rectangle/spacing values into `pie` owner constants and
-deleted the now-empty generated module, bringing the hand-curated helper total to 34.
+deleted the now-empty generated module. Sankey then moved its node width/padding values into
+`sankey` owner constants and deleted the now-empty generated module, bringing the hand-curated
+helper total to 32.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -125,7 +126,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `34`.
+Total helper functions reported by `xtask`: `32`.
 
 | file | helper functions |
 | --- | ---: |
@@ -133,7 +134,6 @@ Total helper functions reported by `xtask`: `34`.
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 | `journey_text_overrides_11_12_2.rs` | 6 |
 | `kanban_text_overrides_11_12_2.rs` | 5 |
-| `sankey_text_overrides_11_12_2.rs` | 2 |
 | `sequence_text_overrides_11_12_2.rs` | 6 |
 | `treemap_text_overrides_11_12_2.rs` | 3 |
 
