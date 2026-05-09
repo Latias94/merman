@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed all 119 obsolete Block root viewport pins and deleted the now-empty Block root override
+  module, reducing root viewport overrides to 1333 while keeping Block `parity-root` green.
 - Removed sixteen obsolete C4 root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1452 while keeping C4 `parity-root` green.
 - Removed thirty-five obsolete Requirement root viewport pins now covered by deterministic root

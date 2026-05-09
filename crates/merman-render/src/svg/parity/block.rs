@@ -628,25 +628,14 @@ pub(super) fn render_block_diagram_svg_model(
     let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
 
     let mut out = String::new();
-    let mut viewbox_attr = format!(
+    let viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w.max(1.0)),
         fmt(vb_h.max(1.0))
     );
-    let mut max_w_style = fmt_max_width_px(vb_w.max(1.0));
-    let mut w_attr = fmt(vb_w.max(1.0)).to_string();
-    let mut h_attr = fmt(vb_h.max(1.0)).to_string();
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_style,
-        crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override,
-    );
-
+    let max_w_style = fmt_max_width_px(vb_w.max(1.0));
     let style_attr = format!("max-width: {max_w_style}px; background-color: white;");
     root_svg::push_svg_root_open(
         &mut out,
