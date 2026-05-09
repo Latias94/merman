@@ -363,14 +363,16 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
             fmt(vb_w),
             fmt(vb_h)
         );
-        if let Some((viewbox, max_w)) =
-            crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override(
-                diagram_id,
-            )
-        {
-            view_box_attr = viewbox.to_string();
-            max_w_attr = max_w.to_string();
-        }
+        let mut width_attr = fmt_string(vb_w);
+        let mut height_attr = fmt_string(vb_h);
+        apply_root_viewport_override(
+            diagram_id,
+            &mut view_box_attr,
+            &mut width_attr,
+            &mut height_attr,
+            &mut max_w_attr,
+            crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
+        );
 
         drop(_g_viewbox);
 
@@ -631,14 +633,16 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         fmt(vb_w),
         fmt(vb_h)
     );
-    if let Some((viewbox, max_w)) =
-        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override(
-            diagram_id,
-        )
-    {
-        view_box_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
+    let mut width_attr = fmt_string(vb_w);
+    let mut height_attr = fmt_string(vb_h);
+    apply_root_viewport_override(
+        diagram_id,
+        &mut view_box_attr,
+        &mut width_attr,
+        &mut height_attr,
+        &mut max_w_attr,
+        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
+    );
 
     drop(_g_viewbox);
     let _g_finalize = section(timing_enabled, &mut timings.finalize_svg);
