@@ -791,37 +791,44 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             bbox_h.to_bits()
         );
     }
-    let view_box_attr = format!(
+    let mut view_box_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
+    let mut max_width_attr = fmt_string(vb_w);
+    let mut width_attr = max_width_attr.clone();
+    let mut height_attr = fmt_string(vb_h);
 
-    if let Some((view_box, max_width)) =
-        crate::generated::gitgraph_root_overrides_11_12_2::lookup_gitgraph_root_viewport_override(
-            diagram_id,
-        )
-    {
-        let mut it = view_box.split_whitespace();
-        let vb_min_x = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-        let _vb_min_y = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-        let vb_w = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-        let title_x = fmt_string(vb_min_x + vb_w / 2.0);
-
-        out = out.replacen(VIEWBOX_PLACEHOLDER, view_box, 1);
-        out = out.replacen(MAX_WIDTH_PLACEHOLDER, max_width, 1);
-        out = out.replacen(TITLE_X_PLACEHOLDER, &title_x, 1);
-        return Ok(out);
-    }
+    apply_root_viewport_override(
+        diagram_id,
+        &mut view_box_attr,
+        &mut width_attr,
+        &mut height_attr,
+        &mut max_width_attr,
+        crate::generated::gitgraph_root_overrides_11_12_2::lookup_gitgraph_root_viewport_override,
+    );
 
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
     // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.
-    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &fmt_string(vb_w), 1);
-    out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(vb_min_x + vb_w / 2.0), 1);
+    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_width_attr, 1);
+    out = out.replacen(
+        TITLE_X_PLACEHOLDER,
+        &fmt_string(gitgraph_viewbox_center_x(&view_box_attr).unwrap_or(vb_min_x + vb_w / 2.0)),
+        1,
+    );
     Ok(out)
+}
+
+fn gitgraph_viewbox_center_x(view_box: &str) -> Option<f64> {
+    let mut it = view_box.split_whitespace();
+    let min_x = it.next()?.parse::<f64>().ok()?;
+    let _min_y = it.next()?.parse::<f64>().ok()?;
+    let width = it.next()?.parse::<f64>().ok()?;
+    Some(min_x + width / 2.0)
 }
 
 #[cfg(test)]

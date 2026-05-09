@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Routed Gitgraph root viewport override application through the shared root override helper while
+  preserving title centering from the final viewBox.
 - Added default Architecture root viewport calibration for nested-groups and reasonable-height
   profiles, then pruned 70 obsolete Architecture root pins, reducing root viewport overrides to 779
   while keeping Architecture `parity-root` green.

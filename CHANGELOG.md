@@ -89,6 +89,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - GitGraph render pipeline: parse a typed render model for layout/render-only flows, reuse it in
   layout/SVG render-model dispatch, and borrow typed commit/branch indexes instead of cloning
   private JSON transport structs.
+- Gitgraph renderer: route root viewport overrides through the shared root override helper while
+  preserving title centering from the final viewBox.
 - Treemap render pipeline: parse a typed render model for layout/render-only flows and reuse it in
   layout/layout-only SVG render-model dispatch instead of deserializing private JSON transport
   structs.
