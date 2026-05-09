@@ -137,23 +137,13 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     // - `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_add_classes_namespaces_039`
     // - `upstream_docs_classdiagram_define_namespace_035`
     // - `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`
-    let viewbox_override_min_xy =
-        crate::generated::class_root_overrides_11_12_2::lookup_class_root_viewport_override(
-            diagram_id,
-        )
-        .and_then(|(vb, _)| parse_viewbox_min_xy(vb));
     let ClassNamespaceRenderMode {
         single_namespace_id,
         wrap_nodes_root,
         nodes_root_dx,
         nodes_root_dy,
         render_namespaces_as_subgraphs,
-    } = class_namespace_render_mode(
-        model,
-        &class_nodes_by_id,
-        viewbox_override_min_xy,
-        CLASS_GRAPH_MARGIN_PX,
-    );
+    } = class_namespace_render_mode(model, &class_nodes_by_id, CLASS_GRAPH_MARGIN_PX);
 
     drop(build_ctx_guard);
 
@@ -271,7 +261,6 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
 
     let viewbox_attrs = class_viewbox_attrs(ClassViewBoxContext {
-        diagram_id,
         model,
         content_bounds,
         viewport_padding: settings.viewport_padding,

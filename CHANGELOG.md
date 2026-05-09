@@ -134,6 +134,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   viewport padding, and theme defaults into `svg/parity/class/settings.rs`.
 - Class renderer: move shared cluster/edge group orchestration for `clusters`, `edgePaths`, and
   `edgeLabels` into `svg/parity/class/groups.rs`.
+- Class renderer: replace the remaining generated root viewport pins with typed profile
+  calibration and model-derived namespace render-mode selection.
 - Class renderer: move node traversal, namespace-subgraph transitions, note/interface dispatch, and
   class node body orchestration into `svg/parity/class/nodes.rs`.
 - Architecture renderer: move JSON/typed render-model access into
@@ -217,6 +219,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   async alias, plus the old `mindmap` / `stateDiagram` JSON-for-render helper paths.
 - Render feature flags: removed the stale `merman-render/flowchart_root_pack` experimental debug
   feature and its disabled post-layout packing code.
+- Class renderer: removed the generated `class_root_overrides_11_12_2.rs` table after typed root
+  viewport calibration covered the remaining entries.
 
 ## [0.4.0] - 2026-03-12
 

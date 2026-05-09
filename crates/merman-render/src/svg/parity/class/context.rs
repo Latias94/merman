@@ -67,13 +67,6 @@ impl<'a> ClassRenderLookups<'a> {
     }
 }
 
-pub(super) fn parse_viewbox_min_xy(view_box: &str) -> Option<(f64, f64)> {
-    let mut it = view_box.split_whitespace();
-    let min_x = it.next()?.parse::<f64>().ok()?;
-    let min_y = it.next()?.parse::<f64>().ok()?;
-    Some((min_x, min_y))
-}
-
 pub(super) fn emit_class_render_timing(
     timings: &RenderTimings,
     detail: &ClassRenderDetails,

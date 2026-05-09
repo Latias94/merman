@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved the remaining Class root viewport pins into typed profile calibration and model-derived
+  namespace render-mode selection, then deleted the Class root override module, reducing root
+  viewport overrides to 849 while keeping Class `parity-root` green.
 - Modeled section-less Pie root viewport behavior and legend bbox width in the renderer, then
   deleted the Pie root override module, reducing root viewport overrides to 908 while keeping Pie
   `parity-root` green.

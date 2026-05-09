@@ -44,12 +44,16 @@ Largest fixture buckets:
 
 ### Override Footprint (11.12.3)
 
+This is the original hardening-plan snapshot. The current live override inventory is maintained in
+`docs/workstreams/fearless-refactor/OVERRIDE_FOOTPRINT.md`; as of 2026-05-09 the Class root
+override module has been deleted after typed viewport calibration replaced its remaining entries.
+
 Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 103 entries
 - `block_root_overrides_11_12_2.rs`: 4 entries
 - `flowchart_root_overrides_11_12_2.rs`: 127 entries
-- `class_root_overrides_11_12_2.rs`: 155 entries
+- Class root overrides: removed; this snapshot originally had 155 entries
 - `mindmap_root_overrides_11_12_2.rs`: 77 entries
 - `gitgraph_root_overrides_11_12_2.rs`: 83 entries
 - `journey_root_overrides_11_12_2.rs`: 4 entries
@@ -130,7 +134,8 @@ Exit criteria:
 
 Class Phase-B spike notes (2026-02-06):
 
-- A temporary full disable of `class_root_overrides_11_12_2.rs` was used to measure raw drift.
+- A temporary full disable of the then-existing Class root override table was used to measure raw
+  drift.
 - Result: 14 class fixtures regressed in `parity-root`, all on root `<svg style max-width>`.
 - Drift was not uniformly small: observed ranges were approximately `+0.015px` to `+344.92px`,
   with both over- and under-estimation cases.
@@ -503,11 +508,11 @@ Class Phase-B milestone (2026-02-06, batch 9):
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
 
-Class Phase-B milestone (2026-02-06, batch 10):
+Class Phase-B milestone (2026-02-06, batch 10; status refreshed 2026-05-09):
 
 - Removed the final fixture-scoped class root override entry:
   - `upstream_relation_types_and_cardinalities_spec`
-- Current status: `class_root_overrides_11_12_2.rs` is now empty (0 entries),
+- Current status: the generated Class root override module has been deleted,
   and all class fixtures are consolidated without fixture-id viewport fallbacks.
 - Validation status after this batch:
   - `compare-class-svgs --filter upstream_relation_types_and_cardinalities_spec --dom-mode parity-root`: pass

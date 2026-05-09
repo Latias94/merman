@@ -7,7 +7,6 @@ pub mod block_text_overrides_11_12_2;
 pub mod c4_root_overrides_11_12_2;
 pub mod c4_text_overrides_11_12_2;
 pub mod c4_type_textlength_11_12_2;
-pub mod class_root_overrides_11_12_2;
 pub mod class_text_overrides_11_12_2;
 pub mod er_root_overrides_11_12_2;
 pub mod er_text_overrides_11_12_2;

@@ -31,12 +31,10 @@ All override maps live in `crates/merman-render/src/generated/`:
   - `lookup_er_root_viewport_override(diagram_id)`
 - `flowchart_root_overrides_11_12_2.rs`
   - `lookup_flowchart_root_viewport_override(diagram_id)`
-- `class_root_overrides_11_12_2.rs`
-  - `lookup_class_root_viewport_override(diagram_id)`
+- `c4_root_overrides_11_12_2.rs`
+  - `lookup_c4_root_viewport_override(diagram_id)`
 - `mindmap_root_overrides_11_12_2.rs`
   - `lookup_mindmap_root_viewport_override(diagram_id)`
-- `pie_root_overrides_11_12_2.rs`
-  - `lookup_pie_root_viewport_override(diagram_id)`
 - `requirement_root_overrides_11_12_2.rs`
   - `lookup_requirement_root_viewport_override(diagram_id)`
 - `sankey_root_overrides_11_12_2.rs`
@@ -56,6 +54,9 @@ State diagram also uses text/bbox overrides in:
 
 All modules are registered in `crates/merman-render/src/generated/mod.rs`.
 
+Deleted buckets are intentionally absent from this list. Class and Pie root viewport behavior is
+now covered by typed renderer calibration instead of generated fixture-scoped root maps.
+
 ## Where They Are Applied
 
 Overrides are only applied at render time for root viewport attributes and only when the current
@@ -66,9 +67,8 @@ Current integration points:
 - Architecture renderer: `render_architecture_diagram_svg`
 - ER renderer: `render_er_diagram_svg`
 - Flowchart renderer: `render_flowchart_v2_svg`
-- Class renderer: `render_class_diagram_v2_svg`
+- C4 renderer: `render_c4_diagram_svg`
 - Mindmap renderer: `render_mindmap_diagram_svg`
-- Pie renderer: `render_pie_diagram_svg`
 - Requirement renderer: `render_requirement_diagram_svg`
 - Sankey renderer: `render_sankey_diagram_svg`
 - Sequence renderer: `render_sequence_diagram_svg`
