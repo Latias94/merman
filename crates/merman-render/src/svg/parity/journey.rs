@@ -500,10 +500,7 @@ pub(super) fn render_journey_diagram_svg_model(
                     &mut out,
                     r#"<path class="mouth" d="M7.5,0A7.5,7.5,0,1,1,-7.5,0L-6.818,0A6.818,6.818,0,1,0,6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt_task_face_y(
-                        task.face_cy
-                            .map(|v| v + journey_text_overrides::journey_face_smile_offset_y_px()),
-                    ),
+                    y = fmt_task_face_y(task.face_cy.map(|v| v + 2.0)),
                 );
             }
             crate::model::JourneyMouthKind::Sad => {
@@ -511,9 +508,7 @@ pub(super) fn render_journey_diagram_svg_model(
                     &mut out,
                     r#"<path class="mouth" d="M-7.5,0A7.5,7.5,0,1,1,7.5,0L6.818,0A6.818,6.818,0,1,0,-6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt_task_face_y(task.face_cy.map(|v| {
-                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
-                    })),
+                    y = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                 );
             }
             crate::model::JourneyMouthKind::Ambivalent => {
@@ -521,13 +516,9 @@ pub(super) fn render_journey_diagram_svg_model(
                     &mut out,
                     r##"<line class="mouth" stroke="#666" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"##,
                     x1 = fmt(task.face_cx - 5.0),
-                    y1 = fmt_task_face_y(task.face_cy.map(|v| {
-                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
-                    })),
+                    y1 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                     x2 = fmt(task.face_cx + 5.0),
-                    y2 = fmt_task_face_y(task.face_cy.map(|v| {
-                        v + journey_text_overrides::journey_face_flat_or_sad_offset_y_px()
-                    })),
+                    y2 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                 );
             }
         }

@@ -26,11 +26,3 @@ pub fn journey_face_base_y_px() -> f64 {
 pub fn journey_face_score_step_y_px() -> f64 {
     30.0
 }
-
-pub fn journey_face_smile_offset_y_px() -> f64 {
-    2.0
-}
-
-pub fn journey_face_flat_or_sad_offset_y_px() -> f64 {
-    7.0
-}

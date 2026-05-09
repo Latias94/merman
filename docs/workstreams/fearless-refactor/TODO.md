@@ -462,7 +462,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   uses one shared bar data-label inset helper for both bar orientations, reducing the helper
   footprint to 67. Pie later dropped a redundant outer-radius helper, Sequence now derives
   its note padding total from the existing note gap, and Journey inlines its single-use legend
-  placement values, reducing the helper footprint to 60.
+  placement and mouth offset values, reducing the helper footprint to 58.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.
