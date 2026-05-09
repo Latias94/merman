@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed nine obsolete Timeline root viewport pins now covered by deterministic root output,
+  reducing root viewport overrides to 1527 while keeping Timeline `parity-root` green.
 - Removed four obsolete Sankey root viewport pins now covered by deterministic emitted bounds,
   reducing root viewport overrides to 1536 while keeping Sankey DOM parity green.
 - Made `xtask report-overrides` print zero-count categories with metadata and `no entries`, so
