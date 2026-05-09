@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Rechecked the 3 remaining Sankey root viewport pins by disabling the Sankey root lookup and
+  confirming `parity-root` still drifts on the three energy-flow fixtures, so those pins stay in the
+  override budget until Sankey root height derivation changes.
 - Removed the remaining generated `dead_code` allowances from override modules and generator
   templates; the source tree now has no `dead_code` allow entries.
 - Collapsed Flowchart callback actions to the semantic state actually used by rendering, removing

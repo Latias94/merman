@@ -113,6 +113,12 @@ Total entries reported by `xtask`: `931`.
 | `state_root_overrides_11_12_2.rs` | 54 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
+Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root
+lookup and running `compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`.
+They still cover root height drift in
+`upstream_docs_sankey_example_002`, `upstream_examples_sankey_energy_flow_001`, and
+`upstream_html_demos_sankey_energy_flow_002`, so they are not redundant yet.
+
 Largest root-viewport buckets:
 
 - `gitgraph`: 226
@@ -204,4 +210,6 @@ Counts are inventory units and should not be compared directly across categories
   with owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
   `gitgraph`, `sequence`, and `class`.
+- Do not spend another cleanup pass on the 3 remaining Sankey root pins until Sankey root height
+  derivation changes; the May 2026 recheck proved they still guard real `parity-root` drift.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.

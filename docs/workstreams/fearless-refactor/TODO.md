@@ -459,7 +459,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
-  bounds, 9 `timeline` entries now covered by deterministic root output, and 12 `pie` entries now
+  bounds. The remaining 3 `sankey` root pins were rechecked by disabling the Sankey root lookup and
+  running `compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; they still
+  guard root height drift in `upstream_docs_sankey_example_002`,
+  `upstream_examples_sankey_energy_flow_001`, and `upstream_html_demos_sankey_energy_flow_002`.
+  Timeline then dropped 9 entries now covered by deterministic root output, and 12 `pie` entries now
   covered by deterministic root output, plus 12 `er` entries now covered by deterministic root
   output, 35 `requirement` entries now covered by deterministic root output, and 16 `c4` entries
   now covered by deterministic root output. The entire 119-entry `block` root override module was
