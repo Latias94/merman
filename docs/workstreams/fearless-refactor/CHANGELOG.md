@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed twelve obsolete ER root viewport pins now covered by deterministic root output,
+  reducing root viewport overrides to 1503 while keeping ER `parity-root` green.
 - Removed twelve obsolete Pie root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1515 while keeping Pie `parity-root` green.
 - Removed nine obsolete Timeline root viewport pins now covered by deterministic root output,
