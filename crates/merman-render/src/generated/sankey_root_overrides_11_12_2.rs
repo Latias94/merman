@@ -10,19 +10,9 @@ pub fn lookup_sankey_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_docs_sankey_basic_004" => Some(("0 0 600 400", "600")),
         "upstream_docs_sankey_example_002" => Some(("0 0 600 403.91900634765625", "600")),
         "upstream_examples_sankey_energy_flow_001" => Some(("0 0 600 403.91900634765625", "600")),
         "upstream_html_demos_sankey_energy_flow_002" => Some(("0 0 1200 605.374267578125", "1200")),
-        "upstream_sankey_beta_energy_csv_spec" => {
-            Some(("0 -5.975983619689941 600 405.9759826660156", "600"))
-        }
-        "upstream_sankey_docs_empty_lines_spec" => {
-            Some(("0 -0.8946409225463867 600 400.8946533203125", "600"))
-        }
-        "upstream_sankey_header_energy_csv_spec" => {
-            Some(("0 -12.041862487792969 600 412.0418701171875", "600"))
-        }
         _ => None,
     }
 }
