@@ -5,8 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
-- Removed the single-use Journey legend circle center helper by inlining the upstream center value
-  at the layout call site, reducing the hand-curated helper footprint to 64.
+- Removed single-use Journey legend placement helpers by inlining the upstream fixed values at the
+  layout call sites, reducing the hand-curated helper footprint to 60.
 - Refreshed `OVERRIDE_FOOTPRINT.md` after `xtask verify --strict` so the snapshot now reports zero
   manual raw SVG/path bridge files and matches the current override inventory.
 - Cached XYChart axis tick labels inside the layout axis state so `calculate_space`,

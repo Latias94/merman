@@ -7,22 +7,6 @@ pub fn journey_legend_circle_r_px() -> f64 {
     7.0
 }
 
-pub fn journey_legend_label_x_px() -> f64 {
-    40.0
-}
-
-pub fn journey_legend_first_y_px() -> f64 {
-    60.0
-}
-
-pub fn journey_legend_line_step_y_px() -> f64 {
-    20.0
-}
-
-pub fn journey_section_y_px() -> f64 {
-    50.0
-}
-
 pub fn journey_viewbox_top_pad_px() -> f64 {
     25.0
 }

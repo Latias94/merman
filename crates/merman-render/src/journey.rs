@@ -185,8 +185,8 @@ pub fn layout_journey_diagram_typed(
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
     let legend_circle_r = journey_text_overrides::journey_legend_circle_r_px();
-    let legend_line_step_y = journey_text_overrides::journey_legend_line_step_y_px();
-    let mut y_pos = journey_text_overrides::journey_legend_first_y_px();
+    let legend_line_step_y = 20.0;
+    let mut y_pos = 60.0;
     for actor in actors.iter() {
         let (pos, color) = actor_map
             .get(actor)
@@ -196,7 +196,7 @@ pub fn layout_journey_diagram_typed(
         let lines = wrap_actor_label_lines(actor, max_label_width, measurer, &legend_style);
         let mut label_lines: Vec<JourneyActorLegendLineLayout> = Vec::new();
         for (index, line) in lines.iter().enumerate() {
-            let x = journey_text_overrides::journey_legend_label_x_px();
+            let x = 40.0;
             let y = y_pos + legend_circle_r + (index as f64) * legend_line_step_y;
             let tspan_x = x + box_text_margin * 2.0;
             label_lines.push(JourneyActorLegendLineLayout {
@@ -265,7 +265,7 @@ pub fn layout_journey_diagram_typed(
                 section: task.section.to_string(),
                 num: current_num,
                 x,
-                y: journey_text_overrides::journey_section_y_px(),
+                y: 50.0,
                 width: section_width.max(1.0),
                 height: cell_h,
                 fill: current_fill.clone(),
