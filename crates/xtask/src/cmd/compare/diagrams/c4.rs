@@ -44,20 +44,11 @@ pub(crate) fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join("c4");
-    let upstream_dir = workspace_root
-        .join("fixtures")
-        .join("upstream-svgs")
-        .join("c4");
-    let out_path = out_path.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
-            .join("compare")
-            .join("c4_report.md")
-    });
-    let out_svg_dir = out_path.parent().unwrap_or(&workspace_root).join("c4");
-
+    let compare_paths = crate::cmd::compare_diagram_paths("c4", out_path);
+    let fixtures_dir = compare_paths.fixtures_dir;
+    let upstream_dir = compare_paths.upstream_dir;
+    let out_path = compare_paths.out_path;
+    let out_svg_dir = compare_paths.out_svg_dir;
     let mut mmd_files =
         crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
     mmd_files.retain(|path| {

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Added a shared `xtask` compare-diagram path helper so the per-diagram SVG compare commands now
+  build fixture, upstream, report, and output directories through one owner instead of repeating
+  the same workspace-root path scaffolding.
 - Revalidated the workspace-root helper cleanup with `cargo run -p xtask -- verify --strict`,
   which covers workspace clippy, nextest, snapshot gates, and SVG parity checks.
 - Moved `xtask` workspace-root discovery into a dedicated `cmd::paths` module and routed the

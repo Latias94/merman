@@ -53,23 +53,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         i += 1;
     }
 
-    let workspace_root = crate::cmd::workspace_root();
-    let fixtures_dir = workspace_root.join("fixtures").join("flowchart");
-    let upstream_dir = workspace_root
-        .join("fixtures")
-        .join("upstream-svgs")
-        .join("flowchart");
-    let out_path = out_path.unwrap_or_else(|| {
-        workspace_root
-            .join("target")
-            .join("compare")
-            .join("flowchart_report.md")
-    });
-    let out_svg_dir = out_path
-        .parent()
-        .unwrap_or(&workspace_root)
-        .join("flowchart");
-
+    let compare_paths = crate::cmd::compare_diagram_paths("flowchart", out_path);
+    let fixtures_dir = compare_paths.fixtures_dir;
+    let upstream_dir = compare_paths.upstream_dir;
+    let out_path = compare_paths.out_path;
+    let out_svg_dir = compare_paths.out_svg_dir;
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
 
     if mmd_files.is_empty() {
@@ -98,6 +86,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         layout_opts.text_measurer =
             std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     }
+    let workspace_root = crate::cmd::workspace_root();
     let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
         if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
