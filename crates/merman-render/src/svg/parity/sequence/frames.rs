@@ -1,7 +1,7 @@
 use super::super::*;
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
+use crate::sequence::sequence_text_dimensions_height_px;
 use rustc_hash::FxHashMap;
 
 pub(super) fn render_sequence_box_frames_and_rect_blocks(
@@ -21,8 +21,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     let max_box_title_height = if has_box_titles {
         // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
         // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
-        let line_h =
-            sequence_text_overrides::sequence_text_dimensions_height_px(actor_label_font_size);
+        let line_h = sequence_text_dimensions_height_px(actor_label_font_size);
         model
             .boxes
             .iter()

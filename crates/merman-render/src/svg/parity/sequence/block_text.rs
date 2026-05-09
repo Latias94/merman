@@ -1,5 +1,5 @@
 use super::super::*;
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
+use crate::sequence::sequence_text_line_step_px;
 use std::collections::VecDeque;
 
 pub(super) struct LoopTextRenderContext<'a> {
@@ -58,7 +58,7 @@ pub(super) fn write_loop_text_lines(
     text: &str,
     use_tspan: bool,
 ) {
-    let line_step = sequence_text_overrides::sequence_text_line_step_px(ctx.style.font_size);
+    let line_step = sequence_text_line_step_px(ctx.style.font_size);
     let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
     for (i, line) in lines.into_iter().enumerate() {
         let y = y0 + (i as f64) * line_step;

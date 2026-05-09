@@ -1,7 +1,9 @@
 use super::super::*;
 use super::block_collection::AltSection;
 use super::model::SequenceSvgModel;
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
+use crate::sequence::{
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
+};
 use rustc_hash::FxHashMap;
 
 pub(super) fn frame_x_from_actors(
@@ -20,8 +22,8 @@ pub(super) fn frame_x_from_actors(
         return None;
     }
     Some((
-        min_x - sequence_text_overrides::sequence_frame_side_pad_px(),
-        max_x + sequence_text_overrides::sequence_frame_side_pad_px(),
+        min_x - SEQUENCE_FRAME_SIDE_PAD_PX,
+        max_x + SEQUENCE_FRAME_SIDE_PAD_PX,
     ))
 }
 
@@ -47,10 +49,8 @@ pub(super) fn frame_x_from_message_ids<'a>(
         // Notes are nodes (not edges); include their bounding boxes in frame extents.
         let note_node_id = format!("note-{msg_id}");
         if let Some(n) = nodes_by_id.get(note_node_id.as_str()).copied() {
-            geom_min_x = geom_min_x
-                .min(n.x - n.width / 2.0 - sequence_text_overrides::sequence_frame_geom_pad_px());
-            geom_max_x = geom_max_x
-                .max(n.x + n.width / 2.0 + sequence_text_overrides::sequence_frame_geom_pad_px());
+            geom_min_x = geom_min_x.min(n.x - n.width / 2.0 - SEQUENCE_FRAME_GEOM_PAD_PX);
+            geom_max_x = geom_max_x.max(n.x + n.width / 2.0 + SEQUENCE_FRAME_GEOM_PAD_PX);
         }
 
         let Some((from, to)) = msg_endpoints.get(msg_id).copied() else {
@@ -75,16 +75,10 @@ pub(super) fn frame_x_from_message_ids<'a>(
                 geom_max_x = geom_max_x.max(p.x);
             }
             if let Some(label) = e.label.as_ref() {
-                geom_min_x = geom_min_x.min(
-                    label.x
-                        - (label.width / 2.0)
-                        - sequence_text_overrides::sequence_frame_geom_pad_px(),
-                );
-                geom_max_x = geom_max_x.max(
-                    label.x
-                        + (label.width / 2.0)
-                        + sequence_text_overrides::sequence_frame_geom_pad_px(),
-                );
+                geom_min_x =
+                    geom_min_x.min(label.x - (label.width / 2.0) - SEQUENCE_FRAME_GEOM_PAD_PX);
+                geom_max_x =
+                    geom_max_x.max(label.x + (label.width / 2.0) + SEQUENCE_FRAME_GEOM_PAD_PX);
             }
         }
         for actor_id in [from, to] {
@@ -100,8 +94,8 @@ pub(super) fn frame_x_from_message_ids<'a>(
     if !min_cx.is_finite() || !max_cx.is_finite() {
         return None;
     }
-    let mut x1 = min_cx - sequence_text_overrides::sequence_frame_side_pad_px();
-    let mut x2 = max_cx + sequence_text_overrides::sequence_frame_side_pad_px();
+    let mut x1 = min_cx - SEQUENCE_FRAME_SIDE_PAD_PX;
+    let mut x2 = max_cx + SEQUENCE_FRAME_SIDE_PAD_PX;
     if geom_min_x.is_finite() {
         x1 = x1.min(geom_min_x);
     }
@@ -254,7 +248,7 @@ fn msg_y_range_for_frame(
         edges_by_id,
         msg_endpoints,
         msg_id,
-        sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
+        SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
     )
 }
 
@@ -270,6 +264,6 @@ fn msg_y_range_for_separators(
         edges_by_id,
         msg_endpoints,
         msg_id,
-        sequence_text_overrides::sequence_self_message_frame_extra_y_px() / 2.0,
+        SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX / 2.0,
     )
 }

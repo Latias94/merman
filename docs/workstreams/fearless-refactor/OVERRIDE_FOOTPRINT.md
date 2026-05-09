@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `30`.
+Generated override modules scanned: `29`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -55,7 +55,10 @@ to 26. Kanban moved its section padding, label foreignObject height, and item ro
 `kanban` owner constants and deleted the now-empty generated module, bringing the hand-curated
 helper total to 21. Treemap moved its section spacing geometry into `treemap` owner constants and
 kept the remaining `Item A1` leaf-fit browser tolerance beside the SVG parity loop, deleting the
-now-empty generated module and bringing the hand-curated helper total to 18.
+now-empty generated module and bringing the hand-curated helper total to 18. Sequence moved its
+note wrap slack, text line-height math, and frame padding geometry into `sequence` owner constants
+and functions, deleting the now-empty generated module and bringing the hand-curated helper total
+to 12.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -132,13 +135,12 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `18`.
+Total helper functions reported by `xtask`: `12`.
 
 | file | helper functions |
 | --- | ---: |
 | `architecture_text_overrides_11_12_2.rs` | 6 |
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
-| `sequence_text_overrides_11_12_2.rs` | 6 |
 
 ### Manual Raw SVG/Path Bridges
 

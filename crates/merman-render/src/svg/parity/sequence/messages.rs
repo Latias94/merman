@@ -1,6 +1,6 @@
 use super::super::*;
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
+use crate::sequence::sequence_text_line_step_px;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceMessageRenderContext<'a> {
@@ -58,8 +58,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
 
         let text = msg.message_text();
         if let Some(lbl) = &edge.label {
-            let line_step =
-                sequence_text_overrides::sequence_text_line_step_px(ctx.actor_label_font_size);
+            let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
             let (label_x, label_anchor) = match ctx.message_align {

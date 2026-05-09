@@ -6,7 +6,7 @@ use super::block_geometry::{
 use super::block_text::{
     LoopTextRenderContext, display_block_label, wrap_svg_text_lines, write_loop_text_lines,
 };
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
+use crate::sequence::sequence_text_line_step_px;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
@@ -305,10 +305,9 @@ pub(super) fn render_critical_sequence_block(
         let wrapped =
             wrap_svg_text_lines(&label_text, ctx.measurer, ctx.loop_text_style, Some(max_w));
         let extra_lines = wrapped.len().saturating_sub(1) as f64;
-        let extra_per_line =
-            (sequence_text_overrides::sequence_text_line_step_px(ctx.loop_text_style.font_size)
-                - ctx.box_text_margin)
-                .max(0.0);
+        let extra_per_line = (sequence_text_line_step_px(ctx.loop_text_style.font_size)
+            - ctx.box_text_margin)
+            .max(0.0);
         79.0 + extra_lines * extra_per_line
     };
     let frame_y1 = min_y - header_offset;
@@ -406,8 +405,6 @@ fn section_header_offset(
     let wrapped = wrap_svg_text_lines(&label, ctx.measurer, ctx.loop_text_style, Some(max_w));
     let extra_lines = wrapped.len().saturating_sub(1) as f64;
     let extra_per_line =
-        (sequence_text_overrides::sequence_text_line_step_px(ctx.loop_text_style.font_size)
-            - ctx.box_text_margin)
-            .max(0.0);
+        (sequence_text_line_step_px(ctx.loop_text_style.font_size) - ctx.box_text_margin).max(0.0);
     base + extra_lines * extra_per_line
 }

@@ -1,4 +1,3 @@
-use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
 };
@@ -9,6 +8,19 @@ use crate::text::{
 use crate::{Error, Result};
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use serde_json::Value;
+
+pub(crate) const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 12.0;
+pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
+pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
+pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
+
+pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
+    (font_size_px.max(1.0) * (17.0 / 16.0)).max(1.0)
+}
+
+pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * 1.1875
+}
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -196,7 +208,7 @@ pub fn layout_sequence_diagram_typed(
     // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
     // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
     let max_box_title_height = if has_box_titles {
-        let line_h = sequence_text_overrides::sequence_text_dimensions_height_px(message_font_size);
+        let line_h = sequence_text_dimensions_height_px(message_font_size);
         model
             .boxes
             .iter()
@@ -227,9 +239,7 @@ pub fn layout_sequence_diagram_typed(
             let wrapped_lines =
                 wrap_label_like_mermaid_lines(&a.description, measurer, &actor_text_style, wrap_w);
             let line_count = wrapped_lines.len().max(1) as f64;
-            let text_h =
-                sequence_text_overrides::sequence_text_dimensions_height_px(actor_font_size)
-                    * line_count;
+            let text_h = sequence_text_dimensions_height_px(actor_font_size) * line_count;
             actor_base_heights.push(actor_height.max(text_h).max(1.0));
             actor_widths.push(actor_width_min.max(1.0));
         } else {
@@ -503,7 +513,7 @@ pub fn layout_sequence_diagram_typed(
     // We model this as a base step and subtract `labelBoxHeight` for empty labels.
     let block_base_step = (2.0 * box_margin + box_text_margin + label_box_height).max(0.0);
     let block_base_step_empty = (block_base_step - label_box_height).max(0.0);
-    let line_step = sequence_text_overrides::sequence_text_line_step_px(message_font_size);
+    let line_step = sequence_text_line_step_px(message_font_size);
     let block_extra_per_line = (line_step - box_text_margin).max(0.0);
     let block_end_step = 10.0;
 
@@ -1238,9 +1248,7 @@ pub fn layout_sequence_diagram_typed(
                         text,
                         measurer,
                         &note_text_style,
-                        (note_width_single
-                            + sequence_text_overrides::sequence_note_wrap_slack_px())
-                        .max(1.0),
+                        (note_width_single + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
                     );
                     let init_wrapped = init_lines.join("<br/>");
                     let (w, _h) =
@@ -1260,7 +1268,7 @@ pub fn layout_sequence_diagram_typed(
                     text,
                     measurer,
                     &note_text_style,
-                    (wrap_w + sequence_text_overrides::sequence_note_wrap_slack_px()).max(1.0),
+                    (wrap_w + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
                 );
                 let wrapped = lines.join("<br/>");
                 let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);
@@ -1648,7 +1656,7 @@ pub fn layout_sequence_diagram_typed(
                     .get(item_id)
                     .copied()
                     .filter(|(from, to)| from == to)
-                    .map(|_| sequence_text_overrides::sequence_self_message_frame_extra_y_px())
+                    .map(|_| SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX)
                     .unwrap_or(0.0);
                 return Some((y, y + extra));
             }
@@ -1676,12 +1684,8 @@ pub fn layout_sequence_diagram_typed(
                 // Notes contribute directly via their node bounds.
                 let note_id = format!("note-{id}");
                 if let Some(n) = nodes_by_id.get(note_id.as_str()).copied() {
-                    geom_min_x = geom_min_x.min(
-                        n.x - n.width / 2.0 - sequence_text_overrides::sequence_frame_geom_pad_px(),
-                    );
-                    geom_max_x = geom_max_x.max(
-                        n.x + n.width / 2.0 + sequence_text_overrides::sequence_frame_geom_pad_px(),
-                    );
+                    geom_min_x = geom_min_x.min(n.x - n.width / 2.0 - SEQUENCE_FRAME_GEOM_PAD_PX);
+                    geom_max_x = geom_max_x.max(n.x + n.width / 2.0 + SEQUENCE_FRAME_GEOM_PAD_PX);
                 }
 
                 let Some((from, to)) = msg_endpoints.get(id.as_str()).copied() else {
@@ -1705,16 +1709,10 @@ pub fn layout_sequence_diagram_typed(
                         geom_max_x = geom_max_x.max(p.x);
                     }
                     if let Some(label) = e.label.as_ref() {
-                        geom_min_x = geom_min_x.min(
-                            label.x
-                                - (label.width / 2.0)
-                                - sequence_text_overrides::sequence_frame_geom_pad_px(),
-                        );
-                        geom_max_x = geom_max_x.max(
-                            label.x
-                                + (label.width / 2.0)
-                                + sequence_text_overrides::sequence_frame_geom_pad_px(),
-                        );
+                        geom_min_x = geom_min_x
+                            .min(label.x - (label.width / 2.0) - SEQUENCE_FRAME_GEOM_PAD_PX);
+                        geom_max_x = geom_max_x
+                            .max(label.x + (label.width / 2.0) + SEQUENCE_FRAME_GEOM_PAD_PX);
                     }
                 }
             }
@@ -1722,8 +1720,8 @@ pub fn layout_sequence_diagram_typed(
             if !min_cx.is_finite() || !max_cx.is_finite() {
                 return None;
             }
-            let mut x1 = min_cx - sequence_text_overrides::sequence_frame_side_pad_px();
-            let mut x2 = max_cx + sequence_text_overrides::sequence_frame_side_pad_px();
+            let mut x1 = min_cx - SEQUENCE_FRAME_SIDE_PAD_PX;
+            let mut x2 = max_cx + SEQUENCE_FRAME_SIDE_PAD_PX;
             if geom_min_x.is_finite() {
                 x1 = x1.min(geom_min_x);
             }
@@ -2089,24 +2087,13 @@ pub fn layout_sequence_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::generated::sequence_text_overrides_11_12_2 as sequence_text_overrides;
-
     #[test]
-    fn sequence_text_constants_are_generated() {
-        assert_eq!(sequence_text_overrides::sequence_note_wrap_slack_px(), 12.0);
-        assert_eq!(
-            sequence_text_overrides::sequence_text_dimensions_height_px(16.0),
-            17.0
-        );
-        assert_eq!(
-            sequence_text_overrides::sequence_text_line_step_px(16.0),
-            19.0
-        );
-        assert_eq!(
-            sequence_text_overrides::sequence_self_message_frame_extra_y_px(),
-            60.0
-        );
-        assert_eq!(sequence_text_overrides::sequence_frame_side_pad_px(), 11.0);
-        assert_eq!(sequence_text_overrides::sequence_frame_geom_pad_px(), 10.0);
+    fn sequence_text_and_frame_constants_match_mermaid() {
+        assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 12.0);
+        assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
+        assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
+        assert_eq!(super::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, 60.0);
+        assert_eq!(super::SEQUENCE_FRAME_SIDE_PAD_PX, 11.0);
+        assert_eq!(super::SEQUENCE_FRAME_GEOM_PAD_PX, 10.0);
     }
 }

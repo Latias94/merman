@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Sequence note wrap slack, text line-height math, and frame padding geometry into
+  `sequence` owner constants/functions, deleting the now-empty Sequence text override module and
+  reducing helper footprint to 12.
 - Moved Treemap section spacing geometry into `treemap` owner constants and kept the remaining
   `Item A1` leaf-fit browser tolerance beside the SVG parity loop, deleting the now-empty Treemap
   text override module and reducing helper footprint to 18.
