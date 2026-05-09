@@ -544,6 +544,10 @@ Progress:
   `svg/parity/flowchart/edge_geom/basis.rs`.
 - The C4 root viewport overrides were rechecked by bypassing the lookup entirely; all 35 entries
   still drift, so the C4 table remains in place for now.
+- The Timeline root viewport overrides were rechecked by bypassing the lookup entirely; the 9-entry
+  table still guards stress/cypress `parity-root` drift, so it remains in place for now.
+- The State root viewport overrides were rechecked by bypassing the lookup entirely; the 54-entry
+  table still guards broad stress/cypress `parity-root` drift, so it remains in place for now.
 
 Exit criteria:
 

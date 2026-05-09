@@ -499,7 +499,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   output, 35 `requirement` entries now covered by deterministic root output, and 16 `c4` entries
   now covered by deterministic root output. C4 root viewport overrides were also rechecked by
   bypassing the lookup entirely; all 35 entries still drift, so the table remains in place for
-  now. The entire 119-entry `block` root override module was
+  now. Timeline root viewport overrides were also rechecked by bypassing the lookup entirely; the
+  9-entry table still guards real parity-root drift on the stress and cypress fixtures. State root
+  viewport overrides were also rechecked by bypassing the lookup entirely; the 54-entry table
+  still guards real parity-root drift across the stress and cypress fixtures. The entire
+  119-entry `block` root override module was
   deleted after Block `parity-root` stayed green without any root pins, followed by 68 `state`
   root pins now covered by deterministic root output. The Class root table then dropped 166
   obsolete pins and gained one missing docs root pin, making Class `parity-root` green with a
