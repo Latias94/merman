@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed thirty-two obsolete Sequence root viewport pins now covered by deterministic root output,
+  reducing root viewport overrides to 1062 while keeping Sequence `parity-root` green.
 - Removed six obsolete Gitgraph root viewport pins now covered by deterministic root output,
   reducing root viewport overrides to 1094 while keeping Gitgraph `parity-root` green.
 - Collapsed the Class root viewport table from 196 entries to 31 by removing 166 obsolete pins and

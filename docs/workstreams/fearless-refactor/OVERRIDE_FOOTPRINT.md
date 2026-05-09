@@ -28,7 +28,7 @@ The same category totals are encoded as no-growth budgets in
 gate. Override growth should therefore be an explicit reviewed decision, not a default model-bug
 escape hatch.
 
-The current snapshot reflects a 480-entry net reduction in root viewport overrides after topology-driven
+The current snapshot reflects a 512-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
@@ -40,7 +40,8 @@ after all 119 entries proved obsolete, followed by sixty-eight obsolete State pi
 deterministic root output. It then collapses the Class root table from 196 entries to 31 by
 removing 166 obsolete pins and adding one missing docs root pin, making Class `parity-root` green
 with a 165-entry net reduction, followed by six obsolete Gitgraph pins now covered by
-deterministic root output. It also reflects the final manual raw SVG/path bridge
+deterministic root output and thirty-two obsolete Sequence pins now covered by deterministic root
+output. It also reflects the final manual raw SVG/path bridge
 removal, so manual bridge scanning now reports zero bridge files.
 It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
 in `block`, `er`, `gantt`, and `mindmap` are now counted as text metric lookup entries instead of
@@ -85,7 +86,7 @@ bbox correction data as text metric lookup entries, bringing the hand-curated he
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `1094`.
+Total entries reported by `xtask`: `1062`.
 
 | file | entries |
 | --- | ---: |
@@ -99,15 +100,15 @@ Total entries reported by `xtask`: `1094`.
 | `pie_root_overrides_11_12_2.rs` | 23 |
 | `requirement_root_overrides_11_12_2.rs` | 11 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 232 |
+| `sequence_root_overrides_11_12_2.rs` | 200 |
 | `state_root_overrides_11_12_2.rs` | 54 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
 Largest root-viewport buckets:
 
 - `flowchart`: 266
-- `sequence`: 232
 - `gitgraph`: 226
+- `sequence`: 200
 - `architecture`: 101
 
 ### Text Metric Lookup Overrides
