@@ -10,20 +10,18 @@ pub(in crate::svg::parity) mod roughjs;
 mod style;
 mod viewport;
 
+pub(super) use super::roughjs_common::roughjs_paths_for_rect;
 pub(super) use super::roughjs_common::{
-    ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
-    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba,
+    RoughRectSpec as StateRoughRectSpec, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
+    parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_circle_path_d,
 };
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
 pub(super) use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
-pub(super) use roughjs::StateRoughRectSpec;
-pub(super) use roughjs::roughjs_paths_for_rect;
 
 use roughjs::{
-    mermaid_choice_diamond_path_data, mermaid_rounded_rect_path_data, roughjs_circle_path_d,
-    roughjs_paths_for_svg_path,
+    mermaid_choice_diamond_path_data, mermaid_rounded_rect_path_data, roughjs_paths_for_svg_path,
 };
 
 // State diagram SVG renderer implementation (split from parity.rs).

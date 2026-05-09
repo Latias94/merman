@@ -406,6 +406,8 @@ Progress:
   only the public allowlist entry point remains exported.
 - Moved RoughJS hex parsing and `opsToPath` formatting into a shared parity helper layer consumed
   by both State and Flowchart renderers.
+- Moved RoughJS rectangle and circle generation into the shared parity helper layer so the seeded
+  shape emission logic no longer forks between State and Flowchart.
 - Collapsed repeated Flowchart RoughJS op-set-to-SVG-path serializers into one private helper while
   preserving RoughJS `opsToPath` formatting and call ordering.
 - Collapsed repeated Flowchart RoughJS stroke dash parsing into one private helper and narrowed the

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
+  Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so
   State and Flowchart no longer duplicate the same low-level conversion code.
 - Collapsed repeated Flowchart RoughJS stroke dash parsing into a shared private helper and

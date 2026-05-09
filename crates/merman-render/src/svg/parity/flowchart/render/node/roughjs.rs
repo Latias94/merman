@@ -5,6 +5,10 @@
 
 use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 
+pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::{
+    RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
+};
+
 fn parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
     let dash = stroke_dasharray.trim().replace(',', " ");
     let mut nums = dash
@@ -192,81 +196,6 @@ pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
 
     let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
     Some(ops_to_svg_path_d(&opset))
-}
-
-pub(in crate::svg::parity) fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
-    // Port of Mermaid `stateEnd.ts`/`stateStart.ts` which use RoughJS even for classic look
-    // (roughness=0). Use RoughJS `opsToPath(...)` formatting (no `fmt(...)` quantization).
-    let mut opts = roughr::core::OptionsBuilder::default()
-        .seed(seed)
-        .roughness(0.0)
-        .fill_style(roughr::core::FillStyle::Solid)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .ok()?;
-    let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
-    Some(ops_to_svg_path_d(&opset))
-}
-
-pub(in crate::svg::parity) struct RoughRectSpec<'a> {
-    pub(in crate::svg::parity) x: f64,
-    pub(in crate::svg::parity) y: f64,
-    pub(in crate::svg::parity) w: f64,
-    pub(in crate::svg::parity) h: f64,
-    pub(in crate::svg::parity) fill: &'a str,
-    pub(in crate::svg::parity) stroke: &'a str,
-    pub(in crate::svg::parity) stroke_width: f32,
-    pub(in crate::svg::parity) seed: u64,
-}
-
-pub(in crate::svg::parity) fn roughjs_paths_for_rect(
-    spec: RoughRectSpec<'_>,
-) -> Option<(String, String)> {
-    let RoughRectSpec {
-        x,
-        y,
-        w,
-        h,
-        fill,
-        stroke,
-        stroke_width,
-        seed,
-    } = spec;
-
-    // Port of Mermaid `forkJoin.ts` generation order: outline first (advancing PRNG), then fill;
-    // SVG emission order is fill first, stroke second.
-    let fill = parse_hex_color_to_srgba(fill)?;
-    let stroke = parse_hex_color_to_srgba(stroke)?;
-    let mut opts = roughr::core::OptionsBuilder::default()
-        .seed(seed)
-        .roughness(0.0)
-        .fill_style(roughr::core::FillStyle::Solid)
-        .fill(fill)
-        .stroke(stroke)
-        .stroke_width(stroke_width)
-        .stroke_line_dash(vec![0.0, 0.0])
-        .stroke_line_dash_offset(0.0)
-        .fill_line_dash(vec![0.0, 0.0])
-        .fill_line_dash_offset(0.0)
-        .disable_multi_stroke(false)
-        .disable_multi_stroke_fill(false)
-        .build()
-        .ok()?;
-
-    let fill_poly = vec![vec![
-        roughr::Point2D::new(x, y),
-        roughr::Point2D::new(x + w, y),
-        roughr::Point2D::new(x + w, y + h),
-        roughr::Point2D::new(x, y + h),
-    ]];
-    let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
-    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
-
-    Some((
-        ops_to_svg_path_d(&fill_opset),
-        ops_to_svg_path_d(&stroke_opset),
-    ))
 }
 
 pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
