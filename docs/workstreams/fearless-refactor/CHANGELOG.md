@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed the thin render-side UTC helper in Gantt and called the shared core time helper
+  directly.
 - Turned the Class SVG root placeholder lookup into an explicit render error instead of a local
   expect panic.
 - Replaced Gantt fixed-date and duration regex invariant unwraps with explicit fallible branches.

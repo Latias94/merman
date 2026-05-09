@@ -16,12 +16,10 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 const DEFAULT_WIDTH: f64 = 1184.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
-fn utc_offset() -> FixedOffset {
-    merman_core::time::utc_fixed_offset()
-}
-
 fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
-    merman_core::time::datetime_to_local_fixed(dt_utc.with_timezone(&utc_offset()))
+    merman_core::time::datetime_to_local_fixed(
+        dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()),
+    )
 }
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {

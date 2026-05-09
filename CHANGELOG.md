@@ -102,6 +102,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   fallible branches.
 - Class SVG root cleanup: surface missing root placeholders as explicit render errors instead of
   local expect panics.
+- Gantt render cleanup: remove the thin render-side UTC helper and call the shared core time
+  helper directly.
 - Render cleanup: remove local production unwraps from Architecture alignment flattening, Gantt
   compact section grouping, and Sequence self-frame width planning.
 - Kanban render pipeline: parse a typed render model for layout/render-only flows instead of
