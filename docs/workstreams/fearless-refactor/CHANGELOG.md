@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Pie's remaining legend rectangle/spacing values into `pie` owner constants shared by
+  layout and SVG, deleting the now-empty Pie text override module and reducing helper footprint to
+  34.
 - Inlined Radar legend row spacing in layout and deleted the now-empty Radar text override module,
   reducing generated override modules to 35 and the helper footprint to 36.
 - Removed the dead Architecture icon text bbox helper, leaving Architecture text overrides focused

@@ -1,5 +1,5 @@
 use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
-use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
+use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
 
@@ -202,8 +202,8 @@ pub(super) fn render_pie_diagram_svg_model(
         }
     }
 
-    let legend_rect_size = pie_text_overrides::pie_legend_rect_size_px();
-    let legend_text_x = legend_rect_size + pie_text_overrides::pie_legend_spacing_px();
+    let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
+    let legend_text_x = legend_rect_size + PIE_LEGEND_SPACING_PX;
 
     for item in &layout.legend_items {
         let _ = write!(

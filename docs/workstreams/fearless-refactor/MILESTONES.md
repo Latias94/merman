@@ -446,7 +446,8 @@ Progress:
   frame min pad literals in block geometry. Sankey now inlines its SVG-only label font/gap/dy
   literals, leaving only node geometry and padding helpers. Architecture also deleted a dead icon
   text bbox helper. Radar now inlines its final legend row spacing value and deletes the now-empty
-  generated module, reducing the helper footprint to 36.
+  generated module. Pie moved its remaining legend rectangle/spacing values into `pie` owner
+  constants and deleted the now-empty generated module, reducing the helper footprint to 34.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

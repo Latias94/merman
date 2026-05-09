@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `35`.
+Generated override modules scanned: `34`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -47,7 +47,8 @@ literals, deleting the empty generated override module, Sequence inlined its sel
 literals in block geometry, Sankey inlined its SVG-only label font/gap/dy literals, Treemap
 inlined its section header label/value sizing literals, Architecture deleted a dead icon text bbox
 helper, and Radar inlined its final legend row spacing value and deleted the now-empty generated
-module, bringing the hand-curated helper total to 36.
+module. Pie also moved its remaining legend rectangle/spacing values into `pie` owner constants and
+deleted the now-empty generated module, bringing the hand-curated helper total to 34.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -124,7 +125,7 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `36`.
+Total helper functions reported by `xtask`: `34`.
 
 | file | helper functions |
 | --- | ---: |
@@ -132,7 +133,6 @@ Total helper functions reported by `xtask`: `36`.
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
 | `journey_text_overrides_11_12_2.rs` | 6 |
 | `kanban_text_overrides_11_12_2.rs` | 5 |
-| `pie_text_overrides_11_12_2.rs` | 2 |
 | `sankey_text_overrides_11_12_2.rs` | 2 |
 | `sequence_text_overrides_11_12_2.rs` | 6 |
 | `treemap_text_overrides_11_12_2.rs` | 3 |

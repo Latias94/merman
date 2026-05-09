@@ -1,10 +1,12 @@
 use crate::Result;
-use crate::generated::pie_text_overrides_11_12_2 as pie_text_overrides;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 use ryu_js::Buffer;
 use std::cmp::Ordering;
+
+pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
+pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
 
 #[derive(Debug, Clone)]
 struct ColorScale {
@@ -299,8 +301,8 @@ pub fn layout_pie_diagram_typed(
 
     // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
     let margin: f64 = 40.0;
-    let legend_rect_size = pie_text_overrides::pie_legend_rect_size_px();
-    let legend_spacing = pie_text_overrides::pie_legend_spacing_px();
+    let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
+    let legend_spacing = PIE_LEGEND_SPACING_PX;
 
     let center: f64 = 225.0;
     let radius: f64 = 185.0;
@@ -455,14 +457,8 @@ pub fn layout_pie_diagram_typed(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn pie_text_constants_are_generated() {
-        assert_eq!(
-            crate::generated::pie_text_overrides_11_12_2::pie_legend_rect_size_px(),
-            18.0
-        );
-        assert_eq!(
-            crate::generated::pie_text_overrides_11_12_2::pie_legend_spacing_px(),
-            4.0
-        );
+    fn pie_legend_geometry_constants_match_mermaid() {
+        assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
+        assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
     }
 }

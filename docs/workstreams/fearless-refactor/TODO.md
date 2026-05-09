@@ -472,7 +472,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   font/gap/dy literals, leaving only node geometry and padding helpers and reducing the helper
   footprint to 38. Architecture also deleted a dead icon text bbox helper, reducing the helper
   footprint to 37. Radar inlines its final legend row spacing value in layout and deletes the
-  now-empty generated module, reducing the helper footprint to 36.
+  now-empty generated module, reducing the helper footprint to 36. Pie moved its remaining legend
+  rectangle/spacing values into `pie` owner constants and deleted the now-empty generated module,
+  reducing the helper footprint to 34.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.
