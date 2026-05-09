@@ -1060,21 +1060,6 @@ pub(super) fn render_er_diagram_svg_model(
             continue;
         }
 
-        #[allow(dead_code)]
-        fn rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            format!(
-                "M{} {} L{} {} L{} {} L{} {}",
-                fmt_path(x0),
-                fmt_path(y0),
-                fmt_path(x1),
-                fmt_path(y0),
-                fmt_path(x1),
-                fmt_path(y1),
-                fmt_path(x0),
-                fmt_path(y1)
-            )
-        }
-
         fn fallback_rough_line_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             let c1x = x0 + (x1 - x0) * 0.25;
             let c1y = y0 + (y1 - y0) * 0.25;

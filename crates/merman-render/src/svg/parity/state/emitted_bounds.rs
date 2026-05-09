@@ -70,18 +70,6 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
     }
 
     impl AffineTransform {
-        #[allow(dead_code)]
-        fn identity() -> Self {
-            Self {
-                a: 1.0,
-                b: 0.0,
-                c: 0.0,
-                d: 1.0,
-                e: 0.0,
-                f: 0.0,
-            }
-        }
-
         fn apply_point_f32(self, x: f32, y: f32) -> (f32, f32) {
             // `getBBox()` computation is float-ish; do mul/add in `f32` and keep the intermediate
             // point in `f32` between transform operations.
@@ -783,22 +771,6 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
 
     fn is_near_integer(v: f64) -> bool {
         (v - v.round()).abs() <= 1e-9
-    }
-
-    #[allow(dead_code)]
-    fn next_up_f32(v: f32) -> f32 {
-        if v.is_nan() || v == f32::INFINITY {
-            return v;
-        }
-        if v == 0.0 {
-            return f32::from_bits(1);
-        }
-        let bits = v.to_bits();
-        if v > 0.0 {
-            f32::from_bits(bits + 1)
-        } else {
-            f32::from_bits(bits - 1)
-        }
     }
 
     fn translate_params_quantized_to_0_01(t: &AffineTransform) -> bool {

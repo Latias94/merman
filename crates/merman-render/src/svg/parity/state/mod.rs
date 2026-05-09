@@ -43,8 +43,6 @@ type StateRoughPathsCache = FxHashMap<StateRoughCacheKey, StateRoughPathPair>;
 
 struct StateRenderCtx<'a> {
     diagram_id: String,
-    #[allow(dead_code)]
-    diagram_title: Option<String>,
     diagram_look: String,
     hand_drawn_seed: u64,
     html_label_wrapping_width: f64,

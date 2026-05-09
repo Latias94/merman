@@ -123,7 +123,6 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
-        diagram_title: diagram_title.clone(),
         diagram_look: config_string(effective_config, &["look"])
             .unwrap_or_else(|| "classic".to_string()),
         hand_drawn_seed: effective_config

@@ -750,15 +750,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         if (q as f64) < v { next_up_f32(q) } else { q }
     }
 
-    #[allow(dead_code)]
-    fn f32_round_down(v: f64) -> f32 {
-        let q = v as f32;
-        if !q.is_finite() {
-            return q;
-        }
-        if (q as f64) > v { next_down_f32(q) } else { q }
-    }
-
     let bbox_x = b.min_x as f32;
     let bbox_y = b.min_y as f32;
     let dbg_viewbox = std::env::var("MERMAN_DEBUG_GITGRAPH_VIEWBOX").is_ok();

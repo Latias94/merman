@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed local dead parity helpers in ER, GitGraph, and State after clippy, targeted nextest, and
+  each touched diagram family's DOM parity gate stayed green.
 - Narrowed Flowchart parity context/API surface by deleting unused style/class/cluster wrappers and
   removing context fields that were only initialized, leaving the flowchart parity subtree free of
   non-generated `dead_code` allows.

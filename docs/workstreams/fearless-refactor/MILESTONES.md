@@ -386,6 +386,8 @@ Progress:
   `sequence/render.rs` are thin orchestration boundaries over dedicated owner modules.
 - Architecture renderer split is now complete for the current scope; keep any follow-up cleanup
   under M5 if future profiling or navigation reveals new dead code.
+- Removed local dead ER, GitGraph, and State parity helpers that were no longer called after the
+  renderer split and viewport cleanup work.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
   fully moved into `edge_geom` and root SVG emission.
 - Removed unused no-bounds D3 curve wrappers, leaving `curve.rs` with only active path-and-bounds

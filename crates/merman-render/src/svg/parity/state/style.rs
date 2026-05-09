@@ -468,22 +468,6 @@ pub(super) fn state_node_label_html_with_style(raw: &str, span_style: Option<&st
     )
 }
 
-#[allow(dead_code)]
-pub(super) fn state_node_label_inline_html_with_style(
-    raw: &str,
-    span_style: Option<&str>,
-) -> String {
-    let style_attr = span_style
-        .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
-        .unwrap_or_default();
-    format!(
-        r#"<span{} class="nodeLabel">{}</span>"#,
-        style_attr,
-        html_inline_with_br(raw)
-    )
-}
-
 pub(super) fn html_paragraph_with_br(raw: &str) -> String {
     fn escape_amp_preserving_entities(raw: &str) -> String {
         fn is_valid_entity(entity: &str) -> bool {
