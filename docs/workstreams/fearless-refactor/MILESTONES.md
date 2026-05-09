@@ -451,7 +451,9 @@ Progress:
   width/padding values into `sankey` owner constants and deleted the now-empty generated module,
   reducing the helper footprint to 32. Journey moved its fixed viewBox/title/legend/face geometry
   into `journey` owner constants and deleted the now-empty generated module, reducing the helper
-  footprint to 26.
+  footprint to 26. Kanban moved its section padding, label foreignObject height, and item row
+  heights into `kanban` owner constants and deleted the now-empty generated module, reducing the
+  helper footprint to 21.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

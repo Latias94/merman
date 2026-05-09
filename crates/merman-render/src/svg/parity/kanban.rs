@@ -1,5 +1,8 @@
 use super::*;
-use crate::generated::kanban_text_overrides_11_12_2 as kanban_text_overrides;
+use crate::kanban::{
+    KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+    KANBAN_SECTION_PADDING_PX,
+};
 
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
@@ -40,17 +43,17 @@ fn calibrated_kanban_root_height(
     if !has_item_metadata {
         if near(
             layout.max_label_height,
-            kanban_text_overrides::kanban_section_label_height_baseline_px(),
+            KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
         ) {
             if layout.sections.len() == 1
                 && (1..=3).contains(&layout.items.len())
                 && near(max_item_height, 116.0)
             {
-                return raw_height + kanban_text_overrides::kanban_label_foreign_object_height_px();
+                return raw_height + KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
             }
             if layout.sections.len() == 2 && layout.items.len() == 1 && near(max_item_height, 68.0)
             {
-                return raw_height + kanban_text_overrides::kanban_label_foreign_object_height_px();
+                return raw_height + KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
             }
         }
 
@@ -132,9 +135,7 @@ pub(super) fn render_kanban_diagram_svg(
             lx = fmt(label_x),
             ly = fmt(s.rect_y),
             lw = fmt(s.label_width.max(0.0)),
-            fo_h = fmt(s
-                .label_height
-                .max(kanban_text_overrides::kanban_label_foreign_object_height_px())),
+            fo_h = fmt(s.label_height.max(KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX)),
             max_w = fmt(s.width.max(1.0)),
             label = escape_xml(&s.label),
         );
@@ -142,7 +143,7 @@ pub(super) fn render_kanban_diagram_svg(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="items">"#);
-    let item_label_inset_x = kanban_text_overrides::kanban_section_padding_px();
+    let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
 
     // These helpers are used for positioning and foreignObject sizing. Keep them deterministic and
     // stable across platforms (DOM parity mode will mask numeric drift).
@@ -262,7 +263,7 @@ pub(super) fn render_kanban_diagram_svg(
                         } else {
                             (
                                 raw.width,
-                                kanban_text_overrides::kanban_label_foreign_object_height_px(),
+                                KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
                                 Some(format!(
                                     "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                     mw = fmt(max_w),
@@ -273,7 +274,7 @@ pub(super) fn render_kanban_diagram_svg(
                         let raw = measure_text_metrics_html(t, None);
                         (
                             raw.width,
-                            kanban_text_overrides::kanban_label_foreign_object_height_px(),
+                            KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
                             Some(format!(
                                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
                                 mw = fmt(max_w),

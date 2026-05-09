@@ -478,6 +478,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `sankey` owner constants and deleted the now-empty generated module, reducing the helper
   footprint to 32. Journey moved its fixed viewBox/title/legend/face geometry into `journey`
   owner constants and deleted the now-empty generated module, reducing the helper footprint to 26.
+  Kanban moved its section padding, label foreignObject height, and item row heights into `kanban`
+  owner constants and deleted the now-empty generated module, reducing the helper footprint to 21.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still pass.

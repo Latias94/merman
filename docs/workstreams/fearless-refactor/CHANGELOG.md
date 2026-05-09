@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Moved Kanban section padding, label foreignObject height, and item row heights into `kanban`
+  owner constants, deleting the now-empty Kanban text override module and reducing helper
+  footprint to 21.
 - Moved Journey fixed viewBox/title/legend/face geometry into `journey` owner constants, deleting
   the now-empty Journey text override module and reducing helper footprint to 26.
 - Moved Sankey node width/padding values into `sankey` owner constants and a private padding helper,

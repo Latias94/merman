@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `32`.
+Generated override modules scanned: `31`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -51,7 +51,9 @@ deleted the now-empty generated module. Sankey then moved its node width/padding
 `sankey` owner constants and deleted the now-empty generated module, bringing the hand-curated
 helper total to 32. Journey moved its fixed viewBox/title/legend/face geometry into `journey`
 owner constants and deleted the now-empty generated module, bringing the hand-curated helper total
-to 26.
+to 26. Kanban moved its section padding, label foreignObject height, and item row heights into
+`kanban` owner constants and deleted the now-empty generated module, bringing the hand-curated
+helper total to 21.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -128,13 +130,12 @@ Total lookup entries reported by `xtask`: `1140`.
 
 ### Hand-Curated Helper Overrides
 
-Total helper functions reported by `xtask`: `26`.
+Total helper functions reported by `xtask`: `21`.
 
 | file | helper functions |
 | --- | ---: |
 | `architecture_text_overrides_11_12_2.rs` | 6 |
 | `gitgraph_text_overrides_11_12_2.rs` | 6 |
-| `kanban_text_overrides_11_12_2.rs` | 5 |
 | `sequence_text_overrides_11_12_2.rs` | 6 |
 | `treemap_text_overrides_11_12_2.rs` | 3 |
 
