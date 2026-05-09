@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Inlined `prefer_fast_state_viewport_bounds` into the two State viewport call sites after
+  `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` and
+  `cargo run -p xtask -- verify --strict` stayed green.
 - Inlined `maybe_insert_midpoint_for_basis` into the flowchart edge path builder after
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` and `cargo run -p xtask -- verify --strict` both stayed green without the

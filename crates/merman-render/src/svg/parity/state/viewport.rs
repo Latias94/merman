@@ -1,14 +1,5 @@
 use super::*;
 
-pub(super) fn prefer_fast_state_viewport_bounds() -> bool {
-    match std::env::var("MERMAN_STATE_VIEWPORT").as_deref() {
-        Ok("svg") | Ok("slow") | Ok("0") | Ok("false") => false,
-        Ok("layout") | Ok("fast") | Ok("1") | Ok("true") => true,
-        // Default to slow: derive viewBox from emitted SVG bounds (closest to `svg.getBBox()`).
-        _ => false,
-    }
-}
-
 pub(super) fn state_viewport_bounds_from_layout(layout: &StateDiagramV2Layout) -> Option<Bounds> {
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
         let w = (max_x - min_x).abs();

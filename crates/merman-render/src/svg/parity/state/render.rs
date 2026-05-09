@@ -294,7 +294,10 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     drop(_g_build_ctx);
 
-    let fast_viewport = prefer_fast_state_viewport_bounds();
+    let fast_viewport = matches!(
+        std::env::var("MERMAN_STATE_VIEWPORT").as_deref(),
+        Ok("layout") | Ok("fast") | Ok("1") | Ok("true")
+    );
     if fast_viewport {
         // In fast mode we can compute the root viewport purely from layout geometry, so we do not
         // need placeholder replacement.
@@ -563,7 +566,10 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     let mut viewbox_svg_scan = std::time::Duration::ZERO;
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
-    let fast_viewport = prefer_fast_state_viewport_bounds();
+    let fast_viewport = matches!(
+        std::env::var("MERMAN_STATE_VIEWPORT").as_deref(),
+        Ok("layout") | Ok("fast") | Ok("1") | Ok("true")
+    );
     let mut content_bounds = if fast_viewport {
         state_viewport_bounds_from_layout(layout)
     } else {
