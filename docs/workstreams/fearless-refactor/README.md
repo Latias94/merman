@@ -130,3 +130,4 @@ Use this order when choosing work:
 - `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
 - `OVERRIDE_POLICY.md`: rules for adding, reviewing, and removing text/render overrides.
 - `LINT_ALLOW_AUDIT.md`: remaining hand-written lint allowances and removal criteria.
+- `COMPLETION_AUDIT.md`: objective-to-evidence checklist and remaining release gaps.

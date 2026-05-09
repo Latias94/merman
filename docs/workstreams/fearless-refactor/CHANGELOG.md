@@ -5,10 +5,15 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
-- Removed the redundant flowchart cluster-run edge helper after cluster DOM parity stayed green
-  without the special case.
-- Removed the obsolete flowchart degenerate path helper after targeted `edges_to_from_subgraphs`
-  and `subgraph_spec` DOM parity checks stayed green without the special case.
+- Revalidated the full `cargo bench -p merman --features render` gate after the first 20-minute
+  attempt timed out, and recorded the successful run in
+  `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.
+- Rechecked the redundant flowchart cluster-run edge helper and kept it in place after
+  `cargo run -p xtask -- verify --strict` exposed flowchart DOM mismatches without the special
+  case.
+- Rechecked the obsolete flowchart degenerate path helper and kept it in place after
+  `cargo run -p xtask -- verify --strict` exposed flowchart DOM mismatches on subgraph-descendant
+  fixtures without it.
 - Made the mmdr benchmark helper scripts lockfile-aware and added `--mmdr-toolchain` so the
   reference checkout can run under a compatible Rust toolchain while this workspace remains pinned.
   Recorded a fresh standard-canary stage spotcheck in

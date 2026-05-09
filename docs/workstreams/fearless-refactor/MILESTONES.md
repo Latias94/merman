@@ -531,10 +531,10 @@ Progress:
   keeping `parity-root` green. Architecture then added default root viewport calibration for
   nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving
   31 Architecture root pins that still guard real `parity-root` drift.
-- The obsolete flowchart degenerate path helper was removed after the `edges_to_from_subgraphs`
-  and `subgraph_spec` flowchart DOM parity checks stayed green without it.
-- The redundant flowchart cluster-run helper was removed after the cluster flowchart DOM parity
-  check stayed green without the special case.
+- The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
+  it produced DOM mismatches on subgraph-descendant flowchart fixtures.
+- The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
+  it produced the same cluster/subgraph flowchart DOM mismatches.
 
 Exit criteria:
 
@@ -582,6 +582,9 @@ Progress:
   `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`; the local Criterion smoke
   shows `layout/xychart_medium` at `55.129-60.551 us` after tick labels moved from repeated
   generation to axis-state reuse.
+- Revalidated the full package benchmark gate with `cargo bench -p merman --features render`;
+  the run completed successfully after a longer timeout window and is recorded in
+  `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.
 
 Exit criteria:
 

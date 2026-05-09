@@ -449,11 +449,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: Sankey first collapsed redundant padding component helpers, then moved its remaining
   node geometry values into `sankey` owner constants and deleted the now-empty generated module,
   reducing helper footprint without changing layout behavior.
-- [x] Remove the obsolete flowchart degenerate path helper after parity stayed green.
-  Evidence: `crates/merman-render/src/svg/parity/flowchart/edge_geom/degenerate_path.rs` was
-  deleted after `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity
-  --dom-decimals 3 --filter edges_to_from_subgraphs` and `--filter subgraph_spec` both stayed
-  green without the helper.
+- [x] Recheck the obsolete flowchart degenerate path helper before attempting removal again.
+  Evidence: removing `crates/merman-render/src/svg/parity/flowchart/edge_geom/degenerate_path.rs`
+  caused `cargo run -p xtask -- verify --strict` to fail with flowchart DOM mismatches on
+  `stress_flowchart_subgraph_title_margins_extreme_nested_030`,
+  `upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044`,
+  and `upstream_flowchart_v2_subgraph_child_links_outside_spec`, so the helper stays in place.
 - [x] Add generated metadata for generated overrides with expected removal criteria.
   Evidence: `xtask report-overrides` now prints owner, source, allowed-use, and expected-removal
   metadata for every generated override category and manual raw SVG/path bridge category, with a
@@ -464,11 +465,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Count restricted-visibility helper functions in helper footprint.
   Evidence: `xtask report-overrides` now counts `pub(...) fn` helpers as hand-curated helper
   functions, so visibility-only changes cannot hide override footprint from the no-growth gate.
-- [x] Remove the redundant flowchart cluster-run helper after cluster parity stayed green.
-  Evidence: `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` no longer keeps the
-  `maybe_remove_redundant_cluster_run_point` special case, and
-  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
-  --filter cluster` stayed green without it.
+- [x] Recheck the redundant flowchart cluster-run helper before attempting removal again.
+  Evidence: removing `maybe_remove_redundant_cluster_run_point` caused
+  `cargo run -p xtask -- verify --strict` to fail with flowchart DOM mismatches on the same
+  subgraph/cluster edge families, so the special case stays in place.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
   Evidence: root viewport footprint is down 795 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
