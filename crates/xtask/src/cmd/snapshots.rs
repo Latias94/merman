@@ -3,7 +3,115 @@ use crate::util::*;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+#[derive(Clone, Copy, Debug, Default)]
+struct MmdFixtureScan<'a> {
+    filter: Option<&'a str>,
+    skip_private_dirs: bool,
+    skip_parser_only: bool,
+    skip_upstream_svgs: bool,
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+}
+
+fn fixtures_root_for_diagram(workspace_root: &Path, diagram: &str) -> PathBuf {
+    if diagram == "all" {
+        workspace_root.join("fixtures")
+    } else {
+        workspace_root.join("fixtures").join(diagram)
+    }
+}
+
+fn path_file_name_contains(path: &Path, needle: &str) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.contains(needle))
+}
+
+fn is_parser_only_fixture(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
+}
+
+fn is_private_fixture_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with('_'))
+}
+
+fn is_upstream_svg_dir(path: &Path) -> bool {
+    path.file_name().is_some_and(|n| n == "upstream-svgs")
+}
+
+fn collect_mmd_fixtures(root: &Path, scan: MmdFixtureScan<'_>) -> Vec<PathBuf> {
+    let root = root.to_path_buf();
+    let mut out = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        if dir != root && scan.skip_private_dirs && is_private_fixture_dir(&dir) {
+            continue;
+        }
+        if dir != root && scan.skip_upstream_svgs && is_upstream_svg_dir(&dir) {
+            continue;
+        }
+
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if scan.skip_private_dirs && is_private_fixture_dir(&path) {
+                    continue;
+                }
+                if scan.skip_upstream_svgs && is_upstream_svg_dir(&path) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_none_or(|e| e != "mmd") {
+                continue;
+            }
+            if scan.skip_parser_only && is_parser_only_fixture(&path) {
+                continue;
+            }
+            if let Some(filter) = scan.filter {
+                if !path_file_name_contains(&path, filter) {
+                    continue;
+                }
+            }
+            out.push(path);
+        }
+    }
+    out.sort();
+    out
+}
+
+fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
+    // `--diagram <dir>` is a directory selector. Fixtures in that directory can still parse into
+    // the error diagram under `suppress_errors=true`, and those goldens keep the fixture corpus
+    // aligned with the test harness.
+    if selector == "all" || diagram_type == "error" || diagram_type == selector {
+        return true;
+    }
+
+    match selector {
+        "er" => diagram_type == "erDiagram",
+        "flowchart" => diagram_type == "flowchart-v2",
+        "state" => diagram_type == "stateDiagram",
+        "class" => diagram_type == "classDiagram",
+        "gitgraph" => diagram_type == "gitGraph",
+        "quadrantchart" => diagram_type == "quadrantChart",
+        _ => false,
+    }
+}
 
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
@@ -124,52 +232,17 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         }
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
-    let fixtures_root = if diagram == "all" {
-        workspace_root.join("fixtures")
-    } else {
-        workspace_root.join("fixtures").join(&diagram)
-    };
-
-    let mut mmd_files = Vec::new();
-    let mut stack = vec![fixtures_root.clone()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|n| n == "upstream-svgs") {
-                    continue;
-                }
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_some_and(|e| e == "mmd") {
-                if path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-                {
-                    continue;
-                }
-                if let Some(ref f) = filter {
-                    if !path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.contains(f))
-                    {
-                        continue;
-                    }
-                }
-                mmd_files.push(path);
-            }
-        }
-    }
-    mmd_files.sort();
+    let workspace_root = workspace_root();
+    let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
+    let mmd_files = collect_mmd_fixtures(
+        &fixtures_root,
+        MmdFixtureScan {
+            filter: filter.as_deref(),
+            skip_private_dirs: true,
+            skip_parser_only: true,
+            skip_upstream_svgs: true,
+        },
+    );
     if mmd_files.is_empty() {
         return Err(XtaskError::LayoutSnapshotUpdateFailed(format!(
             "no .mmd fixtures found under {}",
@@ -215,30 +288,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            if diagram != "all" {
-                let dt = parsed.meta.diagram_type.as_str();
-                if dt == "error" {
-                    // `--diagram <dir>` is a directory selector; fixtures can still parse into the
-                    // error diagram when `suppress_errors=true`. Keep those snapshots so
-                    // `cargo nextest run` stays consistent with the fixture corpus.
-                    //
-                    // Example: Mermaid docs sometimes include "..." placeholder lines in syntax
-                    // blocks, which produce an upstream error SVG baseline.
-                    // We still want a golden snapshot for such fixtures.
-                    //
-                    // (Upstream baselines for the `error` diagram type itself are not maintained.)
-                } else {
-                    let matches = dt == diagram
-                        || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
-                        || (diagram == "flowchart" && dt == "flowchart-v2")
-                        || (diagram == "state" && dt == "stateDiagram")
-                        || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
-                        || (diagram == "gitgraph" && dt == "gitGraph")
-                        || (diagram == "quadrantchart" && dt == "quadrantChart");
-                    if !matches {
-                        continue;
-                    }
-                }
+            if !snapshot_selector_accepts(&diagram, parsed.meta.diagram_type.as_str()) {
+                continue;
             }
 
             let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -313,9 +364,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         return Err(XtaskError::Usage);
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let workspace_root = workspace_root();
     let alignment_dir = workspace_root.join("docs").join("alignment");
     let fixtures_root = workspace_root.join("fixtures");
 
@@ -382,34 +431,17 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     // 2) Every `fixtures/**/*.mmd` must have a sibling `.golden.json`.
-    let mut mmd_files = Vec::new();
-    let mut stack = vec![fixtures_root.clone()];
-    while let Some(dir) = stack.pop() {
-        // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the
-        // alignment gates (e.g. upstream CLI renders an error, or depends on unsupported options).
-        // Do not require goldens for these files.
-        if dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.starts_with('_') || n == "upstream-svgs")
-        {
-            continue;
-        }
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_some_and(|e| e == "mmd") {
-                mmd_files.push(path);
-            }
-        }
-    }
-    mmd_files.sort();
+    // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the alignment
+    // gates (e.g. upstream CLI renders an error, or depends on unsupported options). Do not require
+    // goldens for these files.
+    let mmd_files = collect_mmd_fixtures(
+        &fixtures_root,
+        MmdFixtureScan {
+            skip_private_dirs: true,
+            skip_upstream_svgs: true,
+            ..MmdFixtureScan::default()
+        },
+    );
     for mmd in &mmd_files {
         let golden = mmd.with_extension("golden.json");
         if !golden.exists() {
@@ -590,40 +622,17 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
-    let fixtures_root = if diagram == "all" {
-        workspace_root.join("fixtures")
-    } else {
-        workspace_root.join("fixtures").join(&diagram)
-    };
-
-    let mut mmd_files = Vec::new();
-    let mut stack = vec![fixtures_root.clone()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_some_and(|e| e == "mmd") {
-                mmd_files.push(path);
-            }
-        }
-    }
-    mmd_files.sort();
-    if let Some(f) = filter.as_deref() {
-        mmd_files.retain(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(f))
-        });
-    }
+    let workspace_root = workspace_root();
+    let fixtures_root = fixtures_root_for_diagram(&workspace_root, &diagram);
+    let mmd_files = collect_mmd_fixtures(
+        &fixtures_root,
+        MmdFixtureScan {
+            filter: filter.as_deref(),
+            skip_private_dirs: true,
+            skip_upstream_svgs: true,
+            ..MmdFixtureScan::default()
+        },
+    );
     if mmd_files.is_empty() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
             "no .mmd fixtures found under {}",
@@ -707,22 +716,8 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        if diagram != "all" {
-            let dt = parsed.meta.diagram_type.as_str();
-            if dt == "error" {
-                // See `update_snapshots`: keep error diagram snapshots under diagram-scoped runs.
-            } else {
-                let matches = dt == diagram
-                    || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
-                    || (diagram == "flowchart" && dt == "flowchart-v2")
-                    || (diagram == "state" && dt == "stateDiagram")
-                    || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
-                    || (diagram == "gitgraph" && dt == "gitGraph")
-                    || (diagram == "quadrantchart" && dt == "quadrantChart");
-                if !matches {
-                    continue;
-                }
-            }
+        if !snapshot_selector_accepts(&diagram, parsed.meta.diagram_type.as_str()) {
+            continue;
         }
 
         let mut model = parsed.model;
@@ -809,4 +804,110 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     Err(XtaskError::SnapshotUpdateFailed(failures.join("\n")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        MmdFixtureScan, collect_mmd_fixtures, is_parser_only_fixture, snapshot_selector_accepts,
+        workspace_root,
+    };
+
+    #[test]
+    fn collect_mmd_fixtures_honors_snapshot_scan_policy() {
+        let fixtures_root = workspace_root().join("fixtures");
+        let files = collect_mmd_fixtures(
+            &fixtures_root,
+            MmdFixtureScan {
+                skip_private_dirs: true,
+                skip_upstream_svgs: true,
+                ..MmdFixtureScan::default()
+            },
+        );
+
+        assert!(
+            !files.is_empty(),
+            "expected fixtures under {}",
+            fixtures_root.display()
+        );
+        assert!(
+            files.iter().all(|path| {
+                path.components()
+                    .filter_map(|component| component.as_os_str().to_str())
+                    .all(|component| component != "_deferred" && component != "upstream-svgs")
+            }),
+            "snapshot scans must not enter private fixture dirs or upstream SVG baselines"
+        );
+        assert!(
+            files.iter().any(|path| is_parser_only_fixture(path)),
+            "semantic snapshot scans keep parser-only fixtures"
+        );
+    }
+
+    #[test]
+    fn collect_mmd_fixtures_can_skip_parser_only_fixtures() {
+        let fixtures_root = workspace_root().join("fixtures");
+        let files = collect_mmd_fixtures(
+            &fixtures_root,
+            MmdFixtureScan {
+                skip_private_dirs: true,
+                skip_parser_only: true,
+                skip_upstream_svgs: true,
+                ..MmdFixtureScan::default()
+            },
+        );
+
+        assert!(
+            !files.iter().any(|path| is_parser_only_fixture(path)),
+            "layout snapshot scans must skip parser-only fixtures"
+        );
+    }
+
+    #[test]
+    fn collect_mmd_fixtures_filters_by_file_name() {
+        let fixtures_root = workspace_root().join("fixtures");
+        let files = collect_mmd_fixtures(
+            &fixtures_root,
+            MmdFixtureScan {
+                filter: Some("upstream_sankey_allows_proto_id_sankey_header_parser_only_spec"),
+                skip_private_dirs: true,
+                skip_upstream_svgs: true,
+                ..MmdFixtureScan::default()
+            },
+        );
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].file_name().and_then(|n| n.to_str()).is_some_and(
+            |name| name == "upstream_sankey_allows_proto_id_sankey_header_parser_only_spec.mmd"
+        ));
+    }
+
+    #[test]
+    fn snapshot_selector_accepts_directory_aliases() {
+        let cases = [
+            ("all", "flowchart-v2", true),
+            ("er", "erDiagram", true),
+            ("er", "er", true),
+            ("flowchart", "flowchart-v2", true),
+            ("state", "stateDiagram", true),
+            ("class", "classDiagram", true),
+            ("class", "class", true),
+            ("gitgraph", "gitGraph", true),
+            ("quadrantchart", "quadrantChart", true),
+            ("state", "classDiagram", false),
+        ];
+
+        for (selector, diagram_type, expected) in cases {
+            assert_eq!(
+                snapshot_selector_accepts(selector, diagram_type),
+                expected,
+                "{selector} should accept {diagram_type}: {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn snapshot_selector_keeps_error_diagrams_for_scoped_runs() {
+        assert!(snapshot_selector_accepts("class", "error"));
+    }
 }

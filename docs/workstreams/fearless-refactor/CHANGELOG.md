@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Centralized snapshot update diagram selector matching so semantic and layout snapshot generation
+  share the same directory alias rules and scoped error-fixture behavior.
+- Centralized `xtask` `.mmd` fixture discovery for semantic snapshots, layout snapshots, and
+  alignment checks, keeping `_deferred`, `upstream-svgs`, parser-only, and filename filter policy in
+  one place.
 - Extracted a shared `xtask` fixture-to-SVG export helper and refactored `gen-debug-svgs` plus
   the ER, Flowchart, State, Class, and C4 generators onto it, removing repeated scan/read/write
   loops from the command layer.
