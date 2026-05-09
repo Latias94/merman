@@ -3,7 +3,6 @@
 // Mermaid baseline: 11.12.2
 // Source: fixtures/upstream-svgs/block/*.svg
 
-#[allow(dead_code)]
 fn font_size_key(font_size: f64) -> u16 {
     if !(font_size.is_finite() && font_size > 0.0) {
         return 0;

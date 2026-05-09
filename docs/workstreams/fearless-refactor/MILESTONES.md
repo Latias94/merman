@@ -390,6 +390,8 @@ Progress:
   under M5 if future profiling or navigation reveals new dead code.
 - Removed local dead ER, GitGraph, and State parity helpers that were no longer called after the
   renderer split and viewport cleanup work.
+- Removed the remaining generated `dead_code` allowances after clippy proved the generated
+  override modules no longer need that blanket exception.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
   fully moved into `edge_geom` and root SVG emission.
 - Removed unused no-bounds D3 curve wrappers, leaving `curve.rs` with only active path-and-bounds

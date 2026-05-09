@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed the remaining generated `dead_code` allowances from override modules and generator
+  templates; the source tree now has no `dead_code` allow entries.
 - Collapsed Flowchart callback actions to the semantic state actually used by rendering, removing
   the last non-generated `dead_code` allow from `merman-core` / `merman-render`.
 - Removed local dead parity helpers in ER, GitGraph, and State after clippy, targeted nextest, and

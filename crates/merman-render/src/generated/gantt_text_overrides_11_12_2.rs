@@ -5,7 +5,6 @@
 
 const GANTT_DEFAULT_TASK_FONT_KEY: &str = "trebuchetms,verdana,arial,sans-serif";
 
-#[allow(dead_code)]
 fn font_size_key(font_size: f64) -> u16 {
     if !(font_size.is_finite() && font_size > 0.0) {
         return 0;
