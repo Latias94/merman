@@ -156,7 +156,6 @@ pub(crate) struct EdgeDefaults {
     pub interpolate: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TitleKind {
     Text,

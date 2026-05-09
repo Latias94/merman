@@ -373,6 +373,8 @@ Progress:
 - Replaced core flowchart semantic and state layout long-argument helpers with context structs, and
   made `StateDb::add_state` merge `StateStmt` directly; source code no longer carries
   `clippy::too_many_arguments` allows.
+- Removed stale core parser helpers left behind by typed pipeline cleanup: `BlockDb` no longer has
+  an unused id generator, and Flowchart no longer keeps obsolete collect/merge helpers.
 - Extracted architecture SVG root opening, accessibility title/description emission, empty diagram
   fallback sizing, and root viewBox/max-width placeholders into
   `svg/parity/architecture/root.rs`.

@@ -435,54 +435,6 @@ fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
     }
 }
 
-#[allow(dead_code)]
-fn collect_nodes_and_edges(statements: &[Stmt], nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
-    for stmt in statements {
-        match stmt {
-            Stmt::Chain {
-                nodes: chain_nodes,
-                edges: chain_edges,
-            } => {
-                nodes.extend(chain_nodes.iter().cloned());
-                edges.extend(chain_edges.iter().cloned());
-            }
-            Stmt::Node(n) => nodes.push(n.clone()),
-            Stmt::Subgraph(sg) => collect_nodes_and_edges(&sg.statements, nodes, edges),
-            Stmt::Direction(_) => {}
-            Stmt::Style(_) => {}
-            Stmt::ClassDef(_) => {}
-            Stmt::ClassAssign(_) => {}
-            Stmt::Click(_) => {}
-            Stmt::LinkStyle(_) => {}
-            Stmt::ShapeData { .. } => {}
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn merge_nodes_and_edges(nodes: Vec<Node>, edges: Vec<Edge>) -> (Vec<Node>, Vec<Edge>) {
-    let mut nodes_by_id: HashMap<String, usize> = HashMap::new();
-    let mut merged: Vec<Node> = Vec::new();
-    for n in nodes {
-        if let Some(&idx) = nodes_by_id.get(&n.id) {
-            if n.label.is_some() {
-                merged[idx].label = n.label;
-                merged[idx].label_type = n.label_type.clone();
-            }
-            if n.shape.is_some() {
-                merged[idx].shape = n.shape;
-            }
-            merged[idx].styles.extend(n.styles);
-            merged[idx].classes.extend(n.classes);
-            continue;
-        }
-        let idx = merged.len();
-        nodes_by_id.insert(n.id.clone(), idx);
-        merged.push(n);
-    }
-    (merged, edges)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

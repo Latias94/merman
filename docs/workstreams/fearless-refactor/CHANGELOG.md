@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-09
 
+- Removed stale core parser helpers: the unused `BlockDb` id generator, old Flowchart
+  collect/merge helpers, and an unnecessary `TitleKind` dead-code allow.
 - Removed unused no-bounds D3 curve path wrappers from `svg/parity/curve.rs`; active renderers now
   use the shared path-and-bounds entrypoints or the still-used basis/linear path helpers.
 - Deleted the unused Flowchart `edge_bbox` helper module and narrowed the remaining cyclic-special

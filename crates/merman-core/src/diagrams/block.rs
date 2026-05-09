@@ -99,7 +99,6 @@ struct BlockDb {
     edge_count: HashMap<String, i64>,
     classes: HashMap<String, ClassDef>,
     warnings: Vec<String>,
-    gen_counter: i64,
 }
 
 impl BlockDb {
@@ -112,7 +111,6 @@ impl BlockDb {
         self.edge_count.clear();
         self.classes.clear();
         self.warnings.clear();
-        self.gen_counter = 0;
 
         let root = Block {
             id: self.root_id.clone(),
@@ -140,14 +138,6 @@ impl BlockDb {
         self.block_database
             .get_mut(id)
             .expect("block must exist after ensure_block_exists")
-    }
-
-    #[allow(dead_code)]
-    fn generate_id(&mut self) -> String {
-        self.gen_counter += 1;
-        let rand = uuid::Uuid::new_v4().simple().to_string();
-        let rand = &rand[..12.min(rand.len())];
-        format!("id-{rand}-{}", self.gen_counter)
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
@@ -464,7 +454,6 @@ fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
 
     let mut db = BlockDb::default();
     db.clear();
-    db.gen_counter = parser.gen_counter;
     db.set_hierarchy(blocks, &meta.effective_config)?;
     Ok(db)
 }
