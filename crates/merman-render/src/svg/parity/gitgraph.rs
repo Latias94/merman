@@ -837,8 +837,8 @@ mod tests {
         );
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_simple_text_bbox_width_right_px('C'),
-            Some(-500.0 / 2048.0)
+                lookup_gitgraph_simple_text_bbox_width_right_px('2'),
+            Some(1558.0 / 2048.0)
         );
     }
 }
