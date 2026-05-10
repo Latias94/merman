@@ -102,10 +102,10 @@
             "id": "d1-text",
             "text": "days",
             "font_size": 11.0,
-            "width": 22.333,
+            "width": 20.24,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-22.33251953125"
+            "class": "taskText taskText0 width-20.240000000000002"
           }
         },
         {
@@ -133,10 +133,10 @@
             "id": "h1-text",
             "text": "hours",
             "font_size": 11.0,
-            "width": 27.199,
+            "width": 23.65,
             "x": 96.5,
             "y": 87.5,
-            "class": "taskText taskText0 width-27.19873046875"
+            "class": "taskText taskText0 width-23.65"
           }
         },
         {
@@ -164,10 +164,10 @@
             "id": "m1-text",
             "text": "minutes",
             "font_size": 11.0,
-            "width": 39.649,
+            "width": 35.31,
             "x": 81.0,
             "y": 111.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-39.64892578125"
+            "class": "taskTextOutsideRight taskTextOutside0 width-35.31"
           }
         },
         {
@@ -195,10 +195,10 @@
             "id": "s1-text",
             "text": "seconds",
             "font_size": 11.0,
-            "width": 38.94,
+            "width": 33.11,
             "x": 80.0,
             "y": 135.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-38.93994140625"
+            "class": "taskTextOutsideRight taskTextOutside0 width-33.11"
           }
         }
       ],
