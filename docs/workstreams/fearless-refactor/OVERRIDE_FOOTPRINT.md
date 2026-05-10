@@ -148,6 +148,17 @@ both requirement parity modes, refreshed Requirement layout goldens, the overrid
 Requirement then dropped the paired `Text: base requirement` HTML width/calc max-width lookup
 after both requirement parity modes, refreshed the affected Requirement layout golden, the
 override budget, and `verify --strict` stayed green without it.
+Requirement then dropped the remaining `Text: constraint text`, `Text: design constraint`,
+`Text: functional requirement`, `Text: interface requirement`, `Text: performance requirement`,
+and `Text: physical requirement` HTML width/calc max-width lookups, followed by all remaining
+bold requirement title/entity-name lookups (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`,
+`myElem`, `myReq`, `req`, the `req_*` type names, `req1`, `req2`, `test_element`, `test_name`,
+and `test_req`). Both Requirement DOM parity modes stayed green and the
+`upstream_requirement_requirement_types_spec` plus `upstream_requirement_styles_spec` layout
+goldens were refreshed, leaving
+`requirement_text_overrides_11_12_2.rs` with only the four previously confirmed guard labels:
+`<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
+`Verification: Test`.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -205,7 +216,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `745`.
+Total lookup entries reported by `xtask`: `693`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -214,7 +225,7 @@ Total lookup entries reported by `xtask`: `745`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 60 |
+| `requirement_text_overrides_11_12_2.rs` | 8 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 

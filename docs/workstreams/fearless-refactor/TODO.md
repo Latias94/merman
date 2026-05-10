@@ -496,8 +496,19 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Requirement parity modes, refreshed Requirement layout goldens, the override budget, and
   `verify --strict` stayed green. Requirement also dropped the paired `Text: base requirement`
   HTML width/calc max-width lookup after both Requirement parity modes, refreshed the affected
-  Requirement layout golden, the override budget, and `verify --strict` stayed green. One
-  additional hand-curated
+  Requirement layout golden, the override budget, and `verify --strict` stayed green.
+  Requirement then dropped the remaining `Text:` lookups for `constraint text`, the requirement
+  subtype text labels, and the `performance requirement` text label; it also dropped the remaining
+  bold title/entity-name lookup bucket (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`,
+  `myElem`, `myReq`, `req`, `req_*`, `req1`, `req2`, `test_element`, `test_name`, and
+  `test_req`) after both Requirement parity modes stayed green and the
+  `upstream_requirement_requirement_types_spec` plus `upstream_requirement_styles_spec` layout
+  goldens were refreshed. The Requirement text override module now keeps only the previously
+  confirmed guard labels:
+  `<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
+  `Verification: Test`. The no-growth budgets were also tightened to the current category totals
+  (`779` root viewport entries and `693` text lookup entries), so the strict gate blocks this
+  deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header

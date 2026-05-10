@@ -5,6 +5,20 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Tightened `xtask report-overrides --check-no-growth` to the current category totals for root
+  viewport entries (`779`) and text lookup entries (`693`), so the strict gate now rejects
+  reintroducing deleted override footprint.
+- Removed the remaining redundant Requirement bold title/entity-name HTML width/calc max-width
+  lookups (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`, `myElem`, `myReq`, `req`, the
+  `req_*` type names, `req1`, `req2`, `test_element`, `test_name`, and `test_req`) after
+  Requirement DOM parity and root parity stayed green, then refreshed the
+  `upstream_requirement_requirement_types_spec` and `upstream_requirement_styles_spec` layout
+  goldens.
+- Removed the remaining redundant Requirement `Text:` HTML width/calc max-width lookups for
+  `constraint text`, the subtype text labels, and `performance requirement` after Requirement DOM
+  parity and root parity stayed green, then refreshed the
+  `upstream_requirement_requirement_types_spec` and `upstream_requirement_styles_spec` layout
+  goldens.
 - Removed the redundant Requirement `Text: base requirement` HTML width/calc max-width lookup
   after Requirement DOM parity, root parity, refreshed Requirement layout golden, override
   budget, and `verify --strict` stayed green.
