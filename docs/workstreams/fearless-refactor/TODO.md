@@ -140,7 +140,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `TYPED_MIGRATION_TIMING.md` indexes the typed migration spotchecks from sequence
   through xychart, plus the C4/XYChart stage-attribution reports and the current
   Mindmap/Architecture canaries. Gantt also dropped the generic `A`, `B`, `C`, `Build`, `Design`,
-  and `Noon` task-width rows from `gantt_text_overrides_11_12_2.rs` while
+  `Noon`, and `t1` task-width rows from `gantt_text_overrides_11_12_2.rs` while
   `compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green. Future typed
   migrations should append a new baseline pair here before merge.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
