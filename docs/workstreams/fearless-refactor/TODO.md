@@ -666,6 +666,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   normal State DOM parity stayed green, but
   `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3` dropped the root
   `max-width` from `132.25px` to `132px` on the docs/frontmatter title fixtures, so it stays.
+  A State node/edge text audit over the remaining default 16px node and edge label guards found
+  zero exact `DeterministicTextMeasurer` width matches, so there are no current low-risk State
+  text pruning candidates under the layout-snapshot standard.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-block-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
