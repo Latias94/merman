@@ -207,9 +207,9 @@ reducing the text lookup total to 549. A follow-up bypass of all 3 entries still
 `xtask gen-er-text-overrides` command was removed after this file became hand-curated, and the
 empty ER `calcTextWidth` lookup table was deleted.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
-reducing the text lookup total to 547. A later Class pass removed 21 `calcTextWidth` lookup
-entries whose deterministic fallback already returned the same rounded width, reducing the text
-lookup total to 523.
+reducing the text lookup total to 547. Later Class passes removed 26 lookup entries across the
+exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanup, and the
+`ApiClient` cleanup with a dense layout golden refresh, reducing the text lookup total to 521.
 
 | category | owner | expected removal |
 | --- | --- | --- |

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `ApiClient` width overrides after refreshing the dense layout
+  golden, reducing Class text lookups from `320` to `318` and the global text lookup budget from
+  `523` to `521`.
 - Removed the redundant Class `OK` width overrides after the strict gate stayed green, reducing
   Class text lookups from `322` to `320` and the global text lookup budget from `525` to `523`.
 - Normalized Sequence label-width measurement to match Mermaid's rounded SVG bbox semantics
