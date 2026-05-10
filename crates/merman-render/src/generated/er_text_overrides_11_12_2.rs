@@ -15,15 +15,8 @@ fn font_size_key(font_size: f64) -> u16 {
 }
 
 static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
-    (1400, "contains", 52.3125),
-    (1400, "hasMany", 52.515625),
     (1400, "insured for", 68.1875),
     (1400, "is teacher of", 78.984375),
-    (1400, "leads to", 49.875),
-    (1400, "owned by", 59.9375),
-    (1400, "parent", 41.4375),
-    (1400, "places", 39.53125),
-    (1400, "relates", 43.421875),
     (1600, "*id", 19.359375),
     (1600, "*title", 36.578125),
     (1600, "Alias!", 39.484375),
