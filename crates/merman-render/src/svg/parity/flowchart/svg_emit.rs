@@ -1066,11 +1066,22 @@ fn render_flowchart_v2_svg_with_config_inner(
             }
         }
 
-        b.unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
+        b.unwrap_or({
+            if layout.nodes.is_empty() && layout.edges.is_empty() && layout.clusters.is_empty() {
+                Bounds {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    max_x: 0.0,
+                    max_y: 0.0,
+                }
+            } else {
+                Bounds {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    max_x: 100.0,
+                    max_y: 100.0,
+                }
+            }
         })
     };
     // Mermaid flowchart-v2 does not translate the root `.root` group; node/edge coordinates are
@@ -1264,8 +1275,18 @@ fn render_flowchart_v2_svg_with_config_inner(
     let bbox_min_y_f32 = bbox_min_y as f32;
     let bbox_max_x_f32 = bbox_max_x as f32;
     let bbox_max_y_f32 = bbox_max_y as f32;
-    let bbox_w_f32 = (bbox_max_x_f32 - bbox_min_x_f32).max(1.0);
-    let bbox_h_f32 = (bbox_max_y_f32 - bbox_min_y_f32).max(1.0);
+    let bbox_has_area = (bbox_max_x_f32 - bbox_min_x_f32).abs() >= 1e-6
+        || (bbox_max_y_f32 - bbox_min_y_f32).abs() >= 1e-6;
+    let bbox_w_f32 = if bbox_has_area {
+        (bbox_max_x_f32 - bbox_min_x_f32).max(1.0)
+    } else {
+        0.0
+    };
+    let bbox_h_f32 = if bbox_has_area {
+        (bbox_max_y_f32 - bbox_min_y_f32).max(1.0)
+    } else {
+        0.0
+    };
 
     let vb_min_x = (bbox_min_x_f32 as f64) - diagram_padding;
     let vb_min_y = (bbox_min_y_f32 as f64) - diagram_padding;

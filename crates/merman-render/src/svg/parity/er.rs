@@ -513,14 +513,26 @@ pub(super) fn render_er_diagram_svg_model(
         )
     });
 
-    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or(Bounds {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 100.0,
-        max_y: 100.0,
-    });
-
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+    let is_empty_diagram = nodes.is_empty() && edges.is_empty() && diagram_title.is_none();
+
+    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or({
+        if is_empty_diagram {
+            Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 0.0,
+                max_y: 0.0,
+            }
+        } else {
+            Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 100.0,
+                max_y: 100.0,
+            }
+        }
+    });
 
     let mut content_bounds = bounds.clone();
     if let Some(title) = diagram_title {
@@ -545,24 +557,58 @@ pub(super) fn render_er_diagram_svg_model(
     }
 
     let pad = options.viewbox_padding.max(0.0);
-    let content_w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
-    let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
-    let vb_w = content_w + pad * 2.0;
-    let vb_h = content_h + pad * 2.0;
-    let translate_x = pad - content_bounds.min_x;
-    let translate_y = pad - content_bounds.min_y;
-
-    // Upstream Mermaid viewports are driven by browser `getBBox()` values which frequently land on
-    // a single-precision lattice. Snap the root viewport width/height to that lattice to keep
-    // `parity-root` comparisons stable at high decimal precision.
-    let vb_w_attr = ((vb_w.max(1.0)) as f32) as f64;
-    let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
-
     let mut out = String::new();
-    let mut w_attr = fmt_string(vb_w_attr);
-    let mut h_attr = fmt_string(vb_h_attr);
-    let mut max_w_style = fmt_max_width_px(vb_w_attr);
-    let mut viewbox_attr = format!("0 0 {} {}", w_attr, h_attr);
+    let (
+        translate_x,
+        translate_y,
+        mut viewbox_attr,
+        mut w_attr,
+        mut h_attr,
+        mut max_w_style,
+        root_width_for_title,
+    ) = if is_empty_diagram {
+        let empty_span = (pad * 2.0).max(1.0);
+        let empty_span_attr = fmt_string(empty_span);
+        (
+            0.0,
+            0.0,
+            format!(
+                "{} {} {} {}",
+                fmt_string(-pad),
+                fmt_string(-pad),
+                empty_span_attr,
+                empty_span_attr
+            ),
+            empty_span_attr.clone(),
+            empty_span_attr.clone(),
+            fmt_max_width_px(empty_span),
+            empty_span,
+        )
+    } else {
+        let content_w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
+        let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
+        let vb_w = content_w + pad * 2.0;
+        let vb_h = content_h + pad * 2.0;
+        let translate_x = pad - content_bounds.min_x;
+        let translate_y = pad - content_bounds.min_y;
+
+        // Upstream Mermaid viewports are driven by browser `getBBox()` values which frequently land on
+        // a single-precision lattice. Snap the root viewport width/height to that lattice to keep
+        // `parity-root` comparisons stable at high decimal precision.
+        let vb_w_attr = ((vb_w.max(1.0)) as f32) as f64;
+        let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
+        let w_attr = fmt_string(vb_w_attr);
+        let h_attr = fmt_string(vb_h_attr);
+        (
+            translate_x,
+            translate_y,
+            format!("0 0 {} {}", w_attr, h_attr),
+            w_attr,
+            h_attr,
+            fmt_max_width_px(vb_w_attr),
+            vb_w_attr,
+        )
+    };
     apply_root_viewport_override(
         diagram_id,
         &mut viewbox_attr,
@@ -1660,7 +1706,7 @@ pub(super) fn render_er_diagram_svg_model(
             .collect::<Vec<_>>()
             .get(0..3)
             .and_then(|p| Some((p[0].parse::<f64>().ok()?, p[2].parse::<f64>().ok()?)))
-            .unwrap_or((0.0, vb_w_attr));
+            .unwrap_or((0.0, root_width_for_title));
 
         let _ = write!(
             &mut out,

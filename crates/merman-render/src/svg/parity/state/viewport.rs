@@ -48,5 +48,18 @@ pub(super) fn state_viewport_bounds_from_layout(layout: &StateDiagramV2Layout) -
         );
     }
 
+    if bounds.is_none()
+        && layout.nodes.is_empty()
+        && layout.edges.is_empty()
+        && layout.clusters.is_empty()
+    {
+        return Some(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 0.0,
+            max_y: 0.0,
+        });
+    }
+
     bounds
 }

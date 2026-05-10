@@ -557,7 +557,7 @@ Progress:
 - Class calc-text-width lookup debt dropped by 21 entries after exact deterministic fallback
   matches were deleted under Class DOM parity and layout snapshot gates, reducing the global text
   lookup total to 526.
-- Root viewport footprint dropped 795 entries net so far: 19 architecture pins after
+- Root viewport footprint dropped 816 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
   calibration covered the remaining Kanban `parity-root` profiles, plus 4 sankey pins now covered
@@ -580,7 +580,9 @@ Progress:
   calibration and namespace render-mode rules, deleting the Class root override module while
   keeping `parity-root` green. Architecture then added default root viewport calibration for
   nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving
-  31 Architecture root pins that still guard real `parity-root` drift.
+  31 Architecture root pins that still guard real `parity-root` drift. Empty-diagram root viewport
+  behavior then moved into Flowchart, State, ER, and Requirement renderer logic, deleting 21 more
+  root pins while the affected normal and `parity-root` DOM filters stayed green.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
@@ -592,8 +594,9 @@ Progress:
   still drift, so the C4 table remains in place for now.
 - The Timeline root viewport overrides were rechecked by bypassing the lookup entirely; the 9-entry
   table still guards stress/cypress `parity-root` drift, so it remains in place for now.
-- The State root viewport overrides were rechecked by bypassing the lookup entirely; the 54-entry
-  table still guards broad stress/cypress `parity-root` drift, so it remains in place for now.
+- The State root viewport overrides were rechecked by bypassing the lookup entirely before the
+  empty-diagram cleanup; the remaining 45-entry table still guards broad stress/cypress
+  `parity-root` drift, so it remains in place for now.
 
 Exit criteria:
 

@@ -343,17 +343,7 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 0.000003814697265625 769.890625 341.0105285644531",
             "769.891",
         )),
-        "upstream_pkgtests_accessibility_spec_012" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_diagram_orchestration_spec_014" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_diagram_orchestration_spec_016" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_flow_lines_spec_007" => Some(("-8 -8 16 16", "16")),
         "upstream_pkgtests_flow_singlenode_spec_010" => Some(("0 0 438.859375 70", "438.859")),
-        "upstream_pkgtests_flow_spec_007" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_flow_style_spec_060" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_flow_style_spec_067" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_flow_style_spec_079" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_flow_style_spec_086" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_mermaidapi_spec_310" => Some(("-8 -8 16 16", "16")),
         _ => None,
     }
 }

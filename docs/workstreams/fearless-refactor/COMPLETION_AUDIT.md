@@ -38,7 +38,8 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
-  The override budget stayed at `779` root viewport entries and `526` text lookup entries.
+  A later empty-diagram root viewport cleanup lowered the root budget to `758`; the text lookup
+  budget stayed at `526`.
 - A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
   deletion now requires layout snapshot evidence because the default deterministic layout measurer
   can still differ when the vendored SVG/HTML measurer matches the stored override.

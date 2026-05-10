@@ -575,6 +575,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     } else {
         let _g_scan = section(timing_enabled, &mut viewbox_svg_scan);
         svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
+            .or_else(|| state_viewport_bounds_from_layout(layout))
     }
     .unwrap_or(Bounds {
         min_x: 0.0,

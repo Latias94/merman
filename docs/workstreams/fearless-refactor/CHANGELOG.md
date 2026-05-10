@@ -3,6 +3,14 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-11
+
+- Replaced empty-diagram root viewport pins with renderer-derived empty content bounds for
+  Flowchart, State, ER, and Requirement. This removed 21 root viewport override entries
+  (`flowchart` 10, `state` 9, `er` 1, `requirement` 1), reducing the root viewport budget from
+  `779` to `758`, while the affected fixtures stayed green under both `parity-root` and normal
+  DOM comparison filters.
+
 ## 2026-05-10
 
 - Closed the M2 typed-model milestone as complete for all non-error in-tree Mermaid 11.12.3

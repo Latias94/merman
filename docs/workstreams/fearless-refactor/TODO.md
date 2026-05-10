@@ -460,7 +460,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` green and `cargo run -p xtask -- verify --strict` passed.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: root viewport footprint is down 795 entries net so far: 19 `architecture` entries after
+  Evidence: root viewport footprint is down 816 entries net so far: 19 `architecture` entries after
   topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
   proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
@@ -497,7 +497,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   namespace render-mode rules, deleting the Class root override module while keeping `parity-root`
   green. Architecture then added default root viewport calibration for nested-groups and
   reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31 Architecture
-  root pins that still fail when the lookup is disabled. The stale
+  root pins that still fail when the lookup is disabled. Empty-diagram root viewport behavior then
+  moved into Flowchart, State, ER, and Requirement renderer logic, deleting 21 more root pins while
+  the affected normal and `parity-root` DOM filters stayed green. The stale
   Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
   leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
   entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
@@ -542,7 +544,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   confirmed guard labels:
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
-  no-growth budgets were also tightened to the current category totals (`779` root viewport entries
+  no-growth budgets were also tightened to the current category totals (`758` root viewport entries
   and `526` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the

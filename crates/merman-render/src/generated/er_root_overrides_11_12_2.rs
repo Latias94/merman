@@ -57,7 +57,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
             Some(("0 0 872.265625 655", "872.266"))
         }
         "upstream_html_demos_error_example_001" => Some(("0 0 479.921875 470", "479.922")),
-        "upstream_pkgtests_diagram_orchestration_spec_030" => Some(("-8 -8 16 16", "16")),
         "upstream_pkgtests_erdiagram_spec_302" => Some(("0 0 188.578125 285", "188.578")),
         "upstream_pkgtests_erdiagram_spec_304" => Some(("0 0 188.578125 285", "188.578")),
         "upstream_pkgtests_erdiagram_spec_306" => Some(("0 0 188.578125 285", "188.578")),

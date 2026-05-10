@@ -402,12 +402,21 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     let bounds = layout.bounds.clone().unwrap_or_else(|| {
-        compute_layout_bounds(&[], &layout.nodes, &layout.edges).unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
-        })
+        if layout.nodes.is_empty() && layout.edges.is_empty() {
+            Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 0.0,
+                max_y: 0.0,
+            }
+        } else {
+            compute_layout_bounds(&[], &layout.nodes, &layout.edges).unwrap_or(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 100.0,
+                max_y: 100.0,
+            })
+        }
     });
     let viewport_padding = 8.0;
     let vb_x = bounds.min_x - viewport_padding;

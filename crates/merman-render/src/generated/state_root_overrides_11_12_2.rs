@@ -114,16 +114,7 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_batch5_direction_rl_scale_long_ids_065" => {
             Some(("0.006646156311035156 0 967.2566528320312 64", "967.257"))
         }
-        "upstream_pkgtests_diagram_orchestration_spec_050" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_diagram_orchestration_spec_052" => Some(("-8 -8 16 16", "16")),
         "upstream_pkgtests_state_style_spec_003" => Some(("0 0 146.1875 56", "146.188")),
-        "upstream_pkgtests_state_style_spec_012" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_state_style_spec_017" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_state_style_spec_026" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_state_style_spec_033" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_state_style_spec_040" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_statediagram_spec_028" => Some(("-8 -8 16 16", "16")),
-        "upstream_pkgtests_statediagram_v2_spec_031" => Some(("-8 -8 16 16", "16")),
         _ => None,
     }
 }

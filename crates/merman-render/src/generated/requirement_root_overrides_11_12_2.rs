@@ -37,7 +37,6 @@ pub fn lookup_requirement_root_viewport_override(
         "upstream_html_demos_requirements_requirement_diagram_demos_002" => {
             Some(("0 0 939.79296875 1466", "939.793"))
         }
-        "upstream_pkgtests_diagram_orchestration_spec_038" => Some(("-8 -8 16 16", "16")),
         "stress_requirement_font_size_precedence_001" => Some(("0 0 286 758", "286")),
         _ => None,
     }
