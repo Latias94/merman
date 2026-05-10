@@ -511,6 +511,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Gitgraph moved branch-label correction control flow into the `gitgraph` owner module and
   reclassified the remaining bbox correction data as text metric lookup entries, reducing the
   helper footprint to 0 while keeping measured correction data visible.
+  After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
+  command and generator were also removed so future contributors do not regenerate a table that no
+  production code consumes.
   C4 moved its three stable SVG bbox line-height rules into the C4 owner module and deleted the
   generated `c4_text_overrides_11_12_2.rs` module, leaving only the remaining text lookup tables.
   C4 also moved its 17 type-line `textLength` pins into the owner module and deleted the generated

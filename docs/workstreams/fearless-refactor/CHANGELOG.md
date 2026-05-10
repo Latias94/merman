@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the obsolete `xtask gen-gantt-text-overrides` command and generator after the Gantt text
+  override table was deleted, so the command layer no longer advertises a stale production output.
 - Added shared closed-path and Mermaid arc-point helpers in `roughjs_common` and routed the
   flowchart and state point-path helpers through them, deleting the duplicated local
   implementations.

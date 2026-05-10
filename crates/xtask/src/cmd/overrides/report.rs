@@ -682,7 +682,7 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
 "#;
 
         let entries =
-            classify_generated_override_file("gantt_text_overrides_11_12_2.rs".to_string(), text);
+            classify_generated_override_file("er_text_overrides_11_12_2.rs".to_string(), text);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].category, OverrideCategory::TextLookup);
         assert_eq!(entries[0].count, 2);
