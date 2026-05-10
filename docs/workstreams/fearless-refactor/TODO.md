@@ -514,6 +514,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   A follow-up GitGraph branch-label pass deleted the 7-entry branch-label bbox correction table
   after `compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green with
   raw measured widths rounded to 1/64px.
+  A later GitGraph commit-label pass deleted the 3-entry literal extra table after the rounded
+  measured widths and existing edge-character corrections still matched DOM parity.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.

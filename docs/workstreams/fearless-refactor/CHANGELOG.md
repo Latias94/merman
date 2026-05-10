@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed three redundant GitGraph commit-label literal extra lookups after the rounded measured
+  widths and existing edge-character corrections stayed green.
 - Regenerated the GitGraph layout goldens after deleting the 7-entry branch-label bbox correction
   table; DOM parity stayed green with the simplified measured-width path.
 - Removed seven redundant GitGraph branch-label bbox correction lookups and simplified branch-label

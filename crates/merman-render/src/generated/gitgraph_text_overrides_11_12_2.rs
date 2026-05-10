@@ -7,17 +7,6 @@ fn corr_px(num_over_2048: i32) -> f64 {
     num_over_2048 as f64 / 2048.0
 }
 
-pub fn lookup_gitgraph_simple_text_bbox_width_extra_px(text: &str) -> Option<f64> {
-    match text {
-        // fixtures/gitgraph/upstream_switch_commit_merge_spec.mmd
-        "1-5b722bd" => Some(corr_px(-3)),
-        "2-a218e74" => Some(corr_px(-2)),
-        // fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_018.mmd
-        "7-c64d8fd" => Some(corr_px(5)),
-        _ => None,
-    }
-}
-
 pub fn lookup_gitgraph_simple_text_bbox_width_left_px(ch: char) -> Option<f64> {
     match ch {
         '2' => Some(corr_px(2)),

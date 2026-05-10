@@ -517,7 +517,9 @@ Progress:
   as text metric lookup entries, reducing the helper footprint to 0 while preserving measured-data
   visibility in override reporting. A later GitGraph branch-label pass deleted the 7-entry
   branch-label bbox correction table after raw measured widths rounded to 1/64px preserved GitGraph
-  DOM parity.
+  DOM parity. A later GitGraph commit-label pass deleted the 3-entry literal extra table after the
+  rounded measured widths and existing edge-character corrections still preserved GitGraph DOM
+  parity.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal

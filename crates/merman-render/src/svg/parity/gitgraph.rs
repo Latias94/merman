@@ -108,18 +108,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     fn gitgraph_simple_text_bbox_width_correction_px(text: &str) -> f64 {
-        let extra = crate::generated::gitgraph_text_overrides_11_12_2::
-            lookup_gitgraph_simple_text_bbox_width_extra_px(text)
-            .unwrap_or(0.0);
-
         let Some(first) = text.chars().next() else {
-            return extra;
+            return 0.0;
         };
         let Some(last) = text.chars().next_back() else {
-            return extra;
+            return 0.0;
         };
-        extra
-            + gitgraph_simple_text_bbox_width_correction_left_px(first)
+        gitgraph_simple_text_bbox_width_correction_left_px(first)
             + gitgraph_simple_text_bbox_width_correction_right_px(last)
     }
 
@@ -837,11 +832,6 @@ mod tests {
     fn generated_gitgraph_text_override_paths_cover_known_literals() {
         assert_eq!(
             crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_simple_text_bbox_width_extra_px("7-c64d8fd"),
-            Some(5.0 / 2048.0)
-        );
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_left_px('A'),
             Some(2304.0 / 2048.0)
         );
@@ -849,11 +839,6 @@ mod tests {
             crate::generated::gitgraph_text_overrides_11_12_2::
                 lookup_gitgraph_simple_text_bbox_width_right_px('C'),
             Some(-500.0 / 2048.0)
-        );
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_simple_text_bbox_width_extra_px("unknown"),
-            None
         );
     }
 }
