@@ -209,7 +209,8 @@ empty ER `calcTextWidth` lookup table was deleted.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
 reducing the text lookup total to 547. Later Class passes removed 26 lookup entries across the
 exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanup, and the
-`ApiClient` cleanup with a dense layout golden refresh, reducing the text lookup total to 521.
+`ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR` pair cleanup,
+reducing the text lookup total to 519.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -273,12 +274,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `521`.
+Total lookup entries reported by `xtask`: `519`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 318 |
+| `class_text_overrides_11_12_2.rs` | 316 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -291,9 +292,9 @@ remaining left/right boundary corrections removed.
 
 Class note: the standalone plain-label `uses` lookup was removed after
 `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green without it,
-and the now-empty plain-label bridge was deleted. Later `OK` and `ApiClient` cleanup passes
-refreshed the affected layout golden and reduced the Class text lookup total to 318 and the
-global text lookup total to 521.
+and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, and `ERROR` cleanup
+passes refreshed the affected layout golden as needed and reduced the Class text lookup total to
+316 and the global text lookup total to 519.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
