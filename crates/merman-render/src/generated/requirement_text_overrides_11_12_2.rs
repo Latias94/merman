@@ -7,7 +7,6 @@
 pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<f64> {
     match (text, bold) {
         ("<<Design Constraint>>", false) => Some(9.9208984375),
-        ("<<Functional Requirement>>", false) => Some(12.8251953125),
         ("<<Interface Requirement>>", false) => Some(12.2177734375),
         ("<<Performance Requirement>>", false) => Some(13.8095703125),
         ("<<Physical Requirement>>", false) => Some(11.6826171875),
@@ -71,7 +70,6 @@ pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<
 pub fn lookup_requirement_calc_max_width_px(calc_text: &str) -> Option<i64> {
     match calc_text {
         "&lt;&lt;Design Constraint&gt;&gt;" => Some(276),
-        "&lt;&lt;Functional Requirement&gt;&gt;" => Some(315),
         "&lt;&lt;Interface Requirement&gt;&gt;" => Some(304),
         "&lt;&lt;Performance Requirement&gt;&gt;" => Some(329),
         "&lt;&lt;Physical Requirement&gt;&gt;" => Some(301),
