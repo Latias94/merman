@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed after the Flowchart text override pruning and State Dagre input builder cleanup; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class `calcTextWidth` pruning; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -36,6 +36,17 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after pruning 21 redundant Class
+  `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
+- `cargo nextest run -p merman-render --test class_svg_test`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `cargo nextest run -p merman-render --test layout_snapshots_test
+  fixtures_match_layout_golden_snapshots_when_present`, and
+  `cargo run -p xtask -- report-overrides --check-no-growth` passed for the Class pruning pass.
+- The remaining exact Class `calcTextWidth` matches `bar()`, `E`, `IService`,
+  `+run() : Status`, `Client`, and `+start()` were kept because focused SVG tests assert those
+  Mermaid HTML `max-width` caps explicitly.
 - `cargo run -p xtask -- verify --strict` passed after Flowchart text override pruning and the State Dagre input builder cleanup.
 - `cargo run -p xtask -- verify --feature-matrix` passed, covering `merman` no-default/render/raster and `merman-core` no-default feature checks.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passed during the helper rechecks.
