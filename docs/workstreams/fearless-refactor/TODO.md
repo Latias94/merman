@@ -493,7 +493,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   green; disabling the remaining Mindmap lookup still leaves 52 root mismatches, so those pins stay
   until their geometry/text profiles move into typed renderer logic. A small-bucket audit also
   confirmed the remaining Timeline, Requirement, and ER root pins still fail when their lookups are
-  disabled. Class then moved its remaining 31 root viewport pins into typed profile calibration and
+  disabled. 2026-05-11 audit: `title_and_accdescr_multiline`,
+  `upstream_accessibility_single_line_spec`, and `upstream_title_without_colon_spec` still need
+  their Sequence root pins; removing them reintroduced parity-root drift to 493px / 593px
+  `max-width` baselines. The literal `multiline<br \\t/>text` SVG metric row also remains
+  necessary: removing it kept the text on one line, but the direct width dropped from
+  `132.0px` to `151.0078125px`, which breaks
+  `sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line`. Class then moved its
+  remaining 31 root viewport pins into typed profile calibration and
   namespace render-mode rules, deleting the Class root override module while keeping `parity-root`
   green. Architecture then added default root viewport calibration for nested-groups and
   reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31 Architecture
