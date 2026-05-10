@@ -4,7 +4,7 @@ This audit tracks source-level lint allowances that remain after the fearless-re
 Generated modules are excluded unless the allowance is placed in hand-written source that imports
 generated code.
 
-Last updated: 2026-05-09.
+Last updated: 2026-05-11.
 
 ## Current Allowances
 
@@ -19,10 +19,10 @@ Last updated: 2026-05-09.
 
 ## Generated Exclusions
 
-- `crates/merman-render/src/generated/mod.rs` keeps `#![allow(clippy::all)]` as the umbrella for
-  xtask-generated parity tables. The override budget and generated module inventory are enforced by
-  `xtask report-overrides --check-no-growth`; individual table rows should be reduced by deleting
-  generated data, not by hand-editing generated lint allowances.
+- None. `crates/merman-render/src/generated/mod.rs` no longer keeps a blanket
+  `#![allow(clippy::all)]`; the generated and fixture-derived parity data now passes
+  `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` without a module
+  umbrella allowance.
 
 ## Recently Removed
 
@@ -41,6 +41,9 @@ Last updated: 2026-05-09.
 - `crates/xtask/src/cmd/overrides/font_metrics.rs`: removed `clippy::needless_range_loop` from the
   font-metrics ridge solver by making the solver module-local and covering ordinary and pivoting
   systems with focused unit tests.
+- `crates/merman-render/src/generated/mod.rs`: removed the module-level `clippy::all` allowance
+  after replacing the generated font-metrics lookup loop with `Iterator::find`; generated and
+  fixture-derived parity data now stays under normal clippy coverage.
 
 ## Gate
 

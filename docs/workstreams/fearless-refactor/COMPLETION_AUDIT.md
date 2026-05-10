@@ -45,6 +45,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 - Follow-up Block and State text audits found zero exact `DeterministicTextMeasurer` width matches
   in the remaining audited lookup buckets, so those pruning tracks are paused until shared
   deterministic measurement improves.
+- `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render`, and
+  `cargo run -p xtask -- report-overrides --check-no-growth` passed after removing the generated
+  module's `clippy::all` umbrella allowance.
 - `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after pruning 21 redundant
   Class `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error

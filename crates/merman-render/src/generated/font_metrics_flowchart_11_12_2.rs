@@ -4918,10 +4918,5 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
 ];
 
 pub fn lookup_font_metrics(font_key: &str) -> Option<&'static FontMetricsTables> {
-    for t in FONT_METRICS_TABLES {
-        if t.font_key == font_key {
-            return Some(t);
-        }
-    }
-    None
+    FONT_METRICS_TABLES.iter().find(|t| t.font_key == font_key)
 }

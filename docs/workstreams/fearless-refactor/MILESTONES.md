@@ -428,6 +428,9 @@ Progress:
   node helper visibility for same-file internals.
 - Removed the remaining generated `dead_code` allowances after clippy proved the generated
   override modules no longer need that blanket exception.
+- Removed the generated module's remaining `clippy::all` umbrella allowance after the generated
+  font-metrics lookup passed clippy with a normal iterator search, so fixture-derived parity data
+  is no longer hidden from `merman-render` clippy coverage.
 - Deleted the unused Flowchart `edge_bbox` parity helper module after the active edge path pipeline
   fully moved into `edge_geom` and root SVG emission.
 - Deleted the obsolete Flowchart straight-except-one-endpoint basis helper after full flowchart DOM
