@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant ER relation label width lookup for `insured for` after both ER DOM parity
+  modes stayed green, reducing ER text lookups from `62` to `61` and the global text lookup budget
+  to `607`.
 - Removed seven additional low-width ER relation label width lookups (`contains`, `hasMany`,
   `leads to`, `owned by`, `parent`, `places`, and `relates`) after both ER DOM parity modes stayed
   green, reducing ER text lookups from `69` to `62` and the global text lookup budget to `608`.

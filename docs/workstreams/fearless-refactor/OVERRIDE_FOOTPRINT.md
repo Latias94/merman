@@ -183,7 +183,8 @@ reducing the text lookup total to 618. A later ER pass removed the short relatio
 `owns`, and `uses` under the same ER parity gates, reducing the text lookup total to 615. A later
 ER pass removed the low-width relation labels `contains`, `hasMany`, `leads to`, `owned by`,
 `parent`, `places`, and `relates` under the same ER parity gates, reducing the text lookup total to
-608.
+608. A later ER pass removed the `insured for` relation label width lookup under the same ER parity
+gates, reducing the text lookup total to 607.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -241,13 +242,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `608`.
+Total lookup entries reported by `xtask`: `607`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
 | `class_text_overrides_11_12_2.rs` | 344 |
-| `er_text_overrides_11_12_2.rs` | 62 |
+| `er_text_overrides_11_12_2.rs` | 61 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 25 |
