@@ -59,7 +59,7 @@ impl OverrideCategory {
     fn no_growth_budget(self) -> usize {
         match self {
             OverrideCategory::RootViewport => 779,
-            OverrideCategory::TextLookup => 693,
+            OverrideCategory::TextLookup => 692,
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::HandCuratedHelpers => 0,
@@ -540,7 +540,7 @@ fn count_root_viewport_entries(text: &str) -> usize {
 
 fn count_some_match_arms(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r#"=>\s*Some\("#).expect("valid regex"));
+    let re = RE.get_or_init(|| Regex::new(r#"=>\s*(?:\{\s*)?Some\("#).expect("valid regex"));
     count_matches(re, text)
 }
 
@@ -601,7 +601,7 @@ fn count_matches(re: &Regex, text: &str) -> usize {
 mod tests {
     use super::{
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
-        classify_generated_override_file, count_manual_bridge_functions,
+        classify_generated_override_file, count_manual_bridge_functions, count_some_match_arms,
         count_static_override_table_rows, count_visible_functions,
         find_root_viewport_lookup_violations, report_path_name,
     };
@@ -645,6 +645,21 @@ fn private_helper() {}
 "#;
 
         assert_eq!(count_visible_functions(text), 3);
+    }
+
+    #[test]
+    fn counts_block_wrapped_some_match_arms() {
+        let text = r#"
+match (font_key, text) {
+    ("trebuchetms,verdana,arial,sans-serif", "wide label") => {
+        Some((84.1328125, 84.1328125))
+    }
+    ("trebuchetms,verdana,arial,sans-serif", "short label") => Some(42.0),
+    _ => None,
+}
+"#;
+
+        assert_eq!(count_some_match_arms(text), 2);
     }
 
     #[test]

@@ -540,7 +540,6 @@ fn markdown_word_line_plain_text_and_delta_px(
         } else {
             None
         };
-
         let mut push_char = |ch: char| {
             plain.push(ch);
             if !is_flowchart_default_font(style) {

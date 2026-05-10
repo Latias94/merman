@@ -56,7 +56,8 @@ Architecture root pins that still guard measured `parity-root` drift. It also re
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
 `block`, `er`, and `gantt` are now counted as text metric lookup entries instead of hand-curated
-helper functions. Text lookup ownership has also tightened: ER and Block generated HTML width
+helper functions, and block-wrapped `=> { Some(...) }` text match arms are now counted as lookup
+entries. Text lookup ownership has also tightened: ER and Block generated HTML width
 tables are no longer consulted by the generic vendored text measurer, and their call sites now
 live in their owning diagram modules. The stale Mindmap HTML width table was deleted after layout
 snapshots proved the stable Mindmap path does not use it, reducing text lookup debt by 291 entries
@@ -158,7 +159,11 @@ and `test_req`). Both Requirement DOM parity modes stayed green and the
 goldens were refreshed, leaving
 `requirement_text_overrides_11_12_2.rs` with only the four previously confirmed guard labels:
 `<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
-`Verification: Test`.
+`Verification: Test`. Flowchart then reduced `flowchart_text_overrides_11_12_2.rs` from 48 lookup
+entries to 45 confirmed guards after full Flowchart `parity-root` and focused text metric
+assertions proved those bold/italic markdown, HTML width, and SVG bbox entries still guard upstream
+behavior. Together with the block-wrapped `Some` accounting fix, this leaves the text lookup total
+at 692.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -216,14 +221,14 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `693`.
+Total lookup entries reported by `xtask`: `692`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
-| `class_text_overrides_11_12_2.rs` | 342 |
+| `class_text_overrides_11_12_2.rs` | 344 |
 | `er_text_overrides_11_12_2.rs` | 114 |
-| `flowchart_text_overrides_11_12_2.rs` | 48 |
+| `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
 | `requirement_text_overrides_11_12_2.rs` | 8 |
 | `state_text_overrides_11_12_2.rs` | 46 |

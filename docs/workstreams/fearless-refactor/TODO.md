@@ -186,6 +186,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   while the stale Mindmap HTML width table and generator were deleted after layout snapshots proved
   the stable Mindmap path does not need it. Regression tests cover both no-leak generic text
   behavior and owner-local ER/Block parity lookup behavior.
+- [x] Reduce the Flowchart text override module to only the root-viewport guards that shared text
+  measurement still cannot derive.
+  Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
+  lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
+  guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
+  them. `report-overrides` now reports `692` text lookup entries after counting block-wrapped
+  `=> { Some(...) }` arms correctly.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -507,7 +514,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   confirmed guard labels:
   `<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
   `Verification: Test`. The no-growth budgets were also tightened to the current category totals
-  (`779` root viewport entries and `693` text lookup entries), so the strict gate blocks this
+  (`779` root viewport entries and `692` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

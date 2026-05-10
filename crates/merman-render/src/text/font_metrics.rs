@@ -942,11 +942,8 @@ fn vendored_measure_wrapped_impl(
     };
 
     let html_width_override_px = |line: &str| -> Option<f64> {
-        // Flowchart baselines record final HTML label widths via `getBoundingClientRect()` into
-        // `foreignObject width="..."` (1/64px lattice). Keep those shared because Flowchart label
-        // measurement flows through the generic text API. Other diagram-specific generated tables
-        // must stay in their owning renderer modules so ordinary text measurement cannot be
-        // hijacked by fixture strings from ER, Mindmap, or Block diagrams.
+        // Flowchart labels still flow through the generic text API, so the few remaining
+        // root-viewport guard widths stay here instead of in the Flowchart renderer.
         overrides::lookup_flowchart_html_width_px(table.font_key, font_size, line)
     };
 

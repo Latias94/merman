@@ -6,8 +6,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 ## 2026-05-10
 
 - Tightened `xtask report-overrides --check-no-growth` to the current category totals for root
-  viewport entries (`779`) and text lookup entries (`693`), so the strict gate now rejects
-  reintroducing deleted override footprint.
+  viewport entries (`779`) and text lookup entries (`692`), so the strict gate now rejects
+  reintroducing the deleted override footprint.
+- Reduced the Flowchart text override module from 48 entries to 45 confirmed guards: bold/italic
+  markdown deltas, HTML width guards, and SVG bbox guards for the fixtures that still drift without
+  them under root parity or focused text metric assertions.
+- Fixed `report-overrides` text lookup accounting for block-wrapped `=> { Some(...) }` match arms,
+  which brings Class text lookups to `344`, Flowchart text lookups to `45`, and the total to `692`.
 - Removed the remaining redundant Requirement bold title/entity-name HTML width/calc max-width
   lookups (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`, `myElem`, `myReq`, `req`, the
   `req_*` type names, `req1`, `req2`, `test_element`, `test_name`, and `test_req`) after
