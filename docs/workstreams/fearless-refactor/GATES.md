@@ -36,6 +36,11 @@ The gate fails when any override category grows beyond the explicit budget encod
 `xtask report-overrides`. Real growth is allowed only when the budget and
 `OVERRIDE_FOOTPRINT.md` are updated with reviewable evidence.
 
+When deleting text metric lookups, also prove every consumer path is safe. For layout-affecting
+lookups, run the relevant layout snapshot test in addition to the diagram DOM parity commands;
+Block labels are not safe to prune solely because the vendored SVG/HTML measurer matches the
+stored value.
+
 ## Feature Gate
 
 Use this when touching public feature flags or optional render/raster dependencies:

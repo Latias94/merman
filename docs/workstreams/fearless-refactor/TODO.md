@@ -623,6 +623,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   The stale `xtask gen-er-text-overrides` command and generator were removed after the remaining
   ER text override file became a three-entry hand-curated guard, and the renderer stopped checking
   an empty ER `calcTextWidth` table before using shared measurement.
+  A Block text audit confirmed the remaining ordinary label lookups cannot be pruned solely
+  because the vendored measurer matches the stored width: `A label` still falls back to `44.48px`
+  under the default deterministic layout path instead of the upstream `48.859375px`, so Block text
+  deletion now requires both DOM parity modes and layout snapshot evidence.
   The single Timeline text lookup was rechecked by disabling it and running
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; it still guards the
   `upstream_long_word_wrap` root `max-width`, which drifts from `961px` to `961.5px` without the

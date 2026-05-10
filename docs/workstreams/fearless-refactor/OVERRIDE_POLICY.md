@@ -101,6 +101,18 @@ Before adding or regenerating text width overrides:
    intentional and reviewable.
 7. Prefer deleting stale entries in the same patch when the new model makes them unnecessary.
 
+Before deleting text width overrides:
+
+1. Show the replacement path for every consumer of the lookup, not only the browser/vendored SVG
+   render path.
+2. If the lookup participates in layout, run the layout snapshot gate for the touched fixtures or
+   the full `fixtures_match_layout_golden_snapshots_when_present` test. Block text lookups are the
+   current cautionary case: vendored HTML measurement can equal the upstream override while the
+   default deterministic layout measurer still differs.
+3. Run both the normal DOM parity mode and `parity-root` mode for the touched diagram family when
+   root sizing can observe the text metric.
+4. Update `OVERRIDE_FOOTPRINT.md`, `TODO.md`, and the no-growth budget when the count changes.
+
 Before adding a manual raw SVG/path bridge:
 
 1. Record the fixture or parity command that exposes the upstream literal behavior.
