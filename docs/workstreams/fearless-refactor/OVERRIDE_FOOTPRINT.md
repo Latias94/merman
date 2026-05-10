@@ -255,6 +255,12 @@ direct root lookup still leaves all 226 Gitgraph root entries failing. The Flowc
 pins are now deleted after empty bounds moved into renderer logic; the remaining 125 entries still
 need root-viewport derivation work before table pruning, not another blind deletion pass.
 
+Sequence note: a 2026-05-11 representative bypass recheck for `participant_types`,
+`title_and_accdescr_multiline`, `upstream_docs_examples_basic_sequence_diagram_005`, and the long
+rightward cypress message fixture still failed `parity-root` without the lookup. Sequence root
+cleanup should therefore start by improving typed bounds for participant types, titles, and
+long-message expansion instead of deleting fixture rows directly.
+
 Largest root-viewport buckets:
 
 - `gitgraph`: 226
@@ -367,5 +373,8 @@ Counts are inventory units and should not be compared directly across categories
   derivation changes; the May 2026 recheck proved they still guard real `parity-root` drift.
 - Do not spend another blind table-pruning pass on Gitgraph or Flowchart root pins until their root
   viewport derivation changes; the May 2026 recheck proved both buckets still guard real
+  `parity-root` drift.
+- Do not spend another blind table-pruning pass on Sequence root pins until sequence typed bounds
+  change; the May 11 representative recheck proved multiple common buckets still guard real
   `parity-root` drift.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.

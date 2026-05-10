@@ -499,10 +499,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31 Architecture
   root pins that still fail when the lookup is disabled. Empty-diagram root viewport behavior then
   moved into Flowchart, State, ER, and Requirement renderer logic, deleting 21 more root pins while
-  the affected normal and `parity-root` DOM filters stayed green. The stale
-  Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
-  leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
-  entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
+  the affected normal and `parity-root` DOM filters stayed green. The remaining Sequence root
+  viewport lookup was also spot-checked by bypassing representative entries
+  (`participant_types`, `title_and_accdescr_multiline`,
+  `upstream_docs_examples_basic_sequence_diagram_005`, and a long-message cypress fixture); all
+  still failed `parity-root`, so Sequence needs typed bounds improvements before table pruning. The
+  stale Mindmap HTML width lookup table and generator were also deleted after the shared text
+  measurer leak was removed and layout snapshots proved the stable Mindmap path did not need those
+  291 entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
   `<<Requirement>>`, `<<Element>>`, `<<Functional Requirement>>`, `<<Design Constraint>>`,
   `<<Interface Requirement>>`, and `<<Physical Requirement>>` HTML width/calc max-width lookups
   after both

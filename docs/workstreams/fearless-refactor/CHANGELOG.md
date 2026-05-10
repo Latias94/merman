@@ -10,6 +10,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   (`flowchart` 10, `state` 9, `er` 1, `requirement` 1), reducing the root viewport budget from
   `779` to `758`, while the affected fixtures stayed green under both `parity-root` and normal
   DOM comparison filters.
+- Rechecked representative Sequence root viewport entries by temporarily bypassing the lookup for
+  `participant_types`, `title_and_accdescr_multiline`,
+  `upstream_docs_examples_basic_sequence_diagram_005`, and a long-message cypress fixture. All
+  still fail `parity-root` without the lookup, so Sequence needs bounds derivation work rather
+  than another blind table-pruning pass.
 
 ## 2026-05-10
 
