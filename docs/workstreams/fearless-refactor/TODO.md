@@ -531,6 +531,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; it still guards the
   `upstream_long_word_wrap` root `max-width`, which drifts from `961px` to `961.5px` without the
   lookup.
+  The single ER drawRect clamp lookup was also rechecked by routing the no-attribute entity branch
+  through the formula-only clamp; normal ER DOM parity stayed green, but
+  `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3` failed on
+  `upstream_relationship_variants_spec`, so that lookup stays until ER root sizing changes.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-block-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,

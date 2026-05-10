@@ -182,6 +182,10 @@ Total lookup entries reported by `xtask`: `811`.
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
+ER note: the remaining single drawRect clamp lookup was rechecked by bypassing it and using the
+formula-only no-attribute entity clamp. Standard ER DOM parity stayed green, but `parity-root`
+failed on `upstream_relationship_variants_spec`, so this lookup still guards root sizing drift.
+
 ### SVG Text Metric Tables
 
 | file | table rows |
