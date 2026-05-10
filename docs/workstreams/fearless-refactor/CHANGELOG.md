@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `<<contains>>` HTML width and calc max-width lookups after
+  both DOM parity modes stayed green without them, then refreshed the Requirement layout goldens
+  to match the new layout.
 - Removed the redundant Class generated text override smoke tests after DOM parity and layout
   tests already covered the live class lookup paths.
 - Removed the redundant ER generated drawrect-clamp smoke test while keeping the ER-owned label

@@ -6,7 +6,6 @@
 
 pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<f64> {
     match (text, bold) {
-        ("<<contains>>", false) => Some(5.833984375),
         ("<<Design Constraint>>", false) => Some(9.9208984375),
         ("<<Element>>", false) => Some(5.7919921875),
         ("<<Functional Requirement>>", false) => Some(12.8251953125),
@@ -75,7 +74,6 @@ pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<
 
 pub fn lookup_requirement_calc_max_width_px(calc_text: &str) -> Option<i64> {
     match calc_text {
-        "&lt;&lt;contains&gt;&gt;" => Some(200),
         "&lt;&lt;Design Constraint&gt;&gt;" => Some(276),
         "&lt;&lt;Element&gt;&gt;" => Some(214),
         "&lt;&lt;Functional Requirement&gt;&gt;" => Some(315),
