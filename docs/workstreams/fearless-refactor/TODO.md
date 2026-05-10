@@ -466,16 +466,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   root pins that still fail when the lookup is disabled. The stale
   Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
   leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
-  entries. Requirement also dropped its paired `<<contains>>` HTML width and
-  `&lt;&lt;contains&gt;&gt;` calc max-width lookups after both
+  entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, and `<<traces>>`
+  HTML width/calc max-width lookups after both
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
-  `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green
-  without them, and the Requirement layout goldens were refreshed to match the new layout. One
-  Requirement also dropped its paired `<<satisfies>>` HTML width and
-  `&lt;&lt;satisfies&gt;&gt;` calc max-width lookups after both
-  `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
-  `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green
-  without them, and the affected Requirement layout goldens were refreshed across the suite. One
+  `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green for
+  each step; the affected Requirement layout goldens, including `relations`, were refreshed to
+  match the shared measurement path. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
