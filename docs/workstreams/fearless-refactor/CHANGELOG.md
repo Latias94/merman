@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `<<satisfies>>` HTML width and calc max-width lookups after
+  both DOM parity modes stayed green without them, then refreshed the affected Requirement layout
+  goldens.
 - Removed the redundant Requirement `<<contains>>` HTML width and calc max-width lookups after
   both DOM parity modes stayed green without them, then refreshed the Requirement layout goldens
   to match the new layout.

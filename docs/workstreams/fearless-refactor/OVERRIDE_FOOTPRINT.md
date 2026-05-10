@@ -115,6 +115,9 @@ A subsequent GitGraph glyph pass removed the right-side `C`, `D`, `B`, `0`, `6`,
 Requirement then dropped its paired `<<contains>>` HTML width and
 `&lt;&lt;contains&gt;&gt;` calc max-width lookups after both requirement parity modes stayed green
 without them.
+Requirement then dropped its paired `<<satisfies>>` HTML width and
+`&lt;&lt;satisfies&gt;&gt;` calc max-width lookups after both requirement parity modes stayed green
+without them.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -172,7 +175,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `809`.
+Total lookup entries reported by `xtask`: `807`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -181,7 +184,7 @@ Total lookup entries reported by `xtask`: `809`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 124 |
+| `requirement_text_overrides_11_12_2.rs` | 122 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 

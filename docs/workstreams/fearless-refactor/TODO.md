@@ -471,6 +471,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
   `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green
   without them, and the Requirement layout goldens were refreshed to match the new layout. One
+  Requirement also dropped its paired `<<satisfies>>` HTML width and
+  `&lt;&lt;satisfies&gt;&gt;` calc max-width lookups after both
+  `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
+  `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green
+  without them, and the affected Requirement layout goldens were refreshed across the suite. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
