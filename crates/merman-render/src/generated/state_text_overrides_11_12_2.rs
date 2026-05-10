@@ -108,16 +108,12 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
         "A note can also\nbe defined on\nseveral lines" => Some(108.671875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
         "State1" | "State3" | "State4" => Some(45.90625),
-        // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
-        "fast" => Some(27.140625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "NewValuePreview" => Some(125.734375),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "NewValueSelection" => Some(135.609375),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
         "IsPositive" => Some(66.203125),
-        // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
-        "slow" => Some(31.6875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
         "True" => Some(31.21875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_acc_descr_multiline_spec.svg

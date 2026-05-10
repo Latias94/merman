@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed two redundant State style label width lookups (`fast` and `slow`) after both State DOM
+  parity modes stayed green, reducing State text lookups from `27` to `25` and the global text
+  lookup budget to `660`.
 - Removed four redundant State edge-label width lookups after both State DOM parity modes stayed
   green, reducing State text lookups from `31` to `27` and the global text lookup budget to `662`.
 - Removed three redundant State quoted edge-label width lookups after both State DOM parity modes

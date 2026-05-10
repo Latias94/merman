@@ -172,7 +172,9 @@ after both State parity modes stayed green, leaving the text lookup total at 674
 node/note label pass removed five more width lookups under the same parity gates, leaving the text
 lookup total at 669. A quoted edge-label pass removed three more State width lookups under the same
 parity gates, leaving the text lookup total at 666. A follow-up State edge-label pass removed four
-more width lookups under the same parity gates, leaving the text lookup total at 662.
+more width lookups under the same parity gates, leaving the text lookup total at 662. A State style
+label pass removed two more width lookups under the same parity gates, leaving the text lookup total
+at 660.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -230,7 +232,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `662`.
+Total lookup entries reported by `xtask`: `660`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -239,7 +241,7 @@ Total lookup entries reported by `xtask`: `662`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 27 |
+| `state_text_overrides_11_12_2.rs` | 25 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -261,7 +263,8 @@ checks. A node/note label pass then removed `Idle`, `Moving`, `LOG`, `ACT`, and
 `this is a short<br/>note` after both State parity modes stayed green. A quoted edge-label pass then
 removed `New Data`, `Succeeded`, and `Succeeded / Save Result` under the same two checks. The
 next edge-label pass removed `EvCapsLockPressed`, `EvNumLockPressed`, `EvConfig`, and
-`EvNewValueSaved1` under the same two checks. The
+`EvNewValueSaved1` under the same two checks. A style label pass removed `fast` and `slow`, while
+`id3`/`id4` still guard `upstream_state_style_spec` root sizing. The
 remaining
 `this is a string with - in it` width lookup and the multiline title height lookup still guard root
 drift when disabled.

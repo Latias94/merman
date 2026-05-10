@@ -197,10 +197,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `662` text lookup entries after counting block-wrapped
+  them. `report-overrides` now reports `660` text lookup entries after counting block-wrapped
   `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
   after deleting the empty GitGraph glyph correction module, and after the later State
-  rect-with-title, cluster-title, node/note label, and edge-label pruning.
+  rect-with-title, cluster-title, node/note label, edge-label, and style-label pruning.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -532,7 +532,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `662` text lookup entries), so the strict gate blocks this
+  and `660` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
@@ -600,7 +600,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `Succeeded / Save Result` under the same parity modes, reducing the global text lookup total to
   666. A follow-up State edge-label pass removed `EvCapsLockPressed`, `EvNumLockPressed`,
   `EvConfig`, and `EvNewValueSaved1` under the same parity modes, reducing the global text lookup
-  total to 662.
+  total to 662. A State style-label pass removed `fast` and `slow` under the same parity modes,
+  reducing the global text lookup total to 660 while leaving the `id3`/`id4` styled guard in place.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.
