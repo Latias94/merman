@@ -173,6 +173,8 @@ Progress:
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero
   manual bridge files.
 - Same-machine baseline capture remains a process requirement for future typed migrations.
+- The consolidated typed migration timing index lives in
+  `TYPED_MIGRATION_TIMING.md`; append the next migration's baseline pair there before merge.
 
 Exit criteria:
 

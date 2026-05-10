@@ -135,75 +135,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `parse_xychart_model_for_render` now returns `XyChartDiagramRenderModel`, layout and
   render-model dispatch consume it directly, `render_svg_sync` routes typed xychart through the
   public render path, and `parse_diagram_sync` keeps the semantic JSON payload stable.
-- [ ] Add parse/render timing samples before and after each typed migration.
+- [x] Add parse/render timing samples before and after each typed migration.
   Gate: `MERMAN_PARSE_TIMING=1` plus targeted render benchmarks.
-  Sequence status: post-migration baseline captured in
-  `docs/performance/spotcheck_2026-05-07_sequence_typed_render_model.md`. Kanban status:
-  same-machine parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_kanban_typed_render_model.md`. Gantt status:
-  pre-migration JSON-fallback baseline captured in
-  `docs/performance/spotcheck_2026-05-08_gantt_json_baseline.md`, and post-migration typed
-  Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_gantt_typed_render_model.md`. Pie status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_pie_typed_render_model.md`. Packet status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_packet_typed_render_model.md`. Timeline status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_timeline_typed_render_model.md`. Journey status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_journey_typed_render_model.md`. Requirement status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_requirement_typed_render_model.md`. Sankey status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_sankey_typed_render_model.md`. Radar status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_radar_typed_render_model.md`. Info status:
-  fixture-added JSON-fallback-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_info_typed_render_model.md`. ZenUML status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_zenuml_typed_render_model.md`. Quadrant chart status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_quadrant_chart_typed_render_model.md`. GitGraph status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_gitgraph_typed_render_model.md`. Treemap status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_treemap_typed_render_model.md`. Block status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_block_typed_render_model.md`. ER status:
-  parent-vs-typed Criterion spotcheck captured in
-  `docs/performance/spotcheck_2026-05-08_er_typed_render_model.md`. Keep this item open for the
-  next typed migration. C4 status: post-migration typed render-path spotcheck recorded in
-  `docs/performance/spotcheck_2026-05-08_c4_typed_render_model.md`; the JSON compatibility
-  parity compare still passes via `cargo run -p xtask -- compare-c4-svgs --check-dom
-  --dom-mode parity --dom-decimals 3`, `c4_medium` has a current pipeline bench smoke in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`, and the direct
-  `C4Db`-to-`C4DiagramRenderModel` cleanup is recorded in
-  `docs/performance/spotcheck_2026-05-09_c4_direct_render_model_parse.md`. Cross-repo end-to-end
-  comparison evidence is in `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md`
-  and stage attribution is in `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`;
-  the refreshed reports put C4 at roughly `1.3-1.4x` end-to-end and `1.8-2.0x` in parse, while
-  Architecture layout and XyChart layout/render remain the clearer cross-repo gaps. XyChart status:
-  post-migration typed render-path spotcheck recorded in
-  `docs/performance/spotcheck_2026-05-08_xychart_typed_render_model.md`; the JSON compatibility
-  parity compare still passes via `cargo run -p xtask -- compare-xychart-svgs --check-dom
-  --dom-mode parity --dom-decimals 3`, and the repaired `xychart_medium` fixture now has a current
-  pipeline bench smoke in `docs/performance/spotcheck_2026-05-09_c4_xychart_pipeline_bench_smoke.md`,
-  with cross-repo end-to-end comparison evidence in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_mmdr_comparison.md` and stage attribution in
-  `docs/performance/spotcheck_2026-05-09_c4_xychart_stage_mmdr.md`. The follow-up render
-  allocation cleanup is recorded in
-  `docs/performance/spotcheck_2026-05-09_xychart_render_allocation_cleanup.md`, and the follow-up
-  layout tick-cache cleanup is recorded in
-  `docs/performance/spotcheck_2026-05-09_xychart_layout_tick_cache.md`.
-  Mindmap/Architecture canary status: current local Criterion pipeline evidence is recorded in
-  `docs/performance/spotcheck_2026-05-10_mindmap_architecture_canary_pipeline_long.md`; both
-  canaries show strong local layout-stage improvement, while `parse/mindmap_medium` stays noisy
-  enough that parser work is still not the next priority.
-  Standard canary stage attribution with an explicit mmdr toolchain is recorded in
-  `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`; it keeps
-  Architecture layout as the clearest remaining gap and render fixed-cost as the broad secondary
-  signal.
+  Evidence: `TYPED_MIGRATION_TIMING.md` indexes the typed migration spotchecks from sequence
+  through xychart, plus the C4/XYChart stage-attribution reports and the current
+  Mindmap/Architecture canaries. Future typed migrations should append a new baseline pair here
+  before merge.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against
   Criterion pre-check skips under the `render` feature.
 

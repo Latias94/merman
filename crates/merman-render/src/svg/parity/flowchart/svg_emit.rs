@@ -22,16 +22,6 @@ fn section<'a>(
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
 }
 
-fn closed_path_from_points(points: &[(f64, f64)]) -> String {
-    let mut out = String::new();
-    for (index, (x, y)) in points.iter().copied().enumerate() {
-        let cmd = if index == 0 { 'M' } else { 'L' };
-        let _ = write!(&mut out, "{cmd}{x},{y} ");
-    }
-    out.push('Z');
-    out
-}
-
 fn union_svg_path_bounds(paths: &[&str]) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
     let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
     for d in paths {
@@ -828,7 +818,10 @@ fn render_flowchart_v2_svg_with_config_inner(
                             points.push((w / 2.0 + extra_w, -final_h / 2.0));
                             points.push((-w / 2.0 - extra_w, -final_h / 2.0));
 
-                            let path_data = closed_path_from_points(&points);
+                            let path_data =
+                                crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                    &points,
+                                );
                             if let Some(pb) = rough_svg_path_bounds(&path_data) {
                                 let y_shift = -wave_amplitude / 2.0;
                                 left_hw = (-pb.min_x).max(0.0);
@@ -994,7 +987,10 @@ fn render_flowchart_v2_svg_with_config_inner(
                             points.push((w / 2.0 - radius, h / 2.0));
                             points.push((-w / 2.0, h / 2.0));
 
-                            let path_data = closed_path_from_points(&points);
+                            let path_data =
+                                crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                    &points,
+                                );
                             if let Some(pb) = rough_svg_path_bounds(&path_data) {
                                 left_hw = (-pb.min_x).max(0.0);
                                 right_hw = pb.max_x.max(0.0);
@@ -1016,7 +1012,10 @@ fn render_flowchart_v2_svg_with_config_inner(
                                 (-w / 2.0, h / 2.0),
                                 (-w / 2.0, (-h / 2.0) * 0.6),
                             ];
-                            let path_data = closed_path_from_points(&points);
+                            let path_data =
+                                crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                    &points,
+                                );
                             if let Some(pb) = rough_svg_path_bounds(&path_data) {
                                 left_hw = (-pb.min_x).max(0.0);
                                 right_hw = pb.max_x.max(0.0);

@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Added shared closed-path and Mermaid arc-point helpers in `roughjs_common` and routed the
+  flowchart and state point-path helpers through them, deleting the duplicated local
+  implementations.
+- Added `TYPED_MIGRATION_TIMING.md` as the canonical index for typed migration timing evidence and
+  follow-up canaries.
 - Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
   Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so

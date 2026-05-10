@@ -18,7 +18,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
 | Parity safety | The latest `cargo run -p xtask -- verify --strict` passed after the flowchart basis helper cleanup, and the degenerate-path and cluster-run helpers still guard real mismatches. | Met |
-| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, and the full benchmark gate record. | Met |
+| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
 ## Prompt-to-Artifact Map
@@ -28,7 +28,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Typed-first pipeline | `docs/workstreams/fearless-refactor/MILESTONES.md`, `RENDER_MODEL_INVENTORY.md`, `TYPED_RENDERER_GUIDE.md` | Covered |
 | Parity-safe release | `cargo run -p xtask -- verify --strict` | Covered |
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
-| Performance evidence | `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
+| Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
 | Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, plus the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` | Covered for the recheck decision; obsolete helpers were removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
 | Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md` | Covered |
@@ -52,11 +52,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## Remaining Gaps
 
-- `TODO.md` still keeps `Add parse/render timing samples before and after each typed migration` open.
 - `TODO.md` still keeps `Delete overrides made obsolete by typed model or measurement fixes` open.
 
 ## Conclusion
 
 The workstream is structurally in good shape, but the release objective is not complete yet.
-The remaining work is about filling the benchmark gap and continuing the M5 override reduction
-pass, not about reopening the already-passed strict parity gate.
+The remaining work is about continuing the M5 override reduction pass, not about reopening the
+already-passed strict parity gate.

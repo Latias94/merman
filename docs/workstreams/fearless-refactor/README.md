@@ -125,6 +125,7 @@ Use this order when choosing work:
 - `MILESTONES.md`: staged roadmap and exit criteria.
 - `GATES.md`: standard refactor, parity, performance, and release command sets.
 - `TYPED_RENDERER_GUIDE.md`: checklist for moving a diagram to typed layout/SVG rendering.
+- `TYPED_MIGRATION_TIMING.md`: index of typed migration timing reports and follow-up canaries.
 - `RENDER_MODEL_INVENTORY.md`: current typed-vs-JSON render pipeline inventory and API decision.
 - `PUBLIC_API_CLI_REVIEW.md`: public render API and CLI cleanup decisions.
 - `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
