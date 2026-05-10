@@ -38,8 +38,8 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
-  A later empty-diagram root viewport cleanup lowered the root budget to `750`; the text lookup
-  budget stayed at `526`.
+  A later empty-diagram root viewport cleanup lowered the root budget to `750`, and the later
+  Class cleanup lowered the text lookup budget to `521`.
 - A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
   deletion now requires layout snapshot evidence because the default deterministic layout measurer
   can still differ when the vendored SVG/HTML measurer matches the stored override.
@@ -51,8 +51,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   `cargo nextest run -p merman-render`, and
   `cargo run -p xtask -- report-overrides --check-no-growth` passed after removing the generated
   module's `clippy::all` umbrella allowance and synchronizing the font-metrics generator template.
-- `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after pruning 21 redundant
-  Class `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
+- `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after the Class `OK` and
+  `ApiClient` cleanup passes, the dense layout golden refresh, and tightening the text lookup
+  no-growth budget to `521`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.
@@ -63,8 +64,8 @@ Progress is tracked in the fearless-refactor workstream docs.
   fixtures_match_layout_golden_snapshots_when_present`, and
   `cargo run -p xtask -- report-overrides --check-no-growth` passed for the Class pruning pass.
 - The remaining exact Class `calcTextWidth` matches `bar()`, `E`, `IService`,
-  `+run() : Status`, `Client`, and `+start()` were kept because focused SVG tests assert those
-  Mermaid HTML `max-width` caps explicitly.
+  `+run() : Status`, `Client`, `+start()`, and `API` were kept because focused SVG tests or
+  layout snapshot evidence still assert those Mermaid HTML `max-width` caps explicitly.
 - `cargo run -p xtask -- verify --strict` passed after Flowchart text override pruning and the State Dagre input builder cleanup.
 - `cargo run -p xtask -- verify --feature-matrix` passed, covering `merman` no-default/render/raster and `merman-core` no-default feature checks.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passed during the helper rechecks.
