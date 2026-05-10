@@ -40,6 +40,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   stayed green with regenerated layout goldens.
 - Removed the Gantt `task A` through `task D` task-width overrides in `relative_end_mixed` after
   `cargo run -p xtask -- verify --strict` stayed green with regenerated layout goldens.
+- Removed the final Gantt task-width overrides and deleted
+  `gantt_text_overrides_11_12_2.rs`, leaving Gantt task labels on the shared text measurement path.
 - Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
   Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so

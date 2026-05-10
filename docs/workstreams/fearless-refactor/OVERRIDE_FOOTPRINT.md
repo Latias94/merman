@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `22`.
+Generated override modules scanned: `21`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -72,7 +72,9 @@ The duration labels `days`, `hours`, `minutes`, `ms`, and `seconds` then dropped
 five more entries. Nine small-fixture labels from leading-punctuation, callback, proto-id,
 year-fallback, and 12-hour time fixtures then dropped, reducing debt by nine more entries. The
 `task A` through `task D` labels from `relative_end_mixed` then dropped, reducing debt by four more
-entries. C4 then moved its 17 type-line `textLength` pins into the C4 owner
+entries. The final broad Gantt task labels then dropped, deleting
+`gantt_text_overrides_11_12_2.rs` and reducing debt by six more entries. C4 then moved its 17
+type-line `textLength` pins into the C4 owner
 module and deleted the generated `c4_type_textlength_11_12_2.rs` module, so C4 type-line
 `textLength` now lives in owner code instead of the override inventory.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
@@ -159,7 +161,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `842`.
+Total lookup entries reported by `xtask`: `836`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -167,7 +169,6 @@ Total lookup entries reported by `xtask`: `842`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gantt_text_overrides_11_12_2.rs` | 6 |
 | `gitgraph_text_overrides_11_12_2.rs` | 34 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |

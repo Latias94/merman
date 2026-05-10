@@ -1270,17 +1270,7 @@ pub fn layout_gantt_diagram_typed(
 
         // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
-        let metrics = text_measurer.measure(t.task.trim_end(), &text_style);
-        let mut text_width = metrics.width;
-        if let Some(w) =
-            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
-                &task_font_family,
-                font_size,
-                t.task.trim_end(),
-            )
-        {
-            text_width = w;
-        }
+        let text_width = text_measurer.measure(t.task.trim_end(), &text_style).width;
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
         // overflow check. Mirror this quirk for DOM parity.
@@ -1474,33 +1464,4 @@ pub fn layout_gantt_diagram_typed(
         title_x: width / 2.0,
         title_y: title_top_margin,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn gantt_task_text_bbox_overrides_are_generated() {
-        assert_eq!(
-            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
-                "\"trebuchet ms\", verdana, arial, sans-serif;",
-                11.0,
-                "Task",
-            ),
-            Some(22.24853515625)
-        );
-        assert_eq!(
-            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
-                "courier", 11.0, "Task",
-            ),
-            None
-        );
-        assert_eq!(
-            crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_override_px(
-                "\"trebuchet ms\", verdana, arial, sans-serif",
-                12.0,
-                "Task",
-            ),
-            None
-        );
-    }
 }
