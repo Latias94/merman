@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `Text: base requirement` HTML width/calc max-width lookup
+  after Requirement DOM parity, root parity, refreshed Requirement layout golden, override
+  budget, and `verify --strict` stayed green.
 - Removed the redundant Requirement `Text: the test text.` HTML width/calc max-width lookup after
   Requirement DOM parity, root parity, refreshed Requirement layout goldens, override budget, and
   `verify --strict` stayed green.

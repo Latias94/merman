@@ -494,7 +494,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Requirement parity modes, the override budget, and `verify --strict` stayed green. Requirement
   also dropped the paired `Text: the test text.` HTML width/calc max-width lookup after both
   Requirement parity modes, refreshed Requirement layout goldens, the override budget, and
-  `verify --strict` stayed green. One
+  `verify --strict` stayed green. Requirement also dropped the paired `Text: base requirement`
+  HTML width/calc max-width lookup after both Requirement parity modes, refreshed the affected
+  Requirement layout golden, the override budget, and `verify --strict` stayed green. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
