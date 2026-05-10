@@ -168,7 +168,9 @@ corrections stayed green without it under the GitGraph DOM parity gate. Together
 block-wrapped `Some` accounting fix, this left the text lookup total at 681. State then dropped four
 rect-with-title span width/height lookups after both State DOM parity modes stayed green, leaving
 the text lookup total at 677. A later State cluster-title pass removed three more width lookups
-after both State parity modes stayed green, leaving the text lookup total at 674.
+after both State parity modes stayed green, leaving the text lookup total at 674. A follow-up State
+node/note label pass removed five more width lookups under the same parity gates, leaving the text
+lookup total at 669.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -226,7 +228,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `674`.
+Total lookup entries reported by `xtask`: `669`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -235,7 +237,7 @@ Total lookup entries reported by `xtask`: `674`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 39 |
+| `state_text_overrides_11_12_2.rs` | 34 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -253,7 +255,8 @@ title sizing drift. A later rect-with-title pass removed the `this is another st
 `Accumulate Enough Data\nLong State Name`, and `Just a test` width lookups plus the `Just a test`
 height lookup after both State parity modes stayed green. A cluster-title pass then removed the
 `Configuring`, `NewValuePreview`, and `NotShooting` width lookups under the same two State parity
-checks. The remaining
+checks. A node/note label pass then removed `Idle`, `Moving`, `LOG`, `ACT`, and
+`this is a short<br/>note` after both State parity modes stayed green. The remaining
 `this is a string with - in it` width lookup and the multiline title height lookup still guard root
 drift when disabled.
 
