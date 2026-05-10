@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Class generated text override smoke tests after DOM parity and layout
+  tests already covered the live class lookup paths.
+- Removed the redundant ER generated drawrect-clamp smoke test while keeping the ER-owned label
+  metrics and htmlLabels behavior tests.
 - Removed the redundant State generated text helper smoke test after layout snapshots, SVG DOM
   parity, and the strict release gate covered the live helper path.
 - Removed the redundant Requirement generated text-lookup smoke tests after SVG DOM parity and

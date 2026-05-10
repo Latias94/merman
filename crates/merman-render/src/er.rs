@@ -1054,20 +1054,6 @@ mod tests {
     }
 
     #[test]
-    fn er_drawrect_clamp_overrides_are_generated() {
-        assert_eq!(
-            crate::generated::er_text_overrides_11_12_2::
-                lookup_entity_drawrect_clamp_to_min_entity_width("DRIVER"),
-            Some(false)
-        );
-        assert_eq!(
-            crate::generated::er_text_overrides_11_12_2::
-                lookup_entity_drawrect_clamp_to_min_entity_width("UNKNOWN"),
-            None
-        );
-    }
-
-    #[test]
     fn er_relationship_htmllabels_follow_root_then_flowchart_config() {
         assert!(super::er_relationship_html_labels(&json!({})));
         assert!(super::er_relationship_html_labels(&json!({
