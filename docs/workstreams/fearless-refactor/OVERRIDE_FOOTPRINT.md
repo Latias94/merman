@@ -122,6 +122,9 @@ Requirement then dropped the paired `<<Design Constraint>>`, `<<Interface Requir
 stayed green without them. The paired `<<Performance Requirement>>` lookup was rechecked in the
 same batch and kept because `parity-root` drifted on `upstream_cypress_requirement_spec_example_001`
 from `551px` to `551.5px` without it.
+Requirement then dropped the paired `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML
+width/calc max-width lookups after both requirement parity modes, the override budget, and
+`verify --strict` stayed green without them.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -179,7 +182,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `793`.
+Total lookup entries reported by `xtask`: `787`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -188,7 +191,7 @@ Total lookup entries reported by `xtask`: `793`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 108 |
+| `requirement_text_overrides_11_12_2.rs` | 102 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 

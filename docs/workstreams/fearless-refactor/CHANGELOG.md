@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML
+  width/calc max-width lookups after Requirement DOM parity, root parity, override budget, and
+  `verify --strict` stayed green.
 - Removed the redundant Requirement `<<Design Constraint>>`, `<<Interface Requirement>>`, and
   `<<Physical Requirement>>` HTML width/calc max-width lookups after both DOM parity modes stayed
   green, while keeping `<<Performance Requirement>>` after root `max-width` drift was confirmed.

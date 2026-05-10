@@ -475,7 +475,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   each step; the affected Requirement layout goldens, including `relations`, were refreshed to
   match the shared measurement path. The paired `<<Performance Requirement>>` lookup was rechecked
   in the same pass and kept after `parity-root` drifted on
-  `upstream_cypress_requirement_spec_example_001` from `551px` to `551.5px`. One
+  `upstream_cypress_requirement_spec_example_001` from `551px` to `551.5px`. Requirement also
+  dropped the paired `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML width/calc max-width
+  lookups after both Requirement parity modes, the override budget, and `verify --strict` stayed
+  green. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
