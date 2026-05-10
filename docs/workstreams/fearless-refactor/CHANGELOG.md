@@ -8,6 +8,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed seventeen redundant ER no-attribute calc-text-width lookups whose fallback widths still
   clamp to `minEntityWidth` after both ER DOM parity modes stayed green, reducing ER text lookups
   from `114` to `97` and the global text lookup budget to `643`.
+- Removed six redundant single-letter ER entity label width lookups (`A` through `F`) after both ER
+  DOM parity modes stayed green, reducing ER text lookups from `97` to `91` and the global text
+  lookup budget to `637`.
 - Removed two redundant State style label width lookups (`fast` and `slow`) after both State DOM
   parity modes stayed green, reducing State text lookups from `27` to `25` and the global text
   lookup budget to `660`.

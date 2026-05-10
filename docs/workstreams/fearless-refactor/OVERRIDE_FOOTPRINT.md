@@ -176,7 +176,8 @@ more width lookups under the same parity gates, leaving the text lookup total at
 label pass removed two more width lookups under the same parity gates, leaving the text lookup total
 at 660. A follow-up ER no-attribute calcTextWidth pass removed seventeen zero-valued lookup entries
 under the same ER parity gates, leaving the `drawRect` clamp guard in place and reducing the text
-lookup total to 643.
+lookup total to 643. A later ER pass removed the single-letter entity labels `A` through `F` under
+the same ER parity gates, reducing the text lookup total to 637.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -234,13 +235,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `643`.
+Total lookup entries reported by `xtask`: `637`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
 | `class_text_overrides_11_12_2.rs` | 344 |
-| `er_text_overrides_11_12_2.rs` | 97 |
+| `er_text_overrides_11_12_2.rs` | 91 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 25 |
