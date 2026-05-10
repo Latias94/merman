@@ -7,7 +7,7 @@
           "id": "test_req",
           "x": 291.614,
           "y": 8.0,
-          "width": 157.734,
+          "width": 150.72,
           "height": 184.0,
           "is_cluster": false
         },
@@ -59,7 +59,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 449.348,
+        "max_x": 442.334,
         "max_y": 192.0
       }
     }

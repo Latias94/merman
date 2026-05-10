@@ -142,6 +142,9 @@ goldens, and `verify --strict` stayed green without it.
 Requirement then dropped the paired `Text: A requirement` and `Text: Do thing` HTML
 width/calc max-width lookups after both requirement parity modes, the override budget, and
 `verify --strict` stayed green without them.
+Requirement then dropped the paired `Text: the test text.` HTML width/calc max-width lookup after
+both requirement parity modes, refreshed Requirement layout goldens, the override budget, and
+`verify --strict` stayed green without it.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -199,7 +202,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `749`.
+Total lookup entries reported by `xtask`: `747`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -208,7 +211,7 @@ Total lookup entries reported by `xtask`: `749`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 64 |
+| `requirement_text_overrides_11_12_2.rs` | 62 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
