@@ -188,12 +188,6 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
         "EvNewValueSaved1" => Some(135.953125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
         "Transition 1" | "Transition 2" | "Transition 3" => Some(83.390625),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        "New Data" => Some(68.640625),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        "Succeeded" => Some(76.296875),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        "Succeeded / Save Result" => Some(175.484375),
         _ => None,
     }
 }
