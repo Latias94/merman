@@ -15,8 +15,6 @@ fn font_size_key(font_size: f64) -> u16 {
 }
 
 static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
-    (1600, " ", 0.0),
-    (1600, "   ", 0.0),
     (1600, "A", 9.4375),
     (1600, "A label", 48.859375),
     (1600, "A wide one", 78.359375),

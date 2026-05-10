@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed two redundant blank Block HTML width lookups after both Block DOM parity modes stayed
+  green and the Block layout snapshots stayed green, reducing the global text lookup budget to
+  `547`.
 - Collapsed the remaining ER HTML width lookups to 3 entries after both ER DOM parity modes stayed
   green and ER layout snapshots were refreshed, reducing the global text lookup budget to `549`.
   A follow-up bypass of the 3-entry floor still failed `parity-root`, so the `string`,
