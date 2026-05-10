@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed eight more GitGraph glyph correction lookups for the right-side `C`, `D`, `B`, `0`, `6`,
+  `4`, `a`, and `d` characters after DOM parity stayed green with the even smaller correction
+  table.
 - Removed five more GitGraph glyph correction lookups for the left-side `2`, `6`, `5`, `C`, and
   `B` characters after DOM parity stayed green with the smaller correction table.
 - Removed three redundant GitGraph commit-label literal extra lookups after the rounded measured

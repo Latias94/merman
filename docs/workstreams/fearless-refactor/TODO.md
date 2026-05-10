@@ -518,6 +518,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   measured widths and existing edge-character corrections still matched DOM parity.
   A follow-up GitGraph glyph pass removed the left-side `2`, `6`, `5`, `C`, and `B` character
   corrections after DOM parity stayed green with the smaller correction table.
+  A subsequent GitGraph glyph pass removed the right-side `C`, `D`, `B`, `0`, `6`, `4`, `a`, and
+  `d` character corrections after DOM parity stayed green with the even smaller correction table.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.

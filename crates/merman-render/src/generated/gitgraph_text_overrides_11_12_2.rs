@@ -22,16 +22,8 @@ pub fn lookup_gitgraph_simple_text_bbox_width_left_px(ch: char) -> Option<f64> {
 
 pub fn lookup_gitgraph_simple_text_bbox_width_right_px(ch: char) -> Option<f64> {
     match ch {
-        '0' => Some(corr_px(752)),
         '2' => Some(corr_px(1558)),
-        '4' => Some(corr_px(770)),
-        '6' => Some(corr_px(754)),
         '9' => Some(corr_px(1560)),
-        'B' => Some(corr_px(720)),
-        'C' => Some(corr_px(-500)),
-        'D' => Some(corr_px(478)),
-        'a' => Some(corr_px(764)),
-        'd' => Some(corr_px(759)),
         _ => None,
     }
 }

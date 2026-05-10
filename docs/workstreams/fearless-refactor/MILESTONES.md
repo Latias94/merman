@@ -521,6 +521,8 @@ Progress:
   rounded measured widths and existing edge-character corrections still preserved GitGraph DOM
   parity. A later GitGraph glyph pass removed the left-side `2`, `6`, `5`, `C`, and `B`
   corrections after the smaller correction table stayed green under DOM parity.
+  A subsequent GitGraph glyph pass removed the right-side `C`, `D`, `B`, `0`, `6`, `4`, `a`, and
+  `d` corrections after the even smaller correction table stayed green under DOM parity.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
