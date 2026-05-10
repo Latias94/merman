@@ -64,6 +64,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   green, reducing Class text lookups from `344` to `323` and the global text lookup budget to
   `526`. Kept the `bar()`, `E`, `IService`, `+run() : Status`, `Client`, and `+start()` entries
   because focused SVG tests assert those Mermaid HTML `max-width` caps explicitly.
+- Removed the standalone Class SVG plain-label lookup for `uses` after
+  `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green without
+  it, deleting the now-empty plain-label bridge and reducing the global text lookup budget to
+  `525`.
 - Removed two redundant blank Block HTML width lookups after both Block DOM parity modes stayed
   green and the Block layout snapshots stayed green, reducing the global text lookup budget to
   `547` at that point.

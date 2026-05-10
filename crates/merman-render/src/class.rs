@@ -1684,16 +1684,6 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
         return None;
     }
 
-    let font_size_px = text_style.font_size.round() as i64;
-    if let Some(width) =
-        crate::generated::class_text_overrides_11_12_2::lookup_class_svg_plain_label_width_px(
-            font_size_px,
-            trimmed,
-        )
-    {
-        return Some(width);
-    }
-
     let width = crate::text::ceil_to_1_64_px(
         measurer.measure_svg_text_computed_length_px(trimmed, text_style),
     );

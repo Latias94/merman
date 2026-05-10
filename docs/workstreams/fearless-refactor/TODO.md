@@ -498,7 +498,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_004`, and
   `upstream_examples_er_basic_er_schema_001`; deleting `varchar(5)` broke
   `upstream_attributes_styles_classes`; deleting `DRIVER` broke
-  `upstream_relationship_variants_spec`. 2026-05-11 audit: `title_and_accdescr_multiline`,
+  `upstream_relationship_variants_spec`. 2026-05-11 audit: the standalone Class plain-label
+  `uses` lookup was removed after `compare-class-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3` stayed green without it, reducing Class text lookups from `323` to `322` and
+  the global total to `525`. 2026-05-11 audit: `title_and_accdescr_multiline`,
   `upstream_accessibility_single_line_spec`, and `upstream_title_without_colon_spec` still need
   their Sequence root pins; removing them reintroduced parity-root drift to 493px / 593px
   `max-width` baselines. The literal `multiline<br \\t/>text` SVG metric row also remains
