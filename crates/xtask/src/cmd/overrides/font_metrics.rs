@@ -1970,12 +1970,9 @@ const strings = input.strings;
         &mut out,
         "pub fn lookup_font_metrics(font_key: &str) -> Option<&'static FontMetricsTables> {{"
     );
-    let _ = writeln!(&mut out, "    for t in FONT_METRICS_TABLES {{");
-    let _ = writeln!(&mut out, "        if t.font_key == font_key {{");
-    let _ = writeln!(&mut out, "            return Some(t);");
-    let _ = writeln!(&mut out, "        }}");
-    let _ = writeln!(&mut out, "    }}");
-    let _ = writeln!(&mut out, "    None");
+    let _ = writeln!(&mut out, "    FONT_METRICS_TABLES");
+    let _ = writeln!(&mut out, "        .iter()");
+    let _ = writeln!(&mut out, "        .find(|t| t.font_key == font_key)");
     let _ = writeln!(&mut out, "}}\n");
 
     if let Some(parent) = out_path.parent() {

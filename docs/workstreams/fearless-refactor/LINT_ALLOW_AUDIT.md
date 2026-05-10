@@ -42,8 +42,9 @@ Last updated: 2026-05-11.
   font-metrics ridge solver by making the solver module-local and covering ordinary and pivoting
   systems with focused unit tests.
 - `crates/merman-render/src/generated/mod.rs`: removed the module-level `clippy::all` allowance
-  after replacing the generated font-metrics lookup loop with `Iterator::find`; generated and
-  fixture-derived parity data now stays under normal clippy coverage.
+  after replacing the generated font-metrics lookup loop with `Iterator::find` and updating the
+  `xtask gen-font-metrics` template to emit the clippy-clean form; generated and fixture-derived
+  parity data now stays under normal clippy coverage.
 
 ## Gate
 
