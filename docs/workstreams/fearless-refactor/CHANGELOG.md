@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant ER relation label width lookup for `is teacher of` after both ER DOM
+  parity modes stayed green, reducing ER text lookups from `61` to `60` and the global text lookup
+  budget to `606`.
 - Removed the redundant ER relation label width lookup for `insured for` after both ER DOM parity
   modes stayed green, reducing ER text lookups from `62` to `61` and the global text lookup budget
   to `607`.

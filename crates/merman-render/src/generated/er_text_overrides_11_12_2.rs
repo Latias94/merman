@@ -15,7 +15,6 @@ fn font_size_key(font_size: f64) -> u16 {
 }
 
 static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
-    (1400, "is teacher of", 78.984375),
     (1600, "*id", 19.359375),
     (1600, "*title", 36.578125),
     (1600, "Alias!", 39.484375),
