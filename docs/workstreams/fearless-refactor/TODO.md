@@ -197,11 +197,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `637` text lookup entries after counting block-wrapped
+  them. `report-overrides` now reports `621` text lookup entries after counting block-wrapped
   `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
   after deleting the empty GitGraph glyph correction module, and after the later State
   rect-with-title, cluster-title, node/note label, edge-label, and style-label pruning, plus the
-  later ER zero-valued calcTextWidth and single-letter entity-label pruning.
+  later ER zero-valued calcTextWidth, single-letter entity-label, and low-width calcTextWidth
+  pruning.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -533,7 +534,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `637` text lookup entries), so the strict gate blocks this
+  and `621` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
@@ -622,7 +623,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   same ER parity gates, leaving only the `drawRect` clamp guard in that branch and reducing the
   global text lookup total to 643. A follow-up ER pass removed the single-letter entity label
   width lookups `A` through `F` under the same parity gates, reducing the global text lookup total
-  to 637.
+  to 637. A later ER pass removed sixteen additional low-width no-attribute calcTextWidth lookups
+  under the same parity gates, reducing the global text lookup total to 621.
   The single State diagram-title bbox lookup for `Simple sample` was rechecked by returning `None`;
   normal State DOM parity stayed green, but
   `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3` dropped the root
