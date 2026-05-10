@@ -43,6 +43,16 @@ struct LayoutFragments {
     edge_segments: Vec<EdgeSegment>,
 }
 
+struct StateDagreInput {
+    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    hidden_prefixes: Vec<String>,
+    dagre_id_by_semantic_id: HashMap<String, String>,
+    dir_by_dagre_id: HashMap<String, Option<String>>,
+    text_style: TextStyle,
+    wrap_mode: WrapMode,
+    html_labels: bool,
+}
+
 fn get_extras_string(
     extras: &std::collections::BTreeMap<String, Value>,
     key: &str,
@@ -931,14 +941,7 @@ pub fn layout_state_diagram_v2_typed(
     layout_state_diagram_v2_inner(model, effective_config, measurer)
 }
 
-fn layout_state_diagram_v2_inner(
-    model: &StateDiagramModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<StateDiagramV2Layout> {
-    // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
-    // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
-    // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
+fn state_hidden_prefixes(model: &StateDiagramModel) -> Vec<String> {
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {
         let Some(note) = st.note.as_ref() else {
@@ -951,25 +954,41 @@ fn layout_state_diagram_v2_inner(
             hidden_prefixes.push(id.clone());
         }
     }
+    hidden_prefixes
+}
 
-    fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
-        prefixes.iter().any(|p| {
-            if id == p {
-                return true;
-            }
-            id.strip_prefix(p)
-                .is_some_and(|rest| rest.starts_with("----"))
-        })
+fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
+    prefixes.iter().any(|p| {
+        if id == p {
+            return true;
+        }
+        id.strip_prefix(p)
+            .is_some_and(|rest| rest.starts_with("----"))
+    })
+}
+
+fn dagre_id_for_node(n: &StateNode) -> String {
+    if n.dom_id.trim().is_empty() {
+        n.id.clone()
+    } else {
+        n.dom_id.clone()
     }
+}
+
+fn build_state_diagram_v2_dagre_input(
+    model: &StateDiagramModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<StateDagreInput> {
+    // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
+    // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
+    // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
+    let hidden_prefixes = state_hidden_prefixes(model);
 
     let mut dagre_id_by_semantic_id: HashMap<String, String> = HashMap::new();
     let mut dir_by_dagre_id: HashMap<String, Option<String>> = HashMap::new();
     for n in &model.nodes {
-        let dagre_id = if n.dom_id.trim().is_empty() {
-            n.id.clone()
-        } else {
-            n.dom_id.clone()
-        };
+        let dagre_id = dagre_id_for_node(n);
         dagre_id_by_semantic_id.insert(n.id.clone(), dagre_id.clone());
         dir_by_dagre_id.insert(dagre_id, n.dir.as_ref().map(|s| normalize_dir(s)));
     }
@@ -987,15 +1006,12 @@ fn layout_state_diagram_v2_inner(
     let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
     let text_style = state_text_style(effective_config);
 
-    let cluster_dir =
-        |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
-
-    let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
+    let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
         compound: true,
     });
-    g.set_graph(GraphLabel {
+    graph.set_graph(GraphLabel {
         rankdir: diagram_dir,
         nodesep,
         ranksep,
@@ -1016,7 +1032,7 @@ fn layout_state_diagram_v2_inner(
             .cloned()
             .unwrap_or_else(|| n.id.clone());
         if state_node_is_effective_group(n) {
-            g.set_node(
+            graph.set_node(
                 dagre_id,
                 NodeLabel {
                     width: 1.0,
@@ -1069,7 +1085,7 @@ fn layout_state_diagram_v2_inner(
                 // Mermaid's `rectWithTitle` nodes render two HTML `<span>` labels with
                 // `display:inline-block; padding-right:1px; white-space:nowrap;` and no explicit
                 // `line-height`. Empirically, their measured height matches SVG `getBBox()` height
-                // (1.1875em at 16px → 19px), *not* the 1.5em HTML `<p>` line-height used by most
+                // (1.1875em at 16px -> 19px), not the 1.5em HTML `<p>` line-height used by most
                 // other state labels.
                 let (title_w, title_h) =
                     title_label_metrics(&label_text, measurer, &text_style, WrapMode::SvgLike);
@@ -1129,7 +1145,7 @@ fn layout_state_diagram_v2_inner(
             }
         };
 
-        g.set_node(
+        graph.set_node(
             dagre_id,
             NodeLabel {
                 width: w.max(1.0),
@@ -1139,7 +1155,7 @@ fn layout_state_diagram_v2_inner(
         );
     }
 
-    if g.options().compound {
+    if graph.options().compound {
         for n in &model.nodes {
             if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
                 continue;
@@ -1156,7 +1172,7 @@ fn layout_state_diagram_v2_inner(
                     .get(p)
                     .cloned()
                     .unwrap_or_else(|| p.clone());
-                g.set_parent(child_id, parent_id);
+                graph.set_parent(child_id, parent_id);
             }
         }
     }
@@ -1194,7 +1210,7 @@ fn layout_state_diagram_v2_inner(
                 .get(&e.end)
                 .cloned()
                 .unwrap_or_else(|| e.end.clone());
-            g.set_edge_named(start_id, end_id, Some(e.id.clone()), Some(base));
+            graph.set_edge_named(start_id, end_id, Some(e.id.clone()), Some(base));
             continue;
         }
 
@@ -1212,7 +1228,7 @@ fn layout_state_diagram_v2_inner(
         let special1 = format!("{node_id}---{node_id}---1");
         let special2 = format!("{node_id}---{node_id}---2");
 
-        g.set_node(
+        graph.set_node(
             special1.clone(),
             NodeLabel {
                 // Mermaid's renderer initially seeds these dummy nodes with `10x10`, but then
@@ -1226,7 +1242,7 @@ fn layout_state_diagram_v2_inner(
                 ..Default::default()
             },
         );
-        g.set_node(
+        graph.set_node(
             special2.clone(),
             NodeLabel {
                 width: 0.1,
@@ -1234,9 +1250,9 @@ fn layout_state_diagram_v2_inner(
                 ..Default::default()
             },
         );
-        if let Some(parent) = g.parent(&node_dagre_id).map(|s| s.to_string()) {
-            g.set_parent(special1.clone(), parent.clone());
-            g.set_parent(special2.clone(), parent);
+        if let Some(parent) = graph.parent(&node_dagre_id).map(|s| s.to_string()) {
+            graph.set_parent(special1.clone(), parent.clone());
+            graph.set_parent(special2.clone(), parent);
         }
 
         let mut edge1 = base.clone();
@@ -1263,17 +1279,46 @@ fn layout_state_diagram_v2_inner(
         let name_mid = format!("{node_id}-cyclic-special-1");
         let name2 = format!("{node_id}-cyc<lic-special-2");
 
-        g.set_edge_named(
+        graph.set_edge_named(
             node_dagre_id.clone(),
             special1.clone(),
             Some(name1),
             Some(edge1),
         );
-        g.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
-        g.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
+        graph.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
+        graph.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
     }
 
-    let mut prepared = prepare_graph(g, &cluster_dir, 0, None)?;
+    Ok(StateDagreInput {
+        graph,
+        hidden_prefixes,
+        dagre_id_by_semantic_id,
+        dir_by_dagre_id,
+        text_style,
+        wrap_mode,
+        html_labels,
+    })
+}
+
+fn layout_state_diagram_v2_inner(
+    model: &StateDiagramModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<StateDiagramV2Layout> {
+    let StateDagreInput {
+        graph,
+        hidden_prefixes,
+        dagre_id_by_semantic_id,
+        dir_by_dagre_id,
+        text_style,
+        wrap_mode,
+        html_labels,
+    } = build_state_diagram_v2_dagre_input(model, effective_config, measurer)?;
+
+    let cluster_dir =
+        |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
+
+    let mut prepared = prepare_graph(graph, &cluster_dir, 0, None)?;
     let (fragments, _layout_bounds) = layout_prepared(&mut prepared)?;
 
     let semantic_ids: HashSet<&str> = model
@@ -1849,7 +1894,7 @@ fn layout_state_diagram_v2_inner(
 
 /// Debug-only helper: builds the Dagre input graph for stateDiagram-v2 *before* layout runs.
 ///
-/// This duplicates the graph construction logic from `layout_state_diagram_v2`. Keep it in sync.
+/// This shares the same graph construction path as `layout_state_diagram_v2_inner`.
 /// It is used by `xtask` to compare `dugong` against Mermaid's JS Dagre implementation
 /// (`dagre-d3-es`) at the layout output layer (nodes/edges/points) rather than at the SVG layer.
 #[doc(hidden)]
@@ -1859,325 +1904,5 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
     let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
-
-    let mut hidden_prefixes: Vec<String> = Vec::new();
-    for (id, st) in &model.states {
-        let Some(note) = st.note.as_ref() else {
-            continue;
-        };
-        if note.text.trim().is_empty() {
-            continue;
-        }
-        if note.position.is_none() {
-            hidden_prefixes.push(id.clone());
-        }
-    }
-
-    fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
-        prefixes.iter().any(|p| {
-            if id == p {
-                return true;
-            }
-            id.strip_prefix(p)
-                .is_some_and(|rest| rest.starts_with("----"))
-        })
-    }
-
-    let nodes_by_id: HashMap<String, &StateNode> =
-        model.nodes.iter().map(|n| (n.id.clone(), n)).collect();
-    let mut dagre_id_by_semantic_id: HashMap<String, String> = HashMap::new();
-    for n in &model.nodes {
-        let dagre_id = if n.dom_id.trim().is_empty() {
-            n.id.clone()
-        } else {
-            n.dom_id.clone()
-        };
-        dagre_id_by_semantic_id.insert(n.id.clone(), dagre_id);
-    }
-
-    let diagram_dir = rank_dir_from(&model.direction);
-    let nodesep = config_f64(effective_config, &["state", "nodeSpacing"]).unwrap_or(50.0);
-    let ranksep = config_f64(effective_config, &["state", "rankSpacing"]).unwrap_or(50.0);
-    let html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
-    let wrap_mode = if html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let wrapping_width = crate::state::state_html_label_wrapping_width(effective_config);
-    let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
-    let text_style = state_text_style(effective_config);
-
-    let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
-        directed: true,
-        multigraph: true,
-        compound: true,
-    });
-    g.set_graph(GraphLabel {
-        rankdir: diagram_dir,
-        nodesep,
-        ranksep,
-        marginx: 8.0,
-        marginy: 8.0,
-        ..Default::default()
-    });
-
-    // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
-    for n in &model.nodes {
-        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
-            continue;
-        }
-        let dagre_id = dagre_id_by_semantic_id
-            .get(&n.id)
-            .cloned()
-            .unwrap_or_else(|| n.id.clone());
-        if state_node_is_effective_group(n) {
-            g.set_node(
-                dagre_id,
-                NodeLabel {
-                    width: 1.0,
-                    height: 1.0,
-                    ..Default::default()
-                },
-            );
-            continue;
-        }
-
-        let padding = n.padding.unwrap_or(state_padding).max(0.0);
-        let label_text = n
-            .label
-            .as_ref()
-            .map(value_to_label_text)
-            .unwrap_or_else(|| n.id.clone());
-
-        let (w, h) = match n.shape.as_str() {
-            "stateStart" => (14.0, 14.0),
-            "stateEnd" => (STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2, 14.0),
-            "choice" => (28.0, 28.0),
-            "fork" | "join" => {
-                let (mut width, mut height) = if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
-                    (10.0, 70.0)
-                } else {
-                    (70.0, 10.0)
-                };
-                width += state_padding / 2.0;
-                height += state_padding / 2.0;
-                (width, height)
-            }
-            "note" => {
-                let (tw, th) = node_label_metrics(
-                    &label_text,
-                    wrapping_width,
-                    &n.css_compiled_styles,
-                    &n.css_styles,
-                    measurer,
-                    &text_style,
-                    wrap_mode,
-                );
-                (tw + padding * 2.0, th + padding * 2.0)
-            }
-            "rectWithTitle" => {
-                let desc = n
-                    .description
-                    .as_ref()
-                    .map(|v| v.join("\n"))
-                    .unwrap_or_default();
-                let (title_w, title_h) =
-                    title_label_metrics(&label_text, measurer, &text_style, WrapMode::SvgLike);
-                let (desc_w, desc_h) =
-                    title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
-
-                let title_w = state_text_overrides::rect_with_title_span_effective_width_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                    title_w,
-                );
-                let desc_w = state_text_overrides::rect_with_title_span_effective_width_px(
-                    text_style.font_size,
-                    desc.trim(),
-                    desc_w,
-                );
-                let title_h = state_text_overrides::rect_with_title_span_effective_height_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                    title_h,
-                );
-                let desc_h = state_text_overrides::rect_with_title_span_effective_height_px(
-                    text_style.font_size,
-                    desc.trim(),
-                    desc_h,
-                );
-
-                let inner_w = title_w.max(desc_w);
-                let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
-                let bottom_pad = state_text_overrides::state_rect_with_title_bottom_pad_px(padding);
-                let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
-                let h = top_pad + title_h.max(0.0) + gap + desc_h.max(0.0) + bottom_pad;
-                let w = inner_w + padding;
-                (w.max(1.0), h.max(1.0))
-            }
-            "rect" => {
-                let (tw, th) = node_label_metrics(
-                    &label_text,
-                    wrapping_width,
-                    &n.css_compiled_styles,
-                    &n.css_styles,
-                    measurer,
-                    &text_style,
-                    wrap_mode,
-                );
-                let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
-                let pad_x = if has_rounding { padding } else { padding * 2.0 };
-                let pad_y = padding;
-                (tw + pad_x * 2.0, th + pad_y * 2.0)
-            }
-            other => {
-                return Err(Error::InvalidModel {
-                    message: format!("unsupported state node shape: {other}"),
-                });
-            }
-        };
-
-        g.set_node(
-            dagre_id,
-            NodeLabel {
-                width: w.max(1.0),
-                height: h.max(1.0),
-                ..Default::default()
-            },
-        );
-    }
-
-    if g.options().compound {
-        for n in &model.nodes {
-            if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
-                continue;
-            }
-            if let Some(p) = n.parent_id.as_ref() {
-                if state_is_hidden_id(&hidden_prefixes, p.as_str()) {
-                    continue;
-                }
-                let child_id = dagre_id_by_semantic_id
-                    .get(&n.id)
-                    .cloned()
-                    .unwrap_or_else(|| n.id.clone());
-                let parent_id = dagre_id_by_semantic_id
-                    .get(p)
-                    .cloned()
-                    .unwrap_or_else(|| p.clone());
-                g.set_parent(child_id, parent_id);
-            }
-        }
-    }
-
-    for e in &model.edges {
-        if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.start.as_str())
-            || state_is_hidden_id(&hidden_prefixes, e.end.as_str())
-        {
-            continue;
-        }
-        let (lw, lh) = edge_label_metrics(&e.label, measurer, &text_style, wrap_mode);
-        let mut base = EdgeLabel {
-            width: lw,
-            height: lh,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
-        };
-        set_extras_string(&mut base.extras, "originalId", &e.id);
-        set_extras_string(&mut base.extras, "originalFrom", &e.start);
-        set_extras_string(&mut base.extras, "originalTo", &e.end);
-        set_extras_i32(&mut base.extras, "segment", 0);
-
-        if e.start != e.end {
-            let start_id = dagre_id_by_semantic_id
-                .get(&e.start)
-                .cloned()
-                .unwrap_or_else(|| e.start.clone());
-            let end_id = dagre_id_by_semantic_id
-                .get(&e.end)
-                .cloned()
-                .unwrap_or_else(|| e.end.clone());
-            g.set_edge_named(start_id, end_id, Some(e.id.clone()), Some(base));
-            continue;
-        }
-
-        let node_id = e.start.clone();
-        let node_dagre_id = dagre_id_by_semantic_id
-            .get(&node_id)
-            .cloned()
-            .unwrap_or_else(|| node_id.clone());
-        let id1 = format!("{node_id}-cyclic-special-1");
-        let idm = format!("{node_id}-cyclic-special-mid");
-        let id2 = format!("{node_id}-cyclic-special-2");
-        let special1 = format!("{node_id}---{node_id}---1");
-        let special2 = format!("{node_id}---{node_id}---2");
-
-        g.set_node(
-            special1.clone(),
-            NodeLabel {
-                width: 0.1,
-                height: 0.1,
-                ..Default::default()
-            },
-        );
-        g.set_node(
-            special2.clone(),
-            NodeLabel {
-                width: 0.1,
-                height: 0.1,
-                ..Default::default()
-            },
-        );
-        if let Some(parent) = g.parent(&node_dagre_id).map(|s| s.to_string()) {
-            g.set_parent(special1.clone(), parent.clone());
-            g.set_parent(special2.clone(), parent);
-        }
-
-        let mut edge1 = base.clone();
-        edge1.width = 0.0;
-        edge1.height = 0.0;
-        set_extras_i32(&mut edge1.extras, "segment", 0);
-        set_extras_string(&mut edge1.extras, "originalId", &id1);
-
-        let mut edge_mid = base.clone();
-        set_extras_i32(&mut edge_mid.extras, "segment", 1);
-        set_extras_string(&mut edge_mid.extras, "originalId", &idm);
-
-        let mut edge2 = base.clone();
-        edge2.width = 0.0;
-        edge2.height = 0.0;
-        set_extras_i32(&mut edge2.extras, "segment", 2);
-        set_extras_string(&mut edge2.extras, "originalId", &id2);
-
-        // Match Mermaid@11.12.2 cyclic-special edge *names* (graphlib multigraph keys), including
-        // the upstream typo in `-cyc<lic-special-2`. Keep `.id` in extras unchanged for SVG ids.
-        let name1 = format!("{node_id}-cyclic-special-0");
-        let name_mid = format!("{node_id}-cyclic-special-1");
-        let name2 = format!("{node_id}-cyc<lic-special-2");
-
-        g.set_edge_named(
-            node_dagre_id.clone(),
-            special1.clone(),
-            Some(name1),
-            Some(edge1),
-        );
-        g.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
-        g.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
-    }
-
-    // Preserve requested cluster directions (used by `prepare_graph` for nested extracted graphs).
-    //
-    // This is a no-op for cluster-less diagrams, but keeps the debug graph faithful.
-    let cluster_dir = |id: &str| -> Option<String> {
-        let n = nodes_by_id.get(id)?;
-        n.dir.as_ref().map(|s| normalize_dir(s))
-    };
-    // Force the closure to be used so it stays type-checked if the surrounding logic changes.
-    let _ = cluster_dir;
-
-    Ok(g)
+    Ok(build_state_diagram_v2_dagre_input(&model, effective_config, measurer)?.graph)
 }

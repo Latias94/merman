@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed State v2 Dagre input graph construction into a single shared builder used by both the
+  production layout path and the debug/xtask comparison helper, deleting the duplicate debug-only
+  graph construction while keeping State tests and `parity-root` green.
 - Tightened `xtask report-overrides --check-no-growth` to the current category totals for root
   viewport entries (`779`) and text lookup entries (`692`), so the strict gate now rejects
   reintroducing the deleted override footprint.

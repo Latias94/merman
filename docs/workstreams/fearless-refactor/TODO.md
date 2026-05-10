@@ -285,6 +285,14 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `architecture/settings.rs`, `architecture/nodes.rs`, `architecture/edges.rs`,
   `architecture/geometry.rs`, `architecture/labels.rs`, `architecture/icons.rs`,
   `architecture/foreign_object.rs`, `architecture/root.rs`, and `architecture/viewport.rs`.
+- [x] Share State v2 Dagre input graph construction between layout and debug comparison.
+  Evidence: `layout_state_diagram_v2_inner` and
+  `debug_build_state_diagram_v2_dagre_graph` now both use
+  `build_state_diagram_v2_dagre_input`, removing the debug-only copy of node sizing, hidden-note
+  filtering, parent wiring, and cyclic self-loop helper edge construction. Verified with
+  `cargo nextest run -p merman-render state:: --no-fail-fast`, `cargo test -p merman-render --test
+  state_layout_test --test state_svg_test`, and `cargo run -p xtask -- compare-state-svgs
+  --check-dom --dom-mode parity-root --dom-decimals 3`.
 - [x] Prefer small render context structs over long parameter lists.
   Result: sequence block frame helpers now share `SequenceBlockRenderContext`. Sequence message,
   interaction, actor, actor-man glyph, and loop-text helpers now use focused render contexts, and

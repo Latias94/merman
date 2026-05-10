@@ -400,6 +400,8 @@ Progress:
   renderer split and viewport cleanup work.
 - Inlined the State viewport mode helper into its two call sites, deleting
   `prefer_fast_state_viewport_bounds` while keeping the strict gate green.
+- Collapsed State v2 Dagre input graph construction into one shared builder consumed by the
+  production layout path and the debug/xtask comparison helper, deleting the debug-only copy.
 - Collapsed duplicated State raw/non-raw context resolution helpers behind shared implementations,
   removed unused wrappers, and narrowed `state_strip_note_group` to file-private visibility.
 - Collapsed duplicated State label HTML wrapping and entity-preservation helpers behind shared
