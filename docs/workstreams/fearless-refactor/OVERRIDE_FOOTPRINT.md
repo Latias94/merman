@@ -165,7 +165,9 @@ lookup entries to 45 confirmed guards after full Flowchart `parity-root` and foc
 assertions proved those bold/italic markdown, HTML width, and SVG bbox entries still guard upstream
 behavior. GitGraph then deleted its 9-entry glyph correction module after the remaining boundary
 corrections stayed green without it under the GitGraph DOM parity gate. Together with the
-block-wrapped `Some` accounting fix, this leaves the text lookup total at 681.
+block-wrapped `Some` accounting fix, this left the text lookup total at 681. State then dropped four
+rect-with-title span width/height lookups after both State DOM parity modes stayed green, leaving
+the text lookup total at 677.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -223,7 +225,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `681`.
+Total lookup entries reported by `xtask`: `677`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -232,7 +234,7 @@ Total lookup entries reported by `xtask`: `681`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 46 |
+| `state_text_overrides_11_12_2.rs` | 42 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -246,7 +248,11 @@ failed on `upstream_relationship_variants_spec`, so this lookup still guards roo
 State note: the single diagram-title bbox lookup for `Simple sample` was rechecked by disabling
 the lookup. Standard State DOM parity stayed green, but `parity-root` dropped the root `max-width`
 from `132.25px` to `132px` on the docs/frontmatter title fixtures, so the lookup still guards root
-title sizing drift.
+title sizing drift. A later rect-with-title pass removed the `this is another string`,
+`Accumulate Enough Data\nLong State Name`, and `Just a test` width lookups plus the `Just a test`
+height lookup after both State parity modes stayed green. The remaining
+`this is a string with - in it` width lookup and the multiline title height lookup still guard root
+drift when disabled.
 
 ### SVG Text Metric Tables
 

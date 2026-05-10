@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed four redundant State rect-with-title span width/height lookups after both State DOM
+  parity modes stayed green, reducing State text lookups from `46` to `42` and the global text
+  lookup budget to `677`.
 - Deleted the empty GitGraph text override module after rechecking that all remaining
   branch-label and commit-label glyph corrections stayed green without it under
   `compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`, reducing the global

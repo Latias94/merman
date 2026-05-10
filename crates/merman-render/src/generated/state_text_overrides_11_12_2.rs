@@ -12,13 +12,6 @@ pub fn lookup_rect_with_title_span_width_px(font_size_px: f64, text: &str) -> Op
     match text {
         // fixtures/upstream-svgs/state/upstream_stateDiagram_spec.svg
         "this is a string with - in it" => Some(182.328125),
-        "this is another string" => Some(148.765625),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
-        "Accumulate Enough Data\nLong State Name" => Some(179.265625),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
-        "Just a test" => Some(76.125),
         _ => None,
     }
 }
@@ -34,7 +27,6 @@ pub fn lookup_rect_with_title_span_height_px(font_size_px: f64, text: &str) -> O
         "Accumulate Enough Data\nLong State Name" => Some(38.0),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
-        "Just a test" => Some(19.0),
         _ => None,
     }
 }
