@@ -197,10 +197,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `677` text lookup entries after counting block-wrapped
+  them. `report-overrides` now reports `674` text lookup entries after counting block-wrapped
   `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
   after deleting the empty GitGraph glyph correction module, and after the later State
-  rect-with-title pruning.
+  rect-with-title and cluster-title pruning.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -532,7 +532,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `677` text lookup entries), so the strict gate blocks this
+  and `674` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
@@ -592,7 +592,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   A later State rect-with-title pass removed four span width/height lookup entries after
   `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3` and
   `compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green, reducing the
-  global text lookup total to 677.
+  global text lookup total to 677. A follow-up State cluster-title pass removed `Configuring`,
+  `NewValuePreview`, and `NotShooting` width lookups under the same two parity modes, reducing the
+  global text lookup total to 674.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.

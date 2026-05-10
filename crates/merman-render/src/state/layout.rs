@@ -305,16 +305,6 @@ fn title_label_metrics(
     if wrap_mode == WrapMode::HtmlLike {
         // Mermaid DOM measurements routinely land on a 1/64px lattice.
         metrics.width = crate::text::round_to_1_64_px(metrics.width);
-
-        let trimmed = decoded.as_ref().trim();
-        if let Some(w) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_cluster_title_width_px(
-                text_style.font_size,
-                trimmed,
-            )
-        {
-            metrics.width = w;
-        }
     }
 
     (metrics.width.max(0.0), metrics.height.max(0.0))

@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed three redundant State cluster title width lookups after both State DOM parity modes stayed
+  green, reducing State text lookups from `42` to `39` and the global text lookup budget to `674`.
 - Removed four redundant State rect-with-title span width/height lookups after both State DOM
   parity modes stayed green, reducing State text lookups from `46` to `42` and the global text
   lookup budget to `677`.

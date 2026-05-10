@@ -25,8 +25,6 @@ pub fn lookup_rect_with_title_span_height_px(font_size_px: f64, text: &str) -> O
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
         "Accumulate Enough Data\nLong State Name" => Some(38.0),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
         _ => None,
     }
 }
@@ -159,22 +157,6 @@ pub fn lookup_state_node_label_width_px_styled(
     match text {
         // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
         "id3" | "id4" => Some(24.09375),
-        _ => None,
-    }
-}
-
-pub fn lookup_state_cluster_title_width_px(font_size_px: f64, text: &str) -> Option<f64> {
-    if (font_size_px - 16.0).abs() > 0.01 {
-        return None;
-    }
-
-    match text {
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
-        "Configuring" => Some(82.703125),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
-        "NewValuePreview" => Some(126.734375),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
-        "NotShooting" => Some(87.4375),
         _ => None,
     }
 }
