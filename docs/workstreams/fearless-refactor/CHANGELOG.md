@@ -22,6 +22,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   --dom-mode parity --dom-decimals 3` stayed green.
 - Removed the generic Gantt `task1` task-width override after `compare-gantt-svgs --check-dom
   --dom-mode parity --dom-decimals 3` stayed green.
+- Removed the generic Gantt `test1` task-width override after `compare-gantt-svgs --check-dom
+  --dom-mode parity --dom-decimals 3` stayed green.
 - Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
   Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so
