@@ -186,6 +186,11 @@ ER note: the remaining single drawRect clamp lookup was rechecked by bypassing i
 formula-only no-attribute entity clamp. Standard ER DOM parity stayed green, but `parity-root`
 failed on `upstream_relationship_variants_spec`, so this lookup still guards root sizing drift.
 
+State note: the single diagram-title bbox lookup for `Simple sample` was rechecked by disabling
+the lookup. Standard State DOM parity stayed green, but `parity-root` dropped the root `max-width`
+from `132.25px` to `132px` on the docs/frontmatter title fixtures, so the lookup still guards root
+title sizing drift.
+
 ### SVG Text Metric Tables
 
 | file | table rows |

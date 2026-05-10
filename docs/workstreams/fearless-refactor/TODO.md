@@ -535,6 +535,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   through the formula-only clamp; normal ER DOM parity stayed green, but
   `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3` failed on
   `upstream_relationship_variants_spec`, so that lookup stays until ER root sizing changes.
+  The single State diagram-title bbox lookup for `Simple sample` was rechecked by returning `None`;
+  normal State DOM parity stayed green, but
+  `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3` dropped the root
+  `max-width` from `132.25px` to `132px` on the docs/frontmatter title fixtures, so it stays.
   `compare-architecture-svgs --check-dom --dom-decimals 3`,
   `compare-block-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
