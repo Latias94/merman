@@ -17,6 +17,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Tightened override deletion policy for layout-affecting text lookups: Block ordinary labels now
   explicitly require layout snapshot evidence in addition to DOM parity because vendored
   measurement equality does not prove the default deterministic layout path is safe.
+- Audited the remaining 123 Block HTML width lookups against the default deterministic layout
+  measurer and found zero exact width matches, so Block text pruning is paused until the shared
+  deterministic measurement path improves.
 - Removed 21 redundant Class `calcTextWidth` lookup entries whose deterministic fallback now
   returns the same rounded width, after both Class DOM parity modes and layout snapshots stayed
   green, reducing Class text lookups from `344` to `323` and the global text lookup budget to
