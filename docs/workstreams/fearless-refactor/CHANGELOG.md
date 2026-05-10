@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed three redundant short ER relation label width lookups (`has`, `owns`, and `uses`) after
+  both ER DOM parity modes stayed green, reducing ER text lookups from `72` to `69` and the global
+  text lookup budget to `615`.
 - Removed seventeen redundant ER no-attribute calc-text-width lookups whose fallback widths still
   clamp to `minEntityWidth` after both ER DOM parity modes stayed green, reducing ER text lookups
   from `114` to `97` and the global text lookup budget to `643`.
