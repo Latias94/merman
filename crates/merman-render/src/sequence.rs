@@ -456,6 +456,11 @@ pub fn layout_sequence_diagram_typed(
     // Actor boxes: Mermaid renders both a "top" and "bottom" actor box.
     // The bottom boxes start after all messages are placed. Created actors will have their `y`
     // adjusted later once we know the creation message position.
+    let max_actor_layout_height = actor_base_heights
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
     let mut max_actor_visual_height: f64 = 0.0;
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
@@ -1059,7 +1064,10 @@ pub fn layout_sequence_diagram_typed(
     let note_text_pad_total = 2.0 * note_gap;
     let note_top_offset = message_step - note_gap;
 
-    let mut cursor_y = actor_top_offset_y + max_actor_visual_height + message_step;
+    // Mermaid advances the message cursor before special actor shapes mutate their rendered
+    // height, so the first message uses the base actor layout height rather than the final visual
+    // bbox for boundary/control/entity/database/queue/collections actors.
+    let mut cursor_y = actor_top_offset_y + max_actor_layout_height + message_step;
     let mut rect_stack: Vec<RectOpen> = Vec::new();
     let activation_width = config_f64(seq_cfg, &["activationWidth"])
         .unwrap_or(10.0)

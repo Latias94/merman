@@ -29,7 +29,7 @@ gate. Override growth should therefore be an explicit reviewed decision, not a d
 escape hatch. Manual raw SVG/path bridges now have an exact zero budget, so any bridge
 reintroduction fails the strict gate unless the budget is deliberately changed.
 
-The current snapshot reflects an 816-entry net reduction in root viewport overrides after topology-driven
+The current snapshot reflects an 824-entry net reduction in root viewport overrides after topology-driven
 viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
 overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
 remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
@@ -42,7 +42,9 @@ deterministic root output. It then collapses the Class root table from 196 entri
 removing 166 obsolete pins and adding one missing docs root pin, making Class `parity-root` green
 with a 165-entry net reduction, followed by six obsolete Gitgraph pins now covered by
 deterministic root output and thirty-two obsolete Sequence pins now covered by deterministic root
-output. Flowchart then dropped 131 obsolete pins and later cleared the
+output. Sequence participant-type cursor derivation then removed 8 more root pins and refreshed the
+affected layout goldens, reducing the Sequence root table from 200 to 192 entries. Flowchart then
+dropped 131 obsolete pins and later cleared the
 `upstream_docs_math_flowcharts_001` `parity-root` gap by normalizing the browser-sensitive math SVG
 baseline and measuring sanitized KaTeX MathML through the Node probe. Pie then replaced its 23
 remaining root pins with a typed empty-pie root viewport rule plus shared 1/64px-quantized legend
@@ -220,7 +222,7 @@ lookup total to 526.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `758`.
+Total entries reported by `xtask`: `750`.
 
 | file | entries |
 | --- | ---: |
@@ -232,7 +234,7 @@ Total entries reported by `xtask`: `758`.
 | `mindmap_root_overrides_11_12_2.rs` | 52 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 200 |
+| `sequence_root_overrides_11_12_2.rs` | 192 |
 | `state_root_overrides_11_12_2.rs` | 45 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -255,16 +257,16 @@ direct root lookup still leaves all 226 Gitgraph root entries failing. The Flowc
 pins are now deleted after empty bounds moved into renderer logic; the remaining 125 entries still
 need root-viewport derivation work before table pruning, not another blind deletion pass.
 
-Sequence note: a 2026-05-11 representative bypass recheck for `participant_types`,
-`title_and_accdescr_multiline`, `upstream_docs_examples_basic_sequence_diagram_005`, and the long
-rightward cypress message fixture still failed `parity-root` without the lookup. Sequence root
-cleanup should therefore start by improving typed bounds for participant types, titles, and
-long-message expansion instead of deleting fixture rows directly.
+Sequence note: a 2026-05-11 layout recalibration for participant-type actors removed 8 now-
+redundant Sequence root pins after the matching layout goldens were refreshed. The title and
+long-message fixtures still fail `parity-root` without the lookup, so Sequence cleanup now has a
+narrower target: participant-type bounds are fixed, but title and long-message expansion still need
+typed derivation work.
 
 Largest root-viewport buckets:
 
 - `gitgraph`: 226
-- `sequence`: 200
+- `sequence`: 192
 - `flowchart`: 125
 - `mindmap`: 52
 - `state`: 45

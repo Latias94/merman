@@ -264,6 +264,9 @@ Progress:
   `svg/parity/sequence/settings.rs`.
 - Extracted sequence root SVG opening, accessibility title/description, and viewport override
   handling into `svg/parity/sequence/root.rs`.
+- Rebased sequence message cursor startup on the base actor layout height so special participant
+  types no longer push the first message down after their post-render bbox adjustments; this
+  removed 8 obsolete Sequence root viewport pins and refreshed the related layout goldens.
 - Extracted sequence activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.

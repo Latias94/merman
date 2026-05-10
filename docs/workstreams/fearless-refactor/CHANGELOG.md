@@ -5,6 +5,17 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Changed Sequence message cursor startup to use the base actor layout height rather than the
+  post-render special-shape bbox, which aligned participant-type spacing with upstream. Refreshed
+  the affected Sequence layout goldens and removed 8 now-redundant Sequence root viewport
+  overrides (`participant_types`, `stress_participant_types_006`,
+  `upstream_docs_sequencediagram_control_010`,
+  `upstream_docs_sequencediagram_inline_alias_syntax_023`,
+  `upstream_pkgtests_sequencediagram_spec_103`,
+  `upstream_pkgtests_sequencediagram_spec_104`,
+  `upstream_pkgtests_sequencediagram_spec_111`, and
+  `upstream_pkgtests_sequencediagram_spec_129`), reducing the root viewport budget from `758` to
+  `750` while keeping Sequence `parity-root` green.
 - Replaced empty-diagram root viewport pins with renderer-derived empty content bounds for
   Flowchart, State, ER, and Requirement. This removed 21 root viewport override entries
   (`flowchart` 10, `state` 9, `er` 1, `requirement` 1), reducing the root viewport budget from
@@ -12,8 +23,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   DOM comparison filters.
 - Rechecked representative Sequence root viewport entries by temporarily bypassing the lookup for
   `participant_types`, `title_and_accdescr_multiline`,
-  `upstream_docs_examples_basic_sequence_diagram_005`, and a long-message cypress fixture. All
-  still fail `parity-root` without the lookup, so Sequence needs bounds derivation work rather
+  `upstream_docs_examples_basic_sequence_diagram_005`, and a long-message cypress fixture. The
+  participant-type path now derives cleanly, but title and long-message guards still fail
+  `parity-root` without the lookup, so Sequence still needs more bounds derivation work rather
   than another blind table-pruning pass.
 
 ## 2026-05-10
