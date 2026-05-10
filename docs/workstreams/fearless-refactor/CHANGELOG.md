@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `<<Design Constraint>>`, `<<Interface Requirement>>`, and
+  `<<Physical Requirement>>` HTML width/calc max-width lookups after both DOM parity modes stayed
+  green, while keeping `<<Performance Requirement>>` after root `max-width` drift was confirmed.
 - Removed the redundant Requirement `<<Functional Requirement>>` HTML width and calc max-width
   lookups after both DOM parity modes stayed green without them, then refreshed the affected
   Requirement layout goldens.

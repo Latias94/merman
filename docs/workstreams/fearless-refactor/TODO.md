@@ -467,12 +467,15 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
   leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
   entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
-  `<<Requirement>>`, `<<Element>>`, and `<<Functional Requirement>>` HTML width/calc max-width
-  lookups after both
+  `<<Requirement>>`, `<<Element>>`, `<<Functional Requirement>>`, `<<Design Constraint>>`,
+  `<<Interface Requirement>>`, and `<<Physical Requirement>>` HTML width/calc max-width lookups
+  after both
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
   `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green for
   each step; the affected Requirement layout goldens, including `relations`, were refreshed to
-  match the shared measurement path. One
+  match the shared measurement path. The paired `<<Performance Requirement>>` lookup was rechecked
+  in the same pass and kept after `parity-root` drifted on
+  `upstream_cypress_requirement_spec_example_001` from `551px` to `551.5px`. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
