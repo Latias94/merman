@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement generated text-lookup smoke tests after SVG DOM parity and
+  the strict release gate already covered the live lookup path.
 - Removed the redundant GitGraph generated text-lookup smoke test after the live renderer path
   stayed covered by SVG DOM parity checks and the override no-growth gate.
 - Removed eight more GitGraph glyph correction lookups for the right-side `C`, `D`, `B`, `0`, `6`,
