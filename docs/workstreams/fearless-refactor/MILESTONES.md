@@ -67,13 +67,15 @@ Exit criteria:
 
 ## M2: Typed Model Expansion
 
-Status: in progress.
+Status: complete for in-tree Mermaid 11.12.3 diagrams; keep the JSON fallback only for `error`
+and custom registry parsers.
 
 Scope:
 
-- Move one large remaining JSON-render diagram to a typed render model.
+- Move render-critical diagrams from JSON-for-render transport to typed render models.
 - Use the first migration to define the repeatable pattern.
-- Prefer sequence first unless profiling points elsewhere.
+- Preserve semantic JSON compatibility APIs while removing render-path JSON construction where the
+  renderer has an in-tree typed model.
 
 Progress:
 
@@ -176,14 +178,18 @@ Progress:
   dead top-level group separation helper was removed without disturbing DOM parity.
 - The final manual raw SVG/path bridge was removed; `xtask report-overrides` now reports zero
   manual bridge files.
+- `RENDER_MODEL_INVENTORY.md` now records every non-error in-tree diagram as `typed-first`.
+  `RenderSemanticModel::Json` remains intentionally available for the suppressed `error` diagram
+  payload and for custom registry parsers that are outside the in-tree Mermaid compatibility set.
 - Same-machine baseline capture remains a process requirement for future typed migrations.
 - The consolidated typed migration timing index lives in
   `TYPED_MIGRATION_TIMING.md`; append the next migration's baseline pair there before merge.
 
 Exit criteria:
 
-- At least one additional high-impact diagram has a typed render model.
-- Render-only path avoids constructing the full semantic JSON model for that diagram.
+- Every non-error in-tree Mermaid compatibility diagram has a typed render model on the render-only
+  path.
+- Render-only paths avoid constructing the full semantic JSON model for typed-first diagrams.
 - Existing semantic JSON API remains stable.
 - Benchmarks or timing logs show the cost impact.
 

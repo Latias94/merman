@@ -13,7 +13,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
-| Fewer duplicated pipelines | `MILESTONES.md` records the typed render-model migrations for sequence, kanban, gantt, pie, packet, timeline, journey, requirement, sankey, radar, info, zenuml, quadrant chart, gitGraph, treemap, block, er, c4, and xychart. | Met |
+| Fewer duplicated pipelines | `MILESTONES.md` and `RENDER_MODEL_INVENTORY.md` record all non-error in-tree Mermaid diagrams as typed-first on the render path; the JSON render fallback is now limited to `error` and custom registry parsers. | Met |
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
@@ -38,6 +38,9 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after pruning 21 redundant Class
   `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
+- The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
+  in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
+  another JSON-to-typed migration.
 - `cargo nextest run -p merman-render --test class_svg_test`,
   `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
   `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
