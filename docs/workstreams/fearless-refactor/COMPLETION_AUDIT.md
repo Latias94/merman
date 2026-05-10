@@ -42,6 +42,9 @@ Progress is tracked in the fearless-refactor workstream docs.
 - A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
   deletion now requires layout snapshot evidence because the default deterministic layout measurer
   can still differ when the vendored SVG/HTML measurer matches the stored override.
+- Follow-up Block and State text audits found zero exact `DeterministicTextMeasurer` width matches
+  in the remaining audited lookup buckets, so those pruning tracks are paused until shared
+  deterministic measurement improves.
 - `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after pruning 21 redundant
   Class `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
