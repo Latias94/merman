@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Regenerated the GitGraph layout goldens after deleting the 7-entry branch-label bbox correction
+  table; DOM parity stayed green with the simplified measured-width path.
+- Removed seven redundant GitGraph branch-label bbox correction lookups and simplified branch-label
+  width planning to the shared measured-width-plus-1/64px-quantization path after GitGraph DOM
+  parity stayed green without the branch-label table.
 - Removed the obsolete `xtask gen-gantt-text-overrides` command and generator after the Gantt text
   override table was deleted, so the command layer no longer advertises a stale production output.
 - Added shared closed-path and Mermaid arc-point helpers in `roughjs_common` and routed the

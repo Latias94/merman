@@ -5,7 +5,7 @@
       "bounds": {
         "min_x": -18.0,
         "min_y": 12.0,
-        "max_x": 236.246,
+        "max_x": 236.242,
         "max_y": 358.0
       },
       "direction": "BT",
@@ -27,14 +27,14 @@
           "name": "develop",
           "index": 1.0,
           "pos": 105.359,
-          "bbox_width": 45.773,
+          "bbox_width": 45.766,
           "bbox_height": 17.6
         },
         {
           "name": "feature",
           "index": 2.0,
-          "pos": 218.246,
-          "bbox_width": 48.133,
+          "pos": 218.242,
+          "bbox_width": 48.156,
           "bbox_height": 17.6
         }
       ],
@@ -87,7 +87,7 @@
           "branch": "feature",
           "pos": 110.0,
           "pos_with_offset": 110.0,
-          "x": 218.246,
+          "x": 218.242,
           "y": 110.0
         },
         {
@@ -104,7 +104,7 @@
           "branch": "feature",
           "pos": 150.0,
           "pos_with_offset": 150.0,
-          "x": 218.246,
+          "x": 218.242,
           "y": 150.0
         },
         {
@@ -197,13 +197,13 @@
           "from": "2-abcdefg",
           "to": "5-abcdefg",
           "class_index": 2.0,
-          "d": "M 0 270 L 198.24609375 270 A 20 20, 0, 0, 0, 218.24609375 250 L 218.24609375 150"
+          "d": "M 0 270 L 198.2421875 270 A 20 20, 0, 0, 0, 218.2421875 250 L 218.2421875 150"
         },
         {
           "from": "5-abcdefg",
           "to": "6-abcdefg",
           "class_index": 2.0,
-          "d": "M 218.24609375 150 L 218.24609375 110"
+          "d": "M 218.2421875 150 L 218.2421875 110"
         },
         {
           "from": "2-abcdefg",

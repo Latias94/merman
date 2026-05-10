@@ -53,16 +53,3 @@ pub fn lookup_gitgraph_simple_text_bbox_width_right_px(ch: char) -> Option<f64> 
         _ => None,
     }
 }
-
-pub fn lookup_gitgraph_branch_label_bbox_width_extra_px(text: &str) -> Option<f64> {
-    match text {
-        "develop" => Some(corr_px(16)),
-        "feature" => Some(corr_px(-48)),
-        "newbranch" => Some(corr_px(-32)),
-        "testBranch" => Some(corr_px(-32)),
-        "testBranch2" => Some(corr_px(-32)),
-        "__proto__" => Some(corr_px(-16)),
-        "branch/example-branch" => Some(corr_px(-64)),
-        _ => None,
-    }
-}

@@ -104,6 +104,8 @@ extension, and default wrap width into `architecture` owner constants/functions,
 now-empty generated module and bringing the hand-curated helper total to 6. Gitgraph then moved
 its branch-label correction control flow into the `gitgraph` owner module and reclassified its
 bbox correction data as text metric lookup entries, bringing the hand-curated helper total to 0.
+A later GitGraph branch-label pass deleted the 7-entry branch-label bbox correction table after raw
+measured widths rounded to 1/64px preserved GitGraph DOM parity.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -161,7 +163,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `836`.
+Total lookup entries reported by `xtask`: `829`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -169,7 +171,7 @@ Total lookup entries reported by `xtask`: `836`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gitgraph_text_overrides_11_12_2.rs` | 34 |
+| `gitgraph_text_overrides_11_12_2.rs` | 27 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |

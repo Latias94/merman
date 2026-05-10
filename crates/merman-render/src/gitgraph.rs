@@ -12,42 +12,8 @@ const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
 const THEME_COLOR_LIMIT: usize = 8;
-const GITGRAPH_DEFAULT_BRANCH_LABEL_FONT_KEY: &str = "\"trebuchetms\",verdana,arial,sans-serif";
 
 const COMMIT_TYPE_MERGE: i64 = 3;
-
-fn normalize_gitgraph_font_key(s: &str) -> String {
-    s.chars()
-        .filter_map(|ch| {
-            if ch.is_whitespace() || ch == ';' {
-                None
-            } else {
-                Some(ch.to_ascii_lowercase())
-            }
-        })
-        .collect()
-}
-
-fn gitgraph_branch_label_bbox_corrections_enabled(font_family: &str, font_size: f64) -> bool {
-    normalize_gitgraph_font_key(font_family) == GITGRAPH_DEFAULT_BRANCH_LABEL_FONT_KEY
-        && (font_size - 16.0).abs() <= 1e-9
-}
-
-fn adjust_gitgraph_branch_label_bbox_width_px(
-    measured_width_px: f64,
-    text: &str,
-    apply_corrections: bool,
-) -> f64 {
-    let base = crate::text::round_to_1_64_px(measured_width_px.max(0.0));
-    let extra = if apply_corrections {
-        crate::generated::gitgraph_text_overrides_11_12_2::
-            lookup_gitgraph_branch_label_bbox_width_extra_px(text)
-            .unwrap_or(0.0)
-    } else {
-        0.0
-    };
-    (base + extra).max(0.0)
-}
 
 fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
@@ -631,8 +597,6 @@ pub fn layout_gitgraph_diagram_typed(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
     let font_size = cfg_font_size(effective_config);
-    let apply_bbox_corrections =
-        gitgraph_branch_label_bbox_corrections_enabled(&font_family, font_size);
 
     let label_style = TextStyle {
         font_family: Some(font_family),
@@ -647,10 +611,10 @@ pub fn layout_gitgraph_diagram_typed(
     for (i, b) in model.branches.iter().enumerate() {
         // Upstream gitGraph uses `drawText(...).getBBox().width` for branch label widths.
         let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = adjust_gitgraph_branch_label_bbox_width_px(
-            measurer.measure_svg_simple_text_bbox_width_px(&b.name, &label_style),
-            &b.name,
-            apply_bbox_corrections,
+        let bbox_w = crate::text::round_to_1_64_px(
+            measurer
+                .measure_svg_simple_text_bbox_width_px(&b.name, &label_style)
+                .max(0.0),
         );
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
@@ -850,34 +814,4 @@ pub fn layout_gitgraph_diagram_typed(
         commits,
         arrows,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn gitgraph_branch_label_bbox_width_corrections_match_mermaid() {
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_branch_label_bbox_width_extra_px("develop"),
-            Some(16.0 / 2048.0)
-        );
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_branch_label_bbox_width_extra_px("feature"),
-            Some(-48.0 / 2048.0)
-        );
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_branch_label_bbox_width_extra_px("unknown"),
-            None
-        );
-        assert!(super::gitgraph_branch_label_bbox_corrections_enabled(
-            "\"trebuchet ms\", verdana, arial, sans-serif;",
-            16.0
-        ));
-        assert_eq!(
-            super::adjust_gitgraph_branch_label_bbox_width_px(56.0, "feature", true),
-            56.0 - 48.0 / 2048.0
-        );
-    }
 }
