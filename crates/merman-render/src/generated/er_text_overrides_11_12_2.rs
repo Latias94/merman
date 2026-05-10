@@ -83,11 +83,8 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
 
 static CALC_TEXT_WIDTH_OVERRIDES_PX: &[(u16, &str, i64)] = &[
     (1600, "Author ref", 71),
-    (1600, "FK", 22),
-    (1600, "Generic", 51),
     (1600, "SPACED", 60),
     (1600, "Short code", 69),
-    (1600, "author", 42),
     (1600, "author-ref[name](1)", 128),
     (1600, "key+comment", 93),
     (1600, "type&lt;T&gt;", 93),
