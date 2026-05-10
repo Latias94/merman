@@ -487,7 +487,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   --strict` stayed green; `Type: simulation` was kept because simulation-heavy fixtures still
   drifted without it. Requirement also dropped the remaining `ID:` HTML width/calc max-width
   lookup bucket after both Requirement parity modes, the override budget, and `verify --strict`
-  stayed green. One
+  stayed green. Requirement also dropped the remaining `Doc Ref:` HTML width/calc max-width lookup
+  bucket after both Requirement parity modes, the override budget, refreshed Requirement/relations
+  layout goldens, and `verify --strict` stayed green. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
