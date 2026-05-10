@@ -5,6 +5,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Collapsed the remaining ER HTML width lookups to 3 entries after both ER DOM parity modes stayed
+  green and ER layout snapshots were refreshed, reducing the global text lookup budget to `549`.
+  A follow-up bypass of the 3-entry floor still failed `parity-root`, so the `string`,
+  `varchar(5)`, and `DRIVER` guards remain required.
+- Removed 21 more ER HTML width lookups across alias, quoted-entity, standalone-entity,
+  accessibility, attribute, and pkgtests fixtures after both ER DOM parity modes stayed green,
+  reducing ER text lookups from `43` to `22` and the global text lookup budget to `568`.
 - Removed three more redundant ER HTML width lookups (`code`, `generic`, and `SPACED`) after both
   ER DOM parity modes stayed green, reducing ER text lookups from `46` to `43` and the global text
   lookup budget to `589`.

@@ -197,7 +197,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `589` text lookup entries after counting block-wrapped
+  them. `report-overrides` now reports `549` text lookup entries after counting block-wrapped
   `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
   after deleting the empty GitGraph glyph correction module, and after the later State
   rect-with-title, cluster-title, node/note label, edge-label, and style-label pruning, plus the
@@ -536,7 +536,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `589` text lookup entries), so the strict gate blocks this
+  and `549` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
@@ -639,7 +639,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   reducing the global text lookup total to 598. A later ER pass removed the remaining six ER HTML
   width lookup entries under the same parity gates, reducing the global text lookup total to 592.
   A later ER pass removed three more ER HTML width lookup entries under the same parity gates,
-  reducing the global text lookup total to 589.
+  reducing the global text lookup total to 589. A later ER pass removed 21 more ER HTML width
+  lookup entries across alias, quoted-entity, standalone-entity, accessibility, attribute, and
+  pkgtests fixtures under the same parity gates, reducing the global text lookup total to 568.
+  A later bypass of the remaining 3 ER entries still failed
+  `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
+  `upstream_relationship_variants_spec`, so the 3-entry ER floor remains necessary.
   The single State diagram-title bbox lookup for `Simple sample` was rechecked by returning `None`;
   normal State DOM parity stayed green, but
   `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3` dropped the root

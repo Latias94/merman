@@ -191,7 +191,14 @@ reducing the text lookup total to 599. A later ER pass removed the `Author ref` 
 under the same ER parity gates, reducing the text lookup total to 598. A later ER pass removed the
 remaining six ER HTML width lookup entries under the same ER parity gates, reducing the text
 lookup total to 592. A later ER pass removed three more ER HTML width lookup entries under the same
-ER parity gates, reducing the text lookup total to 589.
+ER parity gates, reducing the text lookup total to 589. A later ER pass removed 21 more ER HTML
+width lookup entries across alias, quoted-entity, standalone-entity, accessibility, attribute, and
+pkgtests fixtures under the same ER parity gates, reducing the text lookup total to 568. A later
+ER cleanup then removed the remaining fixture-specific ER HTML width lookups, leaving
+`er_text_overrides_11_12_2.rs` with `string`, `varchar(5)`, and the `DRIVER` clamp guard and
+reducing the text lookup total to 549. A follow-up bypass of all 3 entries still failed
+`compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
+`upstream_relationship_variants_spec`, so that 3-entry floor remains required.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -249,13 +256,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `589`.
+Total lookup entries reported by `xtask`: `549`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
 | `class_text_overrides_11_12_2.rs` | 344 |
-| `er_text_overrides_11_12_2.rs` | 43 |
+| `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 25 |
@@ -265,9 +272,9 @@ GitGraph note: the 9-entry glyph correction module was deleted after
 `compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green with all
 remaining left/right boundary corrections removed.
 
-ER note: the remaining single drawRect clamp lookup was rechecked by bypassing it and using the
-formula-only no-attribute entity clamp. Standard ER DOM parity stayed green, but `parity-root`
-failed on `upstream_relationship_variants_spec`, so this lookup still guards root sizing drift.
+ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
+the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
+parity modes stayed green, and the ER layout goldens were refreshed.
 
 State note: the single diagram-title bbox lookup for `Simple sample` was rechecked by disabling
 the lookup. Standard State DOM parity stayed green, but `parity-root` dropped the root `max-width`
