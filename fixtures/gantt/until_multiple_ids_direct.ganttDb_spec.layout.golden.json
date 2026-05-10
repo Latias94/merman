@@ -133,10 +133,10 @@
             "id": "id2-text",
             "text": "task2",
             "font_size": 11.0,
-            "width": 26.142,
+            "width": 26.4,
             "x": 345.0,
             "y": 87.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-26.1416015625"
+            "class": "taskTextOutsideRight taskTextOutside0 width-26.400000000000006"
           }
         },
         {
@@ -164,10 +164,10 @@
             "id": "id3-text",
             "text": "task3",
             "font_size": 11.0,
-            "width": 26.142,
+            "width": 26.4,
             "x": 1066.0,
             "y": 111.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-26.1416015625"
+            "class": "taskTextOutsideRight taskTextOutside0 width-26.400000000000006"
           }
         },
         {
@@ -195,10 +195,10 @@
             "id": "id4-text",
             "text": "task4",
             "font_size": 11.0,
-            "width": 26.142,
+            "width": 26.4,
             "x": 1114.0,
             "y": 135.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-26.1416015625"
+            "class": "taskTextOutsideRight taskTextOutside0 width-26.400000000000006"
           }
         }
       ],

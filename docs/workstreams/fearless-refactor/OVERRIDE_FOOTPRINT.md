@@ -63,9 +63,11 @@ snapshots proved the stable Mindmap path does not use it, reducing text lookup d
 while preventing shared text measurement from leaking fixture-specific widths across diagrams. C4
 then moved its three per-line SVG bbox height rules into the C4 owner module and deleted the
 generated `c4_text_overrides_11_12_2.rs` module, reducing text lookup debt by another 3 entries.
-Gantt then dropped the generic `A`, `B`, `C`, `Build`, `Design`, `Noon`, `t1`, `task1`, and
-`test1` task-width overrides after the font-metric fallback proved stable, reducing text lookup
-debt by nine more entries. C4 then moved its 17 type-line `textLength` pins into the C4 owner
+Gantt then dropped the generic `A`, `B`, `C`, `Build`, `Design`, `Noon`, `t1`, `task1`, `test1`,
+and `test2` task-width overrides after the font-metric fallback proved stable, reducing text lookup
+debt by ten more entries. A follow-up pass dropped `test3` through `test7`, reducing debt by five
+more entries. A final pass dropped `task2` through `task4`, reducing debt by three more entries.
+C4 then moved its 17 type-line `textLength` pins into the C4 owner
 module and deleted the generated `c4_type_textlength_11_12_2.rs` module, so C4 type-line
 `textLength` now lives in owner code instead of the override inventory.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
@@ -152,7 +154,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `871`.
+Total lookup entries reported by `xtask`: `862`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -160,7 +162,7 @@ Total lookup entries reported by `xtask`: `871`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gantt_text_overrides_11_12_2.rs` | 35 |
+| `gantt_text_overrides_11_12_2.rs` | 26 |
 | `gitgraph_text_overrides_11_12_2.rs` | 34 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |

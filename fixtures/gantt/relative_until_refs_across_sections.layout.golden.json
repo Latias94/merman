@@ -137,10 +137,10 @@
             "id": "id2-text",
             "text": "task2",
             "font_size": 11.0,
-            "width": 26.142,
+            "width": 26.4,
             "x": 701.5,
             "y": 87.5,
-            "class": "taskText taskText1 width-26.1416015625"
+            "class": "taskText taskText1 width-26.400000000000006"
           }
         },
         {
@@ -168,10 +168,10 @@
             "id": "id3-text",
             "text": "task3",
             "font_size": 11.0,
-            "width": 26.142,
+            "width": 26.4,
             "x": 1077.5,
             "y": 111.5,
-            "class": "taskText taskText1 width-26.1416015625"
+            "class": "taskText taskText1 width-26.400000000000006"
           }
         }
       ],
