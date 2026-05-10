@@ -542,6 +542,9 @@ Progress:
   parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
+- Class calc-text-width lookup debt dropped by 21 entries after exact deterministic fallback
+  matches were deleted under Class DOM parity and layout snapshot gates, reducing the global text
+  lookup total to 526.
 - Root viewport footprint dropped 795 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height

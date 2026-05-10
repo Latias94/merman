@@ -5,9 +5,14 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed 21 redundant Class `calcTextWidth` lookup entries whose deterministic fallback now
+  returns the same rounded width, after both Class DOM parity modes and layout snapshots stayed
+  green, reducing Class text lookups from `344` to `323` and the global text lookup budget to
+  `526`. Kept the `bar()`, `E`, `IService`, `+run() : Status`, `Client`, and `+start()` entries
+  because focused SVG tests assert those Mermaid HTML `max-width` caps explicitly.
 - Removed two redundant blank Block HTML width lookups after both Block DOM parity modes stayed
   green and the Block layout snapshots stayed green, reducing the global text lookup budget to
-  `547`.
+  `547` at that point.
 - Collapsed the remaining ER HTML width lookups to 3 entries after both ER DOM parity modes stayed
   green and ER layout snapshots were refreshed, reducing the global text lookup budget to `549`.
   A follow-up bypass of the 3-entry floor still failed `parity-root`, so the `string`,

@@ -200,7 +200,9 @@ reducing the text lookup total to 549. A follow-up bypass of all 3 entries still
 `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
 `upstream_relationship_variants_spec`, so that 3-entry floor remains required.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
-reducing the text lookup total to 547.
+reducing the text lookup total to 547. A later Class pass removed 21 `calcTextWidth` lookup
+entries whose deterministic fallback already returned the same rounded width, reducing the text
+lookup total to 526.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -258,12 +260,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `547`.
+Total lookup entries reported by `xtask`: `526`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 344 |
+| `class_text_overrides_11_12_2.rs` | 323 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |

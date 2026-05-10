@@ -197,14 +197,21 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `547` text lookup entries after counting block-wrapped
+  them. `report-overrides` reached `547` text lookup entries after counting block-wrapped
   `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
   after deleting the empty GitGraph glyph correction module, after the later State
   rect-with-title, cluster-title, node/note label, edge-label, and style-label pruning, after the
   later ER zero-valued calcTextWidth, single-letter entity-label, low-width calcTextWidth, and
   short relation-label pruning, after the later low-width relation-label pruning and the
   `insured for` and `is teacher of` relation-label prunings, after the later ER calcTextWidth and
-  HTML width prunings, and after the later blank Block label pruning.
+  HTML width prunings, and after the later blank Block label pruning; the follow-up Class
+  calc-text-width pruning below brings the current total to `526`.
+- [x] Trim the Class calc-text-width override table to only browser-sensitive guards.
+  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 323
+  lookup entries, down from 344, after deleting 21 exact deterministic matches. Both Class DOM
+  parity modes and the layout snapshot test stayed green, and `report-overrides` now reports `526`
+  text lookup entries. The `bar()`, `E`, `IService`, `+run() : Status`, `Client`, and `+start()`
+  entries remain because focused SVG tests assert those Mermaid HTML `max-width` caps explicitly.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -536,7 +543,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `547` text lookup entries), so the strict gate blocks this
+  and `526` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
