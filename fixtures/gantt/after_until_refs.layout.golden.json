@@ -94,10 +94,10 @@
             "id": "a1-text",
             "text": "A ",
             "font_size": 11.0,
-            "width": 9.0,
+            "width": 6.6,
             "x": 419.5,
             "y": 63.5,
-            "class": "taskText taskText0 width-9"
+            "class": "taskText taskText0 width-6.6"
           }
         },
         {

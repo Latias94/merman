@@ -10,6 +10,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   implementations.
 - Added `TYPED_MIGRATION_TIMING.md` as the canonical index for typed migration timing evidence and
   follow-up canaries.
+- Removed the generic Gantt `A` task-width override after `compare-gantt-svgs --check-dom
+  --dom-mode parity --dom-decimals 3` stayed green.
 - Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
   Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so

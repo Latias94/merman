@@ -78,10 +78,10 @@
             "id": "a-text",
             "text": "A ",
             "font_size": 11.0,
-            "width": 9.0,
+            "width": 6.6,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-9"
+            "class": "taskText taskText0 width-6.6"
           }
         }
       ],

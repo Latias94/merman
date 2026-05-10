@@ -145,10 +145,10 @@
             "id": "task8-text",
             "text": "A",
             "font_size": 11.0,
-            "width": 9.0,
+            "width": 6.6,
             "x": 245.5,
             "y": 87.5,
-            "class": "taskText taskText1 width-9"
+            "class": "taskText taskText1 width-6.6"
           }
         },
         {

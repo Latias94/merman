@@ -52,21 +52,21 @@ while keeping `parity-root` green. Class then moved its remaining 31 root viewpo
 profile calibration and namespace render-mode rules, deleting the Class root override module while
 keeping `parity-root` green. Architecture then added default root viewport calibration for the
 nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving 31
-Architecture root pins that still guard measured `parity-root` drift. It also
-reflects the final manual raw SVG/path bridge
-removal, so manual bridge scanning now reports zero bridge files.
-It also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables
-in `block`, `er`, and `gantt` are now counted as text metric lookup entries instead of
-hand-curated helper functions. Text lookup ownership has also tightened: ER and Block generated
-HTML width tables are no longer consulted by the generic vendored text measurer, and their call
-sites now live in their owning diagram modules. The stale Mindmap HTML width table was deleted
-after layout snapshots proved the stable Mindmap path does not use it, reducing text lookup debt by
-291 entries while preventing shared text measurement from leaking fixture-specific widths across
-diagrams. C4 then moved its three per-line SVG bbox height rules into the C4 owner module and
-deleted the generated `c4_text_overrides_11_12_2.rs` module, reducing text lookup debt by another
-3 entries. C4 then moved its 17 type-line `textLength` pins into the C4 owner module and deleted
-the generated `c4_type_textlength_11_12_2.rs` module, so C4 type-line `textLength` now lives in
-owner code instead of the override inventory.
+Architecture root pins that still guard measured `parity-root` drift. It also reflects the final
+manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
+also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
+`block`, `er`, and `gantt` are now counted as text metric lookup entries instead of hand-curated
+helper functions. Text lookup ownership has also tightened: ER and Block generated HTML width
+tables are no longer consulted by the generic vendored text measurer, and their call sites now
+live in their owning diagram modules. The stale Mindmap HTML width table was deleted after layout
+snapshots proved the stable Mindmap path does not use it, reducing text lookup debt by 291 entries
+while preventing shared text measurement from leaking fixture-specific widths across diagrams. C4
+then moved its three per-line SVG bbox height rules into the C4 owner module and deleted the
+generated `c4_text_overrides_11_12_2.rs` module, reducing text lookup debt by another 3 entries.
+Gantt then dropped one generic `A` task-width override after the font-metric fallback proved
+stable, reducing text lookup debt by one more entry. C4 then moved its 17 type-line `textLength`
+pins into the C4 owner module and deleted the generated `c4_type_textlength_11_12_2.rs` module, so
+C4 type-line `textLength` now lives in owner code instead of the override inventory.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
 helpers before the remaining Sankey node geometry moved back to the `sankey` owner module.
 Since then, Pie inlined its fixed margin, center, radius, label font size, title y, and legend
@@ -151,7 +151,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `880`.
+Total lookup entries reported by `xtask`: `879`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -159,7 +159,7 @@ Total lookup entries reported by `xtask`: `880`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gantt_text_overrides_11_12_2.rs` | 44 |
+| `gantt_text_overrides_11_12_2.rs` | 43 |
 | `gitgraph_text_overrides_11_12_2.rs` | 34 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |

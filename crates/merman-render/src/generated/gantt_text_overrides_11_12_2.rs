@@ -19,7 +19,6 @@ fn font_size_key(font_size: f64) -> u16 {
 static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1100, "#Design jison grammar", 113.41650390625),
     (1100, ";Design jison grammar", 110.68701171875),
-    (1100, "A", 9.0),
     (1100, "Active task", 55.7265625),
     (1100, "B", 7.0),
     (1100, "Build", 24.75),
