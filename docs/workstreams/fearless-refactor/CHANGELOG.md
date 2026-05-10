@@ -16,6 +16,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `upstream_pkgtests_sequencediagram_spec_111`, and
   `upstream_pkgtests_sequencediagram_spec_129`), reducing the root viewport budget from `758` to
   `750` while keeping Sequence `parity-root` green.
+- Added a shared xtask root viewport delta helper and wired `compare-sequence-svgs --report-root`
+  to emit the same upstream/local root drift table format as Flowchart, making the remaining
+  Sequence root pin cleanup easier to inspect.
 - Replaced empty-diagram root viewport pins with renderer-derived empty content bounds for
   Flowchart, State, ER, and Requirement. This removed 21 root viewport override entries
   (`flowchart` 10, `state` 9, `er` 1, `requirement` 1), reducing the root viewport budget from
