@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed three more redundant ER HTML width lookups (`code`, `generic`, and `SPACED`) after both
+  ER DOM parity modes stayed green, reducing ER text lookups from `46` to `43` and the global text
+  lookup budget to `589`.
 - Removed the remaining six ER HTML width lookups (`Short code`, `Generic`, `Title`,
   `author-ref[name](1)`, `type<T>`, and `key+comment`) after both ER DOM parity modes stayed
   green, reducing ER text lookups from `52` to `46` and the global text lookup budget to `592`.
