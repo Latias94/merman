@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `Text: A requirement` and `Text: Do thing` HTML
+  width/calc max-width lookups after Requirement DOM parity, root parity, override budget, and
+  `verify --strict` stayed green.
 - Removed the redundant Requirement `Doc Ref:` HTML width/calc max-width lookup bucket after
   Requirement DOM parity, root parity, override budget, refreshed Requirement/relations layout
   goldens, and `verify --strict` stayed green.
