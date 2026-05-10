@@ -26,6 +26,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   - simple mechanical lints (`or_default`, `then_some`, `vec![]`, `with_capacity`, `?`).
   - render context structs replacing long parameter lists in flowchart/root SVG helpers.
   - all-target test-module ordering fixes and `xtask` helper lint cleanup.
+- [x] Add a public feature matrix to the strict release gate.
+  Evidence: `xtask verify --feature-matrix` checks `cargo check -p merman --no-default-features`,
+  `cargo check -p merman --no-default-features --features render`, `cargo check -p merman
+  --no-default-features --features raster`, and `cargo check -p merman-core --no-default-features`.
+  `--strict` now includes this matrix alongside all-features check, clippy, override budget,
+  nextest, and SVG DOM parity.
 - [x] Add a documented "fast local refactor gate" command set.
   Gap check: confirm which nextest packages and snapshot gates give the best signal per minute.
   Evidence: `README.md` now documents core, render, public API, feature-flag, and strict release

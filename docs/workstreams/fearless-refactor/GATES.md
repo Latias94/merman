@@ -36,6 +36,17 @@ The gate fails when any override category grows beyond the explicit budget encod
 `xtask report-overrides`. Real growth is allowed only when the budget and
 `OVERRIDE_FOOTPRINT.md` are updated with reviewable evidence.
 
+## Feature Gate
+
+Use this when touching public feature flags or optional render/raster dependencies:
+
+```sh
+cargo run -p xtask -- verify --feature-matrix
+```
+
+This checks `merman` with no default features, `render`, and `raster`, plus `merman-core` without
+its default feature set.
+
 ## Performance Gate
 
 Use this when the change is meant to reduce allocations or render time:
@@ -54,5 +65,5 @@ Use this before landing broad cleanup or public-surface changes:
 cargo run -p xtask -- verify --strict
 ```
 
-This is the release-level superset of the other gates and includes fmt, all-features check,
-workspace clippy, override no-growth, nextest, and SVG DOM parity.
+This is the release-level superset of the other gates and includes fmt, all-features check, public
+feature matrix, workspace clippy, override no-growth, nextest, and SVG DOM parity.

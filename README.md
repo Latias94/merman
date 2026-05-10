@@ -336,6 +336,16 @@ Quick confidence check:
 cargo run -p xtask -- verify
 ```
 
+Release-level check:
+
+```sh
+cargo run -p xtask -- verify --strict
+```
+
+`--strict` adds all-features compilation, the public feature matrix
+(`merman` no-default/render/raster and `merman-core` no-default), workspace clippy, override
+no-growth, nextest, and SVG DOM parity.
+
 For a quick “does raster output look sane?” sweep across fixtures (dev-only):
 
 - `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/preview/export-fixtures-png.ps1 -BuildReleaseCli -CleanOutDir`

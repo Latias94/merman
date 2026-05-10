@@ -7,6 +7,7 @@ struct VerifyOptions {
     clippy: bool,
     all_features: bool,
     check_overrides: bool,
+    feature_matrix: bool,
 }
 
 pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
@@ -20,10 +21,12 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 "--clippy" => options.clippy = true,
                 "--all-features" => options.all_features = true,
                 "--check-overrides" => options.check_overrides = true,
+                "--feature-matrix" => options.feature_matrix = true,
                 "--strict" => {
                     options.clippy = true;
                     options.all_features = true;
                     options.check_overrides = true;
+                    options.feature_matrix = true;
                 }
                 "--help" | "-h" => {
                     print_verify_usage();
@@ -37,7 +40,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     fn print_verify_usage() {
-        println!("usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--strict]");
+        println!(
+            "usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--feature-matrix] [--strict]"
+        );
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
@@ -50,7 +55,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("                  also applies --all-features to clippy when combined");
         println!("  --check-overrides");
         println!("                  fail if generated/manual override counts grow beyond budget");
-        println!("  --strict        shorthand for --clippy --all-features --check-overrides");
+        println!("  --feature-matrix");
+        println!("                  check public no-default/render/raster feature combinations");
+        println!(
+            "  --strict        shorthand for --clippy --all-features --check-overrides --feature-matrix"
+        );
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -122,6 +131,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         cmd::report_overrides(vec!["--check-no-growth".to_string()])?;
     }
 
+    if options.feature_matrix {
+        println!("\n== feature matrix ==");
+        run_feature_matrix(&workspace_root, &mut run_checked)?;
+    }
+
     println!("\n== cargo nextest ==");
     let mut nextest_cmd = Command::new("cargo");
     nextest_cmd
@@ -138,6 +152,53 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         "--dom-decimals".to_string(),
         "3".to_string(),
     ])?;
+
+    Ok(())
+}
+
+fn run_feature_matrix(
+    workspace_root: &std::path::Path,
+    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
+) -> Result<(), XtaskError> {
+    let checks: &[(&str, &[&str])] = &[
+        (
+            "cargo check -p merman --no-default-features",
+            &["check", "-p", "merman", "--no-default-features"],
+        ),
+        (
+            "cargo check -p merman --no-default-features --features render",
+            &[
+                "check",
+                "-p",
+                "merman",
+                "--no-default-features",
+                "--features",
+                "render",
+            ],
+        ),
+        (
+            "cargo check -p merman --no-default-features --features raster",
+            &[
+                "check",
+                "-p",
+                "merman",
+                "--no-default-features",
+                "--features",
+                "raster",
+            ],
+        ),
+        (
+            "cargo check -p merman-core --no-default-features",
+            &["check", "-p", "merman-core", "--no-default-features"],
+        ),
+    ];
+
+    for (what, args) in checks {
+        println!("{what}");
+        let mut cmd = Command::new("cargo");
+        cmd.args(*args).current_dir(workspace_root);
+        run_checked(what, &mut cmd)?;
+    }
 
     Ok(())
 }

@@ -15,7 +15,8 @@ Success means:
 - High-impact diagrams no longer pay unnecessary JSON construction costs in render-only paths.
 - Text measurement and markdown/HTML/SVG label logic have clear module boundaries.
 - Large parity renderers can be changed locally without scanning thousands of unrelated lines.
-- All feature-gated code compiles regularly.
+- All feature-gated public code compiles regularly, including no-default, render, and raster
+  combinations.
 - Clippy stays green for the workspace under the agreed release gate.
 - Override growth is visible and justified.
 
@@ -25,13 +26,15 @@ Status: complete.
 
 Evidence:
 
-- `cargo run -p xtask -- verify --strict` passed. This covers fmt, all-features check,
-  workspace all-target/all-features clippy, nextest, and SVG DOM parity.
+- `cargo run -p xtask -- verify --strict` passed. This covers fmt, all-features check, public
+  feature matrix, workspace all-target/all-features clippy, nextest, override no-growth, and SVG
+  DOM parity.
 
 Scope:
 
 - Keep default tests green.
 - Keep `--all-features` compilation green.
+- Keep the public no-default/render/raster feature matrix green.
 - Establish the standard gate list for refactor work.
 - Make optional environment-dependent tests robust.
 
@@ -39,6 +42,7 @@ Exit criteria:
 
 - `cargo fmt`
 - `cargo check --workspace --all-features`
+- `cargo run -p xtask -- verify --feature-matrix`
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo run -p xtask -- verify --strict`
 - `cargo nextest run -p merman-core -p merman-render`

@@ -14,10 +14,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Fewer duplicated pipelines | `MILESTONES.md` records the typed render-model migrations for sequence, kanban, gantt, pie, packet, timeline, journey, requirement, sankey, radar, info, zenuml, quadrant chart, gitGraph, treemap, block, er, c4, and xychart. | Met |
-| Healthier feature gates | `README.md`, `GATES.md`, and `MILESTONES.md` all document `cargo clippy` and `cargo run -p xtask -- verify --strict` as release-level gates. The latest `cargo run -p xtask -- verify --strict` passed after the GitGraph branch-label, commit-label, and glyph cleanup plus regenerated layout goldens. | Met |
+| Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed after the GitGraph branch-label, commit-label, and glyph cleanup plus regenerated layout goldens, and the degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed after the Flowchart text override pruning and State Dagre input builder cleanup; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -27,6 +27,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | --- | --- | --- |
 | Typed-first pipeline | `docs/workstreams/fearless-refactor/MILESTONES.md`, `RENDER_MODEL_INVENTORY.md`, `TYPED_RENDERER_GUIDE.md` | Covered |
 | Parity-safe release | `cargo run -p xtask -- verify --strict` | Covered |
+| Public feature gates | `cargo run -p xtask -- verify --feature-matrix` and `cargo run -p xtask -- verify --strict` | Covered |
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
 | Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
@@ -35,7 +36,8 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
-- `cargo run -p xtask -- verify --strict` passed after the GitGraph branch-label, commit-label, and glyph table removals, the regenerated GitGraph layout goldens, and the earlier flowchart helper restorations.
+- `cargo run -p xtask -- verify --strict` passed after Flowchart text override pruning and the State Dagre input builder cleanup.
+- `cargo run -p xtask -- verify --feature-matrix` passed, covering `merman` no-default/render/raster and `merman-core` no-default feature checks.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passed during the helper rechecks.
 - Flowchart DOM spotchecks for `edges_to_from_subgraphs`, `subgraph_spec`, and `cluster` were green while the helpers were temporarily disabled, and the later strict-gate run showed that the cyclic-special basis helper could stay deleted while the degenerate-path and cluster-run helpers remain required for full parity.
 - `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` and `cargo run -p xtask -- verify --strict` stayed green after inlining the State viewport mode helper.

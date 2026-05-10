@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Added `xtask verify --feature-matrix` and included it in `--strict`, so the release gate now
+  checks `merman` with no default features, `render`, and `raster`, plus `merman-core` without its
+  default feature set.
 - Collapsed State v2 Dagre input graph construction into a single shared builder used by both the
   production layout path and the debug/xtask comparison helper, deleting the duplicate debug-only
   graph construction while keeping State tests and `parity-root` green.
