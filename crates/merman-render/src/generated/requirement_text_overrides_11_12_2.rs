@@ -54,8 +54,6 @@ pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<
         ("Type: system", false) => Some(5.8046875),
         ("Type: test_type", false) => Some(6.9892578125),
         ("Verification: Analysis", false) => Some(9.33984375),
-        ("Verification: Demonstration", false) => Some(12.40234375),
-        ("Verification: Inspection", false) => Some(10.4423828125),
         ("Verification: Test", false) => Some(7.6357421875),
         _ => None,
     }
@@ -111,8 +109,6 @@ pub fn lookup_requirement_calc_max_width_px(calc_text: &str) -> Option<i64> {
         "Type: system" => Some(135),
         "Type: test_type" => Some(148),
         "Verification: Analysis" => Some(190),
-        "Verification: Demonstration" => Some(231),
-        "Verification: Inspection" => Some(203),
         "Verification: Test" => Some(162),
         _ => None,
     }

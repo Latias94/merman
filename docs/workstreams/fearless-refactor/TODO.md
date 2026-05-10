@@ -478,7 +478,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_cypress_requirement_spec_example_001` from `551px` to `551.5px`. Requirement also
   dropped the paired `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML width/calc max-width
   lookups after both Requirement parity modes, the override budget, and `verify --strict` stayed
-  green. One
+  green. Requirement also dropped the paired `Verification: Demonstration` and
+  `Verification: Inspection` HTML width/calc max-width lookups after both Requirement parity modes,
+  the override budget, and `verify --strict` stayed green; `Verification: Analysis` and
+  `Verification: Test` were kept because `basic` still drifted when `Analysis` was removed. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

@@ -47,7 +47,7 @@
           "id": "req_design",
           "x": 1353.578,
           "y": 8.0,
-          "width": 187.078,
+          "width": 183.703,
           "height": 184.0,
           "is_cluster": false
         }
@@ -56,7 +56,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 1540.656,
+        "max_x": 1537.281,
         "max_y": 192.0
       }
     }

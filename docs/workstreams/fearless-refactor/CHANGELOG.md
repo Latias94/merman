@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `Verification: Demonstration` and `Verification: Inspection`
+  HTML width/calc max-width lookups after Requirement DOM parity, root parity, override budget,
+  and `verify --strict` stayed green, while keeping `Verification: Analysis` and
+  `Verification: Test` after `basic` still drifted when `Analysis` was removed.
 - Removed the redundant Requirement `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML
   width/calc max-width lookups after Requirement DOM parity, root parity, override budget, and
   `verify --strict` stayed green.

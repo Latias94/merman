@@ -125,6 +125,11 @@ from `551px` to `551.5px` without it.
 Requirement then dropped the paired `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML
 width/calc max-width lookups after both requirement parity modes, the override budget, and
 `verify --strict` stayed green without them.
+Requirement then dropped the paired `Verification: Demonstration` and `Verification: Inspection`
+HTML width/calc max-width lookups after both requirement parity modes, the override budget, and
+`verify --strict` stayed green without them. The paired `Verification: Analysis` and
+`Verification: Test` lookups were rechecked in the same pass and kept because `basic` still drifted
+when `Analysis` was removed.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -182,7 +187,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `787`.
+Total lookup entries reported by `xtask`: `783`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -191,7 +196,7 @@ Total lookup entries reported by `xtask`: `787`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 102 |
+| `requirement_text_overrides_11_12_2.rs` | 98 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
