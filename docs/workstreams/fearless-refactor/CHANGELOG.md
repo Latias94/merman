@@ -5,6 +5,16 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the remaining six ER HTML width lookups (`Short code`, `Generic`, `Title`,
+  `author-ref[name](1)`, `type<T>`, and `key+comment`) after both ER DOM parity modes stayed
+  green, reducing ER text lookups from `52` to `46` and the global text lookup budget to `592`.
+- Removed the redundant ER HTML width lookup for `Author ref` after both ER DOM parity modes
+  stayed green, reducing ER text lookups from `53` to `52` and the global text lookup budget to
+  `598`.
+- Removed the remaining seven ER calc-text-width lookups (`Author ref`, `SPACED`, `Short code`,
+  `author-ref[name](1)`, `key+comment`, `type<T>`, and `varchar(5)`) after both ER DOM parity
+  modes stayed green, reducing ER text lookups from `60` to `53` and the global text lookup
+  budget to `599`.
 - Removed the redundant ER relation label width lookup for `is teacher of` after both ER DOM
   parity modes stayed green, reducing ER text lookups from `61` to `60` and the global text lookup
   budget to `606`.

@@ -18,7 +18,6 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1600, "*id", 19.359375),
     (1600, "*title", 36.578125),
     (1600, "Alias!", 39.484375),
-    (1600, "Author ref", 73.75),
     (1600, "BOOK", 39.828125),
     (1600, "Blo@rf", 46.828125),
     (1600, "Book", 34.296875),
@@ -30,7 +29,6 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1600, "ENTITY1", 59.328125),
     (1600, "ENTITY2", 59.328125),
     (1600, "FK", 17.609375),
-    (1600, "Generic", 55.71875),
     (1600, "HOUSE", 47.890625),
     (1600, "ISLAND", 49.71875),
     (1600, "LICENSE", 57.171875),
@@ -48,36 +46,23 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1600, "ROOM", 42.234375),
     (1600, "SPACED", 52.234375),
     (1600, "STUDENT", 65.25),
-    (1600, "Short code", 76.5625),
     (1600, "TEACHER", 65.21875),
     (1600, "TEAM_MEMBER", 105.25),
-    (1600, "Title", 32.984375),
     (1600, "UK", 19.59375),
     (1600, "author", 47.046875),
-    (1600, "author-ref[name](1)", 144.828125),
     (1600, "buzz", 32.84375),
     (1600, "code", 34.15625),
     (1600, "fizz", 25.671875),
     (1600, "generic", 52.9375),
     (1600, "int", 19.65625),
-    (1600, "key+comment", 99.96875),
     (1600, "number", 54.625),
     (1600, "string", 40.375),
     (1600, "string[]", 52.125),
     (1600, "title", 30.703125),
-    (1600, "type<T>", 57.953125),
     (1600, "varchar(5)", 73.890625),
 ];
 
-static CALC_TEXT_WIDTH_OVERRIDES_PX: &[(u16, &str, i64)] = &[
-    (1600, "Author ref", 71),
-    (1600, "SPACED", 60),
-    (1600, "Short code", 69),
-    (1600, "author-ref[name](1)", 128),
-    (1600, "key+comment", 93),
-    (1600, "type&lt;T&gt;", 93),
-    (1600, "varchar(5)", 68),
-];
+static CALC_TEXT_WIDTH_OVERRIDES_PX: &[(u16, &str, i64)] = &[];
 
 pub fn lookup_html_width_px(font_size: f64, text: &str) -> Option<f64> {
     let fs = font_size_key(font_size);

@@ -185,7 +185,12 @@ ER pass removed the low-width relation labels `contains`, `hasMany`, `leads to`,
 `parent`, `places`, and `relates` under the same ER parity gates, reducing the text lookup total to
 608. A later ER pass removed the `insured for` relation label width lookup under the same ER parity
 gates, reducing the text lookup total to 607. A later ER pass removed the `is teacher of`
-relation label under the same ER parity gates, reducing the text lookup total to 606.
+relation label under the same ER parity gates, reducing the text lookup total to 606. A later ER
+pass removed the remaining seven ER calcTextWidth lookup entries under the same ER parity gates,
+reducing the text lookup total to 599. A later ER pass removed the `Author ref` HTML width lookup
+under the same ER parity gates, reducing the text lookup total to 598. A later ER pass removed the
+remaining six ER HTML width lookup entries under the same ER parity gates, reducing the text
+lookup total to 592.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -243,13 +248,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `606`.
+Total lookup entries reported by `xtask`: `592`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
 | `class_text_overrides_11_12_2.rs` | 344 |
-| `er_text_overrides_11_12_2.rs` | 60 |
+| `er_text_overrides_11_12_2.rs` | 46 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 25 |
