@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Configuring",
-          "x": 249.098,
+          "x": 245.453,
           "y": 179.5,
-          "width": 482.195,
+          "width": 474.906,
           "height": 343.0,
           "is_cluster": true
         },
@@ -142,22 +142,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 277.741,
+              "x": 276.343,
               "y": 274.0
             },
             {
-              "x": 393.273,
+              "x": 388.414,
               "y": 224.0
             },
             {
-              "x": 277.741,
+              "x": 276.343,
               "y": 175.0
             }
           ],
           "label": {
-            "x": 393.273,
+            "x": 388.414,
             "y": 224.0,
-            "width": 135.953,
+            "width": 126.234,
             "height": 24.0
           },
           "start_label_left": null,
@@ -172,15 +172,15 @@
       "clusters": [
         {
           "id": "Configuring",
-          "x": 249.098,
+          "x": 245.453,
           "y": 179.5,
-          "width": 482.195,
+          "width": 474.906,
           "height": 343.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "Configuring",
           "title_label": {
-            "x": 249.098,
+            "x": 245.453,
             "y": 21.0,
             "width": 73.594,
             "height": 24.0
@@ -195,7 +195,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 490.195,
+        "max_x": 482.906,
         "max_y": 351.0
       }
     }

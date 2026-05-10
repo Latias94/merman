@@ -168,15 +168,6 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
     }
 
     match text {
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_concurrent_state_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_concurrent_state_spec.svg
-        "EvCapsLockPressed" => Some(136.171875),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_concurrent_state_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_concurrent_state_spec.svg
-        "EvNumLockPressed" => Some(135.03125),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_separation_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
-        "EvConfig" => Some(61.8125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_recursive_state_definitions_spec.svg
         // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
         "EvNewValueSaved" => Some(129.447265625),
@@ -184,8 +175,6 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
         "EvNewValue" => Some(85.984375),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "EvNewValueRejected" => Some(149.875),
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
-        "EvNewValueSaved1" => Some(135.953125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
         "Transition 1" | "Transition 2" | "Transition 3" => Some(83.390625),
         _ => None,

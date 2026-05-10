@@ -171,7 +171,8 @@ the text lookup total at 677. A later State cluster-title pass removed three mor
 after both State parity modes stayed green, leaving the text lookup total at 674. A follow-up State
 node/note label pass removed five more width lookups under the same parity gates, leaving the text
 lookup total at 669. A quoted edge-label pass removed three more State width lookups under the same
-parity gates, leaving the text lookup total at 666.
+parity gates, leaving the text lookup total at 666. A follow-up State edge-label pass removed four
+more width lookups under the same parity gates, leaving the text lookup total at 662.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -229,7 +230,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `666`.
+Total lookup entries reported by `xtask`: `662`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -238,7 +239,7 @@ Total lookup entries reported by `xtask`: `666`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 31 |
+| `state_text_overrides_11_12_2.rs` | 27 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -259,6 +260,8 @@ height lookup after both State parity modes stayed green. A cluster-title pass t
 checks. A node/note label pass then removed `Idle`, `Moving`, `LOG`, `ACT`, and
 `this is a short<br/>note` after both State parity modes stayed green. A quoted edge-label pass then
 removed `New Data`, `Succeeded`, and `Succeeded / Save Result` under the same two checks. The
+next edge-label pass removed `EvCapsLockPressed`, `EvNumLockPressed`, `EvConfig`, and
+`EvNewValueSaved1` under the same two checks. The
 remaining
 `this is a string with - in it` width lookup and the multiline title height lookup still guard root
 drift when disabled.
