@@ -141,7 +141,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   through xychart, plus the C4/XYChart stage-attribution reports and the current
   Mindmap/Architecture canaries. Gantt also dropped the generic `A`, `B`, `C`, `Build`, `Design`,
   `Noon`, `t1`, `task1`, `test1`, `test2`, `test3`, `test4`, `test5`, `test6`, and `test7`
-  task-width rows, plus `task2`, `task3`, and `task4`, from
+  task-width rows, plus `task2`, `task3`, `task4`, `y68`, and `y69`, from
   `gantt_text_overrides_11_12_2.rs` while Gantt parity and the strict gate stayed green. Future
   typed migrations should append a new baseline pair here before merge.
   `crates/merman/tests/pipeline_bench_fixtures.rs` now guards all pipeline fixtures against

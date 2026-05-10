@@ -41,8 +41,6 @@ static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1100, "task B", 30.45556640625),
     (1100, "task C", 30.45556640625),
     (1100, "task D", 30.45556640625),
-    (1100, "y68", 18.193359375),
-    (1100, "y69", 18.193359375),
 ];
 
 pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64> {
