@@ -207,10 +207,10 @@
             "id": "task9-text",
             "text": "B",
             "font_size": 11.0,
-            "width": 7.0,
+            "width": 6.6,
             "x": 269.5,
             "y": 111.5,
-            "class": "taskText taskText1 width-7"
+            "class": "taskText taskText1 width-6.6"
           }
         },
         {
@@ -269,10 +269,10 @@
             "id": "task10-text",
             "text": "C",
             "font_size": 11.0,
-            "width": 7.0,
+            "width": 6.6,
             "x": 459.5,
             "y": 87.5,
-            "class": "taskText taskText1 width-7"
+            "class": "taskText taskText1 width-6.6"
           }
         },
         {

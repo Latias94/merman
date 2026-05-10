@@ -125,10 +125,10 @@
             "id": "a3-text",
             "text": "C ",
             "font_size": 11.0,
-            "width": 7.0,
+            "width": 6.6,
             "x": 419.5,
             "y": 111.5,
-            "class": "taskText taskText0 width-7"
+            "class": "taskText taskText0 width-6.6"
           }
         },
         {
@@ -156,10 +156,10 @@
             "id": "a2-text",
             "text": "B ",
             "font_size": 11.0,
-            "width": 7.0,
+            "width": 6.6,
             "x": 936.5,
             "y": 87.5,
-            "class": "taskText taskText0 width-7"
+            "class": "taskText taskText0 width-6.6"
           }
         }
       ],
