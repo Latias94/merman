@@ -86,10 +86,10 @@
             "id": "des1-text",
             "text": ";Design jison grammar",
             "font_size": 11.0,
-            "width": 110.687,
+            "width": 101.75,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-110.68701171875"
+            "class": "taskText taskText0 width-101.74999999999999"
           }
         },
         {
@@ -117,10 +117,10 @@
             "id": "des2-text",
             "text": "#Design jison grammar",
             "font_size": 11.0,
-            "width": 113.417,
+            "width": 105.27,
             "x": 592.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-113.41650390625"
+            "class": "taskText taskText0 width-105.26999999999998"
           }
         }
       ],

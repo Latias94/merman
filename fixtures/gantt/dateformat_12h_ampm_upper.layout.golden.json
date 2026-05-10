@@ -117,10 +117,10 @@
             "id": "n2-text",
             "text": "Midnight",
             "font_size": 11.0,
-            "width": 43.748,
+            "width": 36.41,
             "x": 1069.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-43.748046875"
+            "class": "taskText taskText0 width-36.410000000000004"
           }
         }
       ],

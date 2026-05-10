@@ -324,10 +324,10 @@
             "id": "cl1-text",
             "text": "Visit mermaidjs ",
             "font_size": 11.0,
-            "width": 78.279,
+            "width": 74.47,
             "x": 227.0,
             "y": 375.5,
-            "class": "clickable taskText taskText3 width-78.27880859375"
+            "class": "clickable taskText taskText3 width-74.47"
           }
         },
         {

@@ -17,25 +17,12 @@ fn font_size_key(font_size: f64) -> u16 {
 }
 
 static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
-    (1100, "#Design jison grammar", 113.41650390625),
-    (1100, ";Design jison grammar", 110.68701171875),
     (1100, "Active task", 55.7265625),
-    (1100, "Calling a callback", 86.99072265625),
     (1100, "Completed task", 77.3818359375),
-    (1100, "Ctor task", 45.0263671875),
     (1100, "Future task", 56.337890625),
-    (1100, "London Trip 2", 66.671875),
-    (1100, "Midnight", 43.748046875),
-    (1100, "One PM", 37.86962890625),
-    (1100, "Proto task", 49.9677734375),
     (1100, "Task", 22.24853515625),
     (1100, "Task1", 27.578125),
     (1100, "Task2", 27.796875),
-    (1100, "Visit mermaidjs", 78.27880859375),
-    (1100, "task A", 30.8486328125),
-    (1100, "task B", 30.45556640625),
-    (1100, "task C", 30.45556640625),
-    (1100, "task D", 30.45556640625),
 ];
 
 pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64> {

@@ -35,6 +35,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed the Gantt duration-label task-width overrides for `days`, `hours`, `minutes`, `ms`, and
   `seconds` after `cargo run -p xtask -- verify --strict` stayed green with regenerated layout
   goldens.
+- Removed nine small-fixture Gantt task-width overrides spanning leading punctuation, callback,
+  proto-id, year fallback, and 12-hour time labels after `cargo run -p xtask -- verify --strict`
+  stayed green with regenerated layout goldens.
+- Removed the Gantt `task A` through `task D` task-width overrides in `relative_end_mixed` after
+  `cargo run -p xtask -- verify --strict` stayed green with regenerated layout goldens.
 - Lifted RoughJS rectangle and circle generation into the shared parity helper layer, so State and
   Flowchart now reuse the same seeded shape emission code as well as the same path formatting.
 - Introduced a shared RoughJS parity helper layer for hex parsing and `opsToPath` formatting, so
