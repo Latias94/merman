@@ -94,40 +94,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         measurer: &dyn TextMeasurer,
         text: &str,
         style: &crate::text::TextStyle,
-        apply_corrections: bool,
     ) -> f64 {
-        let base = measurer
+        measurer
             .measure_svg_simple_text_bbox_width_px(text, style)
-            .max(0.0);
-        let extra = if apply_corrections {
-            gitgraph_simple_text_bbox_width_correction_px(text)
-        } else {
-            0.0
-        };
-        (base + extra).max(0.0)
-    }
-
-    fn gitgraph_simple_text_bbox_width_correction_px(text: &str) -> f64 {
-        let Some(first) = text.chars().next() else {
-            return 0.0;
-        };
-        let Some(last) = text.chars().next_back() else {
-            return 0.0;
-        };
-        gitgraph_simple_text_bbox_width_correction_left_px(first)
-            + gitgraph_simple_text_bbox_width_correction_right_px(last)
-    }
-
-    fn gitgraph_simple_text_bbox_width_correction_left_px(ch: char) -> f64 {
-        crate::generated::gitgraph_text_overrides_11_12_2::
-            lookup_gitgraph_simple_text_bbox_width_left_px(ch)
-            .unwrap_or(0.0)
-    }
-
-    fn gitgraph_simple_text_bbox_width_correction_right_px(ch: char) -> f64 {
-        crate::generated::gitgraph_text_overrides_11_12_2::
-            lookup_gitgraph_simple_text_bbox_width_right_px(ch)
-            .unwrap_or(0.0)
+            .max(0.0)
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -456,8 +426,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         .map(|s| s.trim().trim_end_matches(';').trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
-    let apply_bbox_corrections = normalize_css_font_family(&commit_font_family)
-        == r#""trebuchet ms",verdana,arial,sans-serif"#;
     let commit_label_style = crate::text::TextStyle {
         font_family: Some(commit_font_family),
         font_size: 10.0,
@@ -470,12 +438,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             && c.commit_type != 4
             && layout.show_commit_label;
         if show {
-            let bbox_w = gitgraph_simple_text_bbox_width_px(
-                measurer,
-                &c.id,
-                &commit_label_style,
-                apply_bbox_corrections,
-            );
+            let bbox_w = gitgraph_simple_text_bbox_width_px(measurer, &c.id, &commit_label_style);
             let bbox_h = measurer
                 .measure_svg_simple_text_bbox_height_px(&c.id, &commit_label_style)
                 .max(0.0);
@@ -562,12 +525,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             }
             let mut elems: Vec<TagGeom> = Vec::new();
             for tag_value in &tag_values {
-                let bbox_w = gitgraph_simple_text_bbox_width_px(
-                    measurer,
-                    tag_value,
-                    &commit_label_style,
-                    apply_bbox_corrections,
-                );
+                let bbox_w =
+                    gitgraph_simple_text_bbox_width_px(measurer, tag_value, &commit_label_style);
                 let bbox_h = measurer
                     .measure_svg_simple_text_bbox_height_px(tag_value, &commit_label_style)
                     .max(0.0);

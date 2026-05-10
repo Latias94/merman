@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Deleted the empty GitGraph text override module after rechecking that all remaining
+  branch-label and commit-label glyph corrections stayed green without it under
+  `compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`, reducing the global
+  text lookup budget to `681`.
 - Removed the redundant Requirement `Verification: Test` HTML width/calc max-width lookup pair
   after both Requirement DOM parity modes stayed green, reducing Requirement text lookups from 8
   to 6 and the global text lookup budget to `690`.
@@ -14,15 +18,15 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Collapsed State v2 Dagre input graph construction into a single shared builder used by both the
   production layout path and the debug/xtask comparison helper, deleting the duplicate debug-only
   graph construction while keeping State tests and `parity-root` green.
-- Tightened `xtask report-overrides --check-no-growth` to the current category totals for root
+- Tightened `xtask report-overrides --check-no-growth` to the then-current category totals for root
   viewport entries (`779`) and text lookup entries (`690`), so the strict gate now rejects
   reintroducing the deleted override footprint.
 - Reduced the Flowchart text override module from 48 entries to 45 confirmed guards: bold/italic
   markdown deltas, HTML width guards, and SVG bbox guards for the fixtures that still drift without
   them under root parity or focused text metric assertions.
 - Fixed `report-overrides` text lookup accounting for block-wrapped `=> { Some(...) }` match arms,
-  which keeps Class text lookups at `344`, Flowchart text lookups at `45`, and the current total at
-  `690`.
+  which kept Class text lookups at `344`, Flowchart text lookups at `45`, and the then-current
+  total at `690`.
 - Removed the remaining redundant Requirement bold title/entity-name HTML width/calc max-width
   lookups (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`, `myElem`, `myReq`, `req`, the
   `req_*` type names, `req1`, `req2`, `test_element`, `test_name`, and `test_req`) after

@@ -163,8 +163,9 @@ green, leaving only `<<Performance Requirement>>`, `Type: simulation`, and
 `Verification: Analysis`. Flowchart then reduced `flowchart_text_overrides_11_12_2.rs` from 48
 lookup entries to 45 confirmed guards after full Flowchart `parity-root` and focused text metric
 assertions proved those bold/italic markdown, HTML width, and SVG bbox entries still guard upstream
-behavior. Together with the block-wrapped `Some` accounting fix, this leaves the text lookup total
-at 690.
+behavior. GitGraph then deleted its 9-entry glyph correction module after the remaining boundary
+corrections stayed green without it under the GitGraph DOM parity gate. Together with the
+block-wrapped `Some` accounting fix, this leaves the text lookup total at 681.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -222,7 +223,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `690`.
+Total lookup entries reported by `xtask`: `681`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -230,10 +231,13 @@ Total lookup entries reported by `xtask`: `690`.
 | `class_text_overrides_11_12_2.rs` | 344 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
-| `gitgraph_text_overrides_11_12_2.rs` | 9 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
+
+GitGraph note: the 9-entry glyph correction module was deleted after
+`compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green with all
+remaining left/right boundary corrections removed.
 
 ER note: the remaining single drawRect clamp lookup was rechecked by bypassing it and using the
 formula-only no-attribute entity clamp. Standard ER DOM parity stayed green, but `parity-root`

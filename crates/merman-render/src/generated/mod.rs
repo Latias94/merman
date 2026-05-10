@@ -12,7 +12,6 @@ pub mod flowchart_root_overrides_11_12_2;
 pub mod flowchart_text_overrides_11_12_2;
 pub mod font_metrics_flowchart_11_12_2;
 pub mod gitgraph_root_overrides_11_12_2;
-pub mod gitgraph_text_overrides_11_12_2;
 pub mod mindmap_root_overrides_11_12_2;
 pub mod requirement_root_overrides_11_12_2;
 pub mod requirement_text_overrides_11_12_2;

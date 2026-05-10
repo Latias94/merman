@@ -197,8 +197,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `690` text lookup entries after counting block-wrapped
-  `=> { Some(...) }` arms correctly and after the later Requirement `Verification: Test` pruning.
+  them. `report-overrides` now reports `681` text lookup entries after counting block-wrapped
+  `=> { Some(...) }` arms correctly, after the later Requirement `Verification: Test` pruning,
+  and after deleting the empty GitGraph glyph correction module.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -530,7 +531,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`779` root viewport entries
-  and `690` text lookup entries), so the strict gate blocks this
+  and `681` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
@@ -584,6 +585,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   corrections after DOM parity stayed green with the smaller correction table.
   A subsequent GitGraph glyph pass removed the right-side `C`, `D`, `B`, `0`, `6`, `4`, `a`, and
   `d` character corrections after DOM parity stayed green with the even smaller correction table.
+  A final GitGraph glyph pass deleted the remaining 9-entry glyph correction module after
+  `compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3` stayed green without any
+  boundary corrections, reducing the global text lookup total to 681.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.
