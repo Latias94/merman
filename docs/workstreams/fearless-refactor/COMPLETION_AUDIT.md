@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class `calcTextWidth` pruning; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the ER text override generator cleanup; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -31,13 +31,19 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
 | Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
-| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, plus the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` | Covered for the recheck decision; obsolete helpers were removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
-| Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md` | Covered |
+| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs`, and deletion of the stale ER text override generator | Covered for the recheck decision; obsolete helpers/generators were removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
+| Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, `GATES.md`, and `OVERRIDE_POLICY.md` | Covered |
 
 ## What Was Verified Recently
 
-- `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after pruning 21 redundant Class
-  `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
+- `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
+  `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
+  The override budget stayed at `779` root viewport entries and `526` text lookup entries.
+- A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
+  deletion now requires layout snapshot evidence because the default deterministic layout measurer
+  can still differ when the vendored SVG/HTML measurer matches the stored override.
+- `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after pruning 21 redundant
+  Class `calcTextWidth` entries and tightening the text lookup no-growth budget to `526`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.
