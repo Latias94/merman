@@ -291,7 +291,10 @@ remaining left/right boundary corrections removed.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
-parity modes stayed green, and the ER layout goldens were refreshed.
+parity modes stayed green, and the ER layout goldens were refreshed. Individual removal attempts
+for `string`, `varchar(5)`, and `DRIVER` still failed
+`compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, so the 3-entry floor stays
+in place.
 
 State note: the single diagram-title bbox lookup for `Simple sample` was rechecked by disabling
 the lookup. Standard State DOM parity stayed green, but `parity-root` dropped the root `max-width`

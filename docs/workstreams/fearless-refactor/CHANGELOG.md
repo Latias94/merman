@@ -69,8 +69,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `547` at that point.
 - Collapsed the remaining ER HTML width lookups to 3 entries after both ER DOM parity modes stayed
   green and ER layout snapshots were refreshed, reducing the global text lookup budget to `549`.
-  A follow-up bypass of the 3-entry floor still failed `parity-root`, so the `string`,
-  `varchar(5)`, and `DRIVER` guards remain required.
+  A follow-up bypass of the 3-entry floor still failed `parity-root`, and individual removal
+  attempts confirmed that `string`, `varchar(5)`, and `DRIVER` still guard real ER drift, so the
+  floor remains required.
 - Removed 21 more ER HTML width lookups across alias, quoted-entity, standalone-entity,
   accessibility, attribute, and pkgtests fixtures after both ER DOM parity modes stayed green,
   reducing ER text lookups from `43` to `22` and the global text lookup budget to `568`.
