@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-10
 
+- Removed the redundant Requirement `Verification: Test` HTML width/calc max-width lookup pair
+  after both Requirement DOM parity modes stayed green, reducing Requirement text lookups from 8
+  to 6 and the global text lookup budget to `690`.
 - Added `xtask verify --feature-matrix` and included it in `--strict`, so the release gate now
   checks `merman` with no default features, `render`, and `raster`, plus `merman-core` without its
   default feature set.
@@ -12,13 +15,14 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   production layout path and the debug/xtask comparison helper, deleting the duplicate debug-only
   graph construction while keeping State tests and `parity-root` green.
 - Tightened `xtask report-overrides --check-no-growth` to the current category totals for root
-  viewport entries (`779`) and text lookup entries (`692`), so the strict gate now rejects
+  viewport entries (`779`) and text lookup entries (`690`), so the strict gate now rejects
   reintroducing the deleted override footprint.
 - Reduced the Flowchart text override module from 48 entries to 45 confirmed guards: bold/italic
   markdown deltas, HTML width guards, and SVG bbox guards for the fixtures that still drift without
   them under root parity or focused text metric assertions.
 - Fixed `report-overrides` text lookup accounting for block-wrapped `=> { Some(...) }` match arms,
-  which brings Class text lookups to `344`, Flowchart text lookups to `45`, and the total to `692`.
+  which keeps Class text lookups at `344`, Flowchart text lookups at `45`, and the current total at
+  `690`.
 - Removed the remaining redundant Requirement bold title/entity-name HTML width/calc max-width
   lookups (`constructor`, `dc1`, `e1`, `elA`, `elB`, `elem`, `myElem`, `myReq`, `req`, the
   `req_*` type names, `req1`, `req2`, `test_element`, `test_name`, and `test_req`) after
@@ -50,8 +54,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   fixtures drifted without it.
 - Removed the redundant Requirement `Verification: Demonstration` and `Verification: Inspection`
   HTML width/calc max-width lookups after Requirement DOM parity, root parity, override budget,
-  and `verify --strict` stayed green, while keeping `Verification: Analysis` and
-  `Verification: Test` after `basic` still drifted when `Analysis` was removed.
+  and `verify --strict` stayed green. `Verification: Analysis` remained after `basic` still
+  drifted when it was removed; `Verification: Test` was removed in the later recheck above.
 - Removed the redundant Requirement `Risk: High`, `Risk: Low`, and `Risk: Medium` HTML
   width/calc max-width lookups after Requirement DOM parity, root parity, override budget, and
   `verify --strict` stayed green.

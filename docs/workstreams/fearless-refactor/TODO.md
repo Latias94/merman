@@ -197,8 +197,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-render/src/generated/flowchart_text_overrides_11_12_2.rs` now keeps 45
   lookup entries, down from 48, and only exposes bold/italic markdown, HTML width, and SVG bbox
   guard paths for fixtures that still fail `parity-root` or focused text metric assertions without
-  them. `report-overrides` now reports `692` text lookup entries after counting block-wrapped
-  `=> { Some(...) }` arms correctly.
+  them. `report-overrides` now reports `690` text lookup entries after counting block-wrapped
+  `=> { Some(...) }` arms correctly and after the later Requirement `Verification: Test` pruning.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -501,8 +501,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   lookups after both Requirement parity modes, the override budget, and `verify --strict` stayed
   green. Requirement also dropped the paired `Verification: Demonstration` and
   `Verification: Inspection` HTML width/calc max-width lookups after both Requirement parity modes,
-  the override budget, and `verify --strict` stayed green; `Verification: Analysis` and
-  `Verification: Test` were kept because `basic` still drifted when `Analysis` was removed.
+  the override budget, and `verify --strict` stayed green; `Verification: Analysis` was kept
+  because `basic` still drifted when it was removed, while `Verification: Test` was deleted in a
+  later recheck after both Requirement parity modes stayed green.
   Requirement also dropped the paired `Type: system` and `Type: test_type` HTML width/calc
   max-width lookups after both Requirement parity modes, the override budget, and `verify
   --strict` stayed green; `Type: simulation` was kept because simulation-heavy fixtures still
@@ -526,9 +527,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_requirement_requirement_types_spec` plus `upstream_requirement_styles_spec` layout
   goldens were refreshed. The Requirement text override module now keeps only the previously
   confirmed guard labels:
-  `<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
-  `Verification: Test`. The no-growth budgets were also tightened to the current category totals
-  (`779` root viewport entries and `692` text lookup entries), so the strict gate blocks this
+  `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
+  `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
+  no-growth budgets were also tightened to the current category totals (`779` root viewport entries
+  and `690` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

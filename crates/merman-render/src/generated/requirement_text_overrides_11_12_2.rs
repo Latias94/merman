@@ -9,7 +9,6 @@ pub fn lookup_requirement_html_label_width_em(text: &str, bold: bool) -> Option<
         ("<<Performance Requirement>>", false) => Some(13.8095703125),
         ("Type: simulation", false) => Some(7.380859375),
         ("Verification: Analysis", false) => Some(9.33984375),
-        ("Verification: Test", false) => Some(7.6357421875),
         _ => None,
     }
 }
@@ -19,7 +18,6 @@ pub fn lookup_requirement_calc_max_width_px(calc_text: &str) -> Option<i64> {
         "&lt;&lt;Performance Requirement&gt;&gt;" => Some(329),
         "Type: simulation" => Some(159),
         "Verification: Analysis" => Some(190),
-        "Verification: Test" => Some(162),
         _ => None,
     }
 }

@@ -128,9 +128,9 @@ width/calc max-width lookups after both requirement parity modes, the override b
 `verify --strict` stayed green without them.
 Requirement then dropped the paired `Verification: Demonstration` and `Verification: Inspection`
 HTML width/calc max-width lookups after both requirement parity modes, the override budget, and
-`verify --strict` stayed green without them. The paired `Verification: Analysis` and
-`Verification: Test` lookups were rechecked in the same pass and kept because `basic` still drifted
-when `Analysis` was removed.
+`verify --strict` stayed green without them. `Verification: Analysis` still guards `basic` drift,
+while `Verification: Test` was removed in the later recheck after both Requirement parity modes
+stayed green.
 Requirement then dropped the paired `Type: system` and `Type: test_type` HTML width/calc
 max-width lookups after both requirement parity modes, the override budget, and `verify --strict`
 stayed green without them. The paired `Type: simulation` lookup was rechecked in the same pass
@@ -157,13 +157,14 @@ bold requirement title/entity-name lookups (`constructor`, `dc1`, `e1`, `elA`, `
 and `test_req`). Both Requirement DOM parity modes stayed green and the
 `upstream_requirement_requirement_types_spec` plus `upstream_requirement_styles_spec` layout
 goldens were refreshed, leaving
-`requirement_text_overrides_11_12_2.rs` with only the four previously confirmed guard labels:
-`<<Performance Requirement>>`, `Type: simulation`, `Verification: Analysis`, and
-`Verification: Test`. Flowchart then reduced `flowchart_text_overrides_11_12_2.rs` from 48 lookup
-entries to 45 confirmed guards after full Flowchart `parity-root` and focused text metric
+`requirement_text_overrides_11_12_2.rs` with four confirmed guard labels. A later recheck removed
+the `Verification: Test` HTML width/calc max-width pair after both Requirement parity modes stayed
+green, leaving only `<<Performance Requirement>>`, `Type: simulation`, and
+`Verification: Analysis`. Flowchart then reduced `flowchart_text_overrides_11_12_2.rs` from 48
+lookup entries to 45 confirmed guards after full Flowchart `parity-root` and focused text metric
 assertions proved those bold/italic markdown, HTML width, and SVG bbox entries still guard upstream
 behavior. Together with the block-wrapped `Some` accounting fix, this leaves the text lookup total
-at 692.
+at 690.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -221,7 +222,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `692`.
+Total lookup entries reported by `xtask`: `690`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -230,7 +231,7 @@ Total lookup entries reported by `xtask`: `692`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 8 |
+| `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
