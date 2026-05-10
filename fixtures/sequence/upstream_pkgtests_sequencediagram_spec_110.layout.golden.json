@@ -88,7 +88,7 @@
           "label": {
             "x": 572.0,
             "y": 80.0,
-            "width": 57.76,
+            "width": 58.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -118,7 +118,7 @@
           "label": {
             "x": 575.0,
             "y": 124.0,
-            "width": 34.4,
+            "width": 34.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -148,7 +148,7 @@
           "label": {
             "x": 475.0,
             "y": 168.0,
-            "width": 29.6,
+            "width": 30.0,
             "height": 17.6
           },
           "start_label_left": null,

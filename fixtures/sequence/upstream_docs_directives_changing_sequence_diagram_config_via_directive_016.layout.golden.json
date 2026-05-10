@@ -56,7 +56,7 @@
           "label": {
             "x": 325.0,
             "y": 80.0,
-            "width": 160.32,
+            "width": 160.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -86,7 +86,7 @@
           "label": {
             "x": 325.0,
             "y": 124.0,
-            "width": 351.68,
+            "width": 352.0,
             "height": 35.2
           },
           "start_label_left": null,
@@ -116,7 +116,7 @@
           "label": {
             "x": 325.0,
             "y": 185.0,
-            "width": 34.72,
+            "width": 35.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -146,7 +146,7 @@
           "label": {
             "x": 325.0,
             "y": 229.0,
-            "width": 27.84,
+            "width": 28.0,
             "height": 17.6
           },
           "start_label_left": null,

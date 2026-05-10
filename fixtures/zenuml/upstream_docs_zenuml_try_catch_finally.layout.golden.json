@@ -21,7 +21,7 @@
         },
         {
           "id": "actor-top-BookingService",
-          "x": 488.52,
+          "x": 489.0,
           "y": 32.5,
           "width": 150.0,
           "height": 65.0,
@@ -45,7 +45,7 @@
         },
         {
           "id": "actor-bottom-BookingService",
-          "x": 488.52,
+          "x": 489.0,
           "y": 438.5,
           "width": 150.0,
           "height": 65.0,
@@ -72,7 +72,7 @@
           "label": {
             "x": 174.0,
             "y": 125.0,
-            "width": 102.56,
+            "width": 103.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -95,14 +95,14 @@
               "y": 198.0
             },
             {
-              "x": 484.52,
+              "x": 485.0,
               "y": 198.0
             }
           ],
           "label": {
-            "x": 380.0,
+            "x": 381.0,
             "y": 169.0,
-            "width": 143.52,
+            "width": 144.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -132,7 +132,7 @@
           "label": {
             "x": 177.0,
             "y": 258.0,
-            "width": 81.76,
+            "width": 82.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -155,14 +155,14 @@
               "y": 376.0
             },
             {
-              "x": 484.52,
+              "x": 485.0,
               "y": 376.0
             }
           ],
           "label": {
-            "x": 380.0,
+            "x": 381.0,
             "y": 347.0,
-            "width": 98.72,
+            "width": 99.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -231,11 +231,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 488.52,
+              "x": 489.0,
               "y": 65.0
             },
             {
-              "x": 488.52,
+              "x": 489.0,
               "y": 406.0
             }
           ],
@@ -253,7 +253,7 @@
       "bounds": {
         "min_x": -50.0,
         "min_y": -10.0,
-        "max_x": 613.52,
+        "max_x": 614.0,
         "max_y": 482.0
       }
     }

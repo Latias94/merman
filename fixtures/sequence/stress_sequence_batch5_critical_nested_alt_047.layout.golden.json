@@ -80,7 +80,7 @@
           "label": {
             "x": 174.0,
             "y": 80.0,
-            "width": 70.08,
+            "width": 70.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -110,7 +110,7 @@
           "label": {
             "x": 376.0,
             "y": 214.0,
-            "width": 111.36,
+            "width": 111.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -140,7 +140,7 @@
           "label": {
             "x": 379.0,
             "y": 258.0,
-            "width": 15.68,
+            "width": 16.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -170,7 +170,7 @@
           "label": {
             "x": 376.0,
             "y": 302.0,
-            "width": 41.28,
+            "width": 41.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -200,7 +200,7 @@
           "label": {
             "x": 379.0,
             "y": 346.0,
-            "width": 15.68,
+            "width": 16.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -230,7 +230,7 @@
           "label": {
             "x": 376.0,
             "y": 435.0,
-            "width": 111.36,
+            "width": 111.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -260,7 +260,7 @@
           "label": {
             "x": 379.0,
             "y": 479.0,
-            "width": 48.96,
+            "width": 49.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -290,7 +290,7 @@
           "label": {
             "x": 376.0,
             "y": 523.0,
-            "width": 38.88,
+            "width": 39.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -320,7 +320,7 @@
           "label": {
             "x": 379.0,
             "y": 567.0,
-            "width": 15.68,
+            "width": 16.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -350,7 +350,7 @@
           "label": {
             "x": 175.0,
             "y": 669.0,
-            "width": 26.88,
+            "width": 27.0,
             "height": 17.6
           },
           "start_label_left": null,

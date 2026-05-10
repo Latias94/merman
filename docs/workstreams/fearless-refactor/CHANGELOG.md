@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Normalized Sequence label-width measurement to match Mermaid's rounded SVG bbox semantics
+  while keeping the single-run height path, then refreshed the affected Sequence and ZenUML
+  layout goldens. This fixed the remaining `title_and_accdescr_multiline` root drift and aligned
+  the vendored literal `<br \t/>` note-width expectation.
 - Changed Sequence message cursor startup to use the base actor layout height rather than the
   post-render special-shape bbox, which aligned participant-type spacing with upstream. Refreshed
   the affected Sequence layout goldens and removed 8 now-redundant Sequence root viewport

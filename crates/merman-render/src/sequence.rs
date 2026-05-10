@@ -48,19 +48,23 @@ fn measure_svg_like_with_html_br(
     let lines = split_html_br_lines(text);
     let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
     if lines.len() <= 1 {
+        // Mermaid rounds the SVG-like width, but keeps the height from the single-run path.
+        let width_metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
         let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {
             default_line_height
         };
-        return (metrics.width.max(0.0), h.max(0.0));
+        return (width_metrics.width.round().max(0.0), h.max(0.0));
     }
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
+        // Mermaid rounds each SVG-like line width before choosing the max.
+        let width_metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLike);
+        max_w = max_w.max(width_metrics.width.round().max(0.0));
         let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
-        max_w = max_w.max(metrics.width.max(0.0));
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {

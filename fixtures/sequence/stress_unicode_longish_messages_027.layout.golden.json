@@ -70,9 +70,9 @@
             }
           ],
           "label": {
-            "x": 304.0,
+            "x": 305.0,
             "y": 80.0,
-            "width": 449.28,
+            "width": 449.0,
             "height": 17.6
           },
           "start_label_left": null,
@@ -100,9 +100,9 @@
             }
           ],
           "label": {
-            "x": 307.0,
+            "x": 308.0,
             "y": 124.0,
-            "width": 349.92,
+            "width": 350.0,
             "height": 17.6
           },
           "start_label_left": null,
