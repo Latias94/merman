@@ -108,6 +108,8 @@ A later GitGraph branch-label pass deleted the 7-entry branch-label bbox correct
 measured widths rounded to 1/64px preserved GitGraph DOM parity.
 A later GitGraph commit-label pass deleted the 3-entry literal extra table after rounded measured
 widths and existing edge-character corrections still preserved GitGraph DOM parity.
+A later GitGraph glyph pass removed the left-side `2`, `6`, `5`, `C`, and `B` corrections after
+the smaller correction table stayed green under GitGraph DOM parity.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -165,7 +167,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `826`.
+Total lookup entries reported by `xtask`: `821`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -173,7 +175,7 @@ Total lookup entries reported by `xtask`: `826`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gitgraph_text_overrides_11_12_2.rs` | 24 |
+| `gitgraph_text_overrides_11_12_2.rs` | 19 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |

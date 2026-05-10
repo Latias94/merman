@@ -9,13 +9,8 @@ fn corr_px(num_over_2048: i32) -> f64 {
 
 pub fn lookup_gitgraph_simple_text_bbox_width_left_px(ch: char) -> Option<f64> {
     match ch {
-        '2' => Some(corr_px(2)),
         '4' => Some(corr_px(782)),
-        '5' => Some(corr_px(14)),
-        '6' => Some(corr_px(-4)),
         'A' => Some(corr_px(2304)),
-        'B' => Some(corr_px(-32)),
-        'C' => Some(corr_px(-8)),
         'D' => Some(corr_px(1074)),
         'M' => Some(corr_px(1804)),
         'Z' => Some(corr_px(248)),
@@ -28,9 +23,7 @@ pub fn lookup_gitgraph_simple_text_bbox_width_left_px(ch: char) -> Option<f64> {
 pub fn lookup_gitgraph_simple_text_bbox_width_right_px(ch: char) -> Option<f64> {
     match ch {
         '0' => Some(corr_px(752)),
-        '1' => Some(corr_px(28)),
         '2' => Some(corr_px(1558)),
-        '3' => Some(corr_px(20)),
         '4' => Some(corr_px(770)),
         '6' => Some(corr_px(754)),
         '9' => Some(corr_px(1560)),

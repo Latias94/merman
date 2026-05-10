@@ -516,6 +516,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   raw measured widths rounded to 1/64px.
   A later GitGraph commit-label pass deleted the 3-entry literal extra table after the rounded
   measured widths and existing edge-character corrections still matched DOM parity.
+  A follow-up GitGraph glyph pass removed the left-side `2`, `6`, `5`, `C`, and `B` character
+  corrections after DOM parity stayed green with the smaller correction table.
   After the final Gantt text override table was deleted, the stale `xtask gen-gantt-text-overrides`
   command and generator were also removed so future contributors do not regenerate a table that no
   production code consumes.

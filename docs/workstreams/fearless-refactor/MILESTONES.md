@@ -519,7 +519,8 @@ Progress:
   branch-label bbox correction table after raw measured widths rounded to 1/64px preserved GitGraph
   DOM parity. A later GitGraph commit-label pass deleted the 3-entry literal extra table after the
   rounded measured widths and existing edge-character corrections still preserved GitGraph DOM
-  parity.
+  parity. A later GitGraph glyph pass removed the left-side `2`, `6`, `5`, `C`, and `B`
+  corrections after the smaller correction table stayed green under DOM parity.
 - CLI render execution now uses internal `RenderRequest` and `RasterRequest` structs so command
   execution keeps its layout, SVG, and raster concerns in one place.
 - `xtask report-overrides` now prints category-level owner/source/allowed-use/expected-removal
