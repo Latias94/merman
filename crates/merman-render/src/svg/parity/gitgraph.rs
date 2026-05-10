@@ -825,20 +825,3 @@ fn gitgraph_viewbox_center_x(view_box: &str) -> Option<f64> {
     let width = it.next()?.parse::<f64>().ok()?;
     Some(min_x + width / 2.0)
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn generated_gitgraph_text_override_paths_cover_known_literals() {
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_simple_text_bbox_width_left_px('A'),
-            Some(2304.0 / 2048.0)
-        );
-        assert_eq!(
-            crate::generated::gitgraph_text_overrides_11_12_2::
-                lookup_gitgraph_simple_text_bbox_width_right_px('2'),
-            Some(1558.0 / 2048.0)
-        );
-    }
-}
