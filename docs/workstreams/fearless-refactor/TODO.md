@@ -481,7 +481,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   green. Requirement also dropped the paired `Verification: Demonstration` and
   `Verification: Inspection` HTML width/calc max-width lookups after both Requirement parity modes,
   the override budget, and `verify --strict` stayed green; `Verification: Analysis` and
-  `Verification: Test` were kept because `basic` still drifted when `Analysis` was removed. One
+  `Verification: Test` were kept because `basic` still drifted when `Analysis` was removed.
+  Requirement also dropped the paired `Type: system` and `Type: test_type` HTML width/calc
+  max-width lookups after both Requirement parity modes, the override budget, and `verify
+  --strict` stayed green; `Type: simulation` was kept because simulation-heavy fixtures still
+  drifted without it. One
   additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
