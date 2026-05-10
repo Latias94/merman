@@ -26,7 +26,6 @@ static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1100, "Future task", 56.337890625),
     (1100, "London Trip 2", 66.671875),
     (1100, "Midnight", 43.748046875),
-    (1100, "Noon", 24.84375),
     (1100, "One PM", 37.86962890625),
     (1100, "Proto task", 49.9677734375),
     (1100, "Task", 22.24853515625),

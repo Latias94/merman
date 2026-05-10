@@ -86,10 +86,10 @@
             "id": "n1-text",
             "text": "Noon",
             "font_size": 11.0,
-            "width": 24.844,
+            "width": 20.79,
             "x": 115.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-24.84375"
+            "class": "taskText taskText0 width-20.79"
           }
         },
         {

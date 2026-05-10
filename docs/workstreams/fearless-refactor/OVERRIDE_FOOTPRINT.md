@@ -63,9 +63,9 @@ snapshots proved the stable Mindmap path does not use it, reducing text lookup d
 while preventing shared text measurement from leaking fixture-specific widths across diagrams. C4
 then moved its three per-line SVG bbox height rules into the C4 owner module and deleted the
 generated `c4_text_overrides_11_12_2.rs` module, reducing text lookup debt by another 3 entries.
-Gantt then dropped the generic `A`, `B`, `C`, `Build`, and `Design` task-width overrides after the
-font-metric fallback proved stable, reducing text lookup debt by five more entries. C4 then moved
-its 17 type-line `textLength` pins into the C4 owner module and deleted the generated
+Gantt then dropped the generic `A`, `B`, `C`, `Build`, `Design`, and `Noon` task-width overrides
+after the font-metric fallback proved stable, reducing text lookup debt by six more entries. C4
+then moved its 17 type-line `textLength` pins into the C4 owner module and deleted the generated
 `c4_type_textlength_11_12_2.rs` module, so C4 type-line `textLength` now lives in owner code
 instead of the override inventory.
 The hand-curated helper total also reflects pruning two redundant public Sankey padding component
@@ -152,7 +152,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `875`.
+Total lookup entries reported by `xtask`: `874`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -160,7 +160,7 @@ Total lookup entries reported by `xtask`: `875`.
 | `class_text_overrides_11_12_2.rs` | 342 |
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
-| `gantt_text_overrides_11_12_2.rs` | 39 |
+| `gantt_text_overrides_11_12_2.rs` | 38 |
 | `gitgraph_text_overrides_11_12_2.rs` | 34 |
 | `requirement_text_overrides_11_12_2.rs` | 126 |
 | `state_text_overrides_11_12_2.rs` | 46 |
