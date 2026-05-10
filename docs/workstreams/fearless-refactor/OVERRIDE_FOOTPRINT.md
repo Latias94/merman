@@ -134,6 +134,8 @@ Requirement then dropped the paired `Type: system` and `Type: test_type` HTML wi
 max-width lookups after both requirement parity modes, the override budget, and `verify --strict`
 stayed green without them. The paired `Type: simulation` lookup was rechecked in the same pass
 and kept because simulation-heavy fixtures still drifted without it.
+Requirement then dropped the remaining `ID:` HTML width/calc max-width lookup bucket after both
+requirement parity modes, the override budget, and `verify --strict` stayed green without it.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -191,7 +193,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `779`.
+Total lookup entries reported by `xtask`: `759`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -200,7 +202,7 @@ Total lookup entries reported by `xtask`: `779`.
 | `er_text_overrides_11_12_2.rs` | 114 |
 | `flowchart_text_overrides_11_12_2.rs` | 48 |
 | `gitgraph_text_overrides_11_12_2.rs` | 9 |
-| `requirement_text_overrides_11_12_2.rs` | 94 |
+| `requirement_text_overrides_11_12_2.rs` | 74 |
 | `state_text_overrides_11_12_2.rs` | 46 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
