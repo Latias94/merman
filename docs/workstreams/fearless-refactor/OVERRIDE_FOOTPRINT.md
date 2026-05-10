@@ -273,12 +273,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `525`.
+Total lookup entries reported by `xtask`: `521`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 322 |
+| `class_text_overrides_11_12_2.rs` | 318 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -291,8 +291,9 @@ remaining left/right boundary corrections removed.
 
 Class note: the standalone plain-label `uses` lookup was removed after
 `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green without it,
-and the now-empty plain-label bridge was deleted. That reduced the Class text lookup total to 322
-and the global text lookup total to 525.
+and the now-empty plain-label bridge was deleted. Later `OK` and `ApiClient` cleanup passes
+refreshed the affected layout golden and reduced the Class text lookup total to 318 and the
+global text lookup total to 521.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
