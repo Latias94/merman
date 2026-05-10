@@ -466,8 +466,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   root pins that still fail when the lookup is disabled. The stale
   Mindmap HTML width lookup table and generator were also deleted after the shared text measurer
   leak was removed and layout snapshots proved the stable Mindmap path did not need those 291
-  entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`, and
-  `<<Requirement>>` HTML width/calc max-width lookups after both
+  entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
+  `<<Requirement>>`, and `<<Element>>` HTML width/calc max-width lookups after both
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` and
   `compare-requirement-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green for
   each step; the affected Requirement layout goldens, including `relations`, were refreshed to
