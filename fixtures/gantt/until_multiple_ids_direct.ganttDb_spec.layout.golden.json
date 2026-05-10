@@ -102,10 +102,10 @@
             "id": "id1-text",
             "text": "task1",
             "font_size": 11.0,
-            "width": 25.922,
+            "width": 26.4,
             "x": 195.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-25.921875"
+            "class": "taskText taskText0 width-26.400000000000006"
           }
         },
         {
