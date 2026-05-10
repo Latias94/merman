@@ -209,7 +209,7 @@ empty ER `calcTextWidth` lookup table was deleted.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
 reducing the text lookup total to 547. A later Class pass removed 21 `calcTextWidth` lookup
 entries whose deterministic fallback already returned the same rounded width, reducing the text
-lookup total to 526.
+lookup total to 523.
 
 | category | owner | expected removal |
 | --- | --- | --- |

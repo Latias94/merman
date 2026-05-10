@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `OK` width overrides after the strict gate stayed green, reducing
+  Class text lookups from `322` to `320` and the global text lookup budget from `525` to `523`.
 - Normalized Sequence label-width measurement to match Mermaid's rounded SVG bbox semantics
   while keeping the single-run height path, then refreshed the affected Sequence and ZenUML
   layout goldens. This fixed the remaining `title_and_accdescr_multiline` root drift and aligned
