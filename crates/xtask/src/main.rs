@@ -159,7 +159,6 @@ fn main() -> Result<(), XtaskError> {
         "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
         "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
-        "gen-er-text-overrides" => cmd::gen_er_text_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
         "check-upstream-svgs" => cmd::check_upstream_svgs(args.collect()),

@@ -136,12 +136,6 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     style: &TextStyle,
     text: &str,
 ) -> i64 {
-    if let Some(w) = crate::generated::er_text_overrides_11_12_2::lookup_calc_text_width_px(
-        style.font_size,
-        text,
-    ) {
-        return w;
-    }
     // Mermaid `calculateTextWidth` uses SVG `drawSimpleText(...).getBBox().width` and rounds to
     // integers. It probes both `sans-serif` and the configured `fontFamily`, but typically
     // takes the larger width to avoid underestimation when the configured family cannot render

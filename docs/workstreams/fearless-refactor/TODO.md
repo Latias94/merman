@@ -620,6 +620,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   generated `c4_text_overrides_11_12_2.rs` module, leaving only the remaining text lookup tables.
   C4 also moved its 17 type-line `textLength` pins into the owner module and deleted the generated
   `c4_type_textlength_11_12_2.rs` module, so that logic now lives only in owner code.
+  The stale `xtask gen-er-text-overrides` command and generator were removed after the remaining
+  ER text override file became a three-entry hand-curated guard, and the renderer stopped checking
+  an empty ER `calcTextWidth` table before using shared measurement.
   The single Timeline text lookup was rechecked by disabling it and running
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; it still guards the
   `upstream_long_word_wrap` root `max-width`, which drifts from `961px` to `961.5px` without the

@@ -8,6 +8,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Closed the M2 typed-model milestone as complete for all non-error in-tree Mermaid 11.12.3
   diagrams. `RenderSemanticModel::Json` remains only as the intentional `error` payload/custom
   registry fallback boundary, while remaining cleanup continues under M5 override governance.
+- Removed the obsolete `xtask gen-er-text-overrides` command and generator after the remaining ER
+  text override file became a three-entry hand-curated guard. The ER render path no longer probes
+  an empty `calcTextWidth` table before using the shared measurement fallback.
 - Removed 21 redundant Class `calcTextWidth` lookup entries whose deterministic fallback now
   returns the same rounded width, after both Class DOM parity modes and layout snapshots stayed
   green, reducing Class text lookups from `344` to `323` and the global text lookup budget to

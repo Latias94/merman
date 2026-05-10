@@ -470,6 +470,9 @@ Progress:
 - The stale Mindmap HTML width override table and `gen-mindmap-text-overrides` command were
   deleted after removing shared text-measurer leakage proved the stable Mindmap layout path did
   not need those 291 generated lookup entries.
+- The obsolete `gen-er-text-overrides` command and generator were deleted after ER text lookup debt
+  shrank to a three-entry hand-curated guard file; the empty ER `calcTextWidth` lookup path was
+  removed from the renderer.
 - C4 moved its three stable SVG bbox line-height rules into the C4 owner module and deleted the
   generated `c4_text_overrides_11_12_2.rs` module. C4 also moved its 17 type-line `textLength`
   pins into the owner module and deleted the generated `c4_type_textlength_11_12_2.rs` module,
