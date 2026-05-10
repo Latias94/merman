@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `21`.
+Generated override modules scanned: `20`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -174,7 +174,9 @@ lookup total at 669. A quoted edge-label pass removed three more State width loo
 parity gates, leaving the text lookup total at 666. A follow-up State edge-label pass removed four
 more width lookups under the same parity gates, leaving the text lookup total at 662. A State style
 label pass removed two more width lookups under the same parity gates, leaving the text lookup total
-at 660.
+at 660. A follow-up ER no-attribute calcTextWidth pass removed seventeen zero-valued lookup entries
+under the same ER parity gates, leaving the `drawRect` clamp guard in place and reducing the text
+lookup total to 643.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -232,13 +234,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `660`.
+Total lookup entries reported by `xtask`: `643`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 125 |
 | `class_text_overrides_11_12_2.rs` | 344 |
-| `er_text_overrides_11_12_2.rs` | 114 |
+| `er_text_overrides_11_12_2.rs` | 97 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 25 |
