@@ -53,6 +53,9 @@ Progress:
   fact into a shared State edge-label text metric.
 - Removed the two shared multiline note State root pins after moving the browser-measured note
   label width into State-owned note metrics and applying it consistently in layout and render.
+- Removed the two simple State transition-label root pins after extending the existing
+  `Transition 1/2/3` edge-label metric to the matching `Transition 4/5` labels without growing the
+  text lookup budget.
 
 Exit criteria:
 

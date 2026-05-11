@@ -6,6 +6,10 @@
   it consistently in layout and SVG render measurement, removed the two now-derived note root pins,
   refreshed their layout goldens, tightened the root budget to `751`, and verified
   `xtask verify --strict`.
+- Extended the existing State `Transition 1/2/3` edge-label browser metric to the matching
+  `Transition 4/5` labels, removed the two simple State transition-label root pins, refreshed their
+  layout goldens, tightened the root budget to `749` without growing text lookup debt, and verified
+  `xtask verify --strict`.
 
 ## 2026-05-11
 

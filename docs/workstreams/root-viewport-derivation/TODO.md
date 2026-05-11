@@ -47,13 +47,21 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current root budget after the note-label pass.
   Evidence: State root count is now `40`, root viewport total is `751`, and the text lookup budget
   is explicitly `482` because one reusable State note-label browser metric replaced two root pins.
+- [x] Replace the simple State transition-label pair with the existing edge-label metric family.
+  Evidence: the existing `Transition 1/2/3` State edge-label metric now also covers
+  `Transition 4/5`, replacing two fixture-scoped root pins without growing the text lookup budget:
+  `upstream_cypress_statediagram_spec_should_render_a_simple_state_diagrams_with_labels_013` and
+  `upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_state_diagrams_with_labels_014`.
+- [x] Tighten the current root budget after the simple transition-label pass.
+  Evidence: State root count is now `38`, root viewport total is `749`, and the text lookup budget
+  remains `482` because the pass reused an existing State edge-label metric arm.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
-  the note-label pass.
+  the note-label and transition-label passes.
 - [x] Run focused State code-quality checks for this pass.
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo test -p xtask override_growth_check_rejects_category_growth`, and
-  `cargo nextest run -p merman-render` passed after the note-label pass.
+  `cargo nextest run -p merman-render` passed after the note-label and transition-label passes.
 
 ## P1: Mindmap Root Derivation
 

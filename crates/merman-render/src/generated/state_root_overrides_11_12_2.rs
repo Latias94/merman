@@ -49,9 +49,6 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_direction_rl_scale_and_long_ids_054" => {
             Some(("0.006646156311035156 0 1006.5691528320312 64", "1006.57"))
         }
-        "upstream_cypress_statediagram_spec_should_render_a_simple_state_diagrams_with_labels_013" => {
-            Some(("0 0 494.8648681640625 348", "494.865"))
-        }
         "upstream_cypress_statediagram_spec_should_render_a_state_with_a_note_together_with_another_state_008" => {
             Some(("0 0 671.140625 346", "671.141"))
         }
@@ -69,9 +66,6 @@ pub fn lookup_state_root_viewport_override(
         }
         "upstream_cypress_statediagram_v2_spec_v2_it_should_be_possible_to_use_a_choice_022" => {
             Some(("0 0 201.6796875 532", "201.68"))
-        }
-        "upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_state_diagrams_with_labels_014" => {
-            Some(("0 0 494.8648681640625 348", "494.865"))
         }
         "upstream_cypress_statediagram_v2_spec_v2_should_render_a_state_with_a_note_together_with_another_state_009" => {
             Some(("0 0 671.140625 346", "671.141"))

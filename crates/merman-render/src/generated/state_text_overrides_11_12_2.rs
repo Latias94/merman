@@ -189,8 +189,12 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
         "EvNewValue" => Some(85.984375),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "EvNewValueRejected" => Some(149.875),
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_spec_should_render_a_simple_state_diagrams_with_labels_013.svg
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_state_diagrams_with_labels_014.svg
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
-        "Transition 1" | "Transition 2" | "Transition 3" => Some(83.390625),
+        "Transition 1" | "Transition 2" | "Transition 3" | "Transition 4" | "Transition 5" => {
+            Some(83.390625)
+        }
         _ => None,
     }
 }
