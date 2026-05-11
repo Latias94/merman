@@ -209,6 +209,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 - The remaining exact Class `calcTextWidth` matches `bar()`, `E`, `IService`,
   `+run() : Status`, `Client`, `+start()`, and `API` were kept because focused SVG tests or
   layout snapshot evidence still assert those Mermaid HTML `max-width` caps explicitly.
+- The normalized Class `Data` method calc/rendered pairs for `+toString() : String`,
+  `+fromCode(int code) : Data`, and `+parse(String text) : Data` were rechecked and retained:
+  deleting them fails `class_svg_annotation_width_overrides_drive_html_node_bounds` and
+  `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps`.
 - `cargo run -p xtask -- verify --strict` passed after Flowchart text override pruning and the State Dagre input builder cleanup.
 - `cargo run -p xtask -- verify --feature-matrix` passed, covering `merman` no-default/render/raster and `merman-core` no-default feature checks.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passed during the helper rechecks.

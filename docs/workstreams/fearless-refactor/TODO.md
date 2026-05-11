@@ -227,6 +227,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on `Company.Project` cluster
   geometry under strict verification. The `test()` rendered width entry remains because deleting
   it caused broad default-layout churn across 14 simple Class cypress fixture goldens.
+  The normalized `Data` method entries `+toString() : String`,
+  `+fromCode(int code) : Data`, and `+parse(String text) : Data` also remain because deleting the
+  calc/rendered pairs breaks Data annotation geometry and focused HTML cap assertions even though
+  those exact display strings are parser-normalized rather than written literally in fixture text.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.

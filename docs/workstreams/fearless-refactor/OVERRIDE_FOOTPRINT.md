@@ -311,6 +311,10 @@ causes broad default-layout churn across 14 simple Class cypress fixture goldens
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.
+The `Data` method entries `+toString() : String`, `+fromCode(int code) : Data`, and
+`+parse(String text) : Data` stay pinned even though those exact strings are not present in raw
+fixture text: Class parsing normalizes source rows into those display keys, and deleting the
+calc/rendered pairs breaks Data annotation geometry plus focused HTML cap assertions.
 The `uses` rendered width entry also stays pinned because removing it preserves Class DOM parity
 but fails `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
 `stress_class_unicode_namespace_mix_017`, shifting the root `max-width` from `409px` to `409.25px`
