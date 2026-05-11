@@ -14,7 +14,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Fewer duplicated pipelines | `MILESTONES.md` and `RENDER_MODEL_INVENTORY.md` record all non-error in-tree Mermaid diagrams as typed-first on the render path; the JSON render fallback is now limited to `error` and custom registry parsers. | Met |
-| Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
+| Healthier feature gates | `GATES.md` and `MILESTONES.md` document the feature matrix, override no-growth, workspace clippy, nextest, normal DOM parity, and full root parity coverage now included in `cargo run -p xtask -- verify --strict`. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
 | Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring ten required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The Class `parity-root` recheck also restored three rendered-width guards and brought the global text lookup budget to `480`. | Met |
