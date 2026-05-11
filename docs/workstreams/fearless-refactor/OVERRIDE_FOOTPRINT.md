@@ -207,11 +207,11 @@ reducing the text lookup total to 549. A follow-up bypass of all 3 entries still
 `xtask gen-er-text-overrides` command was removed after this file became hand-curated, and the
 empty ER `calcTextWidth` lookup table was deleted.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
-reducing the text lookup total to 547. Later Class passes removed 41 lookup entries across the
+reducing the text lookup total to 547. Later Class passes removed 42 lookup entries across the
 exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanup, and the
 `ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
-`connects`, and `builds` cleanups, reducing the text lookup total to 506.
+`connects`, `builds`, and `parses` cleanups, reducing the text lookup total to 505.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -275,12 +275,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `506`.
+Total lookup entries reported by `xtask`: `505`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 303 |
+| `class_text_overrides_11_12_2.rs` | 302 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -295,8 +295,8 @@ Class note: the standalone plain-label `uses` lookup was removed after
 `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green without it,
 and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
-`connects`, and `builds` cleanup passes refreshed the affected layout golden as needed and reduced
-the Class text lookup total to 303 and the global text lookup total to 506.
+`connects`, `builds`, and `parses` cleanup passes refreshed the affected layout golden as needed
+and reduced the Class text lookup total to 302 and the global text lookup total to 505.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.

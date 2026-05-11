@@ -235,7 +235,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "feedback") => Some(65.59375),
         (16, false, "manages") => Some(62.078125),
         (16, false, "may-fail") => Some(59.0625),
-        (16, false, "parses") => Some(45.21875),
         (16, false, "owns") => Some(35.71875),
         (16, false, "reads") => Some(38.75),
         (16, false, "references") => Some(76.40625),
