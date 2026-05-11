@@ -270,6 +270,9 @@ Progress:
 - Added a shared xtask root viewport delta reporter and wired Sequence compare to
   `--report-root`, giving future Sequence root-pin audits the same upstream/local evidence table
   already used by Flowchart.
+- A filtered 2026-05-11 recheck confirmed that `title_and_accdescr_multiline` still needs its
+  480px root pin; removing it shifts the root `style` max-width from 480px to 493px and moves
+  Bob from `x=305` to `x=318`.
 - Extracted sequence activation precomputation and group emission into
   `svg/parity/sequence/activation.rs`.
 - Extracted sequence note emission into `svg/parity/sequence/notes.rs`.
