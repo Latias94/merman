@@ -15,6 +15,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed `roughr`'s unused `Space` / `Config` / `DrawingSurface` shells, dead `Generator::new`
   constructor, and unused `ActiveEdgeEntry.s` field, clearing the `roughr` dead-code allowance
   bucket.
+- Moved `roughr`'s private ellipse/arc/bezier renderer helper argument bundles into small request
+  structs, reducing `roughr`'s `too_many_arguments` allowance footprint to the public `arc`
+  compatibility entrypoints.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

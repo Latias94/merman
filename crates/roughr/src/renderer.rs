@@ -26,6 +26,40 @@ pub struct EllipseResult<F: Float + FromPrimitive + Trig> {
     pub estimated_points: Vec<Point2D<F>>,
 }
 
+#[derive(Clone, Copy)]
+struct EllipsePointsSpec<F> {
+    increment: F,
+    cx: F,
+    cy: F,
+    rx: F,
+    ry: F,
+    offset: F,
+    overlap: F,
+}
+
+#[derive(Clone, Copy)]
+struct ArcPointsSpec<F> {
+    increment: F,
+    cx: F,
+    cy: F,
+    rx: F,
+    ry: F,
+    strt: F,
+    stp: F,
+    offset: F,
+}
+
+#[derive(Clone, Copy)]
+struct BezierToSpec<F> {
+    x1: F,
+    y1: F,
+    x2: F,
+    y2: F,
+    x: F,
+    y: F,
+    current: Point2D<F>,
+}
+
 /// Constructs a line primitive that can be rendered into relevant context
 /// # Arguments
 /// * `x1` - Line start point x coordinate
@@ -189,7 +223,18 @@ pub fn bezier_cubic<F: Float + Trig + FromPrimitive>(
     end: Point2D<F>,
     o: &mut Options,
 ) -> OpSet<F> {
-    let ops = _bezier_to(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y, &start, o);
+    let ops = _bezier_to(
+        BezierToSpec {
+            x1: cp1.x,
+            y1: cp1.y,
+            x2: cp2.x,
+            y2: cp2.y,
+            x: end.x,
+            y: end.y,
+            current: start,
+        },
+        o,
+    );
 
     OpSet {
         op_set_type: OpSetType::Path,
@@ -262,20 +307,23 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
     o: &mut Options,
     ellipse_params: &EllipseParams<F>,
 ) -> EllipseResult<F> {
+    let overlap = ellipse_params.increment
+        * _offset(
+            _c(0.1),
+            _offset(_c::<F>(0.4), _c::<F>(1.0), o, None),
+            o,
+            None,
+        );
     let ellipse_points = _compute_ellipse_points(
-        ellipse_params.increment,
-        x,
-        y,
-        ellipse_params.rx,
-        ellipse_params.ry,
-        _c(1.0),
-        ellipse_params.increment
-            * _offset(
-                _c(0.1),
-                _offset(_c::<F>(0.4), _c::<F>(1.0), o, None),
-                o,
-                None,
-            ),
+        EllipsePointsSpec {
+            increment: ellipse_params.increment,
+            cx: x,
+            cy: y,
+            rx: ellipse_params.rx,
+            ry: ellipse_params.ry,
+            offset: _c(1.0),
+            overlap,
+        },
         o,
     );
     let ap1 = ellipse_points[0].clone();
@@ -283,13 +331,15 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
     let mut o1 = _curve(&ap1, None, o);
     if (!o.disable_multi_stroke.unwrap_or(false)) && (o.roughness.unwrap_or(0.0) != 0.0) {
         let inner_ellipse_points = _compute_ellipse_points(
-            ellipse_params.increment,
-            x,
-            y,
-            ellipse_params.rx,
-            ellipse_params.ry,
-            _c::<F>(1.5),
-            _c::<F>(0.0),
+            EllipsePointsSpec {
+                increment: ellipse_params.increment,
+                cx: x,
+                cy: y,
+                rx: ellipse_params.rx,
+                ry: ellipse_params.ry,
+                offset: _c::<F>(1.5),
+                overlap: _c::<F>(0.0),
+            },
             o,
         );
         let ap2 = inner_ellipse_points[0].clone();
@@ -338,9 +388,33 @@ pub fn arc<F: Float + Trig + FromPrimitive>(
     }
     let ellipse_inc: F = _c::<F>(f32::PI() * 2.0) / _c(o.curve_step_count.unwrap_or(1.0));
     let arc_inc = Float::min(ellipse_inc / _c(2.0), (stp - strt) / _c(2.0));
-    let mut ops = _arc(arc_inc, cx, cy, rx, ry, strt, stp, _c(1.0), o);
+    let mut ops = _arc(
+        ArcPointsSpec {
+            increment: arc_inc,
+            cx,
+            cy,
+            rx,
+            ry,
+            strt,
+            stp,
+            offset: _c(1.0),
+        },
+        o,
+    );
     if !o.disable_multi_stroke.unwrap_or(false) {
-        let mut o2 = _arc(arc_inc, cx, cy, rx, ry, strt, stp, _c(1.5), o);
+        let mut o2 = _arc(
+            ArcPointsSpec {
+                increment: arc_inc,
+                cx,
+                cy,
+                rx,
+                ry,
+                strt,
+                stp,
+                offset: _c(1.5),
+            },
+            o,
+        );
         ops.append(&mut o2);
     }
     if closed {
@@ -739,17 +813,19 @@ fn _curve_with_offset<F: Float + Trig + FromPrimitive>(
     _curve(&ps, None, o)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
-    increment: F,
-    cx: F,
-    cy: F,
-    rx: F,
-    ry: F,
-    offset: F,
-    overlap: F,
+fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
+    spec: EllipsePointsSpec<F>,
     o: &mut Options,
 ) -> Vec<Vec<Point2D<F>>> {
+    let EllipsePointsSpec {
+        increment,
+        cx,
+        cy,
+        rx,
+        ry,
+        offset,
+        overlap,
+    } = spec;
     let core_only = o.roughness.unwrap_or(0.0) == 0.0;
     let mut core_points: Vec<Point2D<F>> = Vec::new();
     let mut all_points: Vec<Point2D<F>> = Vec::new();
@@ -830,18 +906,17 @@ pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
     vec![all_points, core_points]
 }
 
-#[allow(clippy::too_many_arguments)]
-fn _arc<F: Float + Trig + FromPrimitive>(
-    increment: F,
-    cx: F,
-    cy: F,
-    rx: F,
-    ry: F,
-    strt: F,
-    stp: F,
-    offset: F,
-    o: &mut Options,
-) -> Vec<Op<F>> {
+fn _arc<F: Float + Trig + FromPrimitive>(spec: ArcPointsSpec<F>, o: &mut Options) -> Vec<Op<F>> {
+    let ArcPointsSpec {
+        increment,
+        cx,
+        cy,
+        rx,
+        ry,
+        strt,
+        stp,
+        offset,
+    } = spec;
     let rad_offset = strt + _offset_opt(_c(0.1), o, None);
     let mut points: Vec<Point2D<F>> = vec![Point2D::new(
         _offset_opt(offset, o, None) + cx + _c::<F>(0.9) * rx * Float::cos(rad_offset - increment),
@@ -883,28 +958,32 @@ fn _bezier_quadratic_to<F: Float + Trig + FromPrimitive>(
     });
 
     _bezier_to(
-        cubic.cp1.x,
-        cubic.cp1.y,
-        cubic.cp2.x,
-        cubic.cp2.y,
-        cubic.end.x,
-        cubic.end.y,
-        &cubic.start,
+        BezierToSpec {
+            x1: cubic.cp1.x,
+            y1: cubic.cp1.y,
+            x2: cubic.cp2.x,
+            y2: cubic.cp2.y,
+            x: cubic.end.x,
+            y: cubic.end.y,
+            current: cubic.start,
+        },
         o,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn _bezier_to<F: Float + Trig + FromPrimitive>(
-    x1: F,
-    y1: F,
-    x2: F,
-    y2: F,
-    x: F,
-    y: F,
-    current: &Point2D<F>,
+    spec: BezierToSpec<F>,
     o: &mut Options,
 ) -> Vec<Op<F>> {
+    let BezierToSpec {
+        x1,
+        y1,
+        x2,
+        y2,
+        x,
+        y,
+        current,
+    } = spec;
     let mut ops: Vec<Op<F>> = Vec::new();
     let ros = [
         _c(o.max_randomness_offset.unwrap_or(2.0)),
@@ -1117,13 +1196,15 @@ where
                 y,
             } => {
                 ops.extend(_bezier_to(
-                    _cc::<F>(x1),
-                    _cc::<F>(y1),
-                    _cc::<F>(x2),
-                    _cc::<F>(y2),
-                    _cc::<F>(x),
-                    _cc::<F>(y),
-                    &current,
+                    BezierToSpec {
+                        x1: _cc::<F>(x1),
+                        y1: _cc::<F>(y1),
+                        x2: _cc::<F>(x2),
+                        y2: _cc::<F>(y2),
+                        x: _cc::<F>(x),
+                        y: _cc::<F>(y),
+                        current,
+                    },
                     o,
                 ));
                 current = Point2D::new(_cc::<F>(x), _cc::<F>(y));
@@ -1153,7 +1234,7 @@ mod test {
     use plotlib::style::{PointMarker, PointStyle};
     use plotlib::view::ContinuousView;
 
-    use super::{EllipseParams, _compute_ellipse_points, _curve};
+    use super::{EllipseParams, EllipsePointsSpec, _compute_ellipse_points, _curve};
     use crate::core::{Op, OpSet, OpSetType, OpType, Options, OptionsBuilder};
 
     fn get_default_options() -> Options {
@@ -1402,13 +1483,15 @@ mod test {
             ],
         ];
         let result = _compute_ellipse_points(
-            0.1,
-            1.0,
-            1.0,
-            0.5,
-            0.5,
-            0.1,
-            0.1,
+            EllipsePointsSpec {
+                increment: 0.1,
+                cx: 1.0,
+                cy: 1.0,
+                rx: 0.5,
+                ry: 0.5,
+                offset: 0.1,
+                overlap: 0.1,
+            },
             &mut get_default_options(),
         );
         assert_eq!(expected, result);

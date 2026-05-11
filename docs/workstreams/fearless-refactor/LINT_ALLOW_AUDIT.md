@@ -29,7 +29,7 @@ mainline renderer/core surface is clean.
 | --- | --- | --- | --- |
 | `crates/manatee/src/algo/fcose/mod.rs` | `dead_code`, `clippy::collapsible_if`, `clippy::manual_div_ceil`, `clippy::needless_option_as_deref`, `clippy::needless_range_loop`, `clippy::nonminimal_bool` | Retained for the FCoSE port while it stays close to the upstream Cytoscape/FCoSE control flow and debug surface. Redundant item-level `dead_code` allowances inside this module were removed after the module-level allowance was confirmed to cover them. | Split the FCoSE port into smaller owner modules, delete unused debug/reference helpers, and then remove these allowances under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
 | `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::assign_op_pattern`, `clippy::manual_contains`, `clippy::manual_swap`, `clippy::needless_range_loop` | Retained for the spectral initialization port where loop shape and operation order are still intentionally close to upstream `cytoscape-fcose`. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
-| `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained for the forked RoughJS API shape. The renderer-facing merman parity layer already wraps common RoughJS calls, but the forked backend still exposes upstream-like wide helper signatures. | Introduce RoughJS backend request structs only after Flowchart/State hand-drawn parity and allocation checks stay green. |
+| `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained only for the public `arc` entrypoints in the forked RoughJS API shape. The private ellipse/arc/bezier helper signatures have been moved behind small request structs. | Add public arc request structs or accept the public compatibility shape after Flowchart/State hand-drawn parity and allocation checks stay green. |
 
 ## Generated Exclusions
 
@@ -68,6 +68,9 @@ mainline renderer/core surface is clean.
   `crates/roughr/src/filler/scan_line_hachure.rs`: removed the unused `Space` / `Config` /
   `DrawingSurface` shells, the dead `Generator::new` constructor, and the unused
   `ActiveEdgeEntry.s` field, clearing the `roughr` dead-code allowance bucket.
+- `crates/roughr/src/renderer.rs`: moved the private `_compute_ellipse_points`, `_arc`, and
+  `_bezier_to` argument bundles behind small request structs, leaving only the public `arc`
+  compatibility entrypoints with `clippy::too_many_arguments` allowances.
 
 ## Gate
 
