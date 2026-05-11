@@ -344,7 +344,7 @@ cargo run -p xtask -- verify --strict
 
 `--strict` adds all-features compilation, the public feature matrix
 (`merman` no-default/render/raster and `merman-core` no-default), workspace clippy, override
-no-growth, nextest, and SVG DOM parity.
+no-growth, nextest, SVG DOM parity, and full SVG root parity.
 
 For a quick “does raster output look sane?” sweep across fixtures (dev-only):
 

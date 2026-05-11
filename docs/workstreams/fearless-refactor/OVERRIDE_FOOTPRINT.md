@@ -13,7 +13,7 @@ Command:
 
 Mermaid baseline: `@11.12.3`
 
-Generated override modules scanned: `20`.
+Generated override modules scanned: `21`.
 
 Manual raw SVG/path bridge files scanned: `0`.
 
@@ -29,14 +29,14 @@ gate. Override growth should therefore be an explicit reviewed decision, not a d
 escape hatch. Manual raw SVG/path bridges now have an exact zero budget, so any bridge
 reintroduction fails the strict gate unless the budget is deliberately changed.
 
-The current snapshot reflects an 824-entry net reduction in root viewport overrides after topology-driven
-viewport calibration replaced several fixture-specific root pins, the `journey` root viewport
-overrides were removed entirely, and profile-based `kanban` root height calibration replaced the
-remaining fixture-specific Kanban root pins, followed by four obsolete Sankey pins that now match
-deterministic emitted bounds and nine obsolete Timeline pins that now match deterministic root
-output, then twelve obsolete Pie pins and twelve obsolete ER pins that also match deterministic
-root output, thirty-five obsolete Requirement pins, and sixteen obsolete C4 pins now covered by
-deterministic root output. It also reflects deletion of the now-empty Block root override module
+The current snapshot reflects a large net reduction in root viewport overrides after topology-
+driven viewport calibration replaced several fixture-specific root pins, most `journey` root
+viewport pins moved into deterministic renderer behavior, and profile-based `kanban` root height
+calibration replaced the remaining fixture-specific Kanban root pins, followed by four obsolete
+Sankey pins that now match deterministic emitted bounds and nine obsolete Timeline pins that now
+match deterministic root output, then twelve obsolete Pie pins and twelve obsolete ER pins that
+also match deterministic root output, thirty-five obsolete Requirement pins, and sixteen obsolete
+C4 pins now covered by deterministic root output. It also reflects deletion of the now-empty Block root override module
 after all 119 entries proved obsolete, followed by sixty-eight obsolete State pins now covered by
 deterministic root output. It then collapses the Class root table from 196 entries to 31 by
 removing 166 obsolete pins and adding one missing docs root pin, making Class `parity-root` green
@@ -57,7 +57,11 @@ nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scop
 Architecture root pins that still guard measured `parity-root` drift. ER, Requirement, State, and
 Flowchart then moved empty-diagram root viewport behavior into renderer-derived empty content
 bounds, deleting 21 more fixture pins while keeping the affected normal and `parity-root` DOM
-filters green. It also reflects the final
+filters green. A later full `parity-root` release-gate audit restored ten required root guards:
+six Sequence long-message/frame fixtures, two tiny Journey browser float guards, and two GitGraph
+viewBox-height guards. The current root viewport budget is therefore `760`, and
+`cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+passes. It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
 `block`, `er`, and `gantt` are now counted as text metric lookup entries instead of hand-curated
@@ -234,7 +238,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `750`.
+Total entries reported by `xtask`: `760`.
 
 | file | entries |
 | --- | ---: |
@@ -242,11 +246,12 @@ Total entries reported by `xtask`: `750`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
-| `gitgraph_root_overrides_11_12_2.rs` | 226 |
+| `gitgraph_root_overrides_11_12_2.rs` | 228 |
+| `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 52 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 192 |
+| `sequence_root_overrides_11_12_2.rs` | 198 |
 | `state_root_overrides_11_12_2.rs` | 45 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -265,7 +270,9 @@ leaves 52 `parity-root` mismatches. Those entries stay in the budget until their
 profiles move into typed renderer logic.
 
 Gitgraph and Flowchart audit note: a 2026-05-09 recheck confirmed that disabling the Gitgraph
-direct root lookup still leaves all 226 Gitgraph root entries failing. The Flowchart empty-diagram
+direct root lookup still leaves the broad Gitgraph root bucket failing. The full 2026-05-11
+`parity-root` sweep restored two additional GitGraph viewBox-height guards for
+`upstream_examples_git_basic_git_flow_001` and `upstream_merges_spec`. The Flowchart empty-diagram
 pins are now deleted after empty bounds moved into renderer logic; the remaining 125 entries still
 need root-viewport derivation work before table pruning, not another blind deletion pass.
 
@@ -279,12 +286,21 @@ expansion still need typed derivation work.
 Filtered 2026-05-11 recheck: removing the `title_and_accdescr_multiline` pin in isolation kept
 DOM parity mismatched only on the root `style` max-width, with the upstream `480px` root width
 drifting to `493px` locally and Bob's actor position shifting from `x=305` to `x=318`, so the pin
-is still required for now.
+is still required for now. A later full `parity-root` sweep restored six more required Sequence
+guards for `upstream_break_spec`,
+`upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015`,
+`upstream_docs_sequence_entity_codes_example`, `upstream_docs_sequencediagram_break_062`,
+`upstream_par_multiple_ands_spec`, and `upstream_pkgtests_sequencediagram_spec_063`.
+
+Journey note: the table was reintroduced with two tiny browser-float root guards after full
+`parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
+fixtures. The renderer still derives normal Journey root behavior; these two entries are
+fixture-derived parity guards, not a return to a broad Journey root table.
 
 Largest root-viewport buckets:
 
-- `gitgraph`: 226
-- `sequence`: 192
+- `gitgraph`: 228
+- `sequence`: 198
 - `flowchart`: 125
 - `mindmap`: 52
 - `state`: 45

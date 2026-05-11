@@ -21,6 +21,12 @@ Use this for layout or SVG changes that can affect DOM output:
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3
 ```
 
+Use this when root `viewBox` / `max-width` / export bounds can change:
+
+```sh
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+```
+
 Use narrower `compare-*` commands when the change touches only one diagram family.
 
 ## Override Gate
@@ -71,4 +77,5 @@ cargo run -p xtask -- verify --strict
 ```
 
 This is the release-level superset of the other gates and includes fmt, all-features check, public
-feature matrix, workspace clippy, override no-growth, nextest, and SVG DOM parity.
+feature matrix, workspace clippy, override no-growth, nextest, SVG DOM parity, and full SVG root
+parity.

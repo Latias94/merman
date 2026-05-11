@@ -17,6 +17,7 @@ What is done:
 - M3 text subsystem modularization is complete.
 - M4 large renderer decomposition is effectively complete.
 - `cargo run -p xtask -- verify --strict` passes.
+- `cargo run -p xtask -- verify --strict` now includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record.
 - Root `CHANGELOG.md` now calls out the refactor release-readiness work.
@@ -42,7 +43,7 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `gitgraph` 226, `sequence` 192, `flowchart` 125, `mindmap` 52, `state` 45
+- root viewport: `gitgraph` 228, `sequence` 198, `flowchart` 125, `mindmap` 52, `state` 45
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 25
 
 ## Next Practical Slices

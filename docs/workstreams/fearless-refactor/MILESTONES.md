@@ -28,7 +28,7 @@ Evidence:
 
 - `cargo run -p xtask -- verify --strict` passed. This covers fmt, all-features check, public
   feature matrix, workspace all-target/all-features clippy, nextest, override no-growth, and SVG
-  DOM parity.
+  DOM/root parity.
 
 Scope:
 
@@ -576,9 +576,11 @@ Progress:
   `+request() : Response` rendered-width guards were restored after a `parity-root` recheck showed
   `stress_class_styles_multiple_classdef_016` root max-width drifting from `890.25px` to
   `890.5px` without them, leaving the global text lookup total at 480.
-- Root viewport footprint dropped 816 entries net so far: 19 architecture pins after
-  topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
-  viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
+- Root viewport footprint is now tracked at `760` entries after the broad pruning work and the
+  later restoration of ten guards required by a full `parity-root` release-gate sweep: 19
+  architecture pins after topology-driven calibration covered the matching profiles, most journey
+  pins after the deterministic viewport path covered the matching fixtures, and 11 kanban pins
+  after profile-based root height
   calibration covered the remaining Kanban `parity-root` profiles, plus 4 sankey pins now covered
   by deterministic emitted bounds, 9 timeline pins now covered by deterministic root output, and 12
   pie pins now covered by deterministic root output, plus 12 ER pins now covered by deterministic
@@ -601,7 +603,9 @@ Progress:
   nested-groups and reasonable-height profiles and pruned 70 obsolete fixture-scoped pins, leaving
   31 Architecture root pins that still guard real `parity-root` drift. Empty-diagram root viewport
   behavior then moved into Flowchart, State, ER, and Requirement renderer logic, deleting 21 more
-  root pins while the affected normal and `parity-root` DOM filters stayed green.
+  root pins while the affected normal and `parity-root` DOM filters stayed green. The full
+  `parity-root` sweep then restored 6 Sequence, 2 Journey, and 2 GitGraph root guards so
+  `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` is green.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
@@ -668,7 +672,11 @@ Progress:
   `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.
 - Revalidated `cargo run -p xtask -- verify --strict` after the Class text lookup cleanup; the run
   covered fmt, all-features check, workspace clippy, no-growth override reporting at `480` text
-  lookup entries, feature matrix checks, workspace nextest, and strict SVG DOM parity.
+  lookup entries, feature matrix checks, workspace nextest, and strict normal SVG DOM parity.
+- `xtask verify --strict` now also includes the full SVG root parity sweep after normal DOM parity.
+- Revalidated `cargo run -p xtask -- verify --strict` after adding full root parity to the strict
+  gate; the run passed with `760` root viewport entries, `480` text lookup entries, `1013` nextest
+  tests passed, `3` skipped, and both normal DOM parity plus root parity green.
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are
   recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.

@@ -8,6 +8,7 @@ struct VerifyOptions {
     all_features: bool,
     check_overrides: bool,
     feature_matrix: bool,
+    root_parity: bool,
 }
 
 pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
@@ -22,11 +23,13 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 "--all-features" => options.all_features = true,
                 "--check-overrides" => options.check_overrides = true,
                 "--feature-matrix" => options.feature_matrix = true,
+                "--root-parity" => options.root_parity = true,
                 "--strict" => {
                     options.clippy = true;
                     options.all_features = true;
                     options.check_overrides = true;
                     options.feature_matrix = true;
+                    options.root_parity = true;
                 }
                 "--help" | "-h" => {
                     print_verify_usage();
@@ -41,7 +44,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn print_verify_usage() {
         println!(
-            "usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--feature-matrix] [--strict]"
+            "usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--feature-matrix] [--root-parity] [--strict]"
         );
         println!();
         println!("Default gates:");
@@ -57,8 +60,9 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("                  fail if generated/manual override counts grow beyond budget");
         println!("  --feature-matrix");
         println!("                  check public no-default/render/raster feature combinations");
+        println!("  --root-parity   run full SVG root parity after normal DOM parity");
         println!(
-            "  --strict        shorthand for --clippy --all-features --check-overrides --feature-matrix"
+            "  --strict        shorthand for --clippy --all-features --check-overrides --feature-matrix --root-parity"
         );
     }
 
@@ -152,6 +156,17 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         "--dom-decimals".to_string(),
         "3".to_string(),
     ])?;
+
+    if options.root_parity {
+        println!("\n== svg root parity ==");
+        cmd::compare_all_svgs(vec![
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            "parity-root".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+        ])?;
+    }
 
     Ok(())
 }

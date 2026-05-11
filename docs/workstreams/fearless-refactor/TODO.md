@@ -31,7 +31,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `cargo check -p merman --no-default-features --features render`, `cargo check -p merman
   --no-default-features --features raster`, and `cargo check -p merman-core --no-default-features`.
   `--strict` now includes this matrix alongside all-features check, clippy, override budget,
-  nextest, and SVG DOM parity.
+  nextest, normal SVG DOM parity, and full SVG root parity.
+- [x] Add full root parity to the strict release gate.
+  Evidence: `xtask verify --root-parity` runs
+  `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and `--strict` includes
+  it after the normal DOM parity sweep.
 - [x] Add a documented "fast local refactor gate" command set.
   Gap check: confirm which nextest packages and snapshot gates give the best signal per minute.
   Evidence: `README.md` now documents core, render, public API, feature-flag, and strict release
@@ -484,9 +488,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` green and `cargo run -p xtask -- verify --strict` passed.
 - [ ] Delete overrides made obsolete by typed model or measurement fixes.
-  Evidence: root viewport footprint is down 824 entries net so far: 19 `architecture` entries after
-  topology-driven viewport calibration, 4 `journey` entries after the deterministic viewport path
-  proved stable, and 11 `kanban` entries after profile-based root height calibration replaced the
+  Evidence: root viewport footprint is down to `760` entries after the broad pruning work and the
+  later full-root-parity restoration of ten required guards. Earlier cleanup removed 19
+  `architecture` entries after topology-driven viewport calibration, most `journey` entries after
+  the deterministic viewport path proved stable, and 11 `kanban` entries after profile-based root
+  height calibration replaced the
   remaining fixture-specific pins, plus 4 `sankey` entries now covered by deterministic emitted
   bounds. The remaining 3 `sankey` root pins were rechecked by disabling the Sankey root lookup and
   running `compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`; they still
@@ -543,8 +549,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   moved into Flowchart, State, ER, and Requirement renderer logic, deleting 21 more root pins while
   the affected normal and `parity-root` DOM filters stayed green. Sequence participant-type cursor
   derivation then removed 8 more root pins and refreshed the affected layout goldens, reducing the
-  Sequence root table from 200 to 192 entries. The remaining title and long-message Sequence root
-  pins still need typed bounds improvements before another table-pruning pass. The
+  Sequence root table from 200 to 192 entries. A later full `parity-root` sweep restored six
+  required Sequence long-message/frame guards, bringing the Sequence table to 198 entries. The
+  remaining title and long-message Sequence root pins still need typed bounds improvements before
+  another table-pruning pass. The same full sweep restored two tiny Journey root browser-float
+  guards and two GitGraph viewBox-height guards, making
+  `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+  pass for all diagram families. The
   stale Mindmap HTML width lookup table and generator were also deleted after the shared text
   measurer leak was removed and layout snapshots proved the stable Mindmap path did not need those
   291 entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
@@ -589,7 +600,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   confirmed guard labels:
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
-  no-growth budgets were also tightened to the current category totals (`750` root viewport entries
+  no-growth budgets were also tightened to the current category totals (`760` root viewport entries
   and `480` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
@@ -729,7 +740,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
-  `compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+  `compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
   `compare-kanban-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, and
   `compare-treemap-svgs --check-dom --dom-decimals 3` still pass. Flowchart `parity-root`
   now also passes after the math baseline normalization and sanitized KaTeX probe fix.

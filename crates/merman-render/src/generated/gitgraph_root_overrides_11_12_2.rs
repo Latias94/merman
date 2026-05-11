@@ -90,6 +90,9 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-114.078125 -19 572.078125 235.75454711914062",
             "572.078125",
         )),
+        "upstream_examples_git_basic_git_flow_001" => {
+            Some(("-117.421875 -19 525.421875 263.6158752441406", "525.421875"))
+        }
         "upstream_html_demos_git_cherry_pick_from_branch_graph_013" => {
             Some(("-139.328125 -50 405.859375 203.3262939453125", "405.859375"))
         }
@@ -156,6 +159,10 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_html_demos_git_two_way_merges_012" => {
             Some(("-97.20260620117188 -50 282.71875 461", "282.71875"))
         }
+        "upstream_merges_spec" => Some((
+            "-146.375 -34.72539138793945 654.375 341.15484619140625",
+            "654.375",
+        )),
         "upstream_html_demos_git_simple_branch_and_merge_graph_001" => {
             Some(("-164.9375 -50 348.546875 204.290771484375", "348.546875"))
         }

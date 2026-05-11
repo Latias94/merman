@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest Class `parity-root` recheck restored three rendered-width guards and brought the global text lookup budget to `480`; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring ten required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The Class `parity-root` recheck also restored three rendered-width guards and brought the global text lookup budget to `480`. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Class text lookup cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -26,7 +26,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Prompt / requirement | Artifact or command | State |
 | --- | --- | --- |
 | Typed-first pipeline | `docs/workstreams/fearless-refactor/MILESTONES.md`, `RENDER_MODEL_INVENTORY.md`, `TYPED_RENDERER_GUIDE.md` | Covered |
-| Parity-safe release | `cargo run -p xtask -- verify --strict` | Covered |
+| Parity-safe release | `cargo run -p xtask -- verify --strict`; `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` | Covered |
 | Public feature gates | `cargo run -p xtask -- verify --feature-matrix` and `cargo run -p xtask -- verify --strict` | Covered |
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
 | Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`, `docs/performance/COMPARISON.md` | Covered |
@@ -36,10 +36,19 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed after full root parity was added to the strict
+  gate. The run covered fmt, all-features check, workspace all-target/all-features clippy, override
+  no-growth at `760` root viewport entries and `480` text lookup entries, feature matrix checks,
+  workspace nextest (`1013` tests passed, `3` skipped), normal SVG DOM parity, and full SVG root
+  parity.
 - `cargo run -p xtask -- verify --strict` passed after the latest Class text lookup cleanup. The
   strict run covered fmt, all-features check, workspace all-target/all-features clippy, override
   no-growth at `480` text lookup entries, feature matrix checks, workspace nextest
   (`1013` tests passed, `3` skipped), and SVG DOM parity for all strict diagram families.
+- Full SVG root parity was restored after adding six Sequence root guards, two Journey root guards,
+  and two GitGraph root guards. `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode
+  parity-root --dom-decimals 3` now passes, `xtask verify --strict` includes that sweep, and the
+  root viewport no-growth budget is `760`.
 - `cargo run -p xtask -- verify --strict` was rerun after commit `4406e261` recorded the filtered
   `title_and_accdescr_multiline` Sequence root pin recheck. The tree stayed green with the same
   `1013` passed, `3` skipped nextest result and the then-current `477` text lookup budget.
@@ -164,8 +173,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   parity-root drift to 493px and 593px local max-width baselines.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
-  A later empty-diagram root viewport cleanup lowered the root budget to `750`, and the later
-  Class cleanup lowered the text lookup budget to `517`.
+  A later empty-diagram root viewport cleanup lowered the root budget to `750`; the full
+  root-parity gate audit restored ten required root guards and reset the current root budget to
+  `760`, while the later Class cleanup lowered the text lookup budget to `517`.
 - A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
   deletion now requires layout snapshot evidence because the default deterministic layout measurer
   can still differ when the vendored SVG/HTML measurer matches the stored override.

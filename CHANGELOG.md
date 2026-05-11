@@ -37,6 +37,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.
+- `xtask verify --root-parity`: add an opt-in full SVG root parity gate; `--strict` now includes
+  it after normal DOM parity.
 - `xtask report-overrides --check-no-growth`: reject root viewport lookup call sites that bypass
   the shared root override helper.
 

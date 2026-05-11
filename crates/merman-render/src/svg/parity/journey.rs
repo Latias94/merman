@@ -9,6 +9,20 @@ fn fmt_task_face_y(v: Option<f64>) -> String {
         .unwrap_or_else(|| "NaN".to_string())
 }
 
+fn journey_svg_height_attr_from_viewbox(viewbox: &str, fallback: &str) -> String {
+    let mut parts = viewbox.split_whitespace();
+    let _min_x = parts.next();
+    let min_y = parts.next().and_then(|part| part.parse::<f64>().ok());
+    let _width = parts.next();
+    let height = parts.next().and_then(|part| part.parse::<f64>().ok());
+
+    match (min_y, height) {
+        (Some(min_y), Some(height)) if min_y < 0.0 => fmt(height - min_y).to_string(),
+        (Some(_), Some(height)) => fmt(height).to_string(),
+        _ => fallback.to_string(),
+    }
+}
+
 fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
@@ -345,20 +359,33 @@ pub(super) fn render_journey_diagram_svg_model(
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
 
-    let max_w_attr = fmt(layout.width).to_string();
-    let viewbox_attr = format!(
+    let mut max_w_attr = fmt(layout.width).to_string();
+    let mut viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
-    let svg_h_attr = fmt(if vb_min_y < 0.0 {
+    let fallback_svg_h_attr = fmt(if vb_min_y < 0.0 {
         vb_h - vb_min_y
     } else {
         vb_h
     })
     .to_string();
+    let mut width_attr = fmt(vb_w).to_string();
+    let mut height_attr = fmt(vb_h).to_string();
+
+    apply_root_viewport_override(
+        diagram_id,
+        &mut viewbox_attr,
+        &mut width_attr,
+        &mut height_attr,
+        &mut max_w_attr,
+        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override,
+    );
+
+    let svg_h_attr = journey_svg_height_attr_from_viewbox(&viewbox_attr, &fallback_svg_h_attr);
 
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
     let extra_attrs: [(&str, &str); 2] = [
