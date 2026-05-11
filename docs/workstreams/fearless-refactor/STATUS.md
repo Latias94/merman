@@ -43,7 +43,7 @@ It is mostly evidence-driven debt reduction:
 Largest remaining buckets:
 
 - root viewport: `gitgraph` 226, `sequence` 192, `flowchart` 125, `mindmap` 52, `state` 45
-- text lookup: `class` 275, `block` 123, `flowchart` 45, `state` 25
+- text lookup: `class` 274, `block` 123, `flowchart` 45, `state` 25
 
 ## Next Practical Slices
 

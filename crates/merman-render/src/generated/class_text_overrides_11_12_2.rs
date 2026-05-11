@@ -236,7 +236,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "+parse(String text) : Data") => Some(183.21875),
         (16, false, "Data") => Some(33.671875),
         (16, false, "UNKNOWN") => Some(74.640625),
-        (16, false, "+handle(req: Request) : Response") => Some(240.375),
         (16, false, "--") => Some(11.75),
         (16, false, "«enumeration»") => Some(107.859375),
         (16, true, "IService") => Some(59.765625),

@@ -569,7 +569,7 @@ Progress:
   `+eat()`, `+mate()`, `+run()`, `+quack()`, `+swim()`, `+template()`, `bar()`, and
   `+isOk() : bool`, `+logout()`, `+start()`, `+addUser(user: User)`, `+request() : Response`, and
   `+query(sql: String) : Rows` rendered-width cleanups, stayed green under Class DOM parity,
-  layout snapshot, and strict gates, reducing the global text lookup total to 478.
+  layout snapshot, and strict gates, reducing the global text lookup total to 477.
 - Root viewport footprint dropped 816 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
@@ -661,7 +661,7 @@ Progress:
   the run completed successfully after a longer timeout window and is recorded in
   `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.
 - Revalidated `cargo run -p xtask -- verify --strict` after the Class text lookup cleanup; the run
-  covered fmt, all-features check, workspace clippy, no-growth override reporting at `478` text
+  covered fmt, all-features check, workspace clippy, no-growth override reporting at `477` text
   lookup entries, feature matrix checks, workspace nextest, and strict SVG DOM parity.
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are

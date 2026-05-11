@@ -217,7 +217,7 @@ exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanu
 `+quack()` / `+swim()` cleanup, the `+template()` cleanup, the `bar()` rendered-width cleanup, and
 the `+isOk() : bool` rendered-width cleanup, reducing the text lookup total to 483. A follow-up
 batch removed `+logout()`, `+start()`, `+addUser(user: User)`, `+request() : Response`, and
-`+query(sql: String) : Rows`, reducing the text lookup total to 478.
+  `+query(sql: String) : Rows`, reducing the text lookup total to 477.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -283,12 +283,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `478`.
+Total lookup entries reported by `xtask`: `477`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 275 |
+| `class_text_overrides_11_12_2.rs` | 274 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -310,7 +310,7 @@ and `+isOk() : bool` rendered-width cleanup passes refreshed the affected layout
 and reduced the Class text lookup total to 280 and the global text lookup total to 483. The
 follow-up `+logout()`, `+start()`, `+addUser(user: User)`, `+request() : Response`, and
 `+query(sql: String) : Rows` rendered-width cleanup passes refreshed the affected layout goldens
-as needed and reduced the Class text lookup total to 275 and the global text lookup total to 478.
+  as needed and reduced the Class text lookup total to 274 and the global text lookup total to 477.
 The `test()` rendered width entry stays pinned because deleting it preserves Class DOM parity but
 causes broad default-layout churn across 14 simple Class cypress fixture goldens.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because

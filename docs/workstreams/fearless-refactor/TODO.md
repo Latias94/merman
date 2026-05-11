@@ -207,9 +207,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   HTML width prunings, after the later blank Block label pruning, and after the later Class
   `int chimp` rendered-width, `int gorilla` calcTextWidth, and base-attribute calcTextWidth
   cleanups; the follow-up Class calc/rendered-width pruning below brings the current total to
-  `478`.
+  `477`.
 - [x] Trim the Class calc-text-width override table to only browser-sensitive guards.
-  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 275
+  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 274
   lookup entries, down from 344, after deleting 69 entries across the exact-match pass, the
   later `uses` plain-label cleanup, the final `OK` pair cleanup, and the `ApiClient` cleanup with
   the dense layout golden refresh, followed by the `ERROR`, `Payment`, `Cart`, and `Server`
@@ -221,7 +221,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `+addUser(user: User)`, `+request() : Response`, and `+query(sql: String) : Rows` rendered-width
   cleanups.
   Both Class DOM parity modes and the layout snapshot test stayed green, and `report-overrides`
-  now reports `478` text lookup entries. The `bar()`, `E`,
+  now reports `477` text lookup entries. The `bar()`, `E`,
   `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
   remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
   caps explicitly. The `User` rendered width entry also remains because removing it preserves the
@@ -587,7 +587,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`750` root viewport entries
-  and `478` text lookup entries), so the strict gate blocks this
+  and `477` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

@@ -267,7 +267,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on
   a hand-maintained file list.
 - Override governance: prune redundant Class text lookup entries, document retained parser-normalized
-  Data method guards, and tighten the no-growth budget to `478` global text lookup entries.
+  Data method guards, and tighten the no-growth budget to `477` global text lookup entries.
 - Release readiness: revalidate `cargo run -p xtask -- verify --strict` and
   `cargo bench -p merman --features render` after the latest Class text lookup cleanup.
 
