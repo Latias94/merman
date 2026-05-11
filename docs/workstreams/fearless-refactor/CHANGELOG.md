@@ -9,7 +9,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered
   `title_and_accdescr_multiline` Sequence root pin recheck and refreshing the completion audit;
-  the strict gate stayed green with the same `477` text lookup budget.
+  the strict gate stayed green with the then-current `477` text lookup budget.
+- Restored the Class rendered-width guards for `+handle(req: Request) : Response`,
+  `+query(sql: String) : Rows`, and `+request() : Response` after a focused `parity-root` recheck
+  showed `stress_class_styles_multiple_classdef_016` drifting from `890.25px` to `890.5px`
+  without them; the Class text lookup budget is now `480`.
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are
   recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.

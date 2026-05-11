@@ -206,10 +206,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `insured for` and `is teacher of` relation-label prunings, after the later ER calcTextWidth and
   HTML width prunings, after the later blank Block label pruning, and after the later Class
   `int chimp` rendered-width, `int gorilla` calcTextWidth, and base-attribute calcTextWidth
-  cleanups; the follow-up Class calc/rendered-width pruning below brings the current total to
-  `477`.
+  cleanups; the follow-up Class calc/rendered-width pruning below brought the total to `477`.
+  A later Class `parity-root` recheck restored three rendered-width guards, so the current total is
+  `480`.
 - [x] Trim the Class calc-text-width override table to only browser-sensitive guards.
-  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 274
+  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 277
   lookup entries, down from 344, after deleting 69 entries across the exact-match pass, the
   later `uses` plain-label cleanup, the final `OK` pair cleanup, and the `ApiClient` cleanup with
   the dense layout golden refresh, followed by the `ERROR`, `Payment`, `Cart`, and `Server`
@@ -217,11 +218,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
   `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`,
   `int[] id`, `+eat()`, `+mate()`, `+run()`, `+quack()`, `+swim()`, `+template()`, `bar()`, and
-  `+isOk() : bool` rendered-width cleanups, plus the later `+logout()`, `+start()`,
-  `+addUser(user: User)`, `+request() : Response`, and `+query(sql: String) : Rows` rendered-width
-  cleanups.
-  Both Class DOM parity modes and the layout snapshot test stayed green, and `report-overrides`
-  now reports `477` text lookup entries. The `bar()`, `E`,
+  `+isOk() : bool` rendered-width cleanups, plus the later `+logout()`, `+start()`, and
+  `+addUser(user: User)` rendered-width cleanups. The `+handle(req: Request) : Response`,
+  `+query(sql: String) : Rows`, and `+request() : Response` rendered-width guards were restored
+  after deleting them made `stress_class_styles_multiple_classdef_016` drift from `890.25px` to
+  `890.5px` under `parity-root`.
+  Both Class DOM parity modes and the layout snapshot test stay green, and `report-overrides` now
+  reports `480` text lookup entries. The `bar()`, `E`,
   `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
   remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
   caps explicitly. The `User` rendered width entry also remains because removing it preserves the
@@ -587,7 +590,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`750` root viewport entries
-  and `477` text lookup entries), so the strict gate blocks this
+  and `480` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

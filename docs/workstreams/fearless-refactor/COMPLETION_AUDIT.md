@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class text lookup cleanup brought the global text lookup budget to `477`; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest Class `parity-root` recheck restored three rendered-width guards and brought the global text lookup budget to `480`; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Class text lookup cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -38,11 +38,16 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 - `cargo run -p xtask -- verify --strict` passed after the latest Class text lookup cleanup. The
   strict run covered fmt, all-features check, workspace all-target/all-features clippy, override
-  no-growth at `477` text lookup entries, feature matrix checks, workspace nextest
+  no-growth at `480` text lookup entries, feature matrix checks, workspace nextest
   (`1013` tests passed, `3` skipped), and SVG DOM parity for all strict diagram families.
 - `cargo run -p xtask -- verify --strict` was rerun after commit `4406e261` recorded the filtered
   `title_and_accdescr_multiline` Sequence root pin recheck. The tree stayed green with the same
-  `1013` passed, `3` skipped nextest result and `477` text lookup budget.
+  `1013` passed, `3` skipped nextest result and the then-current `477` text lookup budget.
+- Class `parity-root` was rechecked after the earlier rendered-width pruning. Restoring
+  `+handle(req: Request) : Response`, `+query(sql: String) : Rows`, and
+  `+request() : Response` fixed `stress_class_styles_multiple_classdef_016` root max-width drift
+  from `890.5px` back to the upstream `890.25px`; the affected Class layout golden was refreshed,
+  and the no-growth text lookup budget is now `480`.
 - `cargo bench -p merman --features render` passed after the latest Class text lookup cleanup and
   is recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
   A 20 minute command window timed out first; the same command completed under a 1 hour window.
@@ -128,10 +133,10 @@ Progress is tracked in the fearless-refactor workstream docs.
   `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
   `cargo nextest run -p merman-render --test layout_snapshots_test
   fixtures_match_layout_golden_snapshots_when_present` passed after removing the redundant Class
-  `+logout()`, `+start()`, `+addUser(user: User)`, `+request() : Response`, and `+query(sql:
-  String) : Rows` rendered-width overrides and refreshing the affected class layout goldens.
-  `cargo run -p xtask -- report-overrides --check-no-growth` then passed with the text lookup budget
-  tightened to `477`.
+  `+logout()`, `+start()`, and `+addUser(user: User)` rendered-width overrides and refreshing the
+  affected class layout goldens. A later `parity-root` recheck restored
+  `+handle(req: Request) : Response`, `+query(sql: String) : Rows`, and
+  `+request() : Response`, leaving the text lookup budget at `480`.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
