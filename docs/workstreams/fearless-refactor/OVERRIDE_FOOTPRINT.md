@@ -62,7 +62,8 @@ six Sequence long-message/frame fixtures, two tiny Journey browser float guards,
 viewBox-height guards. The root viewport budget was therefore `760`, and
 `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 passed. The follow-up root viewport derivation workstream then removed one State style-directive
-root pin, so the current root viewport budget is `759`.
+root pin and two State Mermaid entity-placeholder edge-label root pins, so the current root
+viewport budget is `757`.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -240,7 +241,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `759`.
+Total entries reported by `xtask`: `757`.
 
 | file | entries |
 | --- | ---: |
@@ -254,7 +255,7 @@ Total entries reported by `xtask`: `759`.
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 198 |
-| `state_root_overrides_11_12_2.rs` | 44 |
+| `state_root_overrides_11_12_2.rs` | 42 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
 Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root
@@ -338,7 +339,7 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `480`.
+Total lookup entries reported by `xtask`: `481`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -347,7 +348,7 @@ Total lookup entries reported by `xtask`: `480`.
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 25 |
+| `state_text_overrides_11_12_2.rs` | 26 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -369,7 +370,9 @@ as needed and reduced the Class text lookup total to 274 and the global text loo
 The later Class `parity-root` recheck restored `+handle(req: Request) : Response`,
 `+query(sql: String) : Rows`, and `+request() : Response`, then refreshed
 `stress_class_styles_multiple_classdef_016.layout.golden.json`; Class text lookups are now 277 and
-the global text lookup total is 480.
+the global text lookup total was 480. The State root viewport derivation workstream then added one
+shared edge-label browser metric for `test({ foo: 'far' })`, raising State text lookups to 26 and
+the global text lookup total to 481 while removing two fixture-scoped State root pins.
 The `test()` rendered width entry stays pinned because deleting it preserves Class DOM parity but
 causes broad default-layout churn across 14 simple Class cypress fixture goldens.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because

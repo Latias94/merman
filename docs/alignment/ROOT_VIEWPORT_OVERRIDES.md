@@ -120,5 +120,5 @@ exist to pin `viewBox` + `style max-width` when browser `getBBox()` serializatio
 deterministic drift that is not yet worth globalizing into layout/render logic.
 
 Current root viewport inventory is tracked by
-`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 759 total
-root viewport entries, including 44 State entries and 31 Architecture entries.
+`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 757 total
+root viewport entries, including 42 State entries and 31 Architecture entries.

@@ -10,3 +10,6 @@
   the now-derived `can_have_styles_applied` State root pin, and tightened the root budget to `759`.
 - Refreshed the two affected State style layout goldens and verified full State normal DOM,
   full State `parity-root`, render clippy, xtask budget test, and `merman-render` nextest.
+- Decoded Mermaid `encodeEntities` placeholders before State layout label measurement, moved the
+  remaining `test({ foo: 'far' })` edge-label browser width into State text metrics, removed the
+  two now-derived State root pins, and tightened the root budget to `757`.

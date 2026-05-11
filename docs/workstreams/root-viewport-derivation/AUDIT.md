@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Pending |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: one State root pin removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: three State root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State pass recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate nextest passed |
@@ -27,11 +27,13 @@ The fearless-refactor closeout recorded these root viewport counts:
 - State: `45` entries.
 - Mindmap: `52` entries.
 
-Current counts after the first State pass:
+Current counts after the State style and entity-placeholder passes:
 
-- State: `44` entries.
+- State: `42` entries.
 - Mindmap: `52` entries.
-- Root viewport total: `759` entries.
+- Root viewport total: `757` entries.
+- Text lookup total: `481` entries. This is an intentional one-entry increase because one shared
+  State edge-label browser metric replaced two fixture-scoped root viewport pins.
 
 The same closeout confirmed that broad disabled-root sweeps still fail for both buckets. This
 workstream therefore focuses on derivation work, not blind deletion.
@@ -72,6 +74,14 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 - 2026-05-11: `cargo test -p xtask override_growth_check_rejects_category_growth` passed.
 - 2026-05-11: `cargo nextest run -p merman-render` passed with `148` tests after refreshing the
   two affected State layout golden snapshots.
+- 2026-05-11: `cargo test -p merman-render
+  state_entity_decode_handles_mermaid_placeholders_and_colon_entity` passed.
+- 2026-05-11: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter v2_states_can_have_a_class_applied --report-root-all` passed after
+  deleting the corresponding State root pin.
+- 2026-05-11: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter should_render_a_state_diagram_and_set_the_correct_length_of_t
+  --report-root-all` passed after deleting the corresponding State root pin.
 
 ## Open Risks
 

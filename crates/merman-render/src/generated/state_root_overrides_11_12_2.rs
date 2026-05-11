@@ -89,14 +89,8 @@ pub fn lookup_state_root_viewport_override(
         "upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035" => {
             Some(("0 0 294.359375 56", "294.359"))
         }
-        "upstream_cypress_statediagram_v2_spec_v2_should_render_a_state_diagram_and_set_the_correct_length_of_t_031" => {
-            Some(("0 0 136.46875 298", "136.469"))
-        }
         "upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025" => {
             Some(("0 0 225.921875 120", "225.922"))
-        }
-        "upstream_cypress_statediagram_v2_spec_v2_states_can_have_a_class_applied_032" => {
-            Some(("0 0 136.46875 298", "136.469"))
         }
         "upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024" => {
             Some(("0 0 156.765625 246", "156.766"))

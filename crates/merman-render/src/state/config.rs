@@ -95,6 +95,10 @@ pub(crate) fn state_html_label_wrapping_width(cfg: &Value) -> f64 {
 }
 
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
+    if text.contains('ﬂ') || text.contains('¶') || text.contains('#') {
+        return merman_core::entities::decode_mermaid_entities_to_unicode(text);
+    }
+
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
             "nbsp" => Some(' '),
@@ -104,6 +108,7 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
             "quot" => Some('"'),
             "apos" => Some('\''),
             "#39" => Some('\''),
+            "colon" => Some(':'),
             "equals" => Some('='),
             _ => {
                 if let Some(hex) = entity
@@ -188,5 +193,17 @@ mod tests {
 
         let fallback = serde_json::json!({});
         assert_eq!(super::state_html_label_wrapping_width(&fallback), 200.0);
+    }
+
+    #[test]
+    fn state_entity_decode_handles_mermaid_placeholders_and_colon_entity() {
+        assert_eq!(
+            super::decode_html_entities_once("test({ fooﬂ°colon¶ß 'far' })"),
+            "test({ foo: 'far' })"
+        );
+        assert_eq!(
+            super::decode_html_entities_once("test({ foo&colon; 'far' })"),
+            "test({ foo: 'far' })"
+        );
     }
 }

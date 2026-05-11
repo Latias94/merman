@@ -61,6 +61,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- State layout/SVG parity: decode Mermaid `encodeEntities` placeholders before measuring State
+  labels, and move the `test({ foo: 'far' })` edge-label browser width into State text metrics so
+  two fixture-scoped State root viewport pins can be deleted.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

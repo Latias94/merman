@@ -164,6 +164,9 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
     }
 
     match text {
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_v2_should_render_a_state_diagram_and_set_the_correct_length_of_t_031.svg
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_v2_states_can_have_a_class_applied_032.svg
+        "test({ foo: 'far' })" => Some(120.46875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_recursive_state_definitions_spec.svg
         // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
         "EvNewValueSaved" => Some(129.447265625),
