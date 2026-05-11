@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Wheel` rendered width override after both Class DOM parity modes
+  stayed green and the affected relation-types layout golden was refreshed, reducing Class text
+  lookups from `306` to `305` and the global text lookup budget from `509` to `508`; recorded
+  `Fish` as retained because removing it shifts a docs class root `max-width`.
 - Recorded the Class `User` rendered width override as retained: deleting it passed the broad
   Class DOM/layout gates but failed the focused namespace geometry test in strict verification.
 - Removed the redundant Class `Item` `calcTextWidth` override and `Order` rendered width override

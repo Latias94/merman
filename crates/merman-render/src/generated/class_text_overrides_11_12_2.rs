@@ -212,7 +212,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, true, "Foo") => Some(26.703125),
         (16, true, "Fish") => Some(30.484375),
         (16, true, "Mineral") => Some(54.921875),
-        (16, true, "Wheel") => Some(46.734375),
         (16, true, "Zebra") => Some(42.328125),
         (16, false, "+String beakColor") => Some(126.609375),
         (16, false, "+from(v: T) : Result<T>") => Some(166.9375),
