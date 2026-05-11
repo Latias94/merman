@@ -275,6 +275,11 @@ direct root lookup still leaves the broad Gitgraph root bucket failing. The full
 `upstream_examples_git_basic_git_flow_001` and `upstream_merges_spec`. The Flowchart empty-diagram
 pins are now deleted after empty bounds moved into renderer logic; the remaining 125 entries still
 need root-viewport derivation work before table pruning, not another blind deletion pass.
+A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
+`--report-root-all` produced 251 root rows, with 239 non-zero `max-width` deltas and 241 changed
+viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
+`-281.558px`. This confirms the GitGraph bucket needs model/layout derivation work before another
+deletion pass.
 
 Sequence note: a 2026-05-11 layout recalibration for participant-type actors removed 8 now-
 redundant Sequence root pins after the matching layout goldens were refreshed. The title and
