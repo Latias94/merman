@@ -36,10 +36,11 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
-- `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`, and
+- `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p dugong`, and
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after removing
-  redundant item-level `dead_code` allowances from the FCoSE port and expanding
-  `LINT_ALLOW_AUDIT.md` to include workspace support crates.
+  redundant FCoSE `dead_code` allowances, deleting stale private BK helpers in `dugong`, and
+  expanding `LINT_ALLOW_AUDIT.md` to include workspace support crates.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class `references`
   cleanup and refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden, tightening
   the text lookup no-growth budget to `496`.

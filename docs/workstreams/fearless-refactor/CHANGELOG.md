@@ -9,6 +9,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `roughr`) in addition to the main `merman-core` / `merman-render` surface, and removed redundant
   item-level `dead_code` allowances inside `manatee`'s FCoSE port where the module-level allowance
   already applies.
+- Removed `dugong`'s unused private BK `edge_key` helper and stale reference-only
+  `vertical_alignment_ref` implementation, clearing the remaining `dead_code` allowances from the
+  Dagre-compatible positioning subtree.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

@@ -1,4 +1,4 @@
-use crate::graphlib::{EdgeKey, Graph};
+use crate::graphlib::Graph;
 use crate::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 
 pub(super) fn sep(
@@ -57,9 +57,4 @@ pub(super) fn sep(
 
 pub(super) fn width(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str) -> f64 {
     g.node(v).map(|n| n.width).unwrap_or(0.0)
-}
-
-#[allow(dead_code)]
-pub(super) fn edge_key(v: &str, w: &str) -> EdgeKey {
-    EdgeKey::new(v, w, None::<String>)
 }

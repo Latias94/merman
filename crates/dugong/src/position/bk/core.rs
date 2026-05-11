@@ -428,62 +428,6 @@ where
     Alignment { root, align }
 }
 
-#[allow(dead_code)]
-fn vertical_alignment_ref<'a, F>(
-    layering: &'a [Vec<String>],
-    conflicts: &Conflicts,
-    mut neighbor_fn: F,
-) -> AlignmentRef<'a>
-where
-    F: FnMut(&'a str, &mut Vec<&'a str>),
-{
-    let mut root: HashMap<&'a str, &'a str> = HashMap::default();
-    let mut align: HashMap<&'a str, &'a str> = HashMap::default();
-    let mut pos: HashMap<&'a str, usize> = HashMap::default();
-
-    for layer in layering {
-        for (order, v) in layer.iter().enumerate() {
-            let v = v.as_str();
-            root.insert(v, v);
-            align.insert(v, v);
-            pos.insert(v, order);
-        }
-    }
-
-    let mut ws: Vec<&'a str> = Vec::new();
-    for layer in layering {
-        let mut prev_idx: isize = -1;
-        for v in layer {
-            let v = v.as_str();
-            ws.clear();
-            neighbor_fn(v, &mut ws);
-            if ws.is_empty() {
-                continue;
-            }
-            ws.sort_by_key(|w| pos.get(w).copied().unwrap_or(usize::MAX));
-
-            let mp = (ws.len() - 1) as f64 / 2.0;
-            let i0 = mp.floor() as usize;
-            let i1 = mp.ceil() as usize;
-
-            for w in ws.iter().take(i1 + 1).skip(i0) {
-                let w = *w;
-                let v_align = align.get(v).copied().unwrap_or(v);
-                let w_pos = pos.get(w).copied().unwrap_or(usize::MAX) as isize;
-                if v_align == v && prev_idx < w_pos && !has_conflict(conflicts, v, w) {
-                    align.insert(w, v);
-                    let w_root = root.get(w).copied().unwrap_or(w);
-                    align.insert(v, w_root);
-                    root.insert(v, w_root);
-                    prev_idx = w_pos;
-                }
-            }
-        }
-    }
-
-    AlignmentRef { root, align }
-}
-
 fn vertical_alignment_ref_fast<'a>(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: &[Vec<&'a str>],

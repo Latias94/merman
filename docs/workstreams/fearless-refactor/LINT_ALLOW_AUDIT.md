@@ -29,7 +29,6 @@ mainline renderer/core surface is clean.
 | --- | --- | --- | --- |
 | `crates/manatee/src/algo/fcose/mod.rs` | `dead_code`, `clippy::collapsible_if`, `clippy::manual_div_ceil`, `clippy::needless_option_as_deref`, `clippy::needless_range_loop`, `clippy::nonminimal_bool` | Retained for the FCoSE port while it stays close to the upstream Cytoscape/FCoSE control flow and debug surface. Redundant item-level `dead_code` allowances inside this module were removed after the module-level allowance was confirmed to cover them. | Split the FCoSE port into smaller owner modules, delete unused debug/reference helpers, and then remove these allowances under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
 | `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::assign_op_pattern`, `clippy::manual_contains`, `clippy::manual_swap`, `clippy::needless_range_loop` | Retained for the spectral initialization port where loop shape and operation order are still intentionally close to upstream `cytoscape-fcose`. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
-| `crates/dugong/src/position/bk/util.rs`, `crates/dugong/src/position/bk/core.rs` | `dead_code` | Retained around the Dagre-compatible Brandes-Koepf positioning helpers that still carry reference/helper entrypoints. | Collapse or delete unused BK helper paths once Dagre parity tests and layout snapshots prove the reduced call graph is enough. |
 | `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained for the forked RoughJS API shape. The renderer-facing merman parity layer already wraps common RoughJS calls, but the forked backend still exposes upstream-like wide helper signatures. | Introduce RoughJS backend request structs only after Flowchart/State hand-drawn parity and allocation checks stay green. |
 | `crates/roughr/src/core.rs`, `crates/roughr/src/generator.rs`, `crates/roughr/src/filler/scan_line_hachure.rs` | `dead_code` | Retained for forked RoughJS option and filler surfaces that are not all exercised by the current merman renderers. | Delete or feature-scope unused RoughJS APIs after confirming no public `roughr-merman` compatibility surface depends on them. |
 
@@ -63,6 +62,9 @@ mainline renderer/core surface is clean.
   parity data now stays under normal clippy coverage.
 - `crates/manatee/src/algo/fcose/mod.rs`: removed redundant item-level `dead_code` allowances from
   fields, a constant, and an RNG helper that were already covered by the module-level allowance.
+- `crates/dugong/src/position/bk/util.rs` and `crates/dugong/src/position/bk/core.rs`: removed
+  the unused private BK helper `edge_key` and the stale reference-only `vertical_alignment_ref`
+  implementation, clearing the last `dead_code` allowances in that subtree.
 
 ## Gate
 
