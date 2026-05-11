@@ -280,6 +280,11 @@ A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
 `-281.558px`. This confirms the GitGraph bucket needs model/layout derivation work before another
 deletion pass.
+A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
+1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
+skipped fixture. The largest width deltas came from icon-heavy Flowchart fixtures
+(`+509.560px`) and old-shape all-pairs fixtures (`+258px`), so the remaining root pins need bounds
+and shape derivation work rather than blind pruning.
 
 Sequence note: a 2026-05-11 layout recalibration for participant-type actors removed 8 now-
 redundant Sequence root pins after the matching layout goldens were refreshed. The title and

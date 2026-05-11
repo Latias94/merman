@@ -26,6 +26,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Re-ran GitGraph with root viewport overrides disabled and `--report-root-all`; the generated
   report showed 251 root rows, 239 non-zero width deltas, and 241 changed viewBox dimensions, so
   the GitGraph table remains a derivation-work target rather than a blind-pruning target.
+- Re-ran Flowchart with root viewport overrides disabled and `--report-root-all`; the generated
+  report showed 1068 root rows, 245 non-zero width deltas, 286 changed viewBox dimensions, and one
+  skipped fixture, with the largest drift concentrated in icon-heavy and old-shape fixtures.
 - Re-ran Sequence with root viewport overrides disabled and `--report-root-all`; the generated
   report showed 320 root rows, 176 non-zero width deltas, 188 changed viewBox dimensions, and one
   KaTeX-related DOM skip, confirming the remaining table needs typed bounds work before more
