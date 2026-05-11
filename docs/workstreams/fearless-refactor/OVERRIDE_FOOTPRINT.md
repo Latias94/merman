@@ -295,7 +295,11 @@ guards for `upstream_break_spec`,
 Journey note: the table was reintroduced with two tiny browser-float root guards after full
 `parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
 fixtures. The renderer still derives normal Journey root behavior; these two entries are
-fixture-derived parity guards, not a return to a broad Journey root table.
+fixture-derived parity guards, not a return to a broad Journey root table. A follow-up audit tried
+1/16px actor-label width quantization: it fixed the whitespace fixture but left
+`upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010`
+drifting from upstream `1937.125px` to local `1937.25px`, so the two-entry table stays until
+Journey actor-label browser measurement is modeled more precisely.
 
 Largest root-viewport buckets:
 

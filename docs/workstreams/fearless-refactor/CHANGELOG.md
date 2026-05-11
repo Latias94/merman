@@ -11,6 +11,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   normal DOM parity. The root viewport budget is now `760`, and the hardened strict gate passed.
 - Forwarded `compare-all-svgs --report-root` to Sequence as well as Flowchart, so broad root-delta
   sweeps can include the Sequence report helper that already existed.
+- Rechecked the two Journey root guards with a temporary actor-label 1/16px quantization
+  experiment; one fixture matched, but the long-label fixture still drifted by `0.125px`, so the
+  two-entry Journey root table remains required.
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered

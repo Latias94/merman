@@ -555,7 +555,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   another table-pruning pass. The same full sweep restored two tiny Journey root browser-float
   guards and two GitGraph viewBox-height guards, making
   `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-  pass for all diagram families. The
+  pass for all diagram families. A follow-up Journey actor-label 1/16px quantization audit fixed
+  the whitespace fixture but still left the long-label fixture drifting from `1937.125px` upstream
+  to `1937.25px` locally, so the two Journey root guards remain required. The
   stale Mindmap HTML width lookup table and generator were also deleted after the shared text
   measurer leak was removed and layout snapshots proved the stable Mindmap path did not need those
   291 entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
