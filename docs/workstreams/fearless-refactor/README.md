@@ -121,6 +121,8 @@ Use this order when choosing work:
 
 ## Workstream Documents
 
+- `STATUS.md`: short current-state dashboard, completion estimate, remaining buckets, and finish
+  definition.
 - `TODO.md`: prioritized task backlog.
 - `MILESTONES.md`: staged roadmap and exit criteria.
 - `GATES.md`: standard refactor, parity, performance, and release command sets.
