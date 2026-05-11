@@ -1,6 +1,10 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
+use crate::cmd::compare::{
+    DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
+    parse_root_delta_report_limit, write_root_deltas_report,
+};
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
@@ -12,6 +16,8 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
+    let mut report_root: bool = false;
+    let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
 
@@ -27,6 +33,16 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
                 filter = args.get(i).map(|s| s.to_string());
             }
             "--check-dom" => check_dom = true,
+            "--report-root" => report_root = true,
+            "--report-root-all" => {
+                report_root = true;
+                root_report_limit = RootDeltaReportLimit::All;
+            }
+            "--report-root-limit" => {
+                i += 1;
+                report_root = true;
+                root_report_limit = parse_root_delta_report_limit(args.get(i).map(String::as_str))?;
+            }
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -64,6 +80,7 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
+    let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
 
     let engine = merman::Engine::new();
     let mut report = String::new();
@@ -74,6 +91,7 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
     );
 
     let mut failures: Vec<String> = Vec::new();
+    let mut root_deltas: Vec<RootDelta> = Vec::new();
     for mmd_path in mmd_files {
         let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
             failures.push(format!("invalid fixture filename {}", mmd_path.display()));
@@ -164,6 +182,25 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
+        if should_report_root {
+            match (
+                parse_root_attrs(&upstream_svg),
+                parse_root_attrs(&local_svg),
+            ) {
+                (Ok(up), Ok(lo)) => root_deltas.push(RootDelta {
+                    stem: stem.to_string(),
+                    max_width_delta: match (up.max_width_px, lo.max_width_px) {
+                        (Some(a), Some(b)) => Some(b - a),
+                        _ => None,
+                    },
+                    upstream: up,
+                    local: lo,
+                }),
+                (Err(e), _) => failures.push(format!("root parse failed for upstream {stem}: {e}")),
+                (_, Err(e)) => failures.push(format!("root parse failed for local {stem}: {e}")),
+            }
+        }
+
         if check_dom {
             let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
                 Ok(v) => v,
@@ -198,6 +235,10 @@ pub(crate) fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> 
                 ));
             }
         }
+    }
+
+    if should_report_root {
+        write_root_deltas_report(&mut report, &mut root_deltas[..], root_report_limit);
     }
 
     if !check_dom {

@@ -200,7 +200,12 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
 
-        if report_root && matches!(diagram, "flowchart" | "gitgraph" | "sequence") {
+        if report_root
+            && matches!(
+                diagram,
+                "flowchart" | "gitgraph" | "mindmap" | "sequence" | "state"
+            )
+        {
             cmd_args.push("--report-root".to_string());
             match root_report_limit {
                 Some(RootDeltaReportLimit::All) => {

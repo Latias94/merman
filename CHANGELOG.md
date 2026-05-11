@@ -49,6 +49,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   include it in `compare-all-svgs --report-root`.
 - `xtask compare-*-svgs --report-root-all`: add full root delta report output, with
   `--report-root-limit <n>` for capped audit tables.
+- `xtask compare-mindmap-svgs --report-root` and `compare-state-svgs --report-root`: add root
+  viewport delta reporting and include both in `compare-all-svgs --report-root`.
 
 ### Changed
 

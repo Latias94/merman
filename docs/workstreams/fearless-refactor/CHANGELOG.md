@@ -23,6 +23,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Added root delta report sizing controls: `--report-root-all` and `--report-root-limit <n>` keep
   the default report compact while allowing full audit tables for large GitGraph, Sequence, and
   Flowchart root buckets.
+- Extended root delta report support to Mindmap and State, and forwarded `compare-all-svgs
+  --report-root` to those diagram families as well.
 - Re-ran GitGraph with root viewport overrides disabled and `--report-root-all`; the generated
   report showed 251 root rows, 239 non-zero width deltas, and 241 changed viewBox dimensions, so
   the GitGraph table remains a derivation-work target rather than a blind-pruning target.

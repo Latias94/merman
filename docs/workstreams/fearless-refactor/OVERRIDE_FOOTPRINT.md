@@ -476,8 +476,8 @@ Counts are inventory units and should not be compared directly across categories
   with owner/removal notes.
 - Review the largest root-viewport buckets before adding new entries, especially `flowchart`,
   `gitgraph`, `sequence`, `state`, and `mindmap`. Use `--report-root-all` or
-  `--report-root-limit <n>` on the supported compare commands when the default top-25 root delta
-  report is too small for a full bucket audit.
+  `--report-root-limit <n>` on the supported Flowchart, GitGraph, Mindmap, Sequence, and State
+  compare commands when the default top-25 root delta report is too small for a full bucket audit.
 - Do not spend another cleanup pass on the 3 remaining Sankey root pins until Sankey root height
   derivation changes; the May 2026 recheck proved they still guard real `parity-root` drift.
 - Do not spend another blind table-pruning pass on Gitgraph or Flowchart root pins until their root
