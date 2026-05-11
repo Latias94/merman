@@ -31,6 +31,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   focused Class SVG tests, and the layout snapshot gate stayed green with refreshed classdiagram
   layout goldens, reducing Class text lookups from `293` to `292` and the global text lookup
   budget from `496` to `495`.
+- Removed the redundant Class `int gorilla` calcTextWidth override after both Class DOM parity
+  modes, focused Class SVG tests, and the layout snapshot gate stayed green without golden drift,
+  reducing Class text lookups from `292` to `291` and the global text lookup budget from `495` to
+  `494`.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

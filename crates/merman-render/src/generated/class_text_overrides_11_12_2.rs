@@ -124,7 +124,6 @@ pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<
         (16, "+inline: `**not bold**`") => Some(154),
         (16, "+inline: **bold*") => Some(111),
         (16, "+int age") => Some(57),
-        (16, "int gorilla") => Some(63),
         (16, "int id") => Some(33),
         (16, "int[] id") => Some(44),
         (16, "List<int> ids") => Some(120),

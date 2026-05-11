@@ -57,6 +57,13 @@ Progress is tracked in the fearless-refactor workstream docs.
   `cargo run -p xtask -- report-overrides --check-no-growth` passed after removing the redundant
   Class `int chimp` rendered width override, refreshing the affected classdiagram layout goldens,
   and tightening the text lookup budget to `495`.
+- `cargo nextest run -p merman-render --test class_svg_test`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
+  `cargo nextest run -p merman-render --test layout_snapshots_test
+  fixtures_match_layout_golden_snapshots_when_present` passed after removing the redundant Class
+  `int gorilla` calcTextWidth override without layout golden drift. `cargo run -p xtask --
+  report-overrides --check-no-growth` then passed with the text lookup budget tightened to `494`.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
