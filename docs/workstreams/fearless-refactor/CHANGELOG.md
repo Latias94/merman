@@ -44,6 +44,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `stress_class_interfaces_and_abstracts_007` was refreshed for the deterministic `+run()` layout
   width, reducing Class text lookups from `288` to `285` and the global text lookup budget from
   `491` to `488`.
+- Removed the redundant Class rendered-width overrides for `+quack()` and `+swim()` after both
+  Class DOM parity modes stayed green and the Duck no-attributes layout golden was refreshed,
+  reducing Class text lookups from `285` to `283` and the global text lookup budget from `488` to
+  `486`. The neighboring `test()` rendered-width override stays pinned because deleting it caused
+  broad default-layout churn across 14 simple Class cypress fixtures.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

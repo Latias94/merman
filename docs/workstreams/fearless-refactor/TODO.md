@@ -207,24 +207,25 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   HTML width prunings, after the later blank Block label pruning, and after the later Class
   `int chimp` rendered-width, `int gorilla` calcTextWidth, and base-attribute calcTextWidth
   cleanups; the follow-up Class calc/rendered-width pruning below brings the current total to
-  `488`.
+  `486`.
 - [x] Trim the Class calc-text-width override table to only browser-sensitive guards.
-  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 285
-  lookup entries, down from 344, after deleting 59 entries across the exact-match pass, the
+  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 283
+  lookup entries, down from 344, after deleting 61 entries across the exact-match pass, the
   later `uses` plain-label cleanup, the final `OK` pair cleanup, and the `ApiClient` cleanup with
   the dense layout golden refresh, followed by the `ERROR`, `Payment`, `Cart`, and `Server`
   rendered-width cleanups, plus the `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
   `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
   `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`,
-  `int[] id`, `+eat()`, `+mate()`, and `+run()` cleanups.
+  `int[] id`, `+eat()`, `+mate()`, `+run()`, `+quack()`, and `+swim()` cleanups.
   Both Class DOM parity modes and the layout snapshot test stayed green, and `report-overrides`
-  now reports `488` text lookup entries. The `bar()`, `E`,
+  now reports `486` text lookup entries. The `bar()`, `E`,
   `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
   remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
   caps explicitly. The `User` rendered width entry also remains because removing it preserves the
   broad Class DOM/layout gates but fails
   `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on `Company.Project` cluster
-  geometry under strict verification.
+  geometry under strict verification. The `test()` rendered width entry remains because deleting
+  it caused broad default-layout churn across 14 simple Class cypress fixture goldens.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
@@ -579,7 +580,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`750` root viewport entries
-  and `488` text lookup entries), so the strict gate blocks this
+  and `486` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were

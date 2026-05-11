@@ -213,8 +213,8 @@ exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanu
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
 `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, and
-`int[] id` cleanups, and the `+eat()`, `+mate()`, and `+run()` rendered-width cleanup, reducing
-the text lookup total to 488.
+`int[] id` cleanups, the `+eat()`, `+mate()`, and `+run()` rendered-width cleanup, and the later
+`+quack()` / `+swim()` cleanup, reducing the text lookup total to 486.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -280,12 +280,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `488`.
+Total lookup entries reported by `xtask`: `486`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 285 |
+| `class_text_overrides_11_12_2.rs` | 283 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -302,9 +302,11 @@ and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERRO
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
 `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, `int[] id`,
-`+eat()`, `+mate()`, and `+run()`
+`+eat()`, `+mate()`, `+run()`, `+quack()`, and `+swim()`
 cleanup passes refreshed the affected layout goldens as needed and reduced the Class text lookup
-total to 285 and the global text lookup total to 488.
+total to 283 and the global text lookup total to 486.
+The `test()` rendered width entry stays pinned because deleting it preserves Class DOM parity but
+causes broad default-layout churn across 14 simple Class cypress fixture goldens.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.

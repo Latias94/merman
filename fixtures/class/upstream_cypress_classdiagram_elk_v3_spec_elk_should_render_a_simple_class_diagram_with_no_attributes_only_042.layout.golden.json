@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "Duck",
-          "x": 51.676,
+          "x": 47.605,
           "y": 75.0,
-          "width": 103.352,
+          "width": 95.211,
           "height": 150.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 103.352,
+        "max_x": 95.211,
         "max_y": 150.0
       }
     }
