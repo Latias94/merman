@@ -267,7 +267,10 @@ is now deleted after empty-pie viewport and legend bbox behavior moved into type
 
 Mindmap note: after the typed profile refresh, disabling the remaining Mindmap root lookup still
 leaves 52 `parity-root` mismatches. Those entries stay in the budget until their geometry/text
-profiles move into typed renderer logic.
+profiles move into typed renderer logic. A follow-up disabled-root audit with `--report-root-all`
+produced 110 root rows, with 80 non-zero `max-width` deltas and 82 changed viewBox dimensions; the
+largest drift came from wrapping text, icon, shape, and long-label fixtures, including a
+`+705.220px` width delta on the long-word wrapping fixture.
 
 Gitgraph and Flowchart audit note: a 2026-05-09 recheck confirmed that disabling the Gitgraph
 direct root lookup still leaves the broad Gitgraph root bucket failing. The full 2026-05-11
@@ -316,6 +319,12 @@ fixture-derived parity guards, not a return to a broad Journey root table. A fol
 `upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010`
 drifting from upstream `1937.125px` to local `1937.25px`, so the two-entry table stays until
 Journey actor-label browser measurement is modeled more precisely.
+
+State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`
+produced 283 root rows, with 125 non-zero `max-width` deltas and 125 changed viewBox dimensions.
+The largest drift came from right-to-left direction/scale fixtures and dense edge-label fixtures,
+including `-180.563px` on `stress_state_direction_rl_scale_and_long_ids_054`, so the remaining
+State root pins need scale/direction and edge-label bounds work before another pruning pass.
 
 Largest root-viewport buckets:
 

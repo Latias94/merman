@@ -487,7 +487,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs` kept
   `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
   --filter flowchart` green and `cargo run -p xtask -- verify --strict` passed.
-- [ ] Delete overrides made obsolete by typed model or measurement fixes.
+- [x] Delete overrides made obsolete by typed model or measurement fixes.
   Evidence: root viewport footprint is down to `760` entries after the broad pruning work and the
   later full-root-parity restoration of ten required guards. Earlier cleanup removed 19
   `architecture` entries after topology-driven viewport calibration, most `journey` entries after
@@ -571,7 +571,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   table-pruning pass. The
   stale Mindmap HTML width lookup table and generator were also deleted after the shared text
   measurer leak was removed and layout snapshots proved the stable Mindmap path did not need those
-  291 entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
+  291 entries. A follow-up Mindmap disabled-root audit produced 110 root rows, with 80 non-zero
+  `max-width` deltas and 82 changed viewBox dimensions, while a State disabled-root audit produced
+  283 root rows, with 125 non-zero `max-width` deltas and 125 changed viewBox dimensions; both
+  buckets remain derivation targets, not blind-pruning targets. No known obsolete override bucket
+  remains for this release; remaining entries are documented as derivation or measurement targets
+  with removal criteria in `OVERRIDE_FOOTPRINT.md`. Requirement then dropped the paired
+  `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
   `<<Requirement>>`, `<<Element>>`, `<<Functional Requirement>>`, `<<Design Constraint>>`,
   `<<Interface Requirement>>`, and `<<Physical Requirement>>` HTML width/calc max-width lookups
   after both

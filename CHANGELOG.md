@@ -51,6 +51,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `--report-root-limit <n>` for capped audit tables.
 - `xtask compare-mindmap-svgs --report-root` and `compare-state-svgs --report-root`: add root
   viewport delta reporting and include both in `compare-all-svgs --report-root`.
+- Docs: close the fearless-refactor M5 obsolete-override cleanup item for the current release after
+  documenting the remaining override buckets as derivation or measurement targets.
+- `xtask` root delta reports: reuse DOM comparison XML normalization so browser-valid
+  `<foreignObject>` fragments do not make root reporting fail strict verification.
 
 ### Changed
 

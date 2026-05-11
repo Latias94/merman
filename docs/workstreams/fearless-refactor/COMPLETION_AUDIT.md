@@ -31,11 +31,16 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
 | Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
-| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs`, and deletion of the stale ER text override generator | Covered for the recheck decision; obsolete helpers/generators were removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
+| Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs`, deletion of stale override generators, and the completed M5 override audit in `OVERRIDE_FOOTPRINT.md` | Covered; obsolete helpers/generators were removed after strict-gate parity stayed green, and remaining override buckets are documented as derivation or measurement targets rather than known-obsolete cleanup candidates |
 | Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, `GATES.md`, and `OVERRIDE_POLICY.md` | Covered |
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed after the M5 closeout and root-report parser
+  hardening. The run covered fmt, all-features check, workspace all-target/all-features clippy,
+  override no-growth at `760` root viewport entries and `480` text lookup entries, feature matrix
+  checks, workspace nextest (`1016` tests passed, `3` skipped), normal SVG DOM parity, and full SVG
+  root parity.
 - `cargo run -p xtask -- verify --strict` passed after full root parity was added to the strict
   gate. The run covered fmt, all-features check, workspace all-target/all-features clippy, override
   no-growth at `760` root viewport entries and `480` text lookup entries, feature matrix checks,
@@ -280,10 +285,11 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## Remaining Gaps
 
-- `TODO.md` still keeps `Delete overrides made obsolete by typed model or measurement fixes` open.
+None for the current fearless-refactor release objective. Remaining override entries are tracked
+as future derivation or measurement targets, not unresolved P0 cleanup.
 
 ## Conclusion
 
-The workstream is structurally in good shape, but the release objective is not complete yet.
-The remaining work is about continuing the M5 override reduction pass, not about reopening the
-already-passed strict parity gate.
+The workstream objective is complete for the current release scope: the pipeline is typed-first,
+the refactor/release gates are healthy, text and renderer ownership is documented, parity is green,
+performance evidence is recorded, and no unresolved P0 workstream item remains.

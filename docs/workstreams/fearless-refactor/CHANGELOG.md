@@ -25,6 +25,15 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   Flowchart root buckets.
 - Extended root delta report support to Mindmap and State, and forwarded `compare-all-svgs
   --report-root` to those diagram families as well.
+- Re-ran Mindmap and State with root viewport overrides disabled and `--report-root-all`; Mindmap
+  reported 110 root rows with 80 non-zero width deltas and 82 changed viewBox dimensions, while
+  State reported 283 root rows with 125 non-zero width deltas and 125 changed viewBox dimensions.
+- Closed the M5 obsolete-override cleanup item for the current release: no known obsolete override
+  bucket remains after the top-bucket audits, and the remaining entries are tracked as derivation
+  or measurement targets with removal criteria.
+- Hardened root delta report parsing by sharing the DOM comparison XML normalization for
+  browser-valid `<foreignObject>` fragments, then revalidated `cargo run -p xtask -- verify
+  --strict` with `1016` passed nextest tests, `3` skipped, normal DOM parity, and full root parity.
 - Re-ran GitGraph with root viewport overrides disabled and `--report-root-all`; the generated
   report showed 251 root rows, 239 non-zero width deltas, and 241 changed viewBox dimensions, so
   the GitGraph table remains a derivation-work target rather than a blind-pruning target.

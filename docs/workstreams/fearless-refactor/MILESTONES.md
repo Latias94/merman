@@ -460,7 +460,8 @@ Exit criteria:
 
 ## M5: Override Governance and Debt Reduction
 
-Status: in progress.
+Status: complete for the current release; remaining override entries are documented derivation or
+measurement targets, not known-obsolete cleanup candidates.
 
 Scope:
 
@@ -606,6 +607,10 @@ Progress:
   root pins while the affected normal and `parity-root` DOM filters stayed green. The full
   `parity-root` sweep then restored 6 Sequence, 2 Journey, and 2 GitGraph root guards so
   `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` is green.
+- The five largest remaining root buckets now have complete disabled-root audit evidence:
+  GitGraph, Flowchart, Sequence, Mindmap, and State all still show broad `max-width` or viewBox
+  drift without the lookup tables. These buckets remain typed bounds or measurement derivation
+  targets, not blind-pruning targets.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
@@ -680,6 +685,9 @@ Progress:
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are
   recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
+- Revalidated `cargo run -p xtask -- verify --strict` after the M5 closeout and root-delta report
+  parser hardening; the run passed with `760` root viewport entries, `480` text lookup entries,
+  `1016` nextest tests passed, `3` skipped, and both normal DOM parity plus root parity green.
 
 Exit criteria:
 

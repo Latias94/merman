@@ -65,7 +65,8 @@ pub(crate) fn parse_style_max_width_px(style: &str) -> Option<f64> {
 }
 
 pub(crate) fn parse_root_attrs(svg: &str) -> Result<RootAttrs, String> {
-    let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+    let svg = crate::svgdom::normalize_xml_entities(svg);
+    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
     let root = doc
         .descendants()
         .find(|n| n.has_tag_name("svg"))
@@ -200,6 +201,15 @@ mod tests {
 
         assert_eq!(attrs.viewbox, Some((-50.0, -10.0, 1144.0, 259.0)));
         assert_eq!(attrs.max_width_px, Some(1144.0));
+    }
+
+    #[test]
+    fn parses_root_attrs_after_dom_compare_xml_normalization() {
+        let svg = r#"<svg viewBox="0 0 10 20" style="max-width: 10px;"><foreignObject><div><img src=x>&nbsp;</div></foreignObject></svg>"#;
+        let attrs = parse_root_attrs(svg).expect("root attrs");
+
+        assert_eq!(attrs.viewbox, Some((0.0, 0.0, 10.0, 20.0)));
+        assert_eq!(attrs.max_width_px, Some(10.0));
     }
 
     #[test]
