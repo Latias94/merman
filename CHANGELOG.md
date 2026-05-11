@@ -33,6 +33,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a JSON clone audit for layout/render API ownership boundaries.
 - Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - Docs: add a lint-allow audit for remaining source-level allowances and removal criteria.
+- Docs: add a post-Class-cleanup full bench gate record for the release readiness pass.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.
@@ -265,6 +266,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Markdown modules.
 - `xtask report-overrides`: scan all generated override modules by category instead of relying on
   a hand-maintained file list.
+- Override governance: prune redundant Class text lookup entries, document retained parser-normalized
+  Data method guards, and tighten the no-growth budget to `485` global text lookup entries.
+- Release readiness: revalidate `cargo run -p xtask -- verify --strict` and
+  `cargo bench -p merman --features render` after the latest Class text lookup cleanup.
 
 ### Removed
 
