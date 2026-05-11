@@ -67,6 +67,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Mindmap layout/SVG parity: trim delimiter-created labels that contain a single non-empty text
   line for layout measurement, preserving raw SVG text emission while deleting three
   fixture-scoped root viewport pins for Cypress single-root shape fixtures.
+- Mindmap layout/SVG parity: keep plain Mindmap label measurement on raw font metrics so
+  cross-diagram HTML width overrides do not inflate shaped roots, deleting the docs circle root
+  viewport pin.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

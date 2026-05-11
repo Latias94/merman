@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: three State root pins and three Mindmap root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: three State root pins and four Mindmap root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State and Mindmap passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -28,17 +28,19 @@ The fearless-refactor closeout recorded these root viewport counts:
 - Mindmap: `52` entries.
 
 Current counts after the State style/entity-placeholder passes and the Mindmap single-line shape
-pass:
+plus docs circle plain-label passes:
 
 - State: `42` entries.
-- Mindmap: `49` entries.
-- Root viewport total: `754` entries.
+- Mindmap: `48` entries.
+- Root viewport total: `753` entries.
 - Text lookup total: `481` entries. This is an intentional one-entry increase because one shared
   State edge-label browser metric replaced two fixture-scoped root viewport pins.
 
-The latest Mindmap disabled-root sweep still fails with `49` DOM mismatches and `113` root-delta
+The latest Mindmap disabled-root sweep still fails with `47` DOM mismatches and `113` root-delta
 rows, led by wrapping text, HTML sanitization, icon-bearing labels, shape profiles, and tree-wide
-transform drift. This workstream therefore focuses on derivation work, not blind deletion.
+transform drift. The docs circle row now has only a tolerated `+0.031px` root width delta and no
+longer needs a fixture-scoped root pin. This workstream therefore focuses on derivation work, not
+blind deletion.
 
 ## Focused Commands
 
@@ -107,6 +109,26 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   three affected Mindmap layout golden snapshots.
 - 2026-05-11: `cargo run -p xtask -- verify --strict` passed, including workspace nextest
   (`1018` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
+- 2026-05-11: `cargo test -p merman-render
+  mindmap_plain_label_measurement_ignores_cross_diagram_html_overrides` passed.
+- 2026-05-11: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`,
+  `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+  --filter upstream_docs_mindmap_circle_011 --report-root-all` passed after deleting the docs
+  circle Mindmap root pin.
+- 2026-05-11: focused disabled-root checks for `upstream_docs_mindmap_bang_013` and
+  `upstream_docs_mindmap_cloud_015` still failed with real shape/root drift, so those entries
+  remain pinned.
+- 2026-05-11: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `753` and Mindmap root count `48`.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` passed for all Mindmap fixtures.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3` passed for all Mindmap fixtures.
+- 2026-05-11: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
+  passed after the docs circle Mindmap layout change.
+- 2026-05-11: `cargo nextest run -p merman-render` passed with `151` tests.
+- 2026-05-11: `cargo run -p xtask -- verify --strict` passed, including workspace nextest
+  (`1019` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
 
 ## Open Risks
 

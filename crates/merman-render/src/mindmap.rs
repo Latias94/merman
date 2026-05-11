@@ -186,23 +186,14 @@ fn mindmap_label_bbox_px(
         );
     }
 
-    let (wrapped, raw_width_px) = measurer.measure_wrapped_with_raw_width(
-        text,
-        style,
-        Some(max_node_width_px),
-        WrapMode::HtmlLike,
-    );
+    let wrapped =
+        measurer.measure_wrapped_raw(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
 
-    // Mermaid mindmap labels can overflow the configured `maxNodeWidth` when they contain long
-    // unbreakable tokens. Upstream measures these via DOM in a way that resembles `scrollWidth`,
-    // so keep the larger of:
-    // - the wrapped layout width (clamped by `max-width`), and
-    // - the unwrapped overflow width (ignores `max-width`).
-    let overflow_width_px = raw_width_px.unwrap_or_else(|| {
-        measurer
-            .measure_wrapped(text, style, None, WrapMode::HtmlLike)
-            .width
-    });
+    // Mindmap labels should not inherit fixture-derived HTML width overrides from other diagram
+    // families. Use raw font metrics here and keep the larger unwrapped width for overflow.
+    let overflow_width_px = measurer
+        .measure_wrapped_raw(text, style, None, WrapMode::HtmlLike)
+        .width;
 
     (
         wrapped.width.max(overflow_width_px).max(0.0),
@@ -556,5 +547,16 @@ mod tests {
             super::mindmap_label_text_for_layout("\n      first\n      second\n    "),
             "\n      first\n      second\n    "
         );
+    }
+
+    #[test]
+    fn mindmap_plain_label_measurement_ignores_cross_diagram_html_overrides() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let (width, height) =
+            super::mindmap_label_bbox_px("I am a circle", "", &measurer, &style, 200.0);
+
+        assert!((width - 89.078125).abs() < 0.05);
+        assert_eq!(height, 24.0);
     }
 }

@@ -16,3 +16,6 @@
 - Derived Mindmap single-line delimiter label bounds for the Cypress square, rounded-rect, and
   circle root shape fixtures, refreshed their layout goldens, removed the three now-derived
   Mindmap root pins, and tightened the root budget to `754`.
+- Derived the docs Mindmap circle root bounds by keeping plain Mindmap label measurement on raw
+  font metrics instead of global HTML width overrides, removed `upstream_docs_mindmap_circle_011`,
+  and tightened the root budget to `753`.

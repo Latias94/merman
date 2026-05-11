@@ -60,8 +60,17 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Evidence: removed the Cypress `square_shape_011`, `rounded_rect_shape_012`, and
   `circle_shape_013` Mindmap root pins; Mindmap root count is now `49`, and the root no-growth
   budget is now `754`.
+- [x] Replace the docs circle cross-diagram HTML-width leakage with Mindmap-owned plain-label
+  measurement.
+  Evidence: Mindmap plain labels now use raw font metrics rather than fixture-derived HTML width
+  overrides from other diagram families, allowing `upstream_docs_mindmap_circle_011` to derive its
+  root viewport without a fixture pin.
+- [x] Tighten the current Mindmap root budget after the docs circle pass.
+  Evidence: Mindmap root count is now `48`, root viewport total is `753`, and text lookup debt did
+  not grow.
 - [x] Prove Mindmap normal DOM parity and `parity-root` stay green.
-  Evidence: full `compare-mindmap-svgs` passed in both `parity` and `parity-root` DOM modes.
+  Evidence: full `compare-mindmap-svgs` passed in both `parity` and `parity-root` DOM modes after
+  both Mindmap passes.
 
 ## P2: Larger Buckets
 

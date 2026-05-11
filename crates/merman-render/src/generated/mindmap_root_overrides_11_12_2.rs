@@ -39,7 +39,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010" => {
             Some(("5 5 373.2288513183594 146", "373.229"))
         }
-        "upstream_docs_mindmap_circle_011" => Some(("5 5 129.078125 129.078125", "129.078")),
         "upstream_docs_mindmap_cloud_015" => Some((
             "7.269050598144531 6.441379547119141 143.2079849243164 101.05145263671875",
             "143.208",

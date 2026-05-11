@@ -72,6 +72,9 @@ Progress:
   and `circle_shape_013`) after Mindmap layout measurement started trimming delimiter-created
   labels with exactly one non-empty text line. SVG text emission still preserves the raw upstream
   whitespace, so this is a layout/bounds derivation rather than a DOM rewrite.
+- Removed `upstream_docs_mindmap_circle_011` after Mindmap plain label measurement stopped using
+  global fixture-derived HTML width overrides that belong to other diagram families. The remaining
+  docs bang/cloud shape entries still guard emitted-bounds drift and stay pinned for now.
 
 Exit criteria:
 
