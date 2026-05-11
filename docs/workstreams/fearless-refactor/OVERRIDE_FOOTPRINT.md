@@ -302,6 +302,9 @@ The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `max-width` caps.
 The `Mineral` rendered width entry also stays pinned because deleting it shifts the upstream root
 `max-width`.
+The `User` rendered width entry also stays pinned: removing it preserved the broad Class DOM and
+layout snapshot gates, but `class_svg_namespaces_and_relation_labels_keep_upstream_geometry`
+failed on the `Company.Project` cluster geometry during strict verification.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM

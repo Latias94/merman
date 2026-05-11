@@ -216,7 +216,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   now reports `509` text lookup entries. The `bar()`, `E`,
   `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
   remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
-  caps explicitly.
+  caps explicitly. The `User` rendered width entry also remains because removing it preserves the
+  broad Class DOM/layout gates but fails
+  `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on `Company.Project` cluster
+  geometry under strict verification.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.

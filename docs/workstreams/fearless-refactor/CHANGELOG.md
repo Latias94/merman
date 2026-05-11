@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Recorded the Class `User` rendered width override as retained: deleting it passed the broad
+  Class DOM/layout gates but failed the focused namespace geometry test in strict verification.
 - Removed the redundant Class `Item` `calcTextWidth` override and `Order` rendered width override
   after both Class DOM parity modes stayed green; refreshed the affected parallel-edges layout
   golden. This reduced Class text lookups from `308` to `306` and the global text lookup budget
