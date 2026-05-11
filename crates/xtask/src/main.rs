@@ -114,6 +114,9 @@ fn print_help(topic: Option<&str>) {
     println!("  - `cargo run -p xtask -- verify`");
     println!("  - `cargo run -p xtask -- verify --strict`");
     println!("  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`");
+    println!(
+        "  - `cargo run -p xtask -- compare-all-svgs --report-root --report-root-all --dom-mode parity-root`"
+    );
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
     println!();
     println!("Topics:");

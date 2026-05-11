@@ -1,7 +1,10 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
-use crate::cmd::compare::{RootDelta, parse_root_attrs, write_root_deltas_report};
+use crate::cmd::compare::{
+    DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
+    parse_root_delta_report_limit, write_root_deltas_report,
+};
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
@@ -14,6 +17,7 @@ pub(crate) fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
+    let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
 
@@ -30,6 +34,15 @@ pub(crate) fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError>
             }
             "--check-dom" => check_dom = true,
             "--report-root" => report_root = true,
+            "--report-root-all" => {
+                report_root = true;
+                root_report_limit = RootDeltaReportLimit::All;
+            }
+            "--report-root-limit" => {
+                i += 1;
+                report_root = true;
+                root_report_limit = parse_root_delta_report_limit(args.get(i).map(String::as_str))?;
+            }
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -214,7 +227,7 @@ pub(crate) fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError>
     }
 
     if should_report_root {
-        write_root_deltas_report(&mut report, &mut root_deltas[..]);
+        write_root_deltas_report(&mut report, &mut root_deltas[..], root_report_limit);
     }
 
     if !check_dom {

@@ -4,6 +4,7 @@ use crate::XtaskError;
 use std::fs;
 
 use super::diagrams::*;
+use super::{RootDeltaReportLimit, parse_root_delta_report_limit};
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
@@ -12,6 +13,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut flowchart_text_measurer: Option<String> = None;
     let mut report_root: bool = false;
+    let mut root_report_limit: Option<RootDeltaReportLimit> = None;
 
     let mut only_diagrams: Vec<String> = Vec::new();
     let mut skip_diagrams: Vec<String> = Vec::new();
@@ -37,6 +39,17 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 flowchart_text_measurer = args.get(i).map(|s| s.trim().to_ascii_lowercase());
             }
             "--report-root" => report_root = true,
+            "--report-root-all" => {
+                report_root = true;
+                root_report_limit = Some(RootDeltaReportLimit::All);
+            }
+            "--report-root-limit" => {
+                i += 1;
+                report_root = true;
+                root_report_limit = Some(parse_root_delta_report_limit(
+                    args.get(i).map(String::as_str),
+                )?);
+            }
             "--diagram" => {
                 i += 1;
                 let d = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
@@ -189,6 +202,16 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         if report_root && matches!(diagram, "flowchart" | "gitgraph" | "sequence") {
             cmd_args.push("--report-root".to_string());
+            match root_report_limit {
+                Some(RootDeltaReportLimit::All) => {
+                    cmd_args.push("--report-root-all".to_string());
+                }
+                Some(RootDeltaReportLimit::Top(limit)) => {
+                    cmd_args.push("--report-root-limit".to_string());
+                    cmd_args.push(limit.to_string());
+                }
+                None => {}
+            }
         }
 
         let res = match diagram {

@@ -604,7 +604,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`760` root viewport entries
   and `480` text lookup entries), so the strict gate blocks this
-  deleted footprint from silently returning. One additional hand-curated
+  deleted footprint from silently returning. Root delta reports now support `--report-root-all`
+  and `--report-root-limit <n>`, so large root buckets can be audited completely instead of only
+  by the default top-25 drift table. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
   collapsed into one public scale helper. Treemap also dropped a derived section header

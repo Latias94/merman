@@ -49,7 +49,9 @@ stored value.
 
 For root viewport audits, set `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` only in the local
 comparison process to prove whether a table or entry still guards real `parity-root` drift. Do not
-use this environment variable in release gates.
+use this environment variable in release gates. For large buckets, add `--report-root-all` or
+`--report-root-limit <n>` to the Flowchart, GitGraph, Sequence, or `compare-all-svgs --report-root`
+commands so the root delta report is not capped at the default top 25 rows.
 
 ## Feature Gate
 

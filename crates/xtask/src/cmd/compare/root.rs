@@ -1,6 +1,25 @@
 //! Shared root SVG viewport reporting helpers for compare commands.
 
+use crate::XtaskError;
 use std::fmt::Write as _;
+
+pub(crate) const DEFAULT_ROOT_DELTA_REPORT_LIMIT: RootDeltaReportLimit =
+    RootDeltaReportLimit::Top(25);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RootDeltaReportLimit {
+    Top(usize),
+    All,
+}
+
+impl RootDeltaReportLimit {
+    fn take_count(self, total: usize) -> usize {
+        match self {
+            Self::Top(limit) => total.min(limit),
+            Self::All => total,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct RootAttrs {
@@ -62,6 +81,20 @@ pub(crate) fn parse_root_attrs(svg: &str) -> Result<RootAttrs, String> {
     })
 }
 
+pub(crate) fn parse_root_delta_report_limit(
+    value: Option<&str>,
+) -> Result<RootDeltaReportLimit, XtaskError> {
+    let value = value.ok_or(XtaskError::Usage)?.trim();
+    if value.eq_ignore_ascii_case("all") {
+        return Ok(RootDeltaReportLimit::All);
+    }
+    let limit = value.parse::<usize>().map_err(|_| XtaskError::Usage)?;
+    if limit == 0 {
+        return Err(XtaskError::Usage);
+    }
+    Ok(RootDeltaReportLimit::Top(limit))
+}
+
 #[cfg(test)]
 pub(crate) fn collect_root_delta(
     stem: &str,
@@ -82,7 +115,11 @@ pub(crate) fn collect_root_delta(
     })
 }
 
-pub(crate) fn write_root_deltas_report(report: &mut String, root_deltas: &mut [RootDelta]) {
+pub(crate) fn write_root_deltas_report(
+    report: &mut String,
+    root_deltas: &mut [RootDelta],
+    limit: RootDeltaReportLimit,
+) {
     if root_deltas.is_empty() {
         return;
     }
@@ -101,7 +138,24 @@ pub(crate) fn write_root_deltas_report(report: &mut String, root_deltas: &mut [R
             .reverse()
     });
 
-    let take = root_deltas.len().min(25);
+    let take = limit.take_count(root_deltas.len());
+    match limit {
+        RootDeltaReportLimit::All => {
+            let _ = writeln!(
+                report,
+                "Showing all {} root delta rows.\n",
+                root_deltas.len()
+            );
+        }
+        RootDeltaReportLimit::Top(_) => {
+            let _ = writeln!(
+                report,
+                "Showing top {take} of {} root delta rows. Use `--report-root-all` or `--report-root-limit all` for a full audit table.\n",
+                root_deltas.len()
+            );
+        }
+    }
+
     let _ = writeln!(
         report,
         "| Fixture | upstream max-width(px) | local max-width(px) | Δ | upstream viewBox(w×h) | local viewBox(w×h) |\n|---|---:|---:|---:|---:|---:|"
@@ -159,11 +213,59 @@ mod tests {
         ];
 
         let mut report = String::new();
-        write_root_deltas_report(&mut report, &mut deltas);
+        write_root_deltas_report(&mut report, &mut deltas, DEFAULT_ROOT_DELTA_REPORT_LIMIT);
 
         let large_pos = report.find("`large`").expect("large row");
         let small_pos = report.find("`small`").expect("small row");
         assert!(large_pos < small_pos);
         assert!(report.contains("| `large` | 100.000 | 105.000 | +5.000 |"));
+    }
+
+    #[test]
+    fn parses_root_report_limits() {
+        assert_eq!(
+            parse_root_delta_report_limit(Some("all")).unwrap(),
+            RootDeltaReportLimit::All
+        );
+        assert_eq!(
+            parse_root_delta_report_limit(Some("3")).unwrap(),
+            RootDeltaReportLimit::Top(3)
+        );
+        assert!(parse_root_delta_report_limit(Some("0")).is_err());
+        assert!(parse_root_delta_report_limit(Some("nope")).is_err());
+        assert!(parse_root_delta_report_limit(None).is_err());
+    }
+
+    #[test]
+    fn report_limit_can_show_all_rows() {
+        let upstream = r#"<svg viewBox="-50 -10 100 100" style="max-width: 100px;"><g/></svg>"#;
+        let mut deltas = vec![
+            collect_root_delta(
+                "one",
+                upstream,
+                r#"<svg viewBox="-50 -10 101 100" style="max-width: 101px;"><g/></svg>"#,
+            )
+            .unwrap(),
+            collect_root_delta(
+                "two",
+                upstream,
+                r#"<svg viewBox="-50 -10 102 100" style="max-width: 102px;"><g/></svg>"#,
+            )
+            .unwrap(),
+            collect_root_delta(
+                "three",
+                upstream,
+                r#"<svg viewBox="-50 -10 103 100" style="max-width: 103px;"><g/></svg>"#,
+            )
+            .unwrap(),
+        ];
+
+        let mut report = String::new();
+        write_root_deltas_report(&mut report, &mut deltas, RootDeltaReportLimit::All);
+
+        assert!(report.contains("Showing all 3 root delta rows."));
+        assert!(report.contains("| `one` |"));
+        assert!(report.contains("| `two` |"));
+        assert!(report.contains("| `three` |"));
     }
 }

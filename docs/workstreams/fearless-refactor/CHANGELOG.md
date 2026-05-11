@@ -20,6 +20,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Wired GitGraph into the shared root delta report path and forwarded `compare-all-svgs
   --report-root` to GitGraph, giving the largest root viewport bucket the same audit surface as
   Flowchart and Sequence.
+- Added root delta report sizing controls: `--report-root-all` and `--report-root-limit <n>` keep
+  the default report compact while allowing full audit tables for large GitGraph, Sequence, and
+  Flowchart root buckets.
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered

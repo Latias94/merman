@@ -47,6 +47,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   proving whether generated root pins still guard real `parity-root` drift.
 - `xtask compare-gitgraph-svgs --report-root`: add root viewport delta reporting for GitGraph and
   include it in `compare-all-svgs --report-root`.
+- `xtask compare-*-svgs --report-root-all`: add full root delta report output, with
+  `--report-root-limit <n>` for capped audit tables.
 
 ### Changed
 
