@@ -131,6 +131,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current Mindmap root budget after the docs cloud pass.
   Evidence: Mindmap root count is now `47`, root viewport total is `744`, and text lookup debt did
   not grow.
+- [x] Replace the shared plain wrapping-label group with wrapped container bounds derivation.
+  Evidence: Mindmap plain HTML-like labels now use the wrapped/min-content measurement result
+  directly instead of re-expanding normal prose to its unwrapped paragraph width, replacing three
+  fixture-scoped root pins:
+  `upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003`,
+  `upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010`, and
+  `upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002`.
+- [x] Tighten the current Mindmap root budget after the wrapping-label pass.
+  Evidence: Mindmap root count is now `44`, root viewport total is `741`, and text lookup debt did
+  not grow.
 - [x] Classify the immediate docs shape candidates that remain pinned for now.
   Evidence: disabled-root checks show `upstream_docs_mindmap_bang_013` is now down to a small
   browser text/shape float delta after the typed bang path bbox is included, while

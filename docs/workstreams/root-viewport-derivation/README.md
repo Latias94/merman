@@ -17,10 +17,10 @@ keeping `parity-root` and strict release gates green.
 - Current State root viewport overrides: `34` entries after the style-directive border,
   Mermaid entity-placeholder edge-label, multiline note-label, transition edge-label, and shared
   alias/styled node-label derivation passes.
-- Current Mindmap root viewport overrides: `47` entries after deriving the single-line delimiter
+- Current Mindmap root viewport overrides: `44` entries after deriving the single-line delimiter
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
-  measurement path, and the docs cloud emitted path bbox.
-- Current root viewport override budget: `744` entries.
+  measurement path, the docs cloud emitted path bbox, and plain wrapping-label container bounds.
+- Current root viewport override budget: `741` entries.
 - Keep the existing strict gate green:
 
 ```sh

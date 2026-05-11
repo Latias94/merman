@@ -23,6 +23,10 @@
 - Added typed Mindmap cloud path bounds to root viewport derivation, removed
   `upstream_docs_mindmap_cloud_015`, and tightened the root budget to `744` without growing text
   lookup debt.
+- Changed Mindmap plain wrapping-label layout to use wrapped/min-content HTML-like bounds instead
+  of unwrapped paragraph width, removed three now-derived wrapping/icon root pins, and tightened the
+  root budget to `741` without growing text lookup debt; refreshed the affected Mindmap layout
+  goldens and verified `xtask verify --strict`.
 
 ## 2026-05-11
 

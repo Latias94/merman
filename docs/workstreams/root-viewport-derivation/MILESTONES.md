@@ -97,6 +97,10 @@ Progress:
   including typed cloud SVG path bounds in addition to the layout rectangle and label bounds.
 - Retained the docs bang/hexagon shape entries for now because the remaining disabled-root drift
   is a small browser text/roughjs float delta rather than a reusable shape-bounds rule.
+- Removed the shared plain wrapping-label root pins after Mindmap plain HTML-like label measurement
+  stopped re-expanding normal prose to unwrapped paragraph width. The wrapped/min-content metric now
+  covers both root wrapping prose and the icon-bearing wrapping Cypress fixture without adding text
+  lookup debt.
 
 Exit criteria:
 

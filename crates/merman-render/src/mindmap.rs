@@ -189,16 +189,10 @@ fn mindmap_label_bbox_px(
     let wrapped =
         measurer.measure_wrapped_raw(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
 
-    // Mindmap labels should not inherit fixture-derived HTML width overrides from other diagram
-    // families. Use raw font metrics here and keep the larger unwrapped width for overflow.
-    let overflow_width_px = measurer
-        .measure_wrapped_raw(text, style, None, WrapMode::HtmlLike)
-        .width;
-
-    (
-        wrapped.width.max(overflow_width_px).max(0.0),
-        wrapped.height.max(0.0),
-    )
+    // The HTML-like measurement path already includes min-content width for unbreakable tokens.
+    // Do not re-expand normal wrapping prose back to its unwrapped paragraph width, or Mindmap
+    // layout/root bounds drift far wider than Mermaid's fixed-width wrapping container.
+    (wrapped.width.max(0.0), wrapped.height.max(0.0))
 }
 
 fn mindmap_node_dimensions_px(
@@ -558,5 +552,21 @@ mod tests {
 
         assert!((width - 89.078125).abs() < 0.05);
         assert_eq!(height, 24.0);
+    }
+
+    #[test]
+    fn mindmap_plain_wrapping_label_uses_wrapped_container_width() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let (width, height) = super::mindmap_label_bbox_px(
+            "A root with a long text that wraps to keep the node size in check",
+            "",
+            &measurer,
+            &style,
+            200.0,
+        );
+
+        assert_eq!(width, 200.0);
+        assert_eq!(height, 72.0);
     }
 }

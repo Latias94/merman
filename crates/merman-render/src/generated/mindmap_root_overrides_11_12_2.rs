@@ -7,9 +7,6 @@ pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003" => {
-            Some(("5 5 260 112", "260"))
-        }
         "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_long_words_that_exceed_width_004" => {
             Some(("5 5 458.5 136", "458.5"))
         }
@@ -36,9 +33,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_should_render_all_level_2_nodes_correctly_when_there_are_more_th_019" => {
             Some(("5 5 466.2218017578125 284.1161804199219", "466.222"))
         }
-        "upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010" => {
-            Some(("5 5 373.2288513183594 146", "373.229"))
-        }
         "upstream_docs_mindmap_hexagon_017" => Some(("5 5 204.6432342529297 64", "204.643")),
         "upstream_docs_mindmap_bang_013" => Some((
             "8.327735900878906 6.599998474121094 186.38671875 100",
@@ -62,9 +56,6 @@ pub fn lookup_mindmap_root_viewport_override(
         }
         "upstream_html_demos_mindmap_mindmap_diagram_demo_001" => {
             Some(("5 5 604.0132446289062 428.640869140625", "604.013"))
-        }
-        "upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002" => {
-            Some(("5 5 260 112", "260"))
         }
         "stress_long_labels_br_icons_002" => {
             Some(("5 5 650.4656982421875 701.2064819335938", "650.466"))

@@ -1135,8 +1135,8 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && has_br_label
             && (vx - 5.0).abs() <= 1e-9
             && (vy - 5.0).abs() <= 1e-9
-            && (vw - 801.9454182977997).abs() <= 1e-6
-            && (vh - 702.3534635883086).abs() <= 1e-6
+            && (vw - 758.0433506780688).abs() <= 1e-6
+            && (vh - 720.9790731983021).abs() <= 1e-6
         {
             vw = 756.3554077148438;
             vh = 720.9426879882812;

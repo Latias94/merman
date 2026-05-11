@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins and five Mindmap root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins and eight Mindmap root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State and Mindmap passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -29,23 +29,23 @@ The fearless-refactor closeout recorded these root viewport counts:
 
 Current counts after the State style/entity-placeholder/note-label/transition-label/alias
 node-label/package style node-label passes and the Mindmap single-line shape, docs circle
-plain-label, and docs cloud path-bounds passes:
+plain-label, docs cloud path-bounds, and plain wrapping-label passes:
 
 - State: `34` entries.
-- Mindmap: `47` entries.
-- Root viewport total: `744` entries.
+- Mindmap: `44` entries.
+- Root viewport total: `741` entries.
 - Text lookup total: `484` entries. This is an intentional four-entry increase because State-owned
   edge-label, note-label, and node-label metrics replaced seven fixture-scoped root viewport pins.
   The simple transition-label pass reused an existing State edge-label metric arm, so it removed
   two more State root pins without increasing text lookup debt. The package style node-label pass
   reused an existing styled node-label metric arm, so it removed one more State root pin without
-  increasing text lookup debt. The docs cloud pass did not add any text lookup debt.
+  increasing text lookup debt. The docs cloud and wrapping-label Mindmap passes did not add any
+  text lookup debt.
 
-The latest Mindmap disabled-root sweep still fails with `47` DOM mismatches and `113` root-delta
-rows, led by wrapping text, HTML sanitization, icon-bearing labels, shape profiles, and tree-wide
-transform drift. The docs circle row now has only a tolerated `+0.031px` root width delta, and the
-docs cloud row is covered by typed emitted path bounds, so neither needs a fixture-scoped root pin.
-This workstream therefore focuses on derivation work, not blind deletion.
+The latest Mindmap focused disabled-root checks show the plain wrapping prose/icon trio is covered
+by wrapped/min-content label bounds. The remaining retained entries still include long-word
+min-content drift, Markdown/HTML sanitization, icon-bearing stress fixtures, shape profiles, and
+tree-wide transform drift. This workstream therefore focuses on derivation work, not blind deletion.
 
 The latest State disabled-root sweep still fails as expected with the 34 retained State root pins
 acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
@@ -331,6 +331,33 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 - 2026-05-12: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
   `744`, State root count `34`, Mindmap root count `47`, text lookup total `484`, and zero manual
   raw SVG/path bridges.
+- 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused `parity-root` checks passed
+  for `upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003`,
+  `upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010`, and
+  `upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002` after Mindmap
+  plain labels started using wrapped/min-content HTML-like bounds instead of unwrapped paragraph
+  width.
+- 2026-05-12: focused disabled-root checks for the related long-word and stress icon fixtures still
+  failed with real remaining root drift, so those entries remain pinned for now:
+  `upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_long_words_that_exceed_width_004`,
+  `stress_long_labels_br_icons_002`, `stress_mindmap_long_words_wrapping_016`,
+  `stress_wrap_long_word_008`,
+  `upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017`,
+  `stress_mindmap_markdown_emphasis_icons_014`, and `stress_mindmap_icons_multi_packs_025`.
+- 2026-05-12: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `741`, State root count `34`, Mindmap root count `44`, text lookup total `484`, and zero manual
+  raw SVG/path bridges.
+- 2026-05-12: refreshed the 29 affected Mindmap layout golden snapshots after the wrapped-label
+  layout rule changed node dimensions and tree positions.
+- 2026-05-12: `cargo test -p merman-render
+  mindmap_plain_wrapping_label_uses_wrapped_container_width`, focused Mindmap `parity-root` checks
+  for the three removed root pins, full Mindmap `parity-root`, full Mindmap `parity`,
+  `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo clippy -p xtask --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p merman-render`, `cargo test -p xtask
+  override_growth_check_rejects_category_growth`, and `cargo run -p xtask -- verify --strict`
+  passed after the wrapping-label pass. The strict gate included workspace nextest
+  (`1021` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
 
 ## Open Risks
 
