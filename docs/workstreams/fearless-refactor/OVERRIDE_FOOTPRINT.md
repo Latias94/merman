@@ -438,4 +438,8 @@ Counts are inventory units and should not be compared directly across categories
 - Do not spend another blind table-pruning pass on Sequence root pins until sequence typed bounds
   change; the May 11 representative recheck proved multiple common buckets still guard real
   `parity-root` drift.
+- A quick deterministic spot-check of several unmentioned Class labels (`Class1`, `OneA`, `A1`,
+  `A2`, `Status`, `Foo`, `API`, `C1`, `Beta`, `Core.Alpha`, `B1a`, `Class01<T>`,
+  `IRepository<T>`, `GenericClass<T>`, `CoreResult<T>`, `ApiRequest`) did not surface a new
+  exact-match prune candidate, so Class cleanup should stay evidence-driven rather than blind.
 - Tighten per-entry fixture/probe provenance when regenerating large override tables.
