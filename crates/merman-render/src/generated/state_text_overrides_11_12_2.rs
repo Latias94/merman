@@ -126,6 +126,21 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     }
 }
 
+pub fn lookup_state_note_label_width_px(font_size_px: f64, text: &str) -> Option<f64> {
+    if (font_size_px - 16.0).abs() > 0.01 {
+        return None;
+    }
+
+    match text {
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_spec_should_render_a_note_with_multiple_lines_in_it_009.svg
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_v2_should_render_a_note_with_multiple_lines_in_it_010.svg
+        "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line..." => {
+            Some(195.75)
+        }
+        _ => None,
+    }
+}
+
 pub fn lookup_state_node_label_width_px_styled(
     font_size_px: f64,
     text: &str,

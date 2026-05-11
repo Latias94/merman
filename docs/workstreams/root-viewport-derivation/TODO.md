@@ -12,13 +12,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 
 ## P1: State Root Derivation
 
-- [ ] Classify the 45 remaining State root pins by drift family.
-  Known initial families:
+- [x] Classify the then-current 42 State root pins by drift family.
+  Evidence: the 2026-05-12 disabled-root State `parity-root` sweep produced 284 root-delta rows;
+  crossing the report with `state_root_overrides_11_12_2.rs` identified the 42 retained pins and
+  the drift families at that point:
   - right-to-left direction and scale bounds.
   - dense or wrapping edge-label bounds.
   - note and multiline-label bounds.
   - styled/classed state shape bounds.
   - small browser float/rounding deltas.
+  Highest-impact retained fixtures are led by HTML-sanitized notes, RL/scale long IDs, wrapped
+  edge labels, dense graph labels, markdown edge labels, unicode/RTL labels, and font/style
+  precedence cases.
 - [x] Replace one low-risk State fixture group with typed or emitted-bounds derivation.
   Evidence: direct `style ... border:...` statements no longer trigger the classDef-only 72px
   label-height inflation rule.
@@ -34,12 +39,21 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current root budget after the edge-label pass.
   Evidence: State root count is now `42`, root viewport total is `757`, and the text lookup budget
   is explicitly `481` because one reusable State edge-label browser metric replaced two root pins.
+- [x] Replace the shared State multiline note pair with note-label bounds derivation.
+  Evidence: a State-owned note label browser width now drives both layout and render measurement
+  for the shared multiline Cypress note text, replacing two fixture-scoped root pins:
+  `upstream_cypress_statediagram_spec_should_render_a_note_with_multiple_lines_in_it_009` and
+  `upstream_cypress_statediagram_v2_spec_v2_should_render_a_note_with_multiple_lines_in_it_010`.
+- [x] Tighten the current root budget after the note-label pass.
+  Evidence: State root count is now `40`, root viewport total is `751`, and the text lookup budget
+  is explicitly `482` because one reusable State note-label browser metric replaced two root pins.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
-  Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes.
+  Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
+  the note-label pass.
 - [x] Run focused State code-quality checks for this pass.
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo test -p xtask override_growth_check_rejects_category_growth`, and
-  `cargo nextest run -p merman-render` passed.
+  `cargo nextest run -p merman-render` passed after the note-label pass.
 
 ## P1: Mindmap Root Derivation
 

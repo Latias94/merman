@@ -2031,7 +2031,7 @@ fn render_state_node_svg(
         "note" => {
             let label = state_node_label_text(node);
             let measure_start = timing_enabled.then(std::time::Instant::now);
-            let metrics = ctx.measurer.measure_wrapped(
+            let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &ctx.text_style,
                 Some(ctx.html_label_wrapping_width),
@@ -2039,6 +2039,12 @@ fn render_state_node_svg(
             );
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
+            }
+            if let Some(w) = state_text_overrides::lookup_state_note_label_width_px(
+                ctx.text_style.font_size,
+                label.trim(),
+            ) {
+                metrics.width = w;
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);

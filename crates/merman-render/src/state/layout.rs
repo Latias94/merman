@@ -1054,7 +1054,7 @@ fn build_state_diagram_v2_dagre_input(
                 (width, height)
             }
             "note" => {
-                let (tw, th) = node_label_metrics(
+                let (mut tw, th) = node_label_metrics(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
@@ -1063,6 +1063,15 @@ fn build_state_diagram_v2_dagre_input(
                     &text_style,
                     wrap_mode,
                 );
+                if wrap_mode == WrapMode::HtmlLike {
+                    let decoded = decode_html_entities_once(&label_text);
+                    if let Some(w) = state_text_overrides::lookup_state_note_label_width_px(
+                        text_style.font_size,
+                        decoded.as_ref().trim(),
+                    ) {
+                        tw = w;
+                    }
+                }
                 (tw + padding * 2.0, th + padding * 2.0)
             }
             "rectWithTitle" => {

@@ -41,12 +41,18 @@ Scope:
 
 Progress:
 
+- Classified the then-current 42 retained State root pins with a disabled-root `parity-root` sweep.
+  The largest drift families are HTML-sanitized notes, right-to-left scale bounds with long IDs,
+  wrapping edge-label bounds, markdown labels, unicode/RTL text metrics, style/font precedence, and
+  small browser float/lattice guards.
 - Removed `upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034` after narrowing the
   72px border-label height inflation rule to classDef-compiled styles. Direct `style` directives no
   longer receive classDef-only height derivation.
 - Removed the two `test({ foo: 'far' })` State root pins after decoding Mermaid
   `encodeEntities` placeholders before layout measurement and moving the remaining browser width
   fact into a shared State edge-label text metric.
+- Removed the two shared multiline note State root pins after moving the browser-measured note
+  label width into State-owned note metrics and applying it consistently in layout and render.
 
 Exit criteria:
 

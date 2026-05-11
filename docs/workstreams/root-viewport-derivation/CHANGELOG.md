@@ -1,5 +1,12 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-12
+
+- Moved the shared Cypress multiline State note width into a State-owned note-label metric, applied
+  it consistently in layout and SVG render measurement, removed the two now-derived note root pins,
+  refreshed their layout goldens, tightened the root budget to `751`, and verified
+  `xtask verify --strict`.
+
 ## 2026-05-11
 
 - Created the workstream document set for replacing State and Mindmap fixture-scoped root viewport

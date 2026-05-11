@@ -64,6 +64,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - State layout/SVG parity: decode Mermaid `encodeEntities` placeholders before measuring State
   labels, and move the `test({ foo: 'far' })` edge-label browser width into State text metrics so
   two fixture-scoped State root viewport pins can be deleted.
+- State layout/SVG parity: move the shared multiline note browser width into State note-label
+  metrics and apply it in both layout and render measurement, deleting two fixture-scoped State
+  root viewport pins.
 - Mindmap layout/SVG parity: trim delimiter-created labels that contain a single non-empty text
   line for layout measurement, preserving raw SVG text emission while deleting three
   fixture-scoped root viewport pins for Cypress single-root shape fixtures.

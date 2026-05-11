@@ -5,7 +5,7 @@
       "nodes": [
         {
           "id": "State1",
-          "x": 136.398,
+          "x": 155.875,
           "y": 28.0,
           "width": 160.0,
           "height": 40.0,
@@ -13,17 +13,17 @@
         },
         {
           "id": "State1----note-0",
-          "x": 136.398,
+          "x": 155.875,
           "y": 222.0,
-          "width": 186.797,
+          "width": 225.75,
           "height": 198.0,
           "is_cluster": false
         },
         {
           "id": "State1----parent",
-          "x": 136.398,
+          "x": 155.875,
           "y": 222.0,
-          "width": 256.797,
+          "width": 295.75,
           "height": 248.0,
           "is_cluster": true
         }
@@ -37,19 +37,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 136.898,
+              "x": 156.375,
               "y": 48.5
             },
             {
-              "x": 136.398,
+              "x": 155.875,
               "y": 73.0
             },
             {
-              "x": 136.398,
+              "x": 155.875,
               "y": 98.0
             },
             {
-              "x": 136.398,
+              "x": 155.875,
               "y": 222.0
             }
           ],
@@ -66,15 +66,15 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 136.398,
+          "x": 155.875,
           "y": 222.0,
-          "width": 256.797,
+          "width": 295.75,
           "height": 248.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line...",
           "title_label": {
-            "x": 136.398,
+            "x": 155.875,
             "y": 159.0,
             "width": 185.438,
             "height": 120.0
@@ -89,7 +89,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 264.797,
+        "max_x": 303.75,
         "max_y": 346.0
       }
     }
