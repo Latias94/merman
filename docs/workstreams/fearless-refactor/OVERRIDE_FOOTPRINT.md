@@ -315,6 +315,9 @@ fixture root `max-width` from `1704.25px` to `1704px`.
 The `User` rendered width entry also stays pinned: removing it preserved the broad Class DOM and
 layout snapshot gates, but `class_svg_namespaces_and_relation_labels_keep_upstream_geometry`
 failed on the `Company.Project` cluster geometry during strict verification.
+The `manages` rendered width entry also stays pinned for the same geometry reason: removing it
+breaks `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on the `Company.Project`
+cluster geometry during strict verification.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
