@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `wraps` rendered width override after both Class DOM
+  parity modes stayed green and the affected dense-namespaces layout golden was refreshed,
+  reducing Class text lookups from `299` to `298` and the global text lookup budget from `502` to
+  `501`.
 - Removed the redundant Class relation-label `returns` rendered width override after both Class
   DOM parity modes stayed green and the affected dense-namespaces / enums-and-interfaces /
   nested-generics layout goldens were refreshed, reducing Class text lookups from `300` to `299`
