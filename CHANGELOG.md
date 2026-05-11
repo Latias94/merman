@@ -45,6 +45,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Flowchart.
 - Root viewport audits: add `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` as a local-only switch for
   proving whether generated root pins still guard real `parity-root` drift.
+- `xtask compare-gitgraph-svgs --report-root`: add root viewport delta reporting for GitGraph and
+  include it in `compare-all-svgs --report-root`.
 
 ### Changed
 

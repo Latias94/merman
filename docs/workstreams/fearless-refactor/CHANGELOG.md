@@ -17,6 +17,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Added the audit-only `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` switch to the shared root
   viewport override helper so future root-table pruning can be tested without editing generated
   files.
+- Wired GitGraph into the shared root delta report path and forwarded `compare-all-svgs
+  --report-root` to GitGraph, giving the largest root viewport bucket the same audit surface as
+  Flowchart and Sequence.
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered

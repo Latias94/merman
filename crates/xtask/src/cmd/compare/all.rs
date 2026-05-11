@@ -187,7 +187,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
 
-        if report_root && matches!(diagram, "flowchart" | "sequence") {
+        if report_root && matches!(diagram, "flowchart" | "gitgraph" | "sequence") {
             cmd_args.push("--report-root".to_string());
         }
 
