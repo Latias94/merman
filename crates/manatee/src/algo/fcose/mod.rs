@@ -382,9 +382,7 @@ struct SimEdge {
     // original leaf endpoints across compound boundaries.
     a_in_lca: usize,
     b_in_lca: usize,
-    #[allow(dead_code)]
     a_anchor: Option<Anchor>,
-    #[allow(dead_code)]
     b_anchor: Option<Anchor>,
     base_ideal_length: f64,
     ideal_length: f64,
@@ -466,7 +464,6 @@ struct ConstraintRuntime {
 struct AxisConstraintRuntime {
     node_count: usize,
     dummy_to_nodes: Vec<Vec<usize>>,
-    #[allow(dead_code)]
     node_to_dummy: Vec<Option<usize>>,
     fixed_nodes: IndexSet<usize>,
     nodes_in_relative: Vec<usize>,
@@ -841,7 +838,6 @@ impl SimGraph {
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
-    #[allow(dead_code)]
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
@@ -3704,7 +3700,6 @@ impl XorShift64Star {
         }
     }
 
-    #[allow(dead_code)]
     fn mix_u64(&mut self, v: u64) {
         // One-way mix to decorrelate node indices.
         self.state ^= v.wrapping_mul(0x9E3779B97F4A7C15_u64);

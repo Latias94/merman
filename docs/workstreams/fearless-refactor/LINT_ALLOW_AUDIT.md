@@ -2,11 +2,13 @@
 
 This audit tracks source-level lint allowances that remain after the fearless-refactor cleanup.
 Generated modules are excluded unless the allowance is placed in hand-written source that imports
-generated code.
+generated code. The primary release surface is `merman-core`, `merman-render`, and `xtask`; the
+workspace support crates are tracked separately below because they are still covered by the
+workspace clippy gate.
 
 Last updated: 2026-05-11.
 
-## Current Allowances
+## Mainline Allowances
 
 | Location | Lint | Status | Removal path |
 | --- | --- | --- | --- |
@@ -16,6 +18,20 @@ Last updated: 2026-05-11.
 | `crates/merman-core/src/diagrams/flowchart.rs` | `clippy::empty_line_after_outer_attr`, `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `flowchart_grammar.rs` with empty-line output around generated tuple helpers, `result_large_err` around the parser return type, and `type_complexity` around generated link segment tuple helpers. | Audit only after changing the generated parser/error/output shape; do not treat this as local hand-written cleanup. |
 | `crates/merman-core/src/diagrams/sequence/mod.rs` | `clippy::empty_line_after_outer_attr`, `clippy::type_complexity`, `clippy::result_large_err` | Required for generated LALRPOP parser code. Removing it makes `cargo clippy -p merman-core --all-targets --all-features -- -D warnings` fail in generated `sequence_grammar.rs` with empty-line output around generated tuple helpers and `type_complexity` around generated participant tuple helpers. | Audit only after changing the generated parser/error/output shape; do not treat this as local hand-written cleanup. |
 | `crates/merman-render/src/trig_tables.rs` | `clippy::excessive_precision` | Required for Node/V8-generated trig constants used by strict Flowchart stadium arc point parity. The literals intentionally keep the source measurement precision, and the module is `#[rustfmt::skip]` to preserve table readability. | Regenerate the table from the documented Node/V8 source if the upstream point generation changes; do not trim precision only to satisfy clippy because strict `data-points` parity is sensitive at tiny deltas. |
+
+## Workspace Support Crate Allowances
+
+These are not generated parser wrappers, but they live in parity-oriented support crates that
+mirror upstream layout or RoughJS algorithms. They should stay visible in this audit even when the
+mainline renderer/core surface is clean.
+
+| Location | Lint | Status | Removal path |
+| --- | --- | --- | --- |
+| `crates/manatee/src/algo/fcose/mod.rs` | `dead_code`, `clippy::collapsible_if`, `clippy::manual_div_ceil`, `clippy::needless_option_as_deref`, `clippy::needless_range_loop`, `clippy::nonminimal_bool` | Retained for the FCoSE port while it stays close to the upstream Cytoscape/FCoSE control flow and debug surface. Redundant item-level `dead_code` allowances inside this module were removed after the module-level allowance was confirmed to cover them. | Split the FCoSE port into smaller owner modules, delete unused debug/reference helpers, and then remove these allowances under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
+| `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::assign_op_pattern`, `clippy::manual_contains`, `clippy::manual_swap`, `clippy::needless_range_loop` | Retained for the spectral initialization port where loop shape and operation order are still intentionally close to upstream `cytoscape-fcose`. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
+| `crates/dugong/src/position/bk/util.rs`, `crates/dugong/src/position/bk/core.rs` | `dead_code` | Retained around the Dagre-compatible Brandes-Koepf positioning helpers that still carry reference/helper entrypoints. | Collapse or delete unused BK helper paths once Dagre parity tests and layout snapshots prove the reduced call graph is enough. |
+| `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained for the forked RoughJS API shape. The renderer-facing merman parity layer already wraps common RoughJS calls, but the forked backend still exposes upstream-like wide helper signatures. | Introduce RoughJS backend request structs only after Flowchart/State hand-drawn parity and allocation checks stay green. |
+| `crates/roughr/src/core.rs`, `crates/roughr/src/generator.rs`, `crates/roughr/src/filler/scan_line_hachure.rs` | `dead_code` | Retained for forked RoughJS option and filler surfaces that are not all exercised by the current merman renderers. | Delete or feature-scope unused RoughJS APIs after confirming no public `roughr-merman` compatibility surface depends on them. |
 
 ## Generated Exclusions
 
@@ -45,6 +61,8 @@ Last updated: 2026-05-11.
   after replacing the generated font-metrics lookup loop with `Iterator::find` and updating the
   `xtask gen-font-metrics` template to emit the clippy-clean form; generated and fixture-derived
   parity data now stays under normal clippy coverage.
+- `crates/manatee/src/algo/fcose/mod.rs`: removed redundant item-level `dead_code` allowances from
+  fields, a constant, and an RNG helper that were already covered by the module-level allowance.
 
 ## Gate
 
