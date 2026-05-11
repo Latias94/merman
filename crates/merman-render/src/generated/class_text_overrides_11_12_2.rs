@@ -261,7 +261,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "+query(sql: String) : Rows") => Some(184.1875),
         (16, false, "+request() : Response") => Some(155.125),
         (16, false, "+start()") => Some(53.9375),
-        (16, false, "connects") => Some(63.46875),
         (16, false, "--") => Some(11.75),
         (16, false, "«enumeration»") => Some(107.859375),
         (16, true, "IService") => Some(59.765625),
