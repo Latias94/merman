@@ -40,6 +40,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   strict run covered fmt, all-features check, workspace all-target/all-features clippy, override
   no-growth at `477` text lookup entries, feature matrix checks, workspace nextest
   (`1013` tests passed, `3` skipped), and SVG DOM parity for all strict diagram families.
+- `cargo run -p xtask -- verify --strict` was rerun after commit `4406e261` recorded the filtered
+  `title_and_accdescr_multiline` Sequence root pin recheck. The tree stayed green with the same
+  `1013` passed, `3` skipped nextest result and `477` text lookup budget.
 - `cargo bench -p merman --features render` passed after the latest Class text lookup cleanup and
   is recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
   A 20 minute command window timed out first; the same command completed under a 1 hour window.
