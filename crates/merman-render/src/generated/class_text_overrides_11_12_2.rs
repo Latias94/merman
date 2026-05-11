@@ -234,7 +234,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "testArray() : bool[]") => Some(135.890625),
         (16, false, "map(List<T> items) : Map<String,T>") => Some(255.84375),
         (16, false, "test()") => Some(39.640625),
-        (16, false, "+template()") => Some(85.609375),
         (16, false, "+toString() : String") => Some(133.78125),
         (16, false, "+fromCode(int code) : Data") => Some(197.046875),
         (16, false, "+parse(String text) : Data") => Some(183.21875),

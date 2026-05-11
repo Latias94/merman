@@ -213,8 +213,9 @@ exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanu
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
 `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, and
-`int[] id` cleanups, the `+eat()`, `+mate()`, and `+run()` rendered-width cleanup, and the later
-`+quack()` / `+swim()` cleanup, reducing the text lookup total to 486.
+`int[] id` cleanups, the `+eat()`, `+mate()`, and `+run()` rendered-width cleanup, the later
+`+quack()` / `+swim()` cleanup, and the `+template()` cleanup, reducing the text lookup total to
+485.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -280,12 +281,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `486`.
+Total lookup entries reported by `xtask`: `485`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 283 |
+| `class_text_overrides_11_12_2.rs` | 282 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -302,9 +303,9 @@ and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERRO
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
 `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, `int[] id`,
-`+eat()`, `+mate()`, `+run()`, `+quack()`, and `+swim()`
+`+eat()`, `+mate()`, `+run()`, `+quack()`, `+swim()`, and `+template()`
 cleanup passes refreshed the affected layout goldens as needed and reduced the Class text lookup
-total to 283 and the global text lookup total to 486.
+total to 282 and the global text lookup total to 485.
 The `test()` rendered width entry stays pinned because deleting it preserves Class DOM parity but
 causes broad default-layout churn across 14 simple Class cypress fixture goldens.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because

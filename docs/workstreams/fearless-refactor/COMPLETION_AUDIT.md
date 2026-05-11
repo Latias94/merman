@@ -90,6 +90,14 @@ Progress is tracked in the fearless-refactor workstream docs.
   lookup budget tightened to `486`; the neighboring `test()` rendered-width override remains
   pinned because deleting it caused broad default-layout churn across 14 simple Class cypress
   fixture goldens.
+- `cargo nextest run -p merman-render --test class_svg_test`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`, and
+  `cargo nextest run -p merman-render --test layout_snapshots_test
+  fixtures_match_layout_golden_snapshots_when_present` passed after removing the redundant Class
+  `+template()` rendered-width override and refreshing the interfaces/abstracts layout golden.
+  `cargo run -p xtask -- report-overrides --check-no-growth` then passed with the text lookup
+  budget tightened to `485`.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
