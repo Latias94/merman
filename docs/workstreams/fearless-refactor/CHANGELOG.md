@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `feedback` rendered width override after both Class
+  DOM parity modes stayed green and the affected many-relations layout golden was refreshed,
+  reducing Class text lookups from `301` to `300` and the global text lookup budget from `504` to
+  `503`.
 - Removed the redundant Class relation-label `emits` rendered width override after both Class DOM
   parity modes stayed green and the affected many-relations layout golden was refreshed, reducing
   Class text lookups from `302` to `301` and the global text lookup budget from `505` to `504`.
