@@ -44,6 +44,12 @@ Progress is tracked in the fearless-refactor workstream docs.
   redundant FCoSE `dead_code` allowances, deleting stale private BK helpers in `dugong`, clearing
   the `roughr` dead-code bucket, moving private `roughr` renderer helper arguments into request
   structs, and expanding `LINT_ALLOW_AUDIT.md` to include workspace support crates.
+- `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p manatee`,
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and
+  `cargo nextest run -p merman --features render --test mindmap_br_variants_031 --test pipeline_bench_fixtures`
+  passed after deleting the inactive COSE-Bilkent tree pruning/growth path that was never populated
+  by the spring embedder.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class `references`
   cleanup and refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden, tightening
   the text lookup no-growth budget to `496`.

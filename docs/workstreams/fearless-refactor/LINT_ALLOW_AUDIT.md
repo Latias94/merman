@@ -64,6 +64,9 @@ mainline renderer/core surface is clean.
 - `crates/dugong/src/position/bk/util.rs` and `crates/dugong/src/position/bk/core.rs`: removed
   the unused private BK helper `edge_key` and the stale reference-only `vertical_alignment_ref`
   implementation, clearing the last `dead_code` allowances in that subtree.
+- `crates/manatee/src/algo/cose_bilkent/mod.rs`: removed the inactive tree pruning/growth path
+  that was never wired into the COSE-Bilkent spring embedder, clearing the item-level
+  `dead_code` allowances in that module.
 - `crates/roughr/src/core.rs`, `crates/roughr/src/generator.rs`, and
   `crates/roughr/src/filler/scan_line_hachure.rs`: removed the unused `Space` / `Config` /
   `DrawingSurface` shells, the dead `Generator::new` constructor, and the unused

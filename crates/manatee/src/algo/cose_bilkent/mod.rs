@@ -224,7 +224,7 @@ struct SimNode {
     surrounding: Vec<usize>,
     active: bool,
 
-    // FR-grid indices (computed by `update_grid`), used by tree growth heuristics.
+    // FR-grid indices computed by `update_grid` for repulsion candidate lookup.
     start_x: i32,
     finish_x: i32,
     start_y: i32,
@@ -319,13 +319,6 @@ impl Bounds {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PrunedNodeData {
-    node_idx: usize,
-    edge_idx: usize,
-    other_idx: usize,
-}
-
 #[derive(Debug, Default, Clone)]
 struct SimGrid {
     size_x: usize,
@@ -378,19 +371,12 @@ impl SimGrid {
         let i = self.idx(x, y);
         self.cells[i].as_slice()
     }
-
-    #[inline]
-    fn cell_len(&self, x: usize, y: usize) -> usize {
-        let i = self.idx(x, y);
-        self.cells[i].len()
-    }
 }
 
 #[derive(Debug)]
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
-    pruned_nodes_all: Vec<Vec<PrunedNodeData>>,
     grid: SimGrid,
     repulsion_seen: Vec<u32>,
     repulsion_seen_gen: u32,
@@ -405,9 +391,6 @@ impl SimGraph {
     // `layout-base` `LayoutConstants.WORLD_CENTER_X/Y`.
     const WORLD_CENTER_X: f64 = 1200.0;
     const WORLD_CENTER_Y: f64 = 900.0;
-
-    // `layout-base` `FDLayoutConstants.DEFAULT_COOLING_FACTOR_INCREMENTAL`.
-    const DEFAULT_COOLING_FACTOR_INCREMENTAL: f64 = 0.3;
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
@@ -488,7 +471,6 @@ impl SimGraph {
         Self {
             nodes,
             edges,
-            pruned_nodes_all: Vec::new(),
             grid: SimGrid::default(),
             repulsion_seen: vec![0u32; nodes_in.len()],
             repulsion_seen_gen: 1,
@@ -555,7 +537,6 @@ impl SimGraph {
         Self {
             nodes,
             edges,
-            pruned_nodes_all: Vec::new(),
             grid: SimGrid::default(),
             repulsion_seen: vec![0u32; graph.nodes.len()],
             repulsion_seen_gen: 1,
@@ -698,23 +679,6 @@ impl SimGraph {
         d
     }
 
-    #[allow(dead_code)]
-    fn active_leaf_edge(&self, node_idx: usize) -> Option<usize> {
-        if self.active_degree(node_idx) != 1 {
-            return None;
-        }
-        for &ei in &self.nodes[node_idx].edges {
-            if !self.edges[ei].active {
-                continue;
-            }
-            let other = self.edge_other_end(ei, node_idx);
-            if self.nodes[other].active {
-                return Some(ei);
-            }
-        }
-        None
-    }
-
     fn update_grid(&mut self, repulsion_range: f64) {
         self.grid.clear_cells();
         if self.nodes.iter().all(|n| !n.active) {
@@ -789,199 +753,6 @@ impl SimGraph {
                 }
             }
         }
-    }
-
-    #[allow(dead_code)]
-    fn reduce_trees(&mut self) {
-        self.pruned_nodes_all.clear();
-
-        let mut contains_leaf = true;
-        while contains_leaf {
-            contains_leaf = false;
-            let mut candidates: Vec<PrunedNodeData> = Vec::new();
-
-            for idx in 0..self.nodes.len() {
-                if !self.nodes[idx].active {
-                    continue;
-                }
-                let Some(edge_idx) = self.active_leaf_edge(idx) else {
-                    continue;
-                };
-                let other_idx = self.edge_other_end(edge_idx, idx);
-                candidates.push(PrunedNodeData {
-                    node_idx: idx,
-                    edge_idx,
-                    other_idx,
-                });
-                contains_leaf = true;
-            }
-
-            if !contains_leaf {
-                break;
-            }
-
-            // Mirror upstream's "re-check degree before removal" behavior by pruning sequentially.
-            candidates.sort_by_key(|d| d.node_idx);
-            let mut pruned_in_step: Vec<PrunedNodeData> = Vec::new();
-            for cand in candidates {
-                if !self.nodes[cand.node_idx].active {
-                    continue;
-                }
-                if self.active_leaf_edge(cand.node_idx) != Some(cand.edge_idx) {
-                    continue;
-                }
-                self.nodes[cand.node_idx].active = false;
-                self.edges[cand.edge_idx].active = false;
-                pruned_in_step.push(cand);
-            }
-
-            if pruned_in_step.is_empty() {
-                break;
-            }
-            self.pruned_nodes_all.push(pruned_in_step);
-        }
-    }
-
-    fn place_pruned_node(
-        &mut self,
-        pruned_node: usize,
-        node_to_connect: usize,
-        repulsion_range: f64,
-    ) {
-        self.update_grid(repulsion_range);
-        if self.grid.is_empty() {
-            return;
-        }
-
-        let start_grid_x = self.nodes[node_to_connect].start_x;
-        let finish_grid_x = self.nodes[node_to_connect].finish_x;
-        let start_grid_y = self.nodes[node_to_connect].start_y;
-        let finish_grid_y = self.nodes[node_to_connect].finish_y;
-
-        let mut control_regions = [0i32, 0i32, 0i32, 0i32]; // up, right, down, left
-
-        if start_grid_y > 0 {
-            let y0 = (start_grid_y - 1) as usize;
-            let y1 = start_grid_y as usize;
-            for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
-                control_regions[0] += (self.grid.cell_len(x, y0) + self.grid.cell_len(x, y1))
-                    .saturating_sub(1) as i32;
-            }
-        }
-        if (finish_grid_x as usize) + 1 < self.grid.size_x() {
-            let x0 = (finish_grid_x + 1) as usize;
-            let x1 = finish_grid_x as usize;
-            for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
-                control_regions[1] += (self.grid.cell_len(x0, y) + self.grid.cell_len(x1, y))
-                    .saturating_sub(1) as i32;
-            }
-        }
-        if (finish_grid_y as usize) + 1 < self.grid.size_y() {
-            let y0 = (finish_grid_y + 1) as usize;
-            let y1 = finish_grid_y as usize;
-            for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
-                control_regions[2] += (self.grid.cell_len(x, y0) + self.grid.cell_len(x, y1))
-                    .saturating_sub(1) as i32;
-            }
-        }
-        if start_grid_x > 0 {
-            let x0 = (start_grid_x - 1) as usize;
-            let x1 = start_grid_x as usize;
-            for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
-                control_regions[3] += (self.grid.cell_len(x0, y) + self.grid.cell_len(x1, y))
-                    .saturating_sub(1) as i32;
-            }
-        }
-
-        let mut min = i32::MAX;
-        let mut min_count = 0i32;
-        let mut min_index = 0usize;
-        for (idx, v) in control_regions.iter().enumerate() {
-            if *v < min {
-                min = *v;
-                min_count = 1;
-                min_index = idx;
-            } else if *v == min {
-                min_count += 1;
-            }
-        }
-
-        let choose_preferred = |cands: &[usize]| -> usize {
-            // Prefer `right`, then `left`, then `up`, then `down`.
-            for pref in [1usize, 3, 0, 2] {
-                if cands.contains(&pref) {
-                    return pref;
-                }
-            }
-            cands[0]
-        };
-
-        let grid_for_pruned = if min_count == 3 && min == 0 {
-            if control_regions[0] == 0 && control_regions[1] == 0 && control_regions[2] == 0 {
-                1
-            } else if control_regions[0] == 0 && control_regions[1] == 0 && control_regions[3] == 0
-            {
-                0
-            } else if control_regions[0] == 0 && control_regions[2] == 0 && control_regions[3] == 0
-            {
-                3
-            } else if control_regions[1] == 0 && control_regions[2] == 0 && control_regions[3] == 0
-            {
-                2
-            } else {
-                min_index
-            }
-        } else if min_count == 2 && min == 0 {
-            let mut cands: Vec<usize> = Vec::new();
-            for (idx, v) in control_regions.iter().enumerate() {
-                if *v == 0 {
-                    cands.push(idx);
-                }
-            }
-            choose_preferred(&cands)
-        } else if min_count == 4 && min == 0 {
-            choose_preferred(&[0, 1, 2, 3])
-        } else {
-            min_index
-        };
-
-        let cx = self.nodes[node_to_connect].center_x();
-        let cy = self.nodes[node_to_connect].center_y();
-        let cw = self.nodes[node_to_connect].half_w();
-        let ch = self.nodes[node_to_connect].half_h();
-        let pw = self.nodes[pruned_node].half_w();
-        let ph = self.nodes[pruned_node].half_h();
-        let l = Self::DEFAULT_EDGE_LENGTH;
-
-        match grid_for_pruned {
-            0 => self.nodes[pruned_node].set_center(cx, cy - ch - l - ph),
-            1 => self.nodes[pruned_node].set_center(cx + cw + l + pw, cy),
-            2 => self.nodes[pruned_node].set_center(cx, cy + ch + l + ph),
-            _ => self.nodes[pruned_node].set_center(cx - cw - l - pw, cy),
-        }
-    }
-
-    fn grow_tree_one_step(&mut self, repulsion_range: f64) {
-        let Some(step) = self.pruned_nodes_all.pop() else {
-            return;
-        };
-
-        for node_data in step {
-            let node_idx = node_data.node_idx;
-            let edge_idx = node_data.edge_idx;
-            let node_to_connect = if self.nodes[node_data.other_idx].active {
-                node_data.other_idx
-            } else {
-                let e = self.edges[edge_idx];
-                if self.nodes[e.a].active { e.a } else { e.b }
-            };
-
-            self.place_pruned_node(node_idx, node_to_connect, repulsion_range);
-            self.nodes[node_idx].active = true;
-            self.edges[edge_idx].active = true;
-        }
-
-        self.update_grid(repulsion_range);
     }
 
     /// Port of `layout-base` `Layout.findCenterOfTree(nodes)`.
@@ -1289,10 +1060,6 @@ impl SimGraph {
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
-        let mut is_tree_growing = false;
-        let mut is_growth_finished = false;
-        let mut grow_tree_iterations = 0usize;
-        let mut after_growth_iterations = 0usize;
         let mut processed_repulsion: Vec<bool> = vec![false; self.nodes.len()];
 
         loop {
@@ -1301,18 +1068,11 @@ impl SimGraph {
                 timings.iterations += 1;
             }
 
-            if total_iterations == max_iterations && !is_tree_growing && !is_growth_finished {
-                if !self.pruned_nodes_all.is_empty() {
-                    is_tree_growing = true;
-                } else {
-                    break;
-                }
+            if total_iterations == max_iterations {
+                break;
             }
 
-            if total_iterations.is_multiple_of(Self::CONVERGENCE_CHECK_PERIOD)
-                && !is_tree_growing
-                && !is_growth_finished
-            {
+            if total_iterations.is_multiple_of(Self::CONVERGENCE_CHECK_PERIOD) {
                 let oscilating = total_iterations > (max_iterations / 3)
                     && (last_total_displacement - old_total_displacement).abs() < 2.0;
                 let converged = last_total_displacement < total_displacement_threshold;
@@ -1320,11 +1080,7 @@ impl SimGraph {
                 old_total_displacement = last_total_displacement;
 
                 if converged || oscilating {
-                    if !self.pruned_nodes_all.is_empty() {
-                        is_tree_growing = true;
-                    } else {
-                        break;
-                    }
+                    break;
                 }
 
                 cooling_cycle += 1.0;
@@ -1340,49 +1096,6 @@ impl SimGraph {
                 };
                 let schedule = cooling_cycle.powf(power) / 100.0 * cooling_adjuster;
                 cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
-            }
-
-            if is_tree_growing {
-                if grow_tree_iterations.is_multiple_of(10) {
-                    if !self.pruned_nodes_all.is_empty() {
-                        let update_grid_start = timing_enabled.then(std::time::Instant::now);
-                        self.update_grid(repulsion_range);
-                        if let Some(s) = update_grid_start {
-                            timings.update_grid += s.elapsed();
-                        }
-                        self.grow_tree_one_step(repulsion_range);
-                        let update_grid_start = timing_enabled.then(std::time::Instant::now);
-                        self.update_grid(repulsion_range);
-                        if let Some(s) = update_grid_start {
-                            timings.update_grid += s.elapsed();
-                        }
-                        cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
-                    } else {
-                        is_tree_growing = false;
-                        is_growth_finished = true;
-                    }
-                }
-                grow_tree_iterations += 1;
-            }
-
-            if is_growth_finished {
-                let oscilating = total_iterations > (max_iterations / 3)
-                    && (last_total_displacement - old_total_displacement).abs() < 2.0;
-                let converged = last_total_displacement < total_displacement_threshold;
-                if converged || oscilating {
-                    break;
-                }
-
-                if after_growth_iterations.is_multiple_of(10) {
-                    let update_grid_start = timing_enabled.then(std::time::Instant::now);
-                    self.update_grid(repulsion_range);
-                    if let Some(s) = update_grid_start {
-                        timings.update_grid += s.elapsed();
-                    }
-                }
-                cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL
-                    * ((100.0 - (after_growth_iterations as f64)) / 100.0).max(0.0);
-                after_growth_iterations += 1;
             }
 
             let mut total_displacement = 0.0f64;
@@ -1445,12 +1158,9 @@ impl SimGraph {
             // - cache `node.surrounding` between grid rebuilds
             // - candidate filtering uses *border distances* against `repulsionRange`
             let repulsion_start = timing_enabled.then(std::time::Instant::now);
-            let grid_update_allowed = !is_tree_growing && !is_growth_finished;
-            let force_to_node_surrounding_update = (grow_tree_iterations % 10 == 1
-                && is_tree_growing)
-                || (after_growth_iterations % 10 == 1 && is_growth_finished);
+            let rebuild_surrounding = total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1;
 
-            if total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1 && grid_update_allowed {
+            if rebuild_surrounding {
                 let update_grid_start = timing_enabled.then(std::time::Instant::now);
                 self.update_grid(repulsion_range);
                 if let Some(s) = update_grid_start {
@@ -1459,9 +1169,6 @@ impl SimGraph {
             }
 
             processed_repulsion.fill(false);
-            let rebuild_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1
-                && grid_update_allowed)
-                || force_to_node_surrounding_update;
 
             if !self.grid.is_empty() {
                 let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
