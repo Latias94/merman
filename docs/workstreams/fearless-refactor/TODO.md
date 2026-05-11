@@ -213,8 +213,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   the dense layout golden refresh, followed by the `ERROR`, `Payment`, `Cart`, and `Server`
   rendered-width cleanups. Both Class DOM parity modes and the layout snapshot test stayed green,
   and `report-overrides` now reports `515` text lookup entries. The `bar()`, `E`,
-  `IService`, `+run() : Status`, `Client`, `+start()`, and `API` entries remain because focused
-  SVG or layout snapshot tests still assert those Mermaid HTML `max-width` caps explicitly.
+  `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
+  remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
+  caps explicitly.
 - [x] Document when a text width override is allowed.
   Evidence: `OVERRIDE_POLICY.md` records allowed sources, disallowed shortcuts, placement rules,
   evidence checklist, and review questions.
