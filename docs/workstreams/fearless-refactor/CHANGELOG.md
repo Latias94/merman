@@ -5,6 +5,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Server` rendered width override after `parity-root` stayed green
+  and the affected style layout golden was refreshed, reducing Class text lookups from `313` to
+  `312` and the global text lookup budget from `516` to `515`; kept the `calcTextWidth` cap
+  because a focused test still asserts Mermaid's `max-width: 92px`.
+- Removed the redundant Class `Cart` `calcTextWidth` override after Class `parity-root` and the
+  layout snapshot gate stayed green, reducing Class text lookups from `314` to `313` and the
+  global text lookup budget from `517` to `516`.
 - Removed the redundant Class `Payment` width overrides after `parity-root` stayed green and the
   affected layout golden was refreshed, reducing Class text lookups from `316` to `314` and the
   global text lookup budget from `519` to `517`.

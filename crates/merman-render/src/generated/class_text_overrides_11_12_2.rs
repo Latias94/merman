@@ -104,7 +104,6 @@ pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<
         (16, "Foo1") => Some(33),
         (16, "Docs") => Some(33),
         (16, "Foo") => Some(25),
-        (16, "Cart") => Some(28),
         (16, "API") => Some(26),
         (16, "DB") => Some(22),
         (16, "Server") => Some(42),
@@ -274,7 +273,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "«enumeration»") => Some(107.859375),
         (16, true, "IService") => Some(59.765625),
         (16, true, "AbstractBase") => Some(96.203125),
-        (16, true, "Server") => Some(48.6875),
         (16, true, "VeryLongClassName_With_Dashes-And_Underscores") => Some(389.515625),
         (16, true, "AnotherExtremelyLongNamedClass") => Some(260.640625),
         (16, false, "+String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip") => {

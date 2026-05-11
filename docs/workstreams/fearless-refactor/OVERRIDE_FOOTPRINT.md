@@ -207,10 +207,10 @@ reducing the text lookup total to 549. A follow-up bypass of all 3 entries still
 `xtask gen-er-text-overrides` command was removed after this file became hand-curated, and the
 empty ER `calcTextWidth` lookup table was deleted.
 A later Block pass removed the two blank HTML width lookup entries for `" "` and `"   "`,
-reducing the text lookup total to 547. Later Class passes removed 30 lookup entries across the
+reducing the text lookup total to 547. Later Class passes removed 32 lookup entries across the
 exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanup, and the
-`ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR` and `Payment`
-pair cleanups, reducing the text lookup total to 517.
+`ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR`, `Payment`,
+`Cart`, and `Server` rendered-width cleanups, reducing the text lookup total to 515.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -274,12 +274,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `517`.
+Total lookup entries reported by `xtask`: `515`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 314 |
+| `class_text_overrides_11_12_2.rs` | 312 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -292,9 +292,9 @@ remaining left/right boundary corrections removed.
 
 Class note: the standalone plain-label `uses` lookup was removed after
 `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` stayed green without it,
-and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERROR`, and `Payment`
-cleanup passes refreshed the affected layout golden as needed and reduced the Class text lookup
-total to 314 and the global text lookup total to 517.
+and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERROR`, `Payment`,
+`Cart`, and `Server` rendered-width cleanup passes refreshed the affected layout golden as needed
+and reduced the Class text lookup total to 312 and the global text lookup total to 515.
 
 ER note: the remaining ER text lookup entries are the `string` and `varchar(5)` width lookups plus
 the `DRIVER` drawRect clamp guard. They were rechecked after the latest cleanup, both ER DOM
