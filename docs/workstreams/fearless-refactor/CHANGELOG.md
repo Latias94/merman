@@ -6,7 +6,7 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 ## 2026-05-11
 
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
-  the strict gate passed with the global text lookup budget at `484`.
+  the strict gate passed with the global text lookup budget at `483`.
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are
   recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
@@ -61,6 +61,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   focused SVG tests, and layout snapshots stayed green without golden drift, reducing Class text
   lookups from `282` to `281` and the global text lookup budget from `485` to `484`; the
   `bar()` calcTextWidth cap remains retained.
+- Removed the redundant Class `+isOk() : bool` rendered-width override after the vendored HTML
+  fallback matched the stored width exactly, both Class DOM parity modes stayed green, and the
+  affected dense namespaces/generics layout golden was refreshed, reducing Class text lookups from
+  `281` to `280` and the global text lookup budget from `484` to `483`.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

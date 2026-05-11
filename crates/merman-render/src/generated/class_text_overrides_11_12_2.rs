@@ -212,7 +212,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "+String beakColor") => Some(126.609375),
         (16, false, "+from(v: T) : Result<T>") => Some(166.9375),
         (16, false, "+T value") => Some(60.640625),
-        (16, false, "+isOk() : bool") => Some(96.359375),
         (16, false, "+parse(text: String) : Result<String>") => Some(258.171875),
         (16, false, "+parseAll(texts: List<String>) : List<Result<String>>") => Some(368.046875),
         (16, false, "+login(username: String, password: String)") => Some(305.28125),
