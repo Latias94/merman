@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "id1",
-          "x": 27.32,
+          "x": 28.047,
           "y": 28.0,
-          "width": 38.641,
+          "width": 40.094,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "id2",
-          "x": 115.961,
+          "x": 118.141,
           "y": 28.0,
-          "width": 38.641,
+          "width": 40.094,
           "height": 40.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 135.281,
+        "max_x": 138.188,
         "max_y": 48.0
       }
     }

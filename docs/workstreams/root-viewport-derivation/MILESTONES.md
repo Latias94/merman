@@ -60,6 +60,8 @@ Progress:
   into State edge-label metrics.
 - Removed the shared `Your state with spaces in it` State root pins by moving its browser-measured
   node-label width into State node-label metrics.
+- Removed the package style `id1/id2` State root pin by extending the existing bold-italic
+  `id3/id4` node-label metric family without growing text lookup debt.
 - Retained the `state_with_a_note_together_with_another_state` v1/v2 pair for now because the
   disabled-root drift is in note-cluster rect bounds, not a direct text width mismatch.
 

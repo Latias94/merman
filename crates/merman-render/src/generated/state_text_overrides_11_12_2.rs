@@ -158,8 +158,9 @@ pub fn lookup_state_node_label_width_px_styled(
     }
 
     match text {
+        // fixtures/upstream-svgs/state/upstream_pkgtests_state_style_spec_003.svg
         // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
-        "id3" | "id4" => Some(24.09375),
+        "id1" | "id2" | "id3" | "id4" => Some(24.09375),
         _ => None,
     }
 }

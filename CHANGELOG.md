@@ -74,6 +74,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   metrics, deleting one fixture-scoped State root viewport pin.
 - State layout/SVG parity: move the shared `Your state with spaces in it` browser width into State
   node-label metrics, deleting two fixture-scoped State root viewport pins.
+- State layout/SVG parity: extend the existing bold-italic State node-label metric to matching
+  `id1/id2` styled labels, deleting one package style root viewport pin without growing text lookup
+  debt.
 - Mindmap layout/SVG parity: trim delimiter-created labels that contain a single non-empty text
   line for layout measurement, preserving raw SVG text emission while deleting three
   fixture-scoped root viewport pins for Cypress single-root shape fixtures.

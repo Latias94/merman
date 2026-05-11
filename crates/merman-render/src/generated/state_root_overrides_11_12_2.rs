@@ -86,7 +86,6 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_batch5_direction_rl_scale_long_ids_065" => {
             Some(("0.006646156311035156 0 967.2566528320312 64", "967.257"))
         }
-        "upstream_pkgtests_state_style_spec_003" => Some(("0 0 146.1875 56", "146.188")),
         _ => None,
     }
 }

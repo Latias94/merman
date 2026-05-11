@@ -69,18 +69,25 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current root budget after the alias node-label pass.
   Evidence: State root count is now `35`, root viewport total is `746`, and the text lookup budget
   is explicitly `484` because one State node-label browser metric replaced two fixture root pins.
+- [x] Replace the matching package style `id1/id2` pair with the existing styled node-label metric
+  family.
+  Evidence: the existing bold-italic `id3/id4` State node-label metric now also covers `id1/id2`,
+  replacing `upstream_pkgtests_state_style_spec_003` without growing text lookup debt.
+- [x] Tighten the current root budget after the package style node-label pass.
+  Evidence: State root count is now `34`, root viewport total is `745`, and the text lookup budget
+  remains `484` because the pass reused an existing styled State node-label metric arm.
 - [x] Classify the `state_with_a_note_together_with_another_state` v1/v2 pair as retained for now.
   Evidence: disabled-root diagnostics show the remaining drift comes from note-cluster rect bounds;
   direct node, note-label, and edge-label widths are already effectively aligned, so this needs a
   Dagre noteGroup/cluster bounds rule rather than another text width lookup.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
-  the note-label, transition-label, and alias node-label passes.
+  the note-label, transition-label, alias node-label, and package style node-label passes.
 - [x] Run focused State code-quality checks for this pass.
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo test -p xtask override_growth_check_rejects_category_growth`, and
   `cargo nextest run -p merman-render` passed after the note-label, transition-label, and alias
-  node-label passes.
+  node-label passes. The same checks also passed after the package style node-label pass.
 
 ## P1: Mindmap Root Derivation
 
