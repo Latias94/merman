@@ -236,7 +236,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "owns") => Some(35.71875),
         (16, false, "reads") => Some(38.75),
         (16, false, "references") => Some(76.40625),
-        (16, false, "returns") => Some(51.46875),
         (16, false, "wraps") => Some(41.921875),
         (16, false, "List<int> ids") => Some(86.6875),
         (16, false, "List<int> position") => Some(123.515625),
