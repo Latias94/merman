@@ -7,6 +7,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `485`.
+- Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
+  full bench gate completed under a longer timeout window and the representative estimates are
+  recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
 - Cleared `manatee` FCoSE's module-level `dead_code` and mechanical clippy allowance debt by
   deleting stale debug/reference helpers and unused runtime fields, using `div_ceil`, collapsing
   simple boolean/control-flow lint sites, and reducing `spectral.rs` to only the intentional

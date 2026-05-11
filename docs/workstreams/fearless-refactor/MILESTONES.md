@@ -662,6 +662,9 @@ Progress:
 - Revalidated `cargo run -p xtask -- verify --strict` after the Class text lookup cleanup; the run
   covered fmt, all-features check, workspace clippy, no-growth override reporting at `485` text
   lookup entries, feature matrix checks, workspace nextest, and strict SVG DOM parity.
+- Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
+  full bench gate completed under a longer timeout window and the representative estimates are
+  recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
 
 Exit criteria:
 

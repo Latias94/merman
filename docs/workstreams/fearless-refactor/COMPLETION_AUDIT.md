@@ -18,7 +18,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
 | Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class text lookup cleanup brought the global text lookup budget to `485`; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
-| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
+| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Class text lookup cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
 ## Prompt-to-Artifact Map
@@ -29,7 +29,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Parity-safe release | `cargo run -p xtask -- verify --strict` | Covered |
 | Public feature gates | `cargo run -p xtask -- verify --feature-matrix` and `cargo run -p xtask -- verify --strict` | Covered |
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
-| Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
+| Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
 | Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs`, and deletion of the stale ER text override generator | Covered for the recheck decision; obsolete helpers/generators were removed after strict-gate parity stayed green, while the degenerate-path and cluster-run helpers remain in place where parity still fails |
 | Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, `GATES.md`, and `OVERRIDE_POLICY.md` | Covered |
@@ -40,6 +40,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   strict run covered fmt, all-features check, workspace all-target/all-features clippy, override
   no-growth at `485` text lookup entries, feature matrix checks, workspace nextest
   (`1013` tests passed, `3` skipped), and SVG DOM parity for all strict diagram families.
+- `cargo bench -p merman --features render` passed after the latest Class text lookup cleanup and
+  is recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
+  A 20 minute command window timed out first; the same command completed under a 1 hour window.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p manatee`, and
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after clearing
