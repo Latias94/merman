@@ -35,6 +35,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   modes, focused Class SVG tests, and the layout snapshot gate stayed green without golden drift,
   reducing Class text lookups from `292` to `291` and the global text lookup budget from `495` to
   `494`.
+- Removed the redundant Class base-attribute calcTextWidth overrides for `+int age`, `int id`, and
+  `int[] id`; Class DOM parity, focused SVG tests, and the layout snapshot gate stayed green
+  without golden drift, reducing Class text lookups from `291` to `288` and the global text lookup
+  budget from `494` to `491`.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

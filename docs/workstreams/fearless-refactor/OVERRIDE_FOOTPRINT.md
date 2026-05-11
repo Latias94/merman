@@ -212,8 +212,8 @@ exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanu
 `ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
-`owns`, `may-fail`, `references`, `int chimp`, and `int gorilla` cleanups, reducing the text lookup
-total to 494.
+`owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, and
+`int[] id` cleanups, reducing the text lookup total to 491.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -279,12 +279,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `494`.
+Total lookup entries reported by `xtask`: `491`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 291 |
+| `class_text_overrides_11_12_2.rs` | 288 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -300,9 +300,9 @@ Class note: the standalone plain-label `uses` lookup was removed after
 and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
-`owns`, `may-fail`, `references`, `int chimp`, and `int gorilla` cleanup passes refreshed the
-affected layout goldens as needed and reduced the Class text lookup total to 291 and the global
-text lookup total to 494.
+`owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, and `int[] id`
+cleanup passes refreshed the affected layout goldens as needed and reduced the Class text lookup
+total to 288 and the global text lookup total to 491.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.
