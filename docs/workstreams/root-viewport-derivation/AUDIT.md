@@ -13,12 +13,12 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | --- | --- | --- |
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
-| Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Pending |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: three State root pins removed |
-| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State pass recorded |
+| Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: three State root pins and three Mindmap root pins removed |
+| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State and Mindmap passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
-| Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate nextest passed |
-| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Pending |
+| Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
+| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed |
 
 ## Current Baseline
 
@@ -27,16 +27,18 @@ The fearless-refactor closeout recorded these root viewport counts:
 - State: `45` entries.
 - Mindmap: `52` entries.
 
-Current counts after the State style and entity-placeholder passes:
+Current counts after the State style/entity-placeholder passes and the Mindmap single-line shape
+pass:
 
 - State: `42` entries.
-- Mindmap: `52` entries.
-- Root viewport total: `757` entries.
+- Mindmap: `49` entries.
+- Root viewport total: `754` entries.
 - Text lookup total: `481` entries. This is an intentional one-entry increase because one shared
   State edge-label browser metric replaced two fixture-scoped root viewport pins.
 
-The same closeout confirmed that broad disabled-root sweeps still fail for both buckets. This
-workstream therefore focuses on derivation work, not blind deletion.
+The latest Mindmap disabled-root sweep still fails with `49` DOM mismatches and `113` root-delta
+rows, led by wrapping text, HTML sanitization, icon-bearing labels, shape profiles, and tree-wide
+transform drift. This workstream therefore focuses on derivation work, not blind deletion.
 
 ## Focused Commands
 
@@ -82,6 +84,29 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 - 2026-05-11: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
   --dom-decimals 3 --filter should_render_a_state_diagram_and_set_the_correct_length_of_t
   --report-root-all` passed after deleting the corresponding State root pin.
+- 2026-05-11: `cargo test -p merman-render
+  mindmap_label_text_for_layout_trims_single_line_delimiter_text` passed.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter upstream_cypress_mindmap_spec_square_shape_011 --report-root-all`
+  passed after deleting the corresponding Mindmap root pin.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter upstream_cypress_mindmap_spec_circle_shape_013 --report-root-all`
+  passed after deleting the corresponding Mindmap root pin.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter upstream_cypress_mindmap_spec_rounded_rect_shape_012 --report-root-all`
+  passed after deleting the corresponding Mindmap root pin.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` passed for all Mindmap fixtures.
+- 2026-05-11: `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3` passed for all Mindmap fixtures.
+- 2026-05-11: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `754` and Mindmap root count `49`.
+- 2026-05-11: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
+  passed after the Mindmap layout change.
+- 2026-05-11: `cargo nextest run -p merman-render` passed with `150` tests after refreshing the
+  three affected Mindmap layout golden snapshots.
+- 2026-05-11: `cargo run -p xtask -- verify --strict` passed, including workspace nextest
+  (`1018` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
 
 ## Open Risks
 

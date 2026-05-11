@@ -27,7 +27,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009" => {
             Some(("5 5 615.91748046875 440.98748779296875", "615.917"))
         }
-        "upstream_cypress_mindmap_spec_circle_shape_013" => Some(("5 5 111.3125 74", "111.312")),
         "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017" => {
             Some(("5 5 553.4945068359375 112", "553.495"))
         }
@@ -37,10 +36,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_should_render_all_level_2_nodes_correctly_when_there_are_more_th_019" => {
             Some(("5 5 466.2218017578125 284.1161804199219", "466.222"))
         }
-        "upstream_cypress_mindmap_spec_rounded_rect_shape_012" => {
-            Some(("5 5 101.3125 101.3125", "101.312"))
-        }
-        "upstream_cypress_mindmap_spec_square_shape_011" => Some(("5 5 121.3125 64", "121.312")),
         "upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010" => {
             Some(("5 5 373.2288513183594 146", "373.229"))
         }

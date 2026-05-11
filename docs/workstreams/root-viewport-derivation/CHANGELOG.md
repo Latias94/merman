@@ -13,3 +13,6 @@
 - Decoded Mermaid `encodeEntities` placeholders before State layout label measurement, moved the
   remaining `test({ foo: 'far' })` edge-label browser width into State text metrics, removed the
   two now-derived State root pins, and tightened the root budget to `757`.
+- Derived Mindmap single-line delimiter label bounds for the Cypress square, rounded-rect, and
+  circle root shape fixtures, refreshed their layout goldens, removed the three now-derived
+  Mindmap root pins, and tightened the root budget to `754`.

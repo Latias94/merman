@@ -58,11 +58,20 @@ Exit criteria:
 
 ## M2: Mindmap First Pass
 
+Status: in progress.
+
 Scope:
 
 - Classify Mindmap root viewport drift families.
 - Replace at least one practical fixture group with typed or emitted-bounds derivation.
 - Remove only entries that stay green under Mindmap parity gates.
+
+Progress:
+
+- Removed the three Cypress single-root shape pins (`square_shape_011`, `rounded_rect_shape_012`,
+  and `circle_shape_013`) after Mindmap layout measurement started trimming delimiter-created
+  labels with exactly one non-empty text line. SVG text emission still preserves the raw upstream
+  whitespace, so this is a layout/bounds derivation rather than a DOM rewrite.
 
 Exit criteria:
 

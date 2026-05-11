@@ -43,16 +43,25 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 
 ## P1: Mindmap Root Derivation
 
-- [ ] Classify the 52 remaining Mindmap root pins by drift family.
+- [x] Classify the 52 remaining Mindmap root pins by drift family.
   Known initial families:
   - wrapping text and long-word bounds.
   - icon-bearing node bounds.
   - shape-specific SVG bbox bounds.
   - markdown / HTML sanitization label bounds.
   - tree-wide transform and tidy-tree bounds.
-- [ ] Replace one low-risk Mindmap fixture group with typed or emitted-bounds derivation.
-- [ ] Delete the corresponding generated Mindmap root entries and tighten the root budget.
-- [ ] Prove Mindmap normal DOM parity and `parity-root` stay green.
+  Evidence: disabled-root Mindmap diagnostics still show wrapping text, HTML sanitization,
+  icon-bearing nodes, shape profiles, and tree-wide transform drift as the dominant remaining
+  families.
+- [x] Replace one low-risk Mindmap fixture group with typed or emitted-bounds derivation.
+  Evidence: `mindmap_label_text_for_layout` now trims delimiter-created labels that contain a
+  single non-empty text line, while preserving true multi-line labels and raw SVG text emission.
+- [x] Delete the corresponding generated Mindmap root entries and tighten the root budget.
+  Evidence: removed the Cypress `square_shape_011`, `rounded_rect_shape_012`, and
+  `circle_shape_013` Mindmap root pins; Mindmap root count is now `49`, and the root no-growth
+  budget is now `754`.
+- [x] Prove Mindmap normal DOM parity and `parity-root` stay green.
+  Evidence: full `compare-mindmap-svgs` passed in both `parity` and `parity-root` DOM modes.
 
 ## P2: Larger Buckets
 

@@ -58,6 +58,26 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     }
 }
 
+pub(crate) fn mindmap_label_text_for_layout(text: &str) -> &str {
+    if !text.contains('\n') && !text.contains('\r') {
+        return text;
+    }
+
+    let mut normalized = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if normalized.is_some() {
+            return text;
+        }
+        normalized = Some(line);
+    }
+
+    normalized.unwrap_or(text)
+}
+
 fn is_simple_markdown_label(text: &str) -> bool {
     // Conservative: only fast-path labels that would render as plain text inside a `<p>...</p>`
     // when passed through Mermaid's Markdown + sanitizer pipeline.
@@ -111,6 +131,8 @@ fn mindmap_label_bbox_px(
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
+    let text = mindmap_label_text_for_layout(text);
+
     // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and respect
     // `mindmap.maxNodeWidth` (default 200px). When the raw label is wider than that, Mermaid
     // switches the label container to a fixed 200px width and allows HTML-like wrapping (e.g.
@@ -517,5 +539,22 @@ mod tests {
 
         let fallback = serde_json::json!({});
         assert_eq!(super::mindmap_max_node_width_px(&fallback), 200.0);
+    }
+
+    #[test]
+    fn mindmap_label_text_for_layout_trims_single_line_delimiter_text() {
+        assert_eq!(
+            super::mindmap_label_text_for_layout("\n      The root\n    "),
+            "The root"
+        );
+        assert_eq!(
+            super::mindmap_label_text_for_layout("\r\nThe root"),
+            "The root"
+        );
+        assert_eq!(super::mindmap_label_text_for_layout("The root"), "The root");
+        assert_eq!(
+            super::mindmap_label_text_for_layout("\n      first\n      second\n    "),
+            "\n      first\n      second\n    "
+        );
     }
 }

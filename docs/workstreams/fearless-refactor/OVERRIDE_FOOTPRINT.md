@@ -63,7 +63,9 @@ viewBox-height guards. The root viewport budget was therefore `760`, and
 `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 passed. The follow-up root viewport derivation workstream then removed one State style-directive
 root pin and two State Mermaid entity-placeholder edge-label root pins, so the current root
-viewport budget is `757`.
+viewport budget is `757`. It then derived the Mindmap Cypress single-root square, rounded-rect,
+and circle shape bounds from single-line delimiter label measurement and removed three more root
+pins, tightening the current root viewport budget to `754`.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -241,7 +243,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `757`.
+Total entries reported by `xtask`: `754`.
 
 | file | entries |
 | --- | ---: |
@@ -251,7 +253,7 @@ Total entries reported by `xtask`: `757`.
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
 | `gitgraph_root_overrides_11_12_2.rs` | 228 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
-| `mindmap_root_overrides_11_12_2.rs` | 52 |
+| `mindmap_root_overrides_11_12_2.rs` | 49 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 198 |
@@ -268,12 +270,12 @@ Small-bucket audit note: disabling the remaining Timeline, Requirement, and ER r
 their surviving entries still guard real `parity-root` drift. Pie was the exception; its root bucket
 is now deleted after empty-pie viewport and legend bbox behavior moved into typed renderer logic.
 
-Mindmap note: after the typed profile refresh, disabling the remaining Mindmap root lookup still
-leaves 52 `parity-root` mismatches. Those entries stay in the budget until their geometry/text
-profiles move into typed renderer logic. A follow-up disabled-root audit with `--report-root-all`
-produced 110 root rows, with 80 non-zero `max-width` deltas and 82 changed viewBox dimensions; the
-largest drift came from wrapping text, icon, shape, and long-label fixtures, including a
-`+705.220px` width delta on the long-word wrapping fixture.
+Mindmap note: after the single-line delimiter shape pass, disabling the remaining Mindmap root
+lookup still leaves 49 `parity-root` mismatches. Those entries stay in the budget until their
+geometry/text profiles move into typed renderer logic. A follow-up disabled-root audit with
+`--report-root-all` produced 113 root rows; the largest drift still came from wrapping text, HTML
+sanitization, icon, shape, and long-label fixtures, including a `+705.220px` width delta on the
+long-word wrapping fixture.
 
 Gitgraph and Flowchart audit note: a 2026-05-09 recheck confirmed that disabling the Gitgraph
 direct root lookup still leaves the broad Gitgraph root bucket failing. The full 2026-05-11
@@ -334,8 +336,8 @@ Largest root-viewport buckets:
 - `gitgraph`: 228
 - `sequence`: 198
 - `flowchart`: 125
-- `mindmap`: 52
-- `state`: 45
+- `mindmap`: 49
+- `state`: 42
 
 ### Text Metric Lookup Overrides
 
