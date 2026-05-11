@@ -212,7 +212,7 @@ exact `calcTextWidth` pass, the `uses` plain-label cleanup, the `OK` pair cleanu
 `ApiClient` cleanup with a dense layout golden refresh, followed by the `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
-`owns`, `may-fail`, and `references` cleanups, reducing the text lookup total to 496.
+`owns`, `may-fail`, `references`, and `int chimp` cleanups, reducing the text lookup total to 495.
 
 | category | owner | expected removal |
 | --- | --- | --- |
@@ -278,12 +278,12 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `496`.
+Total lookup entries reported by `xtask`: `495`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
-| `class_text_overrides_11_12_2.rs` | 293 |
+| `class_text_overrides_11_12_2.rs` | 292 |
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
@@ -299,8 +299,9 @@ Class note: the standalone plain-label `uses` lookup was removed after
 and the now-empty plain-label bridge was deleted. Later `OK`, `ApiClient`, `ERROR`, `Payment`,
 `Cart`, `Server` rendered-width, `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
 `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
-`owns`, `may-fail`, and `references` cleanup passes refreshed the affected layout goldens as needed
-and reduced the Class text lookup total to 293 and the global text lookup total to 496.
+`owns`, `may-fail`, `references`, and `int chimp` cleanup passes refreshed the affected layout
+goldens as needed and reduced the Class text lookup total to 292 and the global text lookup total
+to 495.
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.

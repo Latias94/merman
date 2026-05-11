@@ -48,6 +48,15 @@ Progress is tracked in the fearless-refactor workstream docs.
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after moving
   `roughr`'s public arc APIs behind `ArcParams` / `ArcRenderParams`, clearing the remaining
   `roughr` `too_many_arguments` allowances.
+- `cargo nextest run -p merman-render --test class_svg_test`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+  `cargo nextest run -p merman-render --test layout_snapshots_test
+  fixtures_match_layout_golden_snapshots_when_present`,
+  `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, and
+  `cargo run -p xtask -- report-overrides --check-no-growth` passed after removing the redundant
+  Class `int chimp` rendered width override, refreshing the affected classdiagram layout goldens,
+  and tightening the text lookup budget to `495`.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,

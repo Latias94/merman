@@ -59,7 +59,7 @@ impl OverrideCategory {
     fn no_growth_budget(self) -> usize {
         match self {
             OverrideCategory::RootViewport => 750,
-            OverrideCategory::TextLookup => 497,
+            OverrideCategory::TextLookup => 495,
             OverrideCategory::SvgTextMetrics => 184,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::HandCuratedHelpers => 0,
