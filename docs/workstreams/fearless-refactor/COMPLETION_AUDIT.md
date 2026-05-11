@@ -68,6 +68,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   rendered width override remains because deleting it shifts the upstream root `max-width`.
 - The follow-up Class `Duck` cleanup removed two width overrides, refreshed the affected Duck
   layout goldens, and tightened the text lookup no-growth budget again to `511`.
+- The follow-up Class `Item` and `Order` cleanup removed two more width overrides, refreshed the
+  affected parallel-edges layout golden, and tightened the text lookup no-growth budget again to
+  `509`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.

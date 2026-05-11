@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Item` `calcTextWidth` override and `Order` rendered width override
+  after both Class DOM parity modes stayed green; refreshed the affected parallel-edges layout
+  golden. This reduced Class text lookups from `308` to `306` and the global text lookup budget
+  from `511` to `509`.
 - Removed the redundant Class `Duck` width overrides after both Class DOM parity modes stayed
   green and the affected Duck layout goldens were refreshed, reducing Class text lookups from
   `310` to `308` and the global text lookup budget from `513` to `511`.
