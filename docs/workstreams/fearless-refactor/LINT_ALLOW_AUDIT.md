@@ -29,7 +29,6 @@ mainline renderer/core surface is clean.
 | --- | --- | --- | --- |
 | `crates/manatee/src/algo/fcose/mod.rs` | `clippy::needless_range_loop` | Retained for the FCoSE port where index-based loops still mirror upstream `cytoscape-fcose` / `cose-base` numeric control flow and avoid accidental floating-point accumulation drift. The module-level `dead_code` and mechanical clippy allowances were removed after stale helpers and fields were deleted or simplified. | Split the remaining FCoSE numeric loops into smaller owner functions only when parity/timing evidence shows the loop-shape change is safe, then remove under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
 | `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::needless_range_loop` | Retained for the spectral initialization port where SVD and power-iteration loops intentionally stay close to upstream `cytoscape-fcose`. Mechanical `assign_op_pattern`, `manual_contains`, and `manual_swap` allowances were removed without changing matrix loop order. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
-| `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained only for the public `arc` entrypoints in the forked RoughJS API shape. The private ellipse/arc/bezier helper signatures have been moved behind small request structs. | Add public arc request structs or accept the public compatibility shape after Flowchart/State hand-drawn parity and allocation checks stay green. |
 
 ## Generated Exclusions
 
@@ -79,8 +78,10 @@ mainline renderer/core surface is clean.
   `DrawingSurface` shells, the dead `Generator::new` constructor, and the unused
   `ActiveEdgeEntry.s` field, clearing the `roughr` dead-code allowance bucket.
 - `crates/roughr/src/renderer.rs`: moved the private `_compute_ellipse_points`, `_arc`, and
-  `_bezier_to` argument bundles behind small request structs, leaving only the public `arc`
-  compatibility entrypoints with `clippy::too_many_arguments` allowances.
+  `_bezier_to` argument bundles behind small request structs.
+- `crates/roughr/src/renderer.rs` and `crates/roughr/src/generator.rs`: moved the public `arc`
+  entrypoints behind `ArcParams` / `ArcRenderParams`, clearing the remaining `roughr`
+  `clippy::too_many_arguments` allowances.
 
 ## Gate
 

@@ -26,6 +26,23 @@ pub struct EllipseResult<F: Float + FromPrimitive + Trig> {
     pub estimated_points: Vec<Point2D<F>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ArcParams<F: Float> {
+    pub x: F,
+    pub y: F,
+    pub width: F,
+    pub height: F,
+    pub start: F,
+    pub stop: F,
+    pub closed: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ArcRenderParams<F: Float> {
+    pub arc: ArcParams<F>,
+    pub rough_closure: bool,
+}
+
 #[derive(Clone, Copy)]
 struct EllipsePointsSpec<F> {
     increment: F,
@@ -358,18 +375,20 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn arc<F: Float + Trig + FromPrimitive>(
-    x: F,
-    y: F,
-    width: F,
-    height: F,
-    start: F,
-    stop: F,
-    closed: bool,
-    rough_closure: bool,
+    params: ArcRenderParams<F>,
     o: &mut Options,
 ) -> OpSet<F> {
+    let ArcRenderParams { arc, rough_closure } = params;
+    let ArcParams {
+        x,
+        y,
+        width,
+        height,
+        start,
+        stop,
+        closed,
+    } = arc;
     let cx = x;
     let cy = y;
     let mut rx = Float::abs(width / _c(2.0));

@@ -22,6 +22,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Moved `roughr`'s private ellipse/arc/bezier renderer helper argument bundles into small request
   structs, reducing `roughr`'s `too_many_arguments` allowance footprint to the public `arc`
   compatibility entrypoints.
+- Moved `roughr`'s public arc APIs behind `ArcParams` / `ArcRenderParams`, clearing the remaining
+  `roughr` `too_many_arguments` allowances while keeping roughr tests and workspace clippy green.
 - Removed `manatee` COSE-Bilkent's inactive tree pruning/growth path, which was never wired into
   the spring embedder, clearing the module's item-level `dead_code` allowances while keeping
   manatee clippy and tests green.

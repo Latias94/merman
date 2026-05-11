@@ -15,7 +15,7 @@ use crate::points_on_path::{points_on_path, points_on_segments};
 use crate::renderer::{
     bezier_cubic, bezier_quadratic, curve, ellipse_with_params, generate_ellipse_params, line,
     linear_path, pattern_fill_arc, pattern_fill_polygons, rectangle, solid_fill_polygon, svg_path,
-    svg_segments,
+    svg_segments, ArcParams, ArcRenderParams,
 };
 
 pub struct Generator {
@@ -166,18 +166,7 @@ impl Generator {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn arc<F>(
-        &self,
-        x: F,
-        y: F,
-        width: F,
-        height: F,
-        start: F,
-        stop: F,
-        closed: bool,
-        options: &Option<Options>,
-    ) -> Drawable<F>
+    pub fn arc<F>(&self, arc: ArcParams<F>, options: &Option<Options>) -> Drawable<F>
     where
         F: Float + Trig + FromPrimitive,
     {
@@ -185,32 +174,33 @@ impl Generator {
             .clone()
             .unwrap_or_else(|| self.default_options.clone());
         let mut paths = vec![];
-        let outline =
-            crate::renderer::arc(x, y, width, height, start, stop, closed, true, &mut options);
-        if closed && options.fill.is_some() {
+        let outline = crate::renderer::arc(
+            ArcRenderParams {
+                arc,
+                rough_closure: true,
+            },
+            &mut options,
+        );
+        if arc.closed && options.fill.is_some() {
             if options.fill_style == Some(FillStyle::Solid) {
                 options.disable_multi_stroke = Some(true);
                 let mut shape = crate::renderer::arc(
-                    x,
-                    y,
-                    width,
-                    height,
-                    start,
-                    stop,
-                    true,
-                    false,
+                    ArcRenderParams {
+                        arc,
+                        rough_closure: false,
+                    },
                     &mut options,
                 );
                 shape.op_set_type = OpSetType::FillPath;
                 paths.push(shape);
             } else {
                 paths.push(pattern_fill_arc(
-                    x,
-                    y,
-                    width,
-                    height,
-                    start,
-                    stop,
+                    arc.x,
+                    arc.y,
+                    arc.width,
+                    arc.height,
+                    arc.start,
+                    arc.stop,
                     &mut options,
                 ));
             }

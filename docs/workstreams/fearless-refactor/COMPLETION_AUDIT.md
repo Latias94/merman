@@ -43,6 +43,11 @@ Progress is tracked in the fearless-refactor workstream docs.
   `needless_option_as_deref`, and `nonminimal_bool` allowances, deleting stale debug/reference
   helpers and unused runtime fields, and reducing `spectral.rs` to only the intentional
   numeric-loop allowance.
+- `cargo fmt --check`, `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p roughr-merman`, and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after moving
+  `roughr`'s public arc APIs behind `ArcParams` / `ArcRenderParams`, clearing the remaining
+  `roughr` `too_many_arguments` allowances.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
