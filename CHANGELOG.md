@@ -72,6 +72,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   growing the text lookup budget.
 - State layout/SVG parity: move the docs `A transition` browser width into State edge-label
   metrics, deleting one fixture-scoped State root viewport pin.
+- State layout/SVG parity: move the shared `Your state with spaces in it` browser width into State
+  node-label metrics, deleting two fixture-scoped State root viewport pins.
 - Mindmap layout/SVG parity: trim delimiter-created labels that contain a single non-empty text
   line for layout measurement, preserving raw SVG text emission while deleting three
   fixture-scoped root viewport pins for Cypress single-root shape fixtures.

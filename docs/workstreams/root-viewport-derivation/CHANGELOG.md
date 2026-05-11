@@ -13,6 +13,10 @@
 - Moved the docs `A transition` browser width into State edge-label metrics, removed
   `upstream_docs_statediagram_transitions_014`, refreshed its layout golden, and tightened the root
   budget to `748`; verified `xtask verify --strict`.
+- Moved the shared `Your state with spaces in it` browser width into State node-label metrics,
+  removed `upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025` and
+  `stress_state_batch5_state_keyword_spaces_and_alias_064`, refreshed their layout goldens, and
+  tightened the root budget to `746`; verified `xtask verify --strict`.
 
 ## 2026-05-11
 

@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eight State root pins and four Mindmap root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: ten State root pins and four Mindmap root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State and Mindmap passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -27,16 +27,16 @@ The fearless-refactor closeout recorded these root viewport counts:
 - State: `45` entries.
 - Mindmap: `52` entries.
 
-Current counts after the State style/entity-placeholder/note-label/transition-label passes and the
-Mindmap single-line shape plus docs circle plain-label passes:
+Current counts after the State style/entity-placeholder/note-label/transition-label/alias node-label
+passes and the Mindmap single-line shape plus docs circle plain-label passes:
 
-- State: `37` entries.
+- State: `35` entries.
 - Mindmap: `48` entries.
-- Root viewport total: `748` entries.
-- Text lookup total: `483` entries. This is an intentional three-entry increase because State-owned
-  edge-label and note-label metrics replaced five fixture-scoped root viewport pins. The simple
-  transition-label pass reused an existing State edge-label metric arm, so it removed two more State
-  root pins without increasing text lookup debt.
+- Root viewport total: `746` entries.
+- Text lookup total: `484` entries. This is an intentional four-entry increase because State-owned
+  edge-label, note-label, and node-label metrics replaced seven fixture-scoped root viewport pins.
+  The simple transition-label pass reused an existing State edge-label metric arm, so it removed
+  two more State root pins without increasing text lookup debt.
 
 The latest Mindmap disabled-root sweep still fails with `47` DOM mismatches and `113` root-delta
 rows, led by wrapping text, HTML sanitization, icon-bearing labels, shape profiles, and tree-wide
@@ -44,7 +44,7 @@ transform drift. The docs circle row now has only a tolerated `+0.031px` root wi
 longer needs a fixture-scoped root pin. This workstream therefore focuses on derivation work, not
 blind deletion.
 
-The latest State disabled-root sweep still fails as expected with the 37 retained State root pins
+The latest State disabled-root sweep still fails as expected with the 35 retained State root pins
 acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
 long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multiline-label geometry,
 unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
@@ -234,6 +234,38 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   --report-root-all` still failed as expected after the docs transition-label pass; the removed
   `upstream_docs_statediagram_transitions_014` row no longer appears in the retained State failures.
 - 2026-05-12: `cargo run -p xtask -- verify --strict` passed after the docs transition-label pass,
+  including `cargo fmt`, workspace all-features check/clippy, override no-growth, feature matrix,
+  workspace nextest (`1019` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
+- 2026-05-12: disabled-root focused diagnostics for
+  `upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025` and
+  `stress_state_batch5_state_keyword_spaces_and_alias_064` showed both retained root pins were
+  guarding the same State node-label width drift: upstream `Your state with spaces in it` measured
+  `193.921875px`, while local measurement produced `195.765625px`.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter
+  upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025 --report-root-all`
+  passed after replacing the fixture root pin with a State node-label metric.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter stress_state_batch5_state_keyword_spaces_and_alias_064
+  --report-root-all` passed after the same State node-label metric replaced the stress fixture root
+  pin.
+- 2026-05-12: refreshed the two affected alias node-label layout goldens with
+  `cargo run -p xtask -- update-layout-snapshots --filter <fixture>`.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` passed for all State fixtures after the alias node-label pass.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3` passed for all State fixtures after the alias node-label pass.
+- 2026-05-12: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `746`, State root count `35`, Mindmap root count `48`, text lookup total `484`, and zero manual
+  raw SVG/path bridges.
+- 2026-05-12: `cargo test -p xtask override_growth_check_rejects_category_growth` passed after
+  tightening the root and text lookup budgets.
+- 2026-05-12: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` and
+  `cargo clippy -p xtask --all-targets --all-features -- -D warnings` passed after the alias
+  node-label metric and budget changes.
+- 2026-05-12: `cargo nextest run -p merman-render` passed with `151` tests after refreshing the two
+  affected alias node-label layout goldens.
+- 2026-05-12: `cargo run -p xtask -- verify --strict` passed after the alias node-label pass,
   including `cargo fmt`, workspace all-features check/clippy, override no-growth, feature matrix,
   workspace nextest (`1019` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
 

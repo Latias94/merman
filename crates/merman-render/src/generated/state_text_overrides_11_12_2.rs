@@ -118,6 +118,9 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
         "True" => Some(31.21875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_acc_descr_multiline_spec.svg
         "this is another string" => Some(147.765625),
+        // fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025.svg
+        // fixtures/upstream-svgs/state/stress_state_batch5_state_keyword_spaces_and_alias_064.svg
+        "Your state with spaces in it" => Some(193.921875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_spec.svg
         "State2" => Some(45.90625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_handle_as_in_state_names_spec.svg

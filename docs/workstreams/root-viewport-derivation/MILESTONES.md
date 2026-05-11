@@ -58,6 +58,8 @@ Progress:
   text lookup budget.
 - Removed the docs `A transition` State root pin by moving its browser-measured edge-label width
   into State edge-label metrics.
+- Removed the shared `Your state with spaces in it` State root pins by moving its browser-measured
+  node-label width into State node-label metrics.
 - Retained the `state_with_a_note_together_with_another_state` v1/v2 pair for now because the
   disabled-root drift is in note-cluster rect bounds, not a direct text width mismatch.
 

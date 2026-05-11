@@ -76,18 +76,12 @@ pub fn lookup_state_root_viewport_override(
         "upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035" => {
             Some(("0 0 294.359375 56", "294.359"))
         }
-        "upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025" => {
-            Some(("0 0 225.921875 120", "225.922"))
-        }
         "upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024" => {
             Some(("0 0 156.765625 246", "156.766"))
         }
         "upstream_html_demos_state_you_can_add_notes_010" => Some(("0 0 908.75 470", "908.75")),
         "stress_state_batch5_choice_fork_join_with_notes_markdown_062" => {
             Some(("0 0 470.59375 794", "470.594"))
-        }
-        "stress_state_batch5_state_keyword_spaces_and_alias_064" => {
-            Some(("0 0 225.921875 298", "225.922"))
         }
         "stress_state_batch5_direction_rl_scale_long_ids_065" => {
             Some(("0.006646156311035156 0 967.2566528320312 64", "967.257"))

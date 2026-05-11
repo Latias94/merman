@@ -61,17 +61,26 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current root budget after the docs transition-label pass.
   Evidence: State root count is now `37`, root viewport total is `748`, and the text lookup budget
   is explicitly `483` because one State edge-label browser metric replaced one fixture root pin.
+- [x] Replace the shared State alias node-label pair with node-label bounds derivation.
+  Evidence: the browser-measured `Your state with spaces in it` State node-label width replaces
+  two fixture-scoped root pins:
+  `upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025` and
+  `stress_state_batch5_state_keyword_spaces_and_alias_064`.
+- [x] Tighten the current root budget after the alias node-label pass.
+  Evidence: State root count is now `35`, root viewport total is `746`, and the text lookup budget
+  is explicitly `484` because one State node-label browser metric replaced two fixture root pins.
 - [x] Classify the `state_with_a_note_together_with_another_state` v1/v2 pair as retained for now.
   Evidence: disabled-root diagnostics show the remaining drift comes from note-cluster rect bounds;
   direct node, note-label, and edge-label widths are already effectively aligned, so this needs a
   Dagre noteGroup/cluster bounds rule rather than another text width lookup.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
-  the note-label and transition-label passes.
+  the note-label, transition-label, and alias node-label passes.
 - [x] Run focused State code-quality checks for this pass.
   Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
   `cargo test -p xtask override_growth_check_rejects_category_growth`, and
-  `cargo nextest run -p merman-render` passed after the note-label and transition-label passes.
+  `cargo nextest run -p merman-render` passed after the note-label, transition-label, and alias
+  node-label passes.
 
 ## P1: Mindmap Root Derivation
 
