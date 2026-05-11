@@ -5,6 +5,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Mineral` `calcTextWidth` override after Class `parity-root` and
+  layout snapshot gates stayed green; kept its rendered width override because removing it shifts
+  upstream root `max-width` by `0.5px`. This reduced Class text lookups from `311` to `310` and
+  the global text lookup budget from `514` to `513`.
+- Removed the redundant Class `Dog` `calcTextWidth` override after Class `parity-root` and layout
+  snapshot gates stayed green, reducing Class text lookups from `312` to `311` and the global text
+  lookup budget from `515` to `514`.
 - Removed the redundant Class `Server` rendered width override after `parity-root` stayed green
   and the affected style layout golden was refreshed, reducing Class text lookups from `313` to
   `312` and the global text lookup budget from `516` to `515`; kept the `calcTextWidth` cap

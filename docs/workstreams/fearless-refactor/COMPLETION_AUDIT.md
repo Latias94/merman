@@ -63,6 +63,9 @@ Progress is tracked in the fearless-refactor workstream docs.
   `calcTextWidth` cap remains because a focused SVG test still asserts Mermaid's `max-width: 92px`.
 - A focused cap recheck rejected the `DB` `calcTextWidth` deletion because Mermaid's
   `max-width: 72px` is still asserted by the same Class SVG test.
+- The follow-up Class `Dog` and `Mineral` cleanups removed two more `calcTextWidth` overrides
+  without layout drift and tightened the text lookup no-growth budget again to `513`; the `Mineral`
+  rendered width override remains because deleting it shifts the upstream root `max-width`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.

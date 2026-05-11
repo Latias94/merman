@@ -560,11 +560,11 @@ Progress:
   parse/layout/render pre-check skips under the `render` feature.
 - `xtask report-overrides --check-no-growth` now enforces explicit category budgets, and
   `xtask verify --strict` includes that override-growth gate.
-- Class text lookup debt dropped by 32 entries after the exact deterministic fallback pass, the
+- Class text lookup debt dropped by 34 entries after the exact deterministic fallback pass, the
   `uses` plain-label cleanup, the `OK` pair cleanup, the `ApiClient` cleanup with dense layout
-  golden refresh, and the later `ERROR`, `Payment`, `Cart`, and `Server` rendered-width cleanups
-  stayed green under Class DOM parity, layout snapshot, and strict gates, reducing the global text
-  lookup total to 515.
+  golden refresh, and the later `ERROR`, `Payment`, `Cart`, `Server` rendered-width, `Dog`, and
+  `Mineral` calc cleanups stayed green under Class DOM parity, layout snapshot, and strict gates,
+  reducing the global text lookup total to 513.
 - Root viewport footprint dropped 816 entries net so far: 19 architecture pins after
   topology-driven calibration covered the matching profiles, 4 journey pins after the deterministic
   viewport path covered the matching fixtures, and 11 kanban pins after profile-based root height
