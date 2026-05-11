@@ -10,6 +10,9 @@
   `Transition 4/5` labels, removed the two simple State transition-label root pins, refreshed their
   layout goldens, tightened the root budget to `749` without growing text lookup debt, and verified
   `xtask verify --strict`.
+- Moved the docs `A transition` browser width into State edge-label metrics, removed
+  `upstream_docs_statediagram_transitions_014`, refreshed its layout golden, and tightened the root
+  budget to `748`; verified `xtask verify --strict`.
 
 ## 2026-05-11
 

@@ -70,6 +70,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - State layout/SVG parity: extend the existing transition edge-label metric to matching
   `Transition 4/5` labels, deleting two additional fixture-scoped State root viewport pins without
   growing the text lookup budget.
+- State layout/SVG parity: move the docs `A transition` browser width into State edge-label
+  metrics, deleting one fixture-scoped State root viewport pin.
 - Mindmap layout/SVG parity: trim delimiter-created labels that contain a single non-empty text
   line for layout measurement, preserving raw SVG text emission while deleting three
   fixture-scoped root viewport pins for Cypress single-root shape fixtures.

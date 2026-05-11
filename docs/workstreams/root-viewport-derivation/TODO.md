@@ -55,6 +55,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current root budget after the simple transition-label pass.
   Evidence: State root count is now `38`, root viewport total is `749`, and the text lookup budget
   remains `482` because the pass reused an existing State edge-label metric arm.
+- [x] Replace the docs State transition edge-label root pin with edge-label bounds derivation.
+  Evidence: the browser-measured `A transition` State edge-label width replaces
+  `upstream_docs_statediagram_transitions_014`.
+- [x] Tighten the current root budget after the docs transition-label pass.
+  Evidence: State root count is now `37`, root viewport total is `748`, and the text lookup budget
+  is explicitly `483` because one State edge-label browser metric replaced one fixture root pin.
+- [x] Classify the `state_with_a_note_together_with_another_state` v1/v2 pair as retained for now.
+  Evidence: disabled-root diagnostics show the remaining drift comes from note-cluster rect bounds;
+  direct node, note-label, and edge-label widths are already effectively aligned, so this needs a
+  Dagre noteGroup/cluster bounds rule rather than another text width lookup.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
   the note-label and transition-label passes.

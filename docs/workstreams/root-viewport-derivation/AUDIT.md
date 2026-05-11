@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: seven State root pins and four Mindmap root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eight State root pins and four Mindmap root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State and Mindmap passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -30,13 +30,13 @@ The fearless-refactor closeout recorded these root viewport counts:
 Current counts after the State style/entity-placeholder/note-label/transition-label passes and the
 Mindmap single-line shape plus docs circle plain-label passes:
 
-- State: `38` entries.
+- State: `37` entries.
 - Mindmap: `48` entries.
-- Root viewport total: `749` entries.
-- Text lookup total: `482` entries. This is an intentional two-entry increase because one shared
-  State edge-label metric and one shared State note-label metric replaced four fixture-scoped root
-  viewport pins. The later simple transition-label pass reused an existing State edge-label metric
-  arm, so it removed two more State root pins without increasing text lookup debt.
+- Root viewport total: `748` entries.
+- Text lookup total: `483` entries. This is an intentional three-entry increase because State-owned
+  edge-label and note-label metrics replaced five fixture-scoped root viewport pins. The simple
+  transition-label pass reused an existing State edge-label metric arm, so it removed two more State
+  root pins without increasing text lookup debt.
 
 The latest Mindmap disabled-root sweep still fails with `47` DOM mismatches and `113` root-delta
 rows, led by wrapping text, HTML sanitization, icon-bearing labels, shape profiles, and tree-wide
@@ -44,7 +44,7 @@ transform drift. The docs circle row now has only a tolerated `+0.031px` root wi
 longer needs a fixture-scoped root pin. This workstream therefore focuses on derivation work, not
 blind deletion.
 
-The latest State disabled-root sweep still fails as expected with the 38 retained State root pins
+The latest State disabled-root sweep still fails as expected with the 37 retained State root pins
 acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
 long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multiline-label geometry,
 unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
@@ -209,6 +209,33 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   including `cargo fmt`, workspace all-features check/clippy, override no-growth, feature matrix,
   workspace nextest (`1019` passed, `1` leaky, `3` skipped), normal SVG DOM parity, and root SVG
   DOM parity.
+- 2026-05-12: disabled-root diagnostics for
+  `upstream_cypress_statediagram_spec_should_render_a_state_with_a_note_together_with_another_state_008`
+  showed the v1/v2 pair should remain pinned for now: the root delta comes from note-cluster rect
+  bounds, while direct State node, note-label, and `With +,-` edge-label widths are already aligned.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --filter upstream_docs_statediagram_transitions_014 --report-root-all` passed
+  after replacing the docs `A transition` root pin with a State edge-label metric.
+- 2026-05-12: refreshed the affected docs State transition layout golden with
+  `cargo run -p xtask -- update-layout-snapshots --filter upstream_docs_statediagram_transitions_014`.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` passed for all State fixtures after the docs transition-label pass.
+- 2026-05-12: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3` passed for all State fixtures after the docs transition-label pass.
+- 2026-05-12: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `748`, State root count `37`, Mindmap root count `48`, text lookup total `483`, and zero manual
+  raw SVG/path bridges.
+- 2026-05-12: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`
+  passed after the docs transition-label metric change.
+- 2026-05-12: `cargo nextest run -p merman-render` passed with `151` tests after refreshing the
+  affected docs State transition layout golden.
+- 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`,
+  `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+  --report-root-all` still failed as expected after the docs transition-label pass; the removed
+  `upstream_docs_statediagram_transitions_014` row no longer appears in the retained State failures.
+- 2026-05-12: `cargo run -p xtask -- verify --strict` passed after the docs transition-label pass,
+  including `cargo fmt`, workspace all-features check/clippy, override no-growth, feature matrix,
+  workspace nextest (`1019` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM parity.
 
 ## Open Risks
 

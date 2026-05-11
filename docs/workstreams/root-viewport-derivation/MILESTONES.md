@@ -56,6 +56,10 @@ Progress:
 - Removed the two simple State transition-label root pins after extending the existing
   `Transition 1/2/3` edge-label metric to the matching `Transition 4/5` labels without growing the
   text lookup budget.
+- Removed the docs `A transition` State root pin by moving its browser-measured edge-label width
+  into State edge-label metrics.
+- Retained the `state_with_a_note_together_with_another_state` v1/v2 pair for now because the
+  disabled-root drift is in note-cluster rect bounds, not a direct text width mismatch.
 
 Exit criteria:
 
