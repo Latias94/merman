@@ -296,6 +296,12 @@ guards for `upstream_break_spec`,
 `upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015`,
 `upstream_docs_sequence_entity_codes_example`, `upstream_docs_sequencediagram_break_062`,
 `upstream_par_multiple_ands_spec`, and `upstream_pkgtests_sequencediagram_spec_063`.
+A follow-up Sequence audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
+`--report-root-all` produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
+viewBox dimensions, and one KaTeX-related DOM skip. The largest width deltas came from long-note
+and long-message fixtures, including `-203px` drift on the left-of-actor long-note cases and
+`+171px` drift on the Mermaid API sequence fixture, so the remaining table should be reduced by
+typed bounds work rather than by another blind deletion pass.
 
 Journey note: the table was reintroduced with two tiny browser-float root guards after full
 `parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress

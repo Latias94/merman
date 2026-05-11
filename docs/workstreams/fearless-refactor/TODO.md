@@ -560,7 +560,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   to `1937.25px` locally, so the two Journey root guards remain required. A follow-up GitGraph
   disabled-root audit using `--report-root-all` produced 251 root rows, with 239 non-zero
   `max-width` deltas and 241 changed viewBox dimensions, so the GitGraph table remains a
-  model/layout-derivation target rather than a blind-pruning target. The
+  model/layout-derivation target rather than a blind-pruning target. A follow-up Sequence
+  disabled-root audit produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
+  viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,
+  long-message, and Mermaid API fixtures, so Sequence also needs typed bounds work before another
+  table-pruning pass. The
   stale Mindmap HTML width lookup table and generator were also deleted after the shared text
   measurer leak was removed and layout snapshots proved the stable Mindmap path did not need those
   291 entries. Requirement then dropped the paired `<<contains>>`, `<<satisfies>>`, `<<traces>>`,
