@@ -6,7 +6,7 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 ## 2026-05-11
 
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
-  the strict gate passed with the global text lookup budget at `483`.
+  the strict gate passed with the global text lookup budget at `478`.
 - Revalidated `cargo bench -p merman --features render` after the Class text lookup cleanup; the
   full bench gate completed under a longer timeout window and the representative estimates are
   recorded in `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`.
