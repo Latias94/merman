@@ -272,6 +272,10 @@ and `upstream_accessibility_single_line_spec` reintroduce a 480px -> 493px max-w
 `upstream_title_without_colon_spec` reintroduces a 580px -> 593px max-width drift. Sequence
 cleanup now has a narrower target: participant-type bounds are fixed, but title and long-message
 expansion still need typed derivation work.
+Filtered 2026-05-11 recheck: removing the `title_and_accdescr_multiline` pin in isolation kept
+DOM parity mismatched only on the root `style` max-width, with the upstream `480px` root width
+drifting to `493px` locally and Bob's actor position shifting from `x=305` to `x=318`, so the pin
+is still required for now.
 
 Largest root-viewport buckets:
 
