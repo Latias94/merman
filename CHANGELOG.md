@@ -41,6 +41,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   it after normal DOM parity.
 - `xtask report-overrides --check-no-growth`: reject root viewport lookup call sites that bypass
   the shared root override helper.
+- `xtask compare-all-svgs --report-root`: forward root-delta reporting to Sequence in addition to
+  Flowchart.
 
 ### Changed
 

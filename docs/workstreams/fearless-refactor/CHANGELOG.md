@@ -9,6 +9,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   root guards, two tiny Journey browser-float root guards, and two GitGraph viewBox-height guards,
   then made `xtask verify --strict` run full `compare-all-svgs --dom-mode parity-root` after
   normal DOM parity. The root viewport budget is now `760`, and the hardened strict gate passed.
+- Forwarded `compare-all-svgs --report-root` to Sequence as well as Flowchart, so broad root-delta
+  sweeps can include the Sequence report helper that already existed.
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered

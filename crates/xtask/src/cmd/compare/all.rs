@@ -185,9 +185,10 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 cmd_args.push("--text-measurer".to_string());
                 cmd_args.push(tm.to_string());
             }
-            if report_root {
-                cmd_args.push("--report-root".to_string());
-            }
+        }
+
+        if report_root && matches!(diagram, "flowchart" | "sequence") {
+            cmd_args.push("--report-root".to_string());
         }
 
         let res = match diagram {
