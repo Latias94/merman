@@ -43,6 +43,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   the shared root override helper.
 - `xtask compare-all-svgs --report-root`: forward root-delta reporting to Sequence in addition to
   Flowchart.
+- Root viewport audits: add `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` as a local-only switch for
+  proving whether generated root pins still guard real `parity-root` drift.
 
 ### Changed
 

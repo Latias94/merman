@@ -47,6 +47,10 @@ lookups, run the relevant layout snapshot test in addition to the diagram DOM pa
 Block labels are not safe to prune solely because the vendored SVG/HTML measurer matches the
 stored value.
 
+For root viewport audits, set `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` only in the local
+comparison process to prove whether a table or entry still guards real `parity-root` drift. Do not
+use this environment variable in release gates.
+
 ## Feature Gate
 
 Use this when touching public feature flags or optional render/raster dependencies:

@@ -438,7 +438,9 @@ Counts are inventory units and should not be compared directly across categories
 ## Categories
 
 - Root viewport overrides: fixture-derived `viewBox` / `max-width` pins for browser float and
-  emitted-bounds drift.
+  emitted-bounds drift. For local audits, `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` disables the
+  shared application helper so a compare command can prove which root entries still guard real
+  drift.
 - Generated text metrics: per-diagram width/height/bbox constants or lookup tables derived from
   upstream browser measurements.
 - Raw SVG/path precision bridges: temporary hand-authored geometry/path literal bridges tracked by

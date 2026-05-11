@@ -14,6 +14,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Rechecked the two Journey root guards with a temporary actor-label 1/16px quantization
   experiment; one fixture matched, but the long-label fixture still drifted by `0.125px`, so the
   two-entry Journey root table remains required.
+- Added the audit-only `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` switch to the shared root
+  viewport override helper so future root-table pruning can be tested without editing generated
+  files.
 - Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
   the strict gate passed with the global text lookup budget at `477`.
 - Revalidated `cargo run -p xtask -- verify --strict` after committing the filtered

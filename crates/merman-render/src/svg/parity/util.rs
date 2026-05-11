@@ -336,6 +336,10 @@ pub(super) fn apply_root_viewport_override(
     max_width_style: &mut String,
     lookup: fn(&str) -> Option<(&'static str, &'static str)>,
 ) {
+    if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_some() {
+        return;
+    }
+
     if let Some((viewbox, max_w)) = lookup(diagram_id) {
         *viewbox_attr = viewbox.to_string();
         let mut it = viewbox.split_whitespace();
