@@ -32,8 +32,6 @@ impl<F: Float + FromPrimitive + Trig> std::fmt::Display for EdgeEntry<F> {
 }
 
 struct ActiveEdgeEntry<F: Float + FromPrimitive + Trig> {
-    #[allow(dead_code)]
-    pub(crate) s: F,
     pub(crate) edge: EdgeEntry<F>,
 }
 
@@ -158,13 +156,13 @@ where
 
                 removed_elements
                     .into_iter()
-                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { s: y, edge: ee }));
+                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { edge: ee }));
             } else {
                 let removed_elements = edges.splice(0..edges.len(), vec![]);
 
                 removed_elements
                     .into_iter()
-                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { s: y, edge: ee }));
+                    .for_each(|ee| active_edges.push(ActiveEdgeEntry { edge: ee }));
             }
         }
 

@@ -34,13 +34,6 @@ impl Default for Generator {
 }
 
 impl Generator {
-    #[allow(dead_code)]
-    fn new(options: Options) -> Self {
-        Generator {
-            default_options: options,
-        }
-    }
-
     fn d<T, F>(&self, name: T, op_sets: &[OpSet<F>], options: &Option<Options>) -> Drawable<F>
     where
         T: Into<String>,

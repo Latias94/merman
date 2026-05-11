@@ -5,20 +5,6 @@ use palette::Srgba;
 use rand::random;
 use std::fmt;
 
-pub struct Space;
-
-pub struct Config {
-    #[allow(dead_code)]
-    options: Option<Options>,
-}
-
-pub struct DrawingSurface {
-    #[allow(dead_code)]
-    width: f32,
-    #[allow(dead_code)]
-    height: f32,
-}
-
 #[derive(Clone, PartialEq, Debug, Copy, Eq)]
 pub enum FillStyle {
     Solid,

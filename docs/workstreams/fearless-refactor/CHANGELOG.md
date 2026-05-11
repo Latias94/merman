@@ -12,6 +12,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Removed `dugong`'s unused private BK `edge_key` helper and stale reference-only
   `vertical_alignment_ref` implementation, clearing the remaining `dead_code` allowances from the
   Dagre-compatible positioning subtree.
+- Removed `roughr`'s unused `Space` / `Config` / `DrawingSurface` shells, dead `Generator::new`
+  constructor, and unused `ActiveEdgeEntry.s` field, clearing the `roughr` dead-code allowance
+  bucket.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the
