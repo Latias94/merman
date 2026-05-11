@@ -7,7 +7,7 @@ The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT
 
 ## Current Read
 
-Overall completion: about 85-90%.
+Overall completion: about 90%.
 
 What is done:
 
@@ -18,6 +18,8 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - `cargo run -p xtask -- verify --strict` passes.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
+- `cargo bench -p merman --features render` has a fresh post-cleanup release gate record.
+- Root `CHANGELOG.md` now calls out the refactor release-readiness work.
 - Clippy is part of the strict release gate.
 - Hand-curated helper overrides are at `0`.
 - Manual raw SVG/path bridge functions are at `0`.
@@ -25,8 +27,9 @@ What is done:
 What is still open:
 
 - M5 override governance and debt reduction.
-- M6 final release readiness checks and release-note polish.
-- A single open TODO remains: delete overrides that are truly obsolete after typed-model or measurement fixes.
+- Final M6 readiness is mostly waiting on the remaining M5 override decision.
+- A single open TODO remains: delete or justify overrides that are truly obsolete after typed-model
+  or measurement fixes.
 
 ## Remaining Work Shape
 
