@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `owns` rendered width override after both Class DOM
+  parity modes stayed green and the affected association/aggregation/composition layout golden was
+  refreshed, reducing Class text lookups from `296` to `295` and the global text lookup budget
+  from `499` to `498`.
 - Removed the redundant Class relation-label `depends` rendered width override after both Class
   DOM parity modes stayed green and the affected interfaces/generics, many-relations, and
   nested-namespace layout goldens were refreshed, reducing Class text lookups from `297` to `296`
