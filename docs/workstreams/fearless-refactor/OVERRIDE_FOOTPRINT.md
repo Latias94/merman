@@ -302,6 +302,10 @@ and reduced the Class text lookup total to 293 and the global text lookup total 
 The `DB` and `Server` `calcTextWidth` entries stay pinned because
 `class_svg_annotations_and_comment_rows_keep_mermaid_html_caps` still asserts their Mermaid HTML
 `max-width` caps.
+The `uses` rendered width entry also stays pinned because removing it preserves Class DOM parity
+but fails `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
+`stress_class_unicode_namespace_mix_017`, shifting the root `max-width` from `409px` to `409.25px`
+and forcing four Class layout goldens to refresh.
 The `Mineral` rendered width entry also stays pinned because deleting it shifts the upstream root
 `max-width`.
 The `Fish` rendered width entry also stays pinned because deleting it shifts
