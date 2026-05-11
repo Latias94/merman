@@ -27,8 +27,8 @@ mainline renderer/core surface is clean.
 
 | Location | Lint | Status | Removal path |
 | --- | --- | --- | --- |
-| `crates/manatee/src/algo/fcose/mod.rs` | `dead_code`, `clippy::collapsible_if`, `clippy::manual_div_ceil`, `clippy::needless_option_as_deref`, `clippy::needless_range_loop`, `clippy::nonminimal_bool` | Retained for the FCoSE port while it stays close to the upstream Cytoscape/FCoSE control flow and debug surface. Redundant item-level `dead_code` allowances inside this module were removed after the module-level allowance was confirmed to cover them. | Split the FCoSE port into smaller owner modules, delete unused debug/reference helpers, and then remove these allowances under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
-| `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::assign_op_pattern`, `clippy::manual_contains`, `clippy::manual_swap`, `clippy::needless_range_loop` | Retained for the spectral initialization port where loop shape and operation order are still intentionally close to upstream `cytoscape-fcose`. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
+| `crates/manatee/src/algo/fcose/mod.rs` | `clippy::needless_range_loop` | Retained for the FCoSE port where index-based loops still mirror upstream `cytoscape-fcose` / `cose-base` numeric control flow and avoid accidental floating-point accumulation drift. The module-level `dead_code` and mechanical clippy allowances were removed after stale helpers and fields were deleted or simplified. | Split the remaining FCoSE numeric loops into smaller owner functions only when parity/timing evidence shows the loop-shape change is safe, then remove under `cargo clippy -p manatee --all-targets --all-features -- -D warnings`. |
+| `crates/manatee/src/algo/fcose/spectral.rs` | `clippy::needless_range_loop` | Retained for the spectral initialization port where SVD and power-iteration loops intentionally stay close to upstream `cytoscape-fcose`. Mechanical `assign_op_pattern`, `manual_contains`, and `manual_swap` allowances were removed without changing matrix loop order. | Refactor only with same-machine Architecture/Mindmap parity and timing evidence, then remove under the `manatee` clippy gate. |
 | `crates/roughr/src/renderer.rs`, `crates/roughr/src/generator.rs` | `clippy::too_many_arguments` | Retained only for the public `arc` entrypoints in the forked RoughJS API shape. The private ellipse/arc/bezier helper signatures have been moved behind small request structs. | Add public arc request structs or accept the public compatibility shape after Flowchart/State hand-drawn parity and allocation checks stay green. |
 
 ## Generated Exclusions
@@ -61,6 +61,13 @@ mainline renderer/core surface is clean.
   parity data now stays under normal clippy coverage.
 - `crates/manatee/src/algo/fcose/mod.rs`: removed redundant item-level `dead_code` allowances from
   fields, a constant, and an RNG helper that were already covered by the module-level allowance.
+- `crates/manatee/src/algo/fcose/mod.rs`: removed the module-level `dead_code`,
+  `clippy::collapsible_if`, `clippy::manual_div_ceil`, `clippy::needless_option_as_deref`, and
+  `clippy::nonminimal_bool` allowances by deleting stale debug/reference helpers, unused runtime
+  fields, and mechanical control-flow/arithmetic lint sites.
+- `crates/manatee/src/algo/fcose/spectral.rs`: removed `clippy::assign_op_pattern`,
+  `clippy::manual_contains`, and `clippy::manual_swap`; the remaining allowance is limited to
+  upstream-shaped numeric range loops.
 - `crates/dugong/src/position/bk/util.rs` and `crates/dugong/src/position/bk/core.rs`: removed
   the unused private BK helper `edge_key` and the stale reference-only `vertical_alignment_ref`
   implementation, clearing the last `dead_code` allowances in that subtree.

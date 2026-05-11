@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Cleared `manatee` FCoSE's module-level `dead_code` and mechanical clippy allowance debt by
+  deleting stale debug/reference helpers and unused runtime fields, using `div_ceil`, collapsing
+  simple boolean/control-flow lint sites, and reducing `spectral.rs` to only the intentional
+  `needless_range_loop` allowance for upstream-shaped numeric loops.
 - Expanded `LINT_ALLOW_AUDIT.md` to cover workspace support crates (`manatee`, `dugong`, and
   `roughr`) in addition to the main `merman-core` / `merman-render` surface, and removed redundant
   item-level `dead_code` allowances inside `manatee`'s FCoSE port where the module-level allowance

@@ -1,9 +1,4 @@
-#![allow(dead_code)]
-#![allow(clippy::collapsible_if)]
-#![allow(clippy::manual_div_ceil)]
-#![allow(clippy::needless_option_as_deref)]
 #![allow(clippy::needless_range_loop)]
-#![allow(clippy::nonminimal_bool)]
 
 use crate::algo::FcoseOptions;
 use crate::error::Result;
@@ -464,7 +459,6 @@ struct ConstraintRuntime {
 struct AxisConstraintRuntime {
     node_count: usize,
     dummy_to_nodes: Vec<Vec<usize>>,
-    node_to_dummy: Vec<Option<usize>>,
     fixed_nodes: IndexSet<usize>,
     nodes_in_relative: Vec<usize>,
     rel_map: Vec<Vec<AxisRelAdj>>,
@@ -637,7 +631,6 @@ impl AxisConstraintRuntime {
         let mut rt = Self {
             node_count: n,
             dummy_to_nodes,
-            node_to_dummy,
             fixed_nodes: IndexSet::new(),
             nodes_in_relative: nodes_in_relative_set.into_iter().collect(),
             rel_map,
@@ -682,7 +675,7 @@ impl AxisConstraintRuntime {
         //
         // where `(2 * len / 3)` is a JS Number (not integer division). Therefore the effective
         // lower bound is `ceil(2 * len / 3)`.
-        let start = (2 * len + 2) / 3;
+        let start = (2 * len).div_ceil(3);
         for i in (start..len).rev() {
             let j = rng.next_usize(i + 1);
             self.nodes_in_relative.swap(i, j);
@@ -838,7 +831,6 @@ impl SimGraph {
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
-    const MAX_NODE_DISPLACEMENT: f64 = 300.0;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
         let leaf_count = graph.nodes.len();
@@ -1150,26 +1142,6 @@ impl SimGraph {
             min_y = min_y.min(n.top);
             max_x = max_x.max(n.right());
             max_y = max_y.max(n.bottom());
-        }
-        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
-            return None;
-        }
-        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
-    }
-
-    fn bounding_box_center_nodes_with_extras(&self) -> Option<(f64, f64)> {
-        if self.nodes.is_empty() {
-            return None;
-        }
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-        for n in &self.nodes {
-            min_x = min_x.min(n.bound_left());
-            min_y = min_y.min(n.bound_top());
-            max_x = max_x.max(n.bound_right());
-            max_y = max_y.max(n.bound_bottom());
         }
         if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
             return None;
@@ -1543,27 +1515,6 @@ impl SimGraph {
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
 
-    fn bounding_box_center_leaves(&self) -> Option<(f64, f64)> {
-        if self.leaf_count == 0 || self.nodes.is_empty() {
-            return None;
-        }
-        let end = self.leaf_count.min(self.nodes.len());
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-        for n in &self.nodes[..end] {
-            min_x = min_x.min(n.left);
-            min_y = min_y.min(n.top);
-            max_x = max_x.max(n.right());
-            max_y = max_y.max(n.bottom());
-        }
-        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
-            return None;
-        }
-        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
-    }
-
     fn update_bounds(&mut self) -> OwnerBounds {
         debug_assert_eq!(self.root_owner_idx, self.nodes.len());
 
@@ -1648,29 +1599,6 @@ impl SimGraph {
             top,
             bottom,
         }
-    }
-
-    fn max_compound_nesting_depth(&self) -> usize {
-        if self.compound_parent.is_empty() {
-            return 0;
-        }
-
-        let mut max_depth: usize = 0;
-        for n in &self.nodes {
-            let mut depth: usize = 0;
-            let mut cur = n.parent.as_deref();
-            let mut guard: usize = 0;
-            while let Some(id) = cur {
-                depth += 1;
-                max_depth = max_depth.max(depth);
-                guard += 1;
-                if guard > 1024 {
-                    break;
-                }
-                cur = self.compound_parent.get(id).and_then(|p| p.as_deref());
-            }
-        }
-        max_depth
     }
 
     fn all_nodes_layout_order(&self) -> Vec<usize> {
@@ -1909,11 +1837,10 @@ impl SimGraph {
             .ok()
             .as_deref()
             == Some("1");
-        if !disable_pre
-            && !(constraints.align_horizontal.is_empty()
-                && constraints.align_vertical.is_empty()
-                && constraints.relative.is_empty())
-        {
+        let has_constraints = !constraints.align_horizontal.is_empty()
+            || !constraints.align_vertical.is_empty()
+            || !constraints.relative.is_empty();
+        if !disable_pre && has_constraints {
             let pre_constraints_start = timing_enabled.then(std::time::Instant::now);
             handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
             dump_positions("pre_constraints", &self.nodes);
@@ -2193,11 +2120,12 @@ impl SimGraph {
                 };
                 let estimated =
                     self.owner_estimated_size.get(owner).copied().unwrap_or(0.0) * range_factor;
-                if estimated.is_finite() && estimated > 0.0 {
-                    if abs_dx > estimated || abs_dy > estimated {
-                        n.gravitation_fx = -gravity_constant * dx * compound_mul;
-                        n.gravitation_fy = -gravity_constant * dy * compound_mul;
-                    }
+                if estimated.is_finite()
+                    && estimated > 0.0
+                    && (abs_dx > estimated || abs_dy > estimated)
+                {
+                    n.gravitation_fx = -gravity_constant * dx * compound_mul;
+                    n.gravitation_fy = -gravity_constant * dy * compound_mul;
                 }
             }
 
@@ -2346,7 +2274,7 @@ impl SimGraph {
                 dump_positions("iter1", &self.nodes);
             }
         }
-        if let (Some(t), Some(s)) = (timings.as_deref_mut(), iterations_start) {
+        if let (Some(t), Some(s)) = (timings, iterations_start) {
             t.iterations = s.elapsed();
         }
 
@@ -2527,18 +2455,6 @@ impl SimGraph {
                 e.ideal_length = 1.0;
             }
         }
-    }
-
-    fn estimated_size(&self) -> f64 {
-        // layout-base `LGraph.calcEstimatedSize()` for a flat graph:
-        // - each node estimated size is (w + h) / 2
-        // - graph estimated size is sum / sqrt(n)
-        let n = self.nodes.len() as f64;
-        if n <= 0.0 {
-            return 0.0;
-        }
-        let sum: f64 = self.nodes.iter().map(|n| (n.width + n.height) / 2.0).sum();
-        (sum / n.sqrt()).max(1.0)
     }
 
     fn collapse_start_positions(&mut self, scale: f64, rng: &mut XorShift64Star) {
@@ -3700,12 +3616,6 @@ impl XorShift64Star {
         }
     }
 
-    fn mix_u64(&mut self, v: u64) {
-        // One-way mix to decorrelate node indices.
-        self.state ^= v.wrapping_mul(0x9E3779B97F4A7C15_u64);
-        let _ = self.next_u64();
-    }
-
     fn next_u64(&mut self) -> u64 {
         self.calls = self.calls.wrapping_add(1);
         let mut x = self.state;
@@ -4284,8 +4194,6 @@ fn calc_repulsion_force(
 
 #[derive(Debug, Clone)]
 struct RepulsionGrid {
-    left: f64,
-    top: f64,
     size_x: i32,
     size_y: i32,
     // Flat grid: cells[x * size_y + y] contains node indices.
@@ -4367,8 +4275,6 @@ impl RepulsionGrid {
         }
 
         Some(Self {
-            left,
-            top,
             size_x,
             size_y,
             cells,

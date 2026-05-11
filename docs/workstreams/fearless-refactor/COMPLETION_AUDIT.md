@@ -37,6 +37,13 @@ Progress is tracked in the fearless-refactor workstream docs.
 ## What Was Verified Recently
 
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
+  `cargo nextest run -p manatee`, and
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after clearing
+  `manatee` FCoSE's module-level `dead_code`, `collapsible_if`, `manual_div_ceil`,
+  `needless_option_as_deref`, and `nonminimal_bool` allowances, deleting stale debug/reference
+  helpers and unused runtime fields, and reducing `spectral.rs` to only the intentional
+  numeric-loop allowance.
+- `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p dugong`,
   `cargo clippy -p roughr-merman --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p roughr-merman`, and

@@ -1,6 +1,3 @@
-#![allow(clippy::assign_op_pattern)]
-#![allow(clippy::manual_contains)]
-#![allow(clippy::manual_swap)]
 #![allow(clippy::needless_range_loop)]
 
 use rustc_hash::FxHashMap;
@@ -396,7 +393,7 @@ fn build_transformed_adjacency(
                 // are ignored because they don't intersect `topMostNodes` in upstream).
                 if !leaf_chain
                     .get(leaf)
-                    .is_some_and(|chain| chain.iter().any(|&c| c == scope_cix))
+                    .is_some_and(|chain| chain.contains(&scope_cix))
                 {
                     return None;
                 }
@@ -1009,7 +1006,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                 for i in kk..m {
                     u[i][kk] = -u[i][kk];
                 }
-                u[kk][kk] = 1.0 + u[kk][kk];
+                u[kk][kk] += 1.0;
                 for i in 0..kk.saturating_sub(1) {
                     u[i][kk] = 0.0;
                 }
@@ -1113,7 +1110,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                     s[ju] = t;
                     if j != k {
                         f = -sn * e[(j - 1) as usize];
-                        e[(j - 1) as usize] = cs * e[(j - 1) as usize];
+                        e[(j - 1) as usize] *= cs;
                     }
                     if wantv {
                         for i in 0..n {
@@ -1137,7 +1134,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                     let sn = f / t;
                     s[ju] = t;
                     f = -sn * e[ju];
-                    e[ju] = cs * e[ju];
+                    e[ju] *= cs;
                     if wantu {
                         for i in 0..m {
                             let t2 = cs * u[i][ju] + sn * u[i][(k - 1) as usize];
@@ -1185,7 +1182,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                     f = cs * s[ju] + sn * e[ju];
                     e[ju] = cs * e[ju] - sn * s[ju];
                     g = sn * s[ju + 1];
-                    s[ju + 1] = cs * s[ju + 1];
+                    s[ju + 1] *= cs;
                     if wantv {
                         for i in 0..n {
                             t = cs * v[i][ju] + sn * v[i][ju + 1];
@@ -1201,7 +1198,7 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                     f = cs * e[ju] + sn * s[ju + 1];
                     s[ju + 1] = -sn * e[ju] + cs * s[ju + 1];
                     g = sn * e[ju + 1];
-                    e[ju + 1] = cs * e[ju + 1];
+                    e[ju + 1] *= cs;
                     if wantu && (j as usize) < m.saturating_sub(1) {
                         for i in 0..m {
                             t = cs * u[i][ju] + sn * u[i][ju + 1];
@@ -1232,16 +1229,12 @@ pub(super) fn svd_jama(a_in: &[Vec<f64>]) -> Option<SvdResult> {
                     s.swap(ku, ku + 1);
                     if wantv && (k as usize) < n.saturating_sub(1) {
                         for i in 0..n {
-                            let t = v[i][ku + 1];
-                            v[i][ku + 1] = v[i][ku];
-                            v[i][ku] = t;
+                            v[i].swap(ku + 1, ku);
                         }
                     }
                     if wantu && (k as usize) < m.saturating_sub(1) {
                         for i in 0..m {
-                            let t = u[i][ku + 1];
-                            u[i][ku + 1] = u[i][ku];
-                            u[i][ku] = t;
+                            u[i].swap(ku + 1, ku);
                         }
                     }
                     k += 1;
