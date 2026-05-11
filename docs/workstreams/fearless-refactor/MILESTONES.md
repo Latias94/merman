@@ -659,6 +659,9 @@ Progress:
 - Revalidated the full package benchmark gate with `cargo bench -p merman --features render`;
   the run completed successfully after a longer timeout window and is recorded in
   `docs/performance/spotcheck_2026-05-10_full_bench_gate.md`.
+- Revalidated `cargo run -p xtask -- verify --strict` after the Class text lookup cleanup; the run
+  covered fmt, all-features check, workspace clippy, no-growth override reporting at `485` text
+  lookup entries, feature matrix checks, workspace nextest, and strict SVG DOM parity.
 
 Exit criteria:
 

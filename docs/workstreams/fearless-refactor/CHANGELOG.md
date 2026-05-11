@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Revalidated `cargo run -p xtask -- verify --strict` after the latest Class text lookup cleanup;
+  the strict gate passed with the global text lookup budget at `485`.
 - Cleared `manatee` FCoSE's module-level `dead_code` and mechanical clippy allowance debt by
   deleting stale debug/reference helpers and unused runtime fields, using `div_ceil`, collapsing
   simple boolean/control-flow lint sites, and reducing `spectral.rs` to only the intentional

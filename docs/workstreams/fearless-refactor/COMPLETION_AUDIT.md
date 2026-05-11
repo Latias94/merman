@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` now document `cargo run -p xtask -- verify --feature-matrix`; `--strict` includes that matrix for `merman` no-default/render/raster and `merman-core` no-default, alongside all-features check and clippy. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the ER text override generator cleanup; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
+| Parity safety | The latest `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class text lookup cleanup brought the global text lookup budget to `485`; degenerate-path and cluster-run helpers still guard real mismatches. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the full benchmark gate record. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -36,6 +36,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed after the latest Class text lookup cleanup. The
+  strict run covered fmt, all-features check, workspace all-target/all-features clippy, override
+  no-growth at `485` text lookup entries, feature matrix checks, workspace nextest
+  (`1013` tests passed, `3` skipped), and SVG DOM parity for all strict diagram families.
 - `cargo fmt --check`, `cargo clippy -p manatee --all-targets --all-features -- -D warnings`,
   `cargo nextest run -p manatee`, and
   `cargo clippy --workspace --all-targets --all-features -- -D warnings` passed after clearing
