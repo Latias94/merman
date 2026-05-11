@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `references` rendered width override after the
+  refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
+  layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the
+  global text lookup budget from `497` to `496`.
 - Removed the redundant Class relation-label `may-fail` rendered width override after both Class
   DOM parity modes stayed green and the affected dense-namespaces layout golden was refreshed,
   reducing Class text lookups from `295` to `294` and the global text lookup budget from `498` to

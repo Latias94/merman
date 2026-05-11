@@ -36,6 +36,9 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after the Class `references`
+  cleanup and refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden, tightening
+  the text lookup no-growth budget to `496`.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
   A later empty-diagram root viewport cleanup lowered the root budget to `750`, and the later
