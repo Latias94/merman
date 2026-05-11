@@ -95,6 +95,9 @@ Progress is tracked in the fearless-refactor workstream docs.
 - The follow-up Class `wraps` cleanup removed one relation-label rendered width override,
   refreshed the affected dense-namespaces layout golden, and tightened the text lookup no-growth
   budget again to `501`.
+- The follow-up Class `reads` cleanup removed one relation-label rendered width override,
+  refreshed the affected many-relations and styles layout goldens, and tightened the text lookup
+  no-growth budget again to `500`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.

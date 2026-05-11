@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `reads` rendered width override after both Class DOM
+  parity modes stayed green and the affected many-relations / styles layout goldens were refreshed,
+  reducing Class text lookups from `298` to `297` and the global text lookup budget from `501` to
+  `500`.
 - Removed the redundant Class relation-label `wraps` rendered width override after both Class DOM
   parity modes stayed green and the affected dense-namespaces layout golden was refreshed,
   reducing Class text lookups from `299` to `298` and the global text lookup budget from `502` to
