@@ -124,9 +124,22 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current Mindmap root budget after the docs circle pass.
   Evidence: Mindmap root count is now `48`, root viewport total is `753`, and text lookup debt did
   not grow.
+- [x] Replace the docs cloud shape root pin with emitted path bbox derivation.
+  Evidence: Mindmap root viewport derivation now includes typed `cloud` SVG path bounds in addition
+  to the layout rectangle and label bounds, allowing `upstream_docs_mindmap_cloud_015` to derive its
+  root viewport without a fixture pin.
+- [x] Tighten the current Mindmap root budget after the docs cloud pass.
+  Evidence: Mindmap root count is now `47`, root viewport total is `744`, and text lookup debt did
+  not grow.
+- [x] Classify the immediate docs shape candidates that remain pinned for now.
+  Evidence: disabled-root checks show `upstream_docs_mindmap_bang_013` is now down to a small
+  browser text/shape float delta after the typed bang path bbox is included, while
+  `upstream_docs_mindmap_hexagon_017` remains a small roughjs/text metric delta. The Cypress
+  bang/cloud combinations still have larger tree-wide transform drift, so these should not be
+  replaced by fixture-like text widths.
 - [x] Prove Mindmap normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-mindmap-svgs` passed in both `parity` and `parity-root` DOM modes after
-  both Mindmap passes.
+  all Mindmap passes.
 
 ## P2: Larger Buckets
 

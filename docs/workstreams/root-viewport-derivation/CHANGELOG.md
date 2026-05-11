@@ -20,6 +20,9 @@
 - Extended the existing bold-italic State node-label metric to `id1/id2`, removed
   `upstream_pkgtests_state_style_spec_003`, refreshed its layout golden, and tightened the root
   budget to `745` without growing text lookup debt; verified `xtask verify --strict`.
+- Added typed Mindmap cloud path bounds to root viewport derivation, removed
+  `upstream_docs_mindmap_cloud_015`, and tightened the root budget to `744` without growing text
+  lookup debt.
 
 ## 2026-05-11
 

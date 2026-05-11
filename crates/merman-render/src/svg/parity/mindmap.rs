@@ -111,6 +111,205 @@ fn rounded_rect_points(w: f64, h: f64) -> Vec<(f64, f64)> {
     pts
 }
 
+#[derive(Debug, Clone, Copy)]
+enum MindmapPathNumberFormat {
+    D3Path,
+    JsNumber,
+}
+
+fn mindmap_path_number(v: f64, number_format: MindmapPathNumberFormat) -> String {
+    match number_format {
+        MindmapPathNumberFormat::D3Path => fmt_path(v),
+        MindmapPathNumberFormat::JsNumber => fmt_string(v),
+    }
+}
+
+fn mindmap_cloud_path_d(w: f64, h: f64, number_format: MindmapPathNumberFormat) -> String {
+    let r1 = 0.15 * w;
+    let r2 = 0.25 * w;
+    let r3 = 0.35 * w;
+    let r4 = 0.2 * w;
+    let n = |v| mindmap_path_number(v, number_format);
+
+    format!(
+        "M0 0 a{r1},{r1} 0 0,1 {w25},{wn10} a{r3},{r3} 1 0,1 {w40},{wn10} a{r2},{r2} 1 0,1 {w35},{w20} a{r1},{r1} 1 0,1 {w15},{h35} a{r4},{r4} 1 0,1 {wn15},{h65} a{r2},{r1} 1 0,1 {wn25},{w15} a{r3},{r3} 1 0,1 {wn50},0 a{r1},{r1} 1 0,1 {wn25},{wn15} a{r1},{r1} 1 0,1 {wn10},{hn35} a{r4},{r4} 1 0,1 {w10},{hn65} H0 V0 Z",
+        r1 = n(r1),
+        r2 = n(r2),
+        r3 = n(r3),
+        r4 = n(r4),
+        w25 = n(w * 0.25),
+        w40 = n(w * 0.4),
+        w35 = n(w * 0.35),
+        w20 = n(w * 0.2),
+        w15 = n(w * 0.15),
+        w10 = n(w * 0.1),
+        wn10 = n(-w * 0.1),
+        wn15 = n(-w * 0.15),
+        wn25 = n(-w * 0.25),
+        wn50 = n(-w * 0.5),
+        h35 = n(h * 0.35),
+        h65 = n(h * 0.65),
+        hn35 = n(-h * 0.35),
+        hn65 = n(-h * 0.65),
+    )
+}
+
+fn mindmap_bang_path_d(
+    w_base: f64,
+    effective_w: f64,
+    effective_h: f64,
+    number_format: MindmapPathNumberFormat,
+) -> String {
+    let r = 0.15 * w_base;
+    let n = |v| mindmap_path_number(v, number_format);
+
+    format!(
+        "M0 0 a{r},{r} 1 0,0 {w25},{hn10} a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},{h10} a{r},{r} 1 0,0 {w15},{h33} a{r08},{r08} 1 0,0 0,{h34} a{r},{r} 1 0,0 {wn15},{h33} a{r},{r} 1 0,0 {wn25},{h15} a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},{hn15} a{r},{r} 1 0,0 {wn10},{hn33} a{r08},{r08} 1 0,0 0,{hn34} a{r},{r} 1 0,0 {w10},{hn33} H0 V0 Z",
+        r = n(r),
+        r08 = n(r * 0.8),
+        w25 = n(effective_w * 0.25),
+        w15 = n(effective_w * 0.15),
+        w10 = n(effective_w * 0.1),
+        wn10 = n(-effective_w * 0.1),
+        wn15 = n(-effective_w * 0.15),
+        wn25 = n(-effective_w * 0.25),
+        h10 = n(effective_h * 0.1),
+        hn10 = n(-effective_h * 0.1),
+        h15 = n(effective_h * 0.15),
+        hn15 = n(-effective_h * 0.15),
+        h33 = n(effective_h * 0.33),
+        hn33 = n(-effective_h * 0.33),
+        h34 = n(effective_h * 0.34),
+        hn34 = n(-effective_h * 0.34),
+    )
+}
+
+fn include_mindmap_rect_bounds(
+    bounds: &mut Option<Bounds>,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+) {
+    if let Some(cur) = bounds.as_mut() {
+        cur.min_x = cur.min_x.min(min_x);
+        cur.min_y = cur.min_y.min(min_y);
+        cur.max_x = cur.max_x.max(max_x);
+        cur.max_y = cur.max_y.max(max_y);
+    } else {
+        *bounds = Some(Bounds {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        });
+    }
+}
+
+fn include_mindmap_node_rect_bounds(bounds: &mut Option<Bounds>, n: &LayoutNode) {
+    include_mindmap_rect_bounds(
+        bounds,
+        n.x - n.width / 2.0,
+        n.y - n.height / 2.0,
+        n.x + n.width / 2.0,
+        n.y + n.height / 2.0,
+    );
+}
+
+fn include_mindmap_path_bounds(
+    bounds: &mut Option<Bounds>,
+    d: &str,
+    translate_x: f64,
+    translate_y: f64,
+) -> bool {
+    let Some(pb) = svg_path_bounds_from_d(d) else {
+        return false;
+    };
+    include_mindmap_rect_bounds(
+        bounds,
+        pb.min_x + translate_x,
+        pb.min_y + translate_y,
+        pb.max_x + translate_x,
+        pb.max_y + translate_y,
+    );
+    true
+}
+
+fn mindmap_viewport_bounds_from_layout(
+    layout: &MindmapDiagramLayout,
+    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+) -> Option<Bounds> {
+    let mut layout_nodes: std::collections::BTreeMap<&str, &LayoutNode> =
+        std::collections::BTreeMap::new();
+    for n in &layout.nodes {
+        layout_nodes.insert(n.id.as_str(), n);
+    }
+
+    let mut bounds: Option<Bounds> = None;
+    for n in &model.nodes {
+        let Some(ln) = layout_nodes.get(n.id.as_str()) else {
+            continue;
+        };
+
+        let padding = n.padding.max(0.0);
+        let half_padding = padding / 2.0;
+        match n.shape.as_str() {
+            "cloud" => {
+                let w = ln.width.max(1.0);
+                let h = ln.height.max(1.0);
+                let bbox_w = ln
+                    .label_width
+                    .unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
+                let bbox_h = ln
+                    .label_height
+                    .unwrap_or_else(|| (h - 2.0 * half_padding).max(1.0));
+                let d = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::JsNumber);
+                if !include_mindmap_path_bounds(&mut bounds, &d, ln.x - w / 2.0, ln.y - h / 2.0) {
+                    include_mindmap_node_rect_bounds(&mut bounds, ln);
+                }
+                include_mindmap_rect_bounds(
+                    &mut bounds,
+                    ln.x - bbox_w / 2.0,
+                    ln.y - bbox_h / 2.0,
+                    ln.x + bbox_w / 2.0,
+                    ln.y + bbox_h / 2.0,
+                );
+            }
+            "bang" => {
+                let w = ln.width.max(1.0);
+                let h = ln.height.max(1.0);
+                let bbox_w = ln
+                    .label_width
+                    .unwrap_or_else(|| (w - 10.0 * half_padding).max(1.0));
+                let bbox_h = ln
+                    .label_height
+                    .unwrap_or_else(|| (h - 8.0 * half_padding).max(1.0));
+                let w_base = bbox_w + 10.0 * half_padding;
+                let d = mindmap_bang_path_d(w_base, w, h, MindmapPathNumberFormat::JsNumber);
+                if !include_mindmap_path_bounds(&mut bounds, &d, ln.x - w / 2.0, ln.y - h / 2.0) {
+                    include_mindmap_node_rect_bounds(&mut bounds, ln);
+                }
+                include_mindmap_rect_bounds(
+                    &mut bounds,
+                    ln.x - bbox_w / 2.0,
+                    ln.y - bbox_h / 2.0,
+                    ln.x + bbox_w / 2.0,
+                    ln.y + bbox_h / 2.0,
+                );
+            }
+            _ => include_mindmap_node_rect_bounds(&mut bounds, ln),
+        }
+    }
+
+    for e in &layout.edges {
+        for p in &e.points {
+            include_mindmap_rect_bounds(&mut bounds, p.x, p.y, p.x, p.y);
+        }
+    }
+
+    bounds
+}
+
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
@@ -619,8 +818,9 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let padding = 10.0;
-    let (mut vx, mut vy, mut vw, mut vh) = layout
-        .bounds
+    let viewport_bounds =
+        mindmap_viewport_bounds_from_layout(layout, model).or_else(|| layout.bounds.clone());
+    let (mut vx, mut vy, mut vw, mut vh) = viewport_bounds
         .as_ref()
         .map(|b| {
             let w = (b.max_x - b.min_x).max(0.0);
@@ -865,10 +1065,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && n.label == "the root"
             && n.shape == "cloud"
             && n.icon.is_none()
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 88.359375).abs() <= 1e-9
-            && (vh - 54.0).abs() <= 1e-9
+            && (vx - (-5.1259918214202465)).abs() <= 1e-9
+            && (vy - (-10.422029750038096)).abs() <= 1e-9
+            && (vw - 111.65335029736411).abs() <= 1e-9
+            && (vh - 86.8571584614812).abs() <= 1e-9
         {
             vx = 6.52117919921875;
             vy = 6.006782531738281;
@@ -1316,32 +1516,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let w = w.max(1.0);
                 let h = h.max(1.0);
 
-                let r1 = 0.15 * w;
-                let r2 = 0.25 * w;
-                let r3 = 0.35 * w;
-                let r4 = 0.2 * w;
-
-                let cloud_path = format!(
-                    "M0 0 a{r1},{r1} 0 0,1 {w25},{wn10} a{r3},{r3} 1 0,1 {w40},{wn10} a{r2},{r2} 1 0,1 {w35},{w20} a{r1},{r1} 1 0,1 {w15},{h35} a{r4},{r4} 1 0,1 {wn15},{h65} a{r2},{r1} 1 0,1 {wn25},{w15} a{r3},{r3} 1 0,1 {wn50},0 a{r1},{r1} 1 0,1 {wn25},{wn15} a{r1},{r1} 1 0,1 {wn10},{hn35} a{r4},{r4} 1 0,1 {w10},{hn65} H0 V0 Z",
-                    r1 = fmt_path(r1),
-                    r2 = fmt_path(r2),
-                    r3 = fmt_path(r3),
-                    r4 = fmt_path(r4),
-                    w25 = fmt_path(w * 0.25),
-                    w40 = fmt_path(w * 0.4),
-                    w35 = fmt_path(w * 0.35),
-                    w20 = fmt_path(w * 0.2),
-                    w15 = fmt_path(w * 0.15),
-                    w10 = fmt_path(w * 0.1),
-                    wn10 = fmt_path(-w * 0.1),
-                    wn15 = fmt_path(-w * 0.15),
-                    wn25 = fmt_path(-w * 0.25),
-                    wn50 = fmt_path(-w * 0.5),
-                    h35 = fmt_path(h * 0.35),
-                    h65 = fmt_path(h * 0.65),
-                    hn35 = fmt_path(-h * 0.35),
-                    hn65 = fmt_path(-h * 0.65),
-                );
+                let cloud_path = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::D3Path);
 
                 let _ = write!(
                     &mut out,
@@ -1425,29 +1600,14 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
                 let bbox_h = label_h.unwrap_or_else(|| (h - 8.0 * half_padding).max(1.0));
 
                 let w_base = bbox_w + 10.0 * half_padding;
-                let _h_base = bbox_h + 8.0 * half_padding;
                 let effective_w = w.max(1.0);
                 let effective_h = h.max(1.0);
-                let r = 0.15 * w_base;
 
-                let bang_path = format!(
-                    "M0 0 a{r},{r} 1 0,0 {w25},{hn10} a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},0 a{r},{r} 1 0,0 {w25},{h10} a{r},{r} 1 0,0 {w15},{h33} a{r08},{r08} 1 0,0 0,{h34} a{r},{r} 1 0,0 {wn15},{h33} a{r},{r} 1 0,0 {wn25},{h15} a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},0 a{r},{r} 1 0,0 {wn25},{hn15} a{r},{r} 1 0,0 {wn10},{hn33} a{r08},{r08} 1 0,0 0,{hn34} a{r},{r} 1 0,0 {w10},{hn33} H0 V0 Z",
-                    r = fmt_path(r),
-                    r08 = fmt_path(r * 0.8),
-                    w25 = fmt_path(effective_w * 0.25),
-                    w15 = fmt_path(effective_w * 0.15),
-                    w10 = fmt_path(effective_w * 0.1),
-                    wn10 = fmt_path(-effective_w * 0.1),
-                    wn15 = fmt_path(-effective_w * 0.15),
-                    wn25 = fmt_path(-effective_w * 0.25),
-                    h10 = fmt_path(effective_h * 0.1),
-                    hn10 = fmt_path(-effective_h * 0.1),
-                    h15 = fmt_path(effective_h * 0.15),
-                    hn15 = fmt_path(-effective_h * 0.15),
-                    h33 = fmt_path(effective_h * 0.33),
-                    hn33 = fmt_path(-effective_h * 0.33),
-                    h34 = fmt_path(effective_h * 0.34),
-                    hn34 = fmt_path(-effective_h * 0.34),
+                let bang_path = mindmap_bang_path_d(
+                    w_base,
+                    effective_w,
+                    effective_h,
+                    MindmapPathNumberFormat::D3Path,
                 );
 
                 let _ = write!(
@@ -1522,4 +1682,63 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn viewport_bounds_include_cloud_path_bbox() {
+        let layout = MindmapDiagramLayout {
+            nodes: vec![LayoutNode {
+                id: "0".to_string(),
+                x: 63.953125,
+                y: 32.0,
+                width: 97.90625,
+                height: 34.0,
+                is_cluster: false,
+                label_width: Some(87.90625),
+                label_height: Some(24.0),
+            }],
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 15.0,
+                min_y: 15.0,
+                max_x: 112.90625,
+                max_y: 49.0,
+            }),
+        };
+        let model = merman_core::diagrams::mindmap::MindmapDiagramRenderModel {
+            nodes: vec![merman_core::diagrams::mindmap::MindmapDiagramRenderNode {
+                id: "0".to_string(),
+                dom_id: "node_0".to_string(),
+                label: "I am a cloud".to_string(),
+                label_type: String::new(),
+                is_group: false,
+                shape: "cloud".to_string(),
+                width: 0.0,
+                height: 0.0,
+                padding: 10.0,
+                css_classes: "mindmap-node section-root section--1".to_string(),
+                css_styles: Vec::new(),
+                look: String::new(),
+                icon: None,
+                x: None,
+                y: None,
+                level: 0,
+                node_id: "id".to_string(),
+                node_type: -1,
+                section: Some(-1),
+            }],
+            edges: Vec::new(),
+        };
+
+        let bounds = mindmap_viewport_bounds_from_layout(&layout, &model).expect("bounds");
+
+        assert!(bounds.min_x < 15.0);
+        assert!(bounds.min_y < 15.0);
+        assert!(bounds.max_x > 112.90625);
+        assert!(bounds.max_y > 49.0);
+    }
 }

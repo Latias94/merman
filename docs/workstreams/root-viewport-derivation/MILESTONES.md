@@ -92,8 +92,11 @@ Progress:
   labels with exactly one non-empty text line. SVG text emission still preserves the raw upstream
   whitespace, so this is a layout/bounds derivation rather than a DOM rewrite.
 - Removed `upstream_docs_mindmap_circle_011` after Mindmap plain label measurement stopped using
-  global fixture-derived HTML width overrides that belong to other diagram families. The remaining
-  docs bang/cloud shape entries still guard emitted-bounds drift and stay pinned for now.
+  global fixture-derived HTML width overrides that belong to other diagram families.
+- Removed `upstream_docs_mindmap_cloud_015` after Mindmap root viewport derivation started
+  including typed cloud SVG path bounds in addition to the layout rectangle and label bounds.
+- Retained the docs bang/hexagon shape entries for now because the remaining disabled-root drift
+  is a small browser text/roughjs float delta rather than a reusable shape-bounds rule.
 
 Exit criteria:
 
