@@ -80,6 +80,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Evidence: disabled-root diagnostics show the remaining drift comes from note-cluster rect bounds;
   direct node, note-label, and edge-label widths are already effectively aligned, so this needs a
   Dagre noteGroup/cluster bounds rule rather than another text width lookup.
+- [x] Classify the immediate post-style-pass State candidates that should remain pinned for now.
+  Evidence: disabled-root diagnostics show:
+  `upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024`
+  still combines a `rectWithTitle` title-width delta with a compound root-origin/cluster-transform
+  delta; `upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035`
+  would require two very fixture-like style text widths to replace one root pin; and
+  `upstream_cypress_statediagram_v2_spec_v2_it_should_be_possible_to_use_a_choice_022` is driven
+  by several small plain state-label width deltas rather than one reusable rule.
 - [x] Prove State normal DOM parity and `parity-root` stay green.
   Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes after
   the note-label, transition-label, alias node-label, and package style node-label passes.

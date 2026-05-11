@@ -296,6 +296,20 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   pass, including `cargo fmt`, workspace all-features check/clippy, override no-growth, feature
   matrix, workspace nextest (`1019` passed, `3` skipped), normal SVG DOM parity, and root SVG DOM
   parity.
+- 2026-05-12: disabled-root diagnostics for
+  `upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024`
+  showed it should remain pinned for now: the title `Long state name 2` width is off by `1px`, but
+  the root also carries a compound cluster-origin delta (`viewBox` local x becomes negative), so
+  this needs a compound root-origin/bounds rule rather than only another text metric.
+- 2026-05-12: disabled-root diagnostics for
+  `upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035`
+  showed it should remain pinned for now: replacing one root pin would require two narrowly scoped
+  node-label widths (`Should NOT be white` and `BState`), which is worse debt than the retained root
+  guard until style text measurement has a broader derivation rule.
+- 2026-05-12: disabled-root diagnostics for
+  `upstream_cypress_statediagram_v2_spec_v2_it_should_be_possible_to_use_a_choice_022` showed it
+  should remain pinned for now: the root delta is distributed across several small plain state-label
+  width differences, not a single reusable browser measurement fact.
 
 ## Open Risks
 

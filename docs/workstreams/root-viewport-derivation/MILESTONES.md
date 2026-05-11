@@ -64,6 +64,8 @@ Progress:
   `id3/id4` node-label metric family without growing text lookup debt.
 - Retained the `state_with_a_note_together_with_another_state` v1/v2 pair for now because the
   disabled-root drift is in note-cluster rect bounds, not a direct text width mismatch.
+- Retained the next compound-title, style-precedence, and choice candidates for now because their
+  disabled-root drift does not collapse to a single reusable typed metric.
 
 Exit criteria:
 
