@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class relation-label `may-fail` rendered width override after both Class
+  DOM parity modes stayed green and the affected dense-namespaces layout golden was refreshed,
+  reducing Class text lookups from `295` to `294` and the global text lookup budget from `498` to
+  `497`.
 - Recorded the Class relation-label `manages` rendered width override as retained: deleting it
   broke `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on the `Company.Project`
   cluster geometry, so it stays pinned for now.

@@ -231,7 +231,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, false, "+foo : string") => Some(87.375),
         (16, false, "int chimp") => Some(67.890625),
         (16, false, "manages") => Some(62.078125),
-        (16, false, "may-fail") => Some(59.0625),
         (16, false, "references") => Some(76.40625),
         (16, false, "List<int> ids") => Some(86.6875),
         (16, false, "List<int> position") => Some(123.515625),
