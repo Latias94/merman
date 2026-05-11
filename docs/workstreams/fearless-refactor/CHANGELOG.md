@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Duck` width overrides after both Class DOM parity modes stayed
+  green and the affected Duck layout goldens were refreshed, reducing Class text lookups from
+  `310` to `308` and the global text lookup budget from `513` to `511`.
 - Removed the redundant Class `Mineral` `calcTextWidth` override after Class `parity-root` and
   layout snapshot gates stayed green; kept its rendered width override because removing it shifts
   upstream root `max-width` by `0.5px`. This reduced Class text lookups from `311` to `310` and
