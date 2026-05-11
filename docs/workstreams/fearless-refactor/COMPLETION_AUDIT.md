@@ -39,7 +39,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
   A later empty-diagram root viewport cleanup lowered the root budget to `750`, and the later
-  Class cleanup lowered the text lookup budget to `519`.
+  Class cleanup lowered the text lookup budget to `517`.
 - A Block text audit tightened `OVERRIDE_POLICY.md` and `GATES.md`: layout-affecting text lookup
   deletion now requires layout snapshot evidence because the default deterministic layout measurer
   can still differ when the vendored SVG/HTML measurer matches the stored override.
@@ -54,6 +54,8 @@ Progress is tracked in the fearless-refactor workstream docs.
 - `cargo run -p xtask -- verify --strict` also passed on 2026-05-11 after the Class `OK`,
   `ApiClient`, and `ERROR` cleanup passes, the dense layout golden refresh, and tightening the
   text lookup no-growth budget to `519`.
+- The follow-up Class `Payment` cleanup removed two more width overrides, refreshed the affected
+  layout golden, and tightened the text lookup no-growth budget again to `517`.
 - The M2 typed-model milestone was reconciled with `RENDER_MODEL_INVENTORY.md`: all non-error
   in-tree diagrams are typed-first, and remaining work is M5 override reduction rather than
   another JSON-to-typed migration.

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-11
 
+- Removed the redundant Class `Payment` width overrides after `parity-root` stayed green and the
+  affected layout golden was refreshed, reducing Class text lookups from `316` to `314` and the
+  global text lookup budget from `519` to `517`.
 - Removed the redundant Class `ERROR` width overrides after the strict gate stayed green, reducing
   Class text lookups from `318` to `316` and the global text lookup budget from `521` to `519`.
 - Removed the redundant Class `ApiClient` width overrides after refreshing the dense layout
