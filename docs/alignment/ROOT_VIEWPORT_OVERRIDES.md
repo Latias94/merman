@@ -113,12 +113,12 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
 
-## Current Status (2026-05-09)
+## Current Status (2026-05-11)
 
 Small fixture-scoped root viewport overrides remain in use for the pinned Mermaid baseline. They
 exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces
 deterministic drift that is not yet worth globalizing into layout/render logic.
 
 Current root viewport inventory is tracked by
-`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 779 total
-root viewport entries, including 31 Architecture entries.
+`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 759 total
+root viewport entries, including 44 State entries and 31 Architecture entries.

@@ -55,6 +55,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   documenting the remaining override buckets as derivation or measurement targets.
 - `xtask` root delta reports: reuse DOM comparison XML normalization so browser-valid
   `<foreignObject>` fragments do not make root reporting fail strict verification.
+- State root viewport derivation: limit the 72px border-label height inflation rule to
+  classDef-compiled border styles, letting direct `style ... border:...` nodes derive their root
+  viewport without a fixture-scoped pin.
 
 ### Changed
 

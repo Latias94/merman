@@ -86,9 +86,6 @@ pub fn lookup_state_root_viewport_override(
             Some(("0 0 233.85546875 1219", "233.855"))
         }
         "upstream_docs_statediagram_transitions_014" => Some(("0 0 98.359375 170", "98.3594")),
-        "upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034" => {
-            Some(("0 0 78.953125 56", "78.9531"))
-        }
         "upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035" => {
             Some(("0 0 294.359375 56", "294.359"))
         }

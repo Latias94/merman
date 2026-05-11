@@ -31,11 +31,19 @@ Exit criteria:
 
 ## M1: State First Pass
 
+Status: in progress.
+
 Scope:
 
 - Classify State root viewport drift families.
 - Replace at least one practical fixture group with typed or emitted-bounds derivation.
 - Remove only entries that stay green under both State DOM parity modes.
+
+Progress:
+
+- Removed `upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034` after narrowing the
+  72px border-label height inflation rule to classDef-compiled styles. Direct `style` directives no
+  longer receive classDef-only height derivation.
 
 Exit criteria:
 

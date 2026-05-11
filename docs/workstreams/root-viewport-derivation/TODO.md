@@ -19,9 +19,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   - note and multiline-label bounds.
   - styled/classed state shape bounds.
   - small browser float/rounding deltas.
-- [ ] Replace one low-risk State fixture group with typed or emitted-bounds derivation.
-- [ ] Delete the corresponding generated State root entries and tighten the root budget.
-- [ ] Prove State normal DOM parity and `parity-root` stay green.
+- [x] Replace one low-risk State fixture group with typed or emitted-bounds derivation.
+  Evidence: direct `style ... border:...` statements no longer trigger the classDef-only 72px
+  label-height inflation rule.
+- [x] Delete the corresponding generated State root entries and tighten the root budget.
+  Evidence: removed `upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034`; root
+  no-growth budget is now `759`.
+- [x] Prove State normal DOM parity and `parity-root` stay green.
+  Evidence: full `compare-state-svgs` passed in both `parity` and `parity-root` DOM modes.
+- [x] Run focused State code-quality checks for this pass.
+  Evidence: `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`,
+  `cargo test -p xtask override_growth_check_rejects_category_growth`, and
+  `cargo nextest run -p merman-render` passed.
 
 ## P1: Mindmap Root Derivation
 

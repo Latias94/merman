@@ -270,15 +270,14 @@ fn node_label_metrics(
     }
 
     if wrap_mode == WrapMode::HtmlLike {
-        let has_border_style = node_css_compiled_styles
+        let has_classdef_border_style = node_css_compiled_styles
             .iter()
-            .chain(node_css_styles.iter())
             .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
 
         // Mermaid@11.12.2 browser baselines show a surprising `getBoundingClientRect()` inflation
         // for `classDef`-styled border nodes: even a single-line `<p>` label can measure as `72px`
         // tall. Mirror that behavior here to avoid relying on string-keyed height overrides.
-        if has_border_style && (style.font_size - 16.0).abs() <= 0.01 {
+        if has_classdef_border_style && (style.font_size - 16.0).abs() <= 0.01 {
             let trimmed = decoded.as_ref().trim();
             let is_single_line = !trimmed.contains('\n')
                 && !trimmed.to_ascii_lowercase().contains("<br")

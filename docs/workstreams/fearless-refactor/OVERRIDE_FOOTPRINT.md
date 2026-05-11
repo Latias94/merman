@@ -59,9 +59,11 @@ Flowchart then moved empty-diagram root viewport behavior into renderer-derived 
 bounds, deleting 21 more fixture pins while keeping the affected normal and `parity-root` DOM
 filters green. A later full `parity-root` release-gate audit restored ten required root guards:
 six Sequence long-message/frame fixtures, two tiny Journey browser float guards, and two GitGraph
-viewBox-height guards. The current root viewport budget is therefore `760`, and
+viewBox-height guards. The root viewport budget was therefore `760`, and
 `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-passes. It also reflects the final
+passed. The follow-up root viewport derivation workstream then removed one State style-directive
+root pin, so the current root viewport budget is `759`.
+It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
 `block`, `er`, and `gantt` are now counted as text metric lookup entries instead of hand-curated
@@ -238,7 +240,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `760`.
+Total entries reported by `xtask`: `759`.
 
 | file | entries |
 | --- | ---: |
@@ -252,7 +254,7 @@ Total entries reported by `xtask`: `760`.
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 198 |
-| `state_root_overrides_11_12_2.rs` | 45 |
+| `state_root_overrides_11_12_2.rs` | 44 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
 Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root

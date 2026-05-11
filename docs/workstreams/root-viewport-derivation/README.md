@@ -14,6 +14,8 @@ keeping `parity-root` and strict release gates green.
 
 - State root viewport overrides: `45` entries.
 - Mindmap root viewport overrides: `52` entries.
+- Current State root viewport overrides: `44` entries after the first style-directive border
+  derivation pass.
 - Keep the existing strict gate green:
 
 ```sh
