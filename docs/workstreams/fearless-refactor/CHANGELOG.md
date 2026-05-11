@@ -39,6 +39,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `int[] id`; Class DOM parity, focused SVG tests, and the layout snapshot gate stayed green
   without golden drift, reducing Class text lookups from `291` to `288` and the global text lookup
   budget from `494` to `491`.
+- Removed the redundant Class rendered-width overrides for `+eat()`, `+mate()`, and `+run()`;
+  Class DOM parity and focused SVG tests stayed green, and the default-layout golden for
+  `stress_class_interfaces_and_abstracts_007` was refreshed for the deterministic `+run()` layout
+  width, reducing Class text lookups from `288` to `285` and the global text lookup budget from
+  `491` to `488`.
 - Removed the redundant Class relation-label `references` rendered width override after the
   refreshed `stress_class_parallel_edges_and_cardinality_004` layout golden and the Class DOM /
   layout / strict gates stayed green, reducing Class text lookups from `294` to `293` and the

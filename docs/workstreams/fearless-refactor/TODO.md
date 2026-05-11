@@ -206,18 +206,19 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `insured for` and `is teacher of` relation-label prunings, after the later ER calcTextWidth and
   HTML width prunings, after the later blank Block label pruning, and after the later Class
   `int chimp` rendered-width, `int gorilla` calcTextWidth, and base-attribute calcTextWidth
-  cleanups; the follow-up Class calc-text-width pruning below brings the current total to `491`.
+  cleanups; the follow-up Class calc/rendered-width pruning below brings the current total to
+  `488`.
 - [x] Trim the Class calc-text-width override table to only browser-sensitive guards.
-  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 288
-  lookup entries, down from 344, after deleting 56 entries across the exact-match pass, the
+  Evidence: `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` now keeps 285
+  lookup entries, down from 344, after deleting 59 entries across the exact-match pass, the
   later `uses` plain-label cleanup, the final `OK` pair cleanup, and the `ApiClient` cleanup with
   the dense layout golden refresh, followed by the `ERROR`, `Payment`, `Cart`, and `Server`
   rendered-width cleanups, plus the `Dog`, `Mineral` calc, `Duck`, `Item`, `Order`, `Wheel`,
   `connects`, `builds`, `parses`, `emits`, `feedback`, `returns`, `wraps`, `reads`, `depends`,
-  `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`, and
-  `int[] id` cleanups.
+  `owns`, `may-fail`, `references`, `int chimp`, `int gorilla`, `+int age`, `int id`,
+  `int[] id`, `+eat()`, `+mate()`, and `+run()` cleanups.
   Both Class DOM parity modes and the layout snapshot test stayed green, and `report-overrides`
-  now reports `491` text lookup entries. The `bar()`, `E`,
+  now reports `488` text lookup entries. The `bar()`, `E`,
   `IService`, `+run() : Status`, `Client`, `+start()`, `API`, `DB`, and `Server` calc entries
   remain because focused SVG or layout snapshot tests still assert those Mermaid HTML `max-width`
   caps explicitly. The `User` rendered width entry also remains because removing it preserves the
@@ -578,7 +579,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `<<Performance Requirement>>`, `Type: simulation`, and `Verification: Analysis`; the
   `Verification: Test` pair was deleted after both Requirement parity modes stayed green. The
   no-growth budgets were also tightened to the current category totals (`750` root viewport entries
-  and `491` text lookup entries), so the strict gate blocks this
+  and `488` text lookup entries), so the strict gate blocks this
   deleted footprint from silently returning. One additional hand-curated
   `kanban` helper was removed by reusing the existing foreignObject height constant, and the
   XYChart bar data-label helpers were
