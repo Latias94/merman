@@ -43,6 +43,10 @@ Progress is tracked in the fearless-refactor workstream docs.
   `compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3` on
   `stress_class_unicode_namespace_mix_017` and by four Class layout snapshot mismatches, so that
   override stays pinned.
+- A Sequence root audit confirmed that `title_and_accdescr_multiline` and
+  `upstream_accessibility_single_line_spec` still need their 480px root pins, while
+  `upstream_title_without_colon_spec` still needs its 580px pin; removing them reintroduced
+  parity-root drift to 493px and 593px local max-width baselines.
 - `cargo run -p xtask -- verify --strict` passed on 2026-05-11 after removing the stale
   `xtask gen-er-text-overrides` command/generator and the empty ER `calcTextWidth` lookup path.
   A later empty-diagram root viewport cleanup lowered the root budget to `750`, and the later

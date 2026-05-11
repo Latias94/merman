@@ -262,9 +262,11 @@ need root-viewport derivation work before table pruning, not another blind delet
 
 Sequence note: a 2026-05-11 layout recalibration for participant-type actors removed 8 now-
 redundant Sequence root pins after the matching layout goldens were refreshed. The title and
-long-message fixtures still fail `parity-root` without the lookup, so Sequence cleanup now has a
-narrower target: participant-type bounds are fixed, but title and long-message expansion still need
-typed derivation work.
+long-message fixtures still fail `parity-root` without the lookup: `title_and_accdescr_multiline`
+and `upstream_accessibility_single_line_spec` reintroduce a 480px -> 493px max-width drift, while
+`upstream_title_without_colon_spec` reintroduces a 580px -> 593px max-width drift. Sequence
+cleanup now has a narrower target: participant-type bounds are fixed, but title and long-message
+expansion still need typed derivation work.
 
 Largest root-viewport buckets:
 
