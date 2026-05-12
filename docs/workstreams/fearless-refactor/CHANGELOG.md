@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Derived wrapped Sequence `leftOf` note width and final rewrap behavior, refreshed the affected
+  Sequence/ZenUML layout goldens, removed nine more Sequence root pins, reduced the root viewport
+  budget to `702` with Sequence at `164`, and revalidated focused disabled-root checks, full
+  Sequence `parity-root`, render clippy, render nextest, and override no-growth.
 - Fixed Sequence `leftOf` note start recomputation after width clamping, added a shared SVG text
   metric fact for the long `Extremely utterly long line of longness which had previously
   overflown the actor box as it is much longer than what it should be` message, removed six

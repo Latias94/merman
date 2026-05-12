@@ -69,9 +69,10 @@ pins, tightening the current root viewport budget to `754`. A follow-up Mindmap 
 Mindmap label measurement on raw font metrics so cross-diagram HTML width overrides no longer
 inflate the docs circle root, deleting one more root pin and tightening the current root viewport
 budget to `753`. Later State/Mindmap/Sequence root-viewport derivation passes tightened the root
-viewport budget to `711`; the latest Sequence long-note/long-message pass fixed leftOf note start
-recomputation, removed six more root pins, and kept the SVG text metric table budget flat at `186`
-rows by replacing one stale `FRIENDS` row with the new long-message fact.
+viewport budget to `702`; the latest Sequence long-note/long-message and wrapped-leftOf passes
+fixed leftOf note start/width/rewrap behavior, removed fifteen more root pins, and kept the SVG
+text metric table budget flat at `186` rows by replacing one stale `FRIENDS` row with the new
+long-message fact.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in

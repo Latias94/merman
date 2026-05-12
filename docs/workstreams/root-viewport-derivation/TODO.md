@@ -209,6 +209,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   long-message browser SVG metric fact. The stale `FRIENDS` row was deleted so the SVG text metric
   table stayed at `186`; full Sequence `parity-root` and `report-overrides --check-no-growth`
   passed.
+- [x] Remove the follow-up Sequence wrapped-leftOf / long-note nine-pack.
+  Evidence: wrapped `leftOf` notes now derive Mermaid's initial note-width probe and final rewrap
+  behavior through Sequence-owned bbox calibration. The two wrapped-leftOf fixtures plus seven
+  adjacent long-note/message/root candidates pass focused disabled-root `parity-root`; full
+  Sequence `parity-root`, render clippy, render nextest, and `report-overrides --check-no-growth`
+  passed. Root viewport overrides are now `702` total, with `164` Sequence entries; text lookup
+  remains `484` and the SVG text metric table remains `186`.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.

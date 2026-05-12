@@ -2,6 +2,11 @@
 
 ## 2026-05-12
 
+- Derived wrapped Sequence `leftOf` note width and final rewrap behavior with leftOf-owned bbox
+  calibration, refreshed the affected Sequence/ZenUML layout goldens, removed nine more Sequence
+  root pins, tightened the root budget to `702` and Sequence root pins to `164`, and revalidated
+  focused disabled-root checks, full Sequence `parity-root`, render clippy, render nextest, and
+  `report-overrides --check-no-growth`.
 - Fixed the Sequence `leftOf` note start recomputation after width clamping, added a shared SVG
   text metric fact for the long `Extremely utterly long line of longness which had previously
   overflown the actor box as it is much longer than what it should be` message, removed the six

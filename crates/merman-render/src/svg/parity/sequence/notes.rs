@@ -1,6 +1,9 @@
 use super::super::*;
 use super::geometry::node_left_top;
-use crate::sequence::{SEQUENCE_NOTE_WRAP_SLACK_PX, sequence_text_line_step_px};
+use crate::sequence::{
+    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_NOTE_WRAP_SLACK_PX,
+    sequence_text_line_step_px,
+};
 use merman_core::diagrams::sequence::SequenceMessage;
 use rustc_hash::FxHashMap;
 
@@ -42,7 +45,13 @@ pub(super) fn render_sequence_note(
         //
         // Layout already computed the note box width (`n.width`) to match Mermaid's
         // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
-        let wrap_w = (n.width - 2.0 * wrap_padding + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0);
+        let placement = msg.placement.unwrap_or(2);
+        let wrap_slack = if placement == 0 {
+            SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX
+        } else {
+            SEQUENCE_NOTE_WRAP_SLACK_PX
+        };
+        let wrap_w = (n.width - 2.0 * wrap_padding + wrap_slack).max(1.0);
         let lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
             raw,
             measurer,

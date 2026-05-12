@@ -160,6 +160,10 @@ Progress:
   `parity-root` checks passed for the long-note and long-message fixtures; the stale `FRIENDS`
   row was dropped so the SVG text metric table stayed at `186` rows and `report-overrides
   --check-no-growth` remained green.
+- Removed the follow-up wrapped-leftOf / long-note Sequence nine-pack after deriving the leftOf
+  note width probe and final rewrap behavior. Focused disabled-root checks, full Sequence
+  `parity-root`, render clippy, render nextest, and `report-overrides --check-no-growth` passed;
+  root viewport overrides are now `702` total with `164` Sequence entries.
 
 Exit criteria:
 

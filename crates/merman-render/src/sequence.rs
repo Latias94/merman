@@ -10,6 +10,8 @@ use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessag
 use serde_json::Value;
 
 pub(crate) const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 12.0;
+pub(crate) const SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX: f64 = 3.0;
+pub(crate) const SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX: f64 = 16.0;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
 pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
 pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
@@ -1266,22 +1268,24 @@ pub fn layout_sequence_diagram_typed(
                 // and then measuring them.
                 //
                 // Important: Mermaid widens *leftOf* wrapped notes based on the initially wrapped
-                // text width (+ margins) before re-wrapping to the final width. This affects the
-                // final wrap width and thus the rendered line breaks.
-                let w0 = {
+                // text width (+ margins) before re-wrapping to the final width. That first
+                // `wrapLabel(...)` call uses `conf.width` exactly. Chromium can still report a
+                // saturated wrapped line a few pixels wider in `calculateTextDimensions(...)`;
+                // reflect that bounded bbox overflow before adding note margins.
+                if placement == 0 {
                     let init_lines = wrap_label_like_mermaid_lines_floored_bbox(
                         text,
                         measurer,
                         &note_text_style,
-                        (note_width_single + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
+                        note_width_single.max(1.0),
                     );
                     let init_wrapped = init_lines.join("<br/>");
                     let (w, _h) =
                         measure_svg_like_with_html_br(measurer, &init_wrapped, &note_text_style);
-                    w.max(0.0)
-                };
-
-                if placement == 0 {
+                    let mut w0 = w.max(0.0);
+                    if w0 >= note_width_single {
+                        w0 = w0.max(note_width_single + SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX);
+                    }
                     // Mermaid (LEFTOF + wrap): `noteModel.width = max(conf.width, textWidth + 2*noteMargin)`.
                     // Our note padding total is `2*noteMargin`/`2*wrapPadding` in the default config.
                     note_w = note_w.max((w0 + note_text_pad_total).round().max(1.0));
@@ -1289,11 +1293,16 @@ pub fn layout_sequence_diagram_typed(
                 }
 
                 let wrap_w = (note_w - note_text_pad_total).max(1.0);
+                let wrap_slack = if placement == 0 {
+                    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX
+                } else {
+                    SEQUENCE_NOTE_WRAP_SLACK_PX
+                };
                 let lines = wrap_label_like_mermaid_lines_floored_bbox(
                     text,
                     measurer,
                     &note_text_style,
-                    (wrap_w + SEQUENCE_NOTE_WRAP_SLACK_PX).max(1.0),
+                    (wrap_w + wrap_slack).max(1.0),
                 );
                 let wrapped = lines.join("<br/>");
                 let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);
@@ -1319,6 +1328,7 @@ pub fn layout_sequence_diagram_typed(
                     _ => {
                         if (fx - tx).abs() < 0.0001 {
                             note_w = note_w.max(padded_w);
+                            note_x = fx - note_w / 2.0;
                         }
                     }
                 }
@@ -2117,6 +2127,8 @@ mod tests {
     #[test]
     fn sequence_text_and_frame_constants_match_mermaid() {
         assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 12.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 3.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 16.0);
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);

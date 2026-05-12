@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and twenty-five Sequence root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and thirty-four Sequence root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, and Sequence passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -31,15 +31,16 @@ Current counts after the State style/entity-placeholder/note-label/transition-la
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, and the first
 Sequence font-size precedence, boundary message-width, title/accessibility message-width,
-residual default-title, simple note-right, and long-note/long-message passes:
+residual default-title, simple note-right, long-note/long-message, and wrapped-leftOf follow-up
+passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `173` entries.
-- Root viewport total: `711` entries.
+- Sequence: `164` entries.
+- Root viewport total: `702` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
-  fact replaced one stale `FRIENDS` row while the leftOf fix removed six root pins without growing
-  the table.
+  fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
+  pins without adding lookup rows.
 - SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
   the stale row cleanup.
 
@@ -68,6 +69,9 @@ extends the same coverage to simple `alt`/`else` control wrappers. The long-note
 follow-up fixed `leftOf` note start recomputation after width clamping, added a shared SVG text
 metric fact for the long message, and dropped the stale `FRIENDS` row so the SVG text metric
 budget stayed at `186` without changing `report-overrides --check-no-growth`.
+A second follow-up derived wrapped `leftOf` note width probing and final rewrap behavior, refreshed
+the affected Sequence/ZenUML layout goldens, and removed nine more Sequence root pins while keeping
+the text lookup and SVG text metric budgets flat.
 
 ## Focused Commands
 
@@ -91,6 +95,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused
+  `compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter ...` passed
+  for the nine removed Sequence root pins. `cargo clippy -p merman-render --all-targets
+  --all-features -- -D warnings`, `cargo nextest run -p merman-render`, full
+  `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3`,
+  and `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total `702`,
+  Sequence root count `164`, text lookup count `484`, and SVG text metric total `186`.
 - 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused `compare-sequence-svgs`
   `--check-dom --dom-mode parity-root --dom-decimals 3` passed for the six long-note/long-message
   fixtures after fixing leftOf note start recomputation and adding the shared long-message SVG
