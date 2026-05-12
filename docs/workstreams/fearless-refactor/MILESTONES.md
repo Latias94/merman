@@ -360,6 +360,9 @@ Progress:
   membership, and x-coordinate planning into `SequenceActorLayoutPlan`, leaving
   `layout_sequence_diagram_typed` to consume an explicit actor plan instead of owning the spacing
   state machine.
+- Re-ran the Sequence disabled-root audit after the actor/root-bounds decomposition; the 80 DOM
+  mismatches matched the current Sequence root table size, so the remaining Sequence root pins stay
+  classified as active typed-bounds/text-measurement targets.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

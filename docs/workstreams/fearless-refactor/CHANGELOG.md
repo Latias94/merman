@@ -23,6 +23,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   membership, and x-coordinate planning into `SequenceActorLayoutPlan`, dropping
   `sequence.rs` to a focused orchestration layer while preserving render nextest, render clippy,
   Sequence `parity-root`, and override no-growth.
+- Re-ran the Sequence disabled-root audit after the actor/root-bounds decomposition; the audit found
+  80 DOM mismatches matching the current Sequence root table size, so no stale Sequence root pin was
+  removed in this pass.
 
 ## 2026-05-12
 

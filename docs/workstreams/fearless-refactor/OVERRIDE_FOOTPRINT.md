@@ -250,7 +250,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `717`.
+Total entries reported by `xtask`: `618`.
 
 | file | entries |
 | --- | ---: |
@@ -263,7 +263,7 @@ Total entries reported by `xtask`: `717`.
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 179 |
+| `sequence_root_overrides_11_12_2.rs` | 80 |
 | `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -331,12 +331,13 @@ required Sequence guards for
 `upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015`,
 `upstream_docs_sequence_entity_codes_example`, `upstream_docs_sequencediagram_break_062`,
 `upstream_par_multiple_ands_spec`, and `upstream_pkgtests_sequencediagram_spec_063`.
-A follow-up Sequence audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
-`--report-root-all` produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
-viewBox dimensions, and one KaTeX-related DOM skip. The largest width deltas came from long-note
-and long-message fixtures, including `-203px` drift on the left-of-actor long-note cases and
-`+171px` drift on the Mermaid API sequence fixture, so the remaining table should be reduced by
-typed bounds work rather than by another blind deletion pass.
+A 2026-05-13 follow-up Sequence audit after the layout-owner decomposition used
+`MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus `--report-root-all` and produced 320 root rows, 73
+non-zero `max-width` deltas, 80 changed viewBox dimensions, and 80 DOM mismatches. That mismatch
+count matches the current Sequence root table size, so no stale retained Sequence root pin was
+found in this pass. The largest remaining drift still came from long-message and dense wrapping
+fixtures, including `+171px` on the Mermaid API sequence fixture, so the remaining table should be
+reduced by typed bounds/text measurement work rather than by another blind deletion pass.
 Journey note: the table was reintroduced with two tiny browser-float root guards after full
 `parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
 fixtures. The renderer still derives normal Journey root behavior; these two entries are
@@ -355,8 +356,8 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `gitgraph`: 228
-- `sequence`: 179
 - `flowchart`: 125
+- `sequence`: 80
 - `mindmap`: 39
 - `state`: 34
 

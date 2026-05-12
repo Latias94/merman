@@ -489,6 +489,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `cargo clippy --all-targets --all-features -- -D warnings`, workspace `cargo nextest run`
   (`1023` passed, `3` skipped), override no-growth, feature matrix checks, normal SVG DOM parity,
   and root SVG DOM parity.
+- 2026-05-13: after the Sequence actor/root-bounds layout-owner decomposition,
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-sequence-svgs
+  --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out
+  target/compare/sequence_disabled_root_audit_2026_05_13.md` exited `1` as expected for a
+  disabled-root audit. The report contained 320 root rows, 73 non-zero `max-width` deltas, 80
+  changed viewBox dimensions, and 80 DOM mismatches, matching the current Sequence root table size;
+  no stale retained Sequence root pin was found.
 - 2026-05-12: refreshed the 29 affected Mindmap layout golden snapshots after the wrapped-label
   layout rule changed node dimensions and tree positions.
 - 2026-05-12: `cargo test -p merman-render
