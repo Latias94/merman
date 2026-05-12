@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split Sequence block frame bounds accumulation out of `sequence.rs` into
+  `sequence/block_bounds.rs`, turning the final block-frame `getBBox` expansion pass into a
+  focused module while keeping render nextest, render clippy, Sequence `parity-root`, and override
+  no-growth green.
 - Split Sequence block directive cursor-step planning out of `sequence.rs` into
   `sequence/block_steps.rs`, reducing `layout_sequence_diagram_typed` to orchestration for this
   phase while preserving the `618` root override budget, `80` Sequence root pins, `484` text lookup
