@@ -151,6 +151,10 @@ Progress:
   `upstream_pkgtests_sequencediagram_spec_054`, `upstream_pkgtests_sequencediagram_spec_055`, and
   `upstream_pkgtests_sequencediagram_spec_056`; existing Sequence note/message bounds now cover
   these block wrappers without adding SVG metric rows.
+- Removed the alt-control `Bob thinks` note-right trio
+  `upstream_pkgtests_sequencediagram_spec_058`, `upstream_pkgtests_sequencediagram_spec_059`, and
+  `upstream_alt_multiple_elses_spec`; existing Sequence note/message bounds now cover these simple
+  `alt`/`else` wrappers without adding SVG metric rows.
 
 Exit criteria:
 

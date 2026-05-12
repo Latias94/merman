@@ -69,8 +69,8 @@ pins, tightening the current root viewport budget to `754`. A follow-up Mindmap 
 Mindmap label measurement on raw font metrics so cross-diagram HTML width overrides no longer
 inflate the docs circle root, deleting one more root pin and tightening the current root viewport
 budget to `753`. Later State/Mindmap/Sequence root-viewport derivation passes tightened the root
-viewport budget to `720`; the latest Sequence block note-right pass kept the SVG text metric table
-budget flat at `186` rows by reusing existing note/message bounds.
+viewport budget to `717`; the latest Sequence alt-control note-right pass kept the SVG text metric
+table budget flat at `186` rows by reusing existing note/message bounds.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -248,7 +248,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `720`.
+Total entries reported by `xtask`: `717`.
 
 | file | entries |
 | --- | ---: |
@@ -261,7 +261,7 @@ Total entries reported by `xtask`: `720`.
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 182 |
+| `sequence_root_overrides_11_12_2.rs` | 179 |
 | `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -317,10 +317,12 @@ note/message bounds without new SVG metric rows. The follow-up whitespace/commen
 `upstream_pkgtests_sequencediagram_spec_046` was then deleted under the same existing bounds.
 The simple block trio `upstream_pkgtests_sequencediagram_spec_054`,
 `upstream_pkgtests_sequencediagram_spec_055`, and `upstream_pkgtests_sequencediagram_spec_056`
-followed, covering loop, rect, and nested-rect `Bob thinks` cases. Sequence cleanup now has a
-narrower target: participant-type, boundary, and the first title/default-title/simple-note roots
-are fixed, but long-message, long-note, and larger frame expansion still need typed derivation
-work. A later full
+followed, covering loop, rect, and nested-rect `Bob thinks` cases. The alt-control trio
+`upstream_pkgtests_sequencediagram_spec_058`, `upstream_pkgtests_sequencediagram_spec_059`, and
+`upstream_alt_multiple_elses_spec` was then removed under the same existing bounds. Sequence
+cleanup now has a narrower target: participant-type, boundary, and the first
+title/default-title/simple-note roots are fixed, but long-message, long-note, and larger frame
+expansion still need typed derivation work. A later full
 `parity-root` sweep restored six more
 required Sequence guards for
 `upstream_break_spec`,
@@ -351,7 +353,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `gitgraph`: 228
-- `sequence`: 182
+- `sequence`: 179
 - `flowchart`: 125
 - `mindmap`: 39
 - `state`: 34

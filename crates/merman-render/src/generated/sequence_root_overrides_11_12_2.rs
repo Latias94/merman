@@ -205,7 +205,6 @@ pub fn lookup_sequence_root_viewport_override(
         "no_label_blocks" => Some(("-50 -10 480 669", "480")),
         "semicolons_and_comments" => Some(("-50 -10 580 308", "580")),
         "upstream_alias_participants_spec" => Some(("-50 -10 480 259", "480")),
-        "upstream_alt_multiple_elses_spec" => Some(("-50 -10 580 541", "580")),
         "upstream_cypress_sequencediagram_spec_example_001" => Some(("-50 -10 810 979", "810")),
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059" => {
             Some(("-50 -10 790 942", "790"))
@@ -309,8 +308,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_pkgtests_sequencediagram_spec_038" => Some(("-50 -10 513 259", "513")),
         "upstream_pkgtests_sequencediagram_spec_040" => Some(("-50 -10 806 347", "806")),
         "upstream_pkgtests_sequencediagram_spec_057" => Some(("-50 -10 480 314", "480")),
-        "upstream_pkgtests_sequencediagram_spec_058" => Some(("-50 -10 580 452", "580")),
-        "upstream_pkgtests_sequencediagram_spec_059" => Some(("-50 -10 580 541", "580")),
         "upstream_pkgtests_sequencediagram_spec_060" => Some(("-50 -10 480 294", "480")),
         "upstream_pkgtests_sequencediagram_spec_061" => Some(("-50 -10 480 294", "480")),
         "upstream_pkgtests_sequencediagram_spec_063" => Some(("-50 -10 499 580", "499")),

@@ -198,6 +198,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_pkgtests_sequencediagram_spec_054`, `upstream_pkgtests_sequencediagram_spec_055`, and
   `upstream_pkgtests_sequencediagram_spec_056` pass focused disabled-root `parity-root`, so their
   root pins were deleted without growing the SVG text metric table.
+- [x] Remove a simple Sequence alt-control note-right slice under the same bounds.
+  Evidence: the alt-control `Bob thinks` trio `upstream_pkgtests_sequencediagram_spec_058`,
+  `upstream_pkgtests_sequencediagram_spec_059`, and `upstream_alt_multiple_elses_spec` pass focused
+  disabled-root `parity-root`, so their root pins were deleted without growing the SVG text metric
+  table.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.
@@ -205,13 +210,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 ## P3: Release Closeout
 
 - [x] Run `cargo run -p xtask -- verify --strict`.
-  Evidence: strict passed after the latest Sequence block note-right pass, including fmt,
+  Evidence: strict passed after the latest Sequence alt-control note-right pass, including fmt,
   workspace clippy, workspace nextest, override no-growth, feature matrix, normal DOM parity, and
   root DOM parity.
 - [x] Run `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`.
   Evidence: focused render clippy passed before the final strict gate.
 - [x] Run `cargo nextest run` if shared rendering/layout behavior changed.
   Evidence: the final strict gate reran workspace nextest with `1023` passed and `3` skipped after
-  the Sequence block note-right root pin cleanup.
+  the Sequence alt-control note-right root pin cleanup.
 - [x] Update `CHANGELOG.md` and the workstream changelog.
 - [x] Complete `AUDIT.md` with prompt-to-artifact evidence.

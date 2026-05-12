@@ -59,6 +59,10 @@
   `upstream_pkgtests_sequencediagram_spec_054`, `upstream_pkgtests_sequencediagram_spec_055`, and
   `upstream_pkgtests_sequencediagram_spec_056`, tightening the root budget to `720` and Sequence
   root pins to `182` without growing the SVG text metric table.
+- Removed the alt-control `Bob thinks` note-right Sequence trio
+  `upstream_pkgtests_sequencediagram_spec_058`, `upstream_pkgtests_sequencediagram_spec_059`, and
+  `upstream_alt_multiple_elses_spec`, tightening the root budget to `717` and Sequence root pins
+  to `179` without growing the SVG text metric table.
 
 ## 2026-05-11
 
