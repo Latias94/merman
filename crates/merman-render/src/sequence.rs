@@ -9,6 +9,7 @@ use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use serde_json::Value;
 
 mod activation;
+mod actors;
 mod block_bounds;
 mod block_steps;
 mod config;
@@ -28,6 +29,9 @@ pub(crate) use constants::{
 pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 
 use activation::SequenceActivationState;
+use actors::{
+    SequenceActorLifecycle, SequenceActorLifecycleContext, sequence_actor_is_type_width_limited,
+};
 use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
@@ -489,40 +493,19 @@ pub fn layout_sequence_diagram_typed(
         .max(1.0);
     let mut activation_state = SequenceActivationState::new(activation_width);
 
-    // Mermaid adjusts created/destroyed actors while processing messages:
-    // - created actor: `starty = lineStartY - actor.height/2`
-    // - destroyed actor: `stopy = lineStartY - actor.height/2`
-    // It also bumps the cursor by `actor.height/2` to avoid overlaps.
-    let mut created_actor_top_center_y: std::collections::BTreeMap<String, f64> =
-        std::collections::BTreeMap::new();
-    let mut destroyed_actor_bottom_top_y: std::collections::BTreeMap<String, f64> =
-        std::collections::BTreeMap::new();
-
-    let actor_visual_height_for_id = |actor_id: &str| -> f64 {
-        let Some(idx) = actor_index.get(actor_id).copied() else {
-            return actor_height.max(1.0);
-        };
-        let w = actor_widths.get(idx).copied().unwrap_or(actor_width_min);
-        let base_h = actor_base_heights.get(idx).copied().unwrap_or(actor_height);
-        model
-            .actors
-            .get(actor_id)
-            .map(|a| a.actor_type.as_str())
-            .map(|t| sequence_actor_visual_height(t, w, base_h, label_box_height))
-            .unwrap_or(base_h.max(1.0))
-    };
-    let actor_is_type_width_limited = |actor_id: &str| -> bool {
-        model
-            .actors
-            .get(actor_id)
-            .map(|a| {
-                matches!(
-                    a.actor_type.as_str(),
-                    "actor" | "control" | "entity" | "database"
-                )
-            })
-            .unwrap_or(false)
-    };
+    let mut actor_lifecycle = SequenceActorLifecycle::new(SequenceActorLifecycleContext {
+        actor_index: &actor_index,
+        actor_widths: &actor_widths,
+        actor_base_heights: &actor_base_heights,
+        actors: &model.actors,
+        created_actors: &model.created_actors,
+        destroyed_actors: &model.destroyed_actors,
+        actor_height,
+        actor_width_min,
+        label_box_height,
+    });
+    let actor_is_type_width_limited =
+        |actor_id: &str| -> bool { sequence_actor_is_type_width_limited(&model.actors, actor_id) };
 
     for (msg_idx, msg) in model.messages.iter().enumerate() {
         if activation_state.handle_directive(msg, &actor_index, &actor_centers_x) {
@@ -619,15 +602,15 @@ pub fn layout_sequence_diagram_typed(
                 created_actor_index: msg
                     .to
                     .as_deref()
-                    .and_then(|to| model.created_actors.get(to).copied()),
+                    .and_then(|to| actor_lifecycle.created_actor_index(to)),
                 destroyed_from_index: msg
                     .from
                     .as_deref()
-                    .and_then(|from| model.destroyed_actors.get(from).copied()),
+                    .and_then(|from| actor_lifecycle.destroyed_actor_index(from)),
                 destroyed_to_index: msg
                     .to
                     .as_deref()
-                    .and_then(|to| model.destroyed_actors.get(to).copied()),
+                    .and_then(|to| actor_lifecycle.destroyed_actor_index(to)),
                 actor_is_type_width_limited: &actor_is_type_width_limited,
             },
         ) else {
@@ -649,47 +632,14 @@ pub fn layout_sequence_diagram_typed(
             cursor_y += 30.0;
         }
 
-        // Apply Mermaid's created/destroyed actor y adjustments and spacing bumps.
-        if model
-            .created_actors
-            .get(to)
-            .is_some_and(|&idx| idx == msg_idx)
-        {
-            let h = actor_visual_height_for_id(to);
-            created_actor_top_center_y.insert(to.to_string(), line_y);
-            cursor_y += h / 2.0;
-        } else if model
-            .destroyed_actors
-            .get(from)
-            .is_some_and(|&idx| idx == msg_idx)
-        {
-            let h = actor_visual_height_for_id(from);
-            destroyed_actor_bottom_top_y.insert(from.to_string(), line_y - h / 2.0);
-            cursor_y += h / 2.0;
-        } else if model
-            .destroyed_actors
-            .get(to)
-            .is_some_and(|&idx| idx == msg_idx)
-        {
-            let h = actor_visual_height_for_id(to);
-            destroyed_actor_bottom_top_y.insert(to.to_string(), line_y - h / 2.0);
-            cursor_y += h / 2.0;
-        }
+        cursor_y += actor_lifecycle.apply_message_y_adjustment(msg_idx, from, to, line_y);
         edges.push(message.edge);
     }
 
     let bottom_margin = 2.0 * box_margin;
     let bottom_box_top_y = (cursor_y - message_step) + bottom_margin;
 
-    // Apply created-actor `starty` overrides now that we know the creation message y.
-    for n in nodes.iter_mut() {
-        let Some(actor_id) = n.id.strip_prefix("actor-top-") else {
-            continue;
-        };
-        if let Some(y) = created_actor_top_center_y.get(actor_id).copied() {
-            n.y = y;
-        }
-    }
+    actor_lifecycle.apply_created_top_actor_positions(&mut nodes);
 
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
@@ -701,9 +651,8 @@ pub fn layout_sequence_diagram_typed(
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
         let visual_h = sequence_actor_visual_height(actor_type, w, base_h, label_box_height);
-        let bottom_top_y = destroyed_actor_bottom_top_y
-            .get(id)
-            .copied()
+        let bottom_top_y = actor_lifecycle
+            .destroyed_bottom_top_y(id)
             .unwrap_or(bottom_box_top_y);
         let bottom_visual_h = if mirror_actors { visual_h } else { 0.0 };
         nodes.push(LayoutNode {
@@ -717,9 +666,8 @@ pub fn layout_sequence_diagram_typed(
             label_height: None,
         });
 
-        let top_center_y = created_actor_top_center_y
-            .get(id)
-            .copied()
+        let top_center_y = actor_lifecycle
+            .created_top_center_y(id)
             .unwrap_or(actor_top_offset_y + visual_h / 2.0);
         let top_left_y = top_center_y - visual_h / 2.0;
         let lifeline_start_y =

@@ -344,6 +344,9 @@ Progress:
   `crates/merman-render/src/sequence/messages.rs`, so endpoint adjustment, wrapped-message text,
   label measurement, and cursor-step geometry live behind one focused helper while the main loop
   applies actor lifecycle state.
+- Split created/destroyed Sequence actor vertical lifecycle state into
+  `crates/merman-render/src/sequence/actors.rs`, so Mermaid `starty`/`stopy` anchors, visual-height
+  lookup, and cursor bump handling have one owner.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

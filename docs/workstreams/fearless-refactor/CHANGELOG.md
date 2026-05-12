@@ -3,6 +3,13 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-13
+
+- Split created/destroyed Sequence actor vertical lifecycle state out of `sequence.rs` into
+  `sequence/actors.rs`, keeping Mermaid `starty`/`stopy` anchors, actor visual-height lookup, and
+  cursor bump handling behind one state object while preserving render nextest, render clippy,
+  Sequence `parity-root`, and override no-growth.
+
 ## 2026-05-12
 
 - Split regular Sequence message edge layout out of `sequence.rs` into `sequence/messages.rs`,

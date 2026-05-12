@@ -82,6 +82,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout internals: split regular message edge layout into `sequence/messages.rs`,
   keeping endpoint, wrap, label, and cursor geometry behind a focused helper while the main loop
   applies actor lifecycle state.
+- Sequence layout internals: split created/destroyed actor vertical lifecycle state into
+  `sequence/actors.rs`, keeping Mermaid `starty`/`stopy` anchors and cursor bumps behind a focused
+  state object.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with
