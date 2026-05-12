@@ -337,6 +337,9 @@ Progress:
 - Split Sequence layout activation stack state into
   `crates/merman-render/src/sequence/activation.rs`, leaving the main message loop to ask for
   active actor endpoint bounds instead of manipulating activation stacks directly.
+- Split Sequence note layout into `crates/merman-render/src/sequence/notes.rs`, so note placement,
+  wrapped-note measurement quirks, rect-bounds contribution, and cursor increment live behind one
+  focused helper.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

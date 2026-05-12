@@ -17,15 +17,15 @@ mod block_steps;
 mod config;
 mod constants;
 mod metrics;
+mod notes;
 mod rect;
 
 pub(crate) use constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
-    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX,
-    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SEQUENCE_NOTE_WRAP_SLACK_PX,
-    SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX,
-    sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
-    sequence_text_line_step_px,
+    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR,
+    SEQUENCE_NOTE_WRAP_SLACK_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
+    SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, sequence_actor_popup_panel_height,
+    sequence_text_dimensions_height_px, sequence_text_line_step_px,
 };
 pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 
@@ -35,6 +35,7 @@ use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
 use constants::{sequence_actor_lifeline_start_y, sequence_actor_visual_height};
 use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
+use notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use rect::{SequenceRectOpen, sequence_rect_stack_x_bounds};
 
 pub fn layout_sequence_diagram(
@@ -565,147 +566,32 @@ pub fn layout_sequence_diagram_typed(
 
         // Notes (type=2) are laid out as nodes, not message edges.
         if msg.message_type == 2 {
-            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-                continue;
-            };
-            let (Some(fi), Some(ti)) =
-                (actor_index.get(from).copied(), actor_index.get(to).copied())
-            else {
-                continue;
-            };
-            let fx = actor_centers_x[fi];
-            let tx = actor_centers_x[ti];
-
-            let placement = msg.placement.unwrap_or(2);
-            let (mut note_x, mut note_w) = match placement {
-                // leftOf
-                0 => (fx - 25.0 - note_width_single, note_width_single),
-                // rightOf
-                1 => (fx + 25.0, note_width_single),
-                // over
-                _ => {
-                    if (fx - tx).abs() < 0.0001 {
-                        // Mermaid's `buildNoteModel(...)` widens "over self" notes when `wrap: true`:
-                        //   noteModel.width = max(conf.width, fromActor.width)
-                        //
-                        // This is observable in upstream SVG baselines for participants with
-                        // type-driven widths (e.g. `queue`), where the note box matches the actor
-                        // width rather than the configured default `conf.width`.
-                        let mut w = note_width_single;
-                        if msg.wrap {
-                            w = w.max(actor_widths.get(fi).copied().unwrap_or(note_width_single));
-                        }
-                        (fx - (w / 2.0), w)
-                    } else {
-                        let left = fx.min(tx) - 25.0;
-                        let right = fx.max(tx) + 25.0;
-                        let w = (right - left).max(note_width_single);
-                        (left, w)
-                    }
-                }
-            };
-
-            let text = msg.message_text();
-            let is_math_note = text.contains("$$");
-            let (text_w, h) = if is_math_note {
-                measure_sequence_label_for_layout(
+            let Some(note) = layout_sequence_note(
+                msg,
+                SequenceNoteLayoutContext {
+                    actor_index: &actor_index,
+                    actor_centers_x: &actor_centers_x,
+                    actor_widths: &actor_widths,
+                    note_width_single,
+                    note_text_pad_total,
+                    note_top_offset,
+                    note_gap,
+                    cursor_y,
                     measurer,
-                    text,
-                    &note_text_style,
-                    &math_config,
+                    note_text_style: &note_text_style,
+                    math_config: &math_config,
                     math_renderer,
-                    SequenceMathHeightMode::Bound,
-                )
-            } else if msg.wrap {
-                // Mermaid Sequence notes are wrapped via `wrapLabel(...)`, then measured via SVG
-                // bbox probes (not HTML wrapping). Model this by producing wrapped `<br/>` lines
-                // and then measuring them.
-                //
-                // Important: Mermaid widens *leftOf* wrapped notes based on the initially wrapped
-                // text width (+ margins) before re-wrapping to the final width. That first
-                // `wrapLabel(...)` call uses `conf.width` exactly. Chromium can still report a
-                // saturated wrapped line a few pixels wider in `calculateTextDimensions(...)`;
-                // reflect that bounded bbox overflow before adding note margins.
-                if placement == 0 {
-                    let init_lines = wrap_label_like_mermaid_lines_floored_bbox(
-                        text,
-                        measurer,
-                        &note_text_style,
-                        note_width_single.max(1.0),
-                    );
-                    let init_wrapped = init_lines.join("<br/>");
-                    let (w, _h) =
-                        measure_svg_like_with_html_br(measurer, &init_wrapped, &note_text_style);
-                    let mut w0 = w.max(0.0);
-                    if w0 >= note_width_single {
-                        w0 = w0.max(note_width_single + SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX);
-                    }
-                    // Mermaid (LEFTOF + wrap): `noteModel.width = max(conf.width, textWidth + 2*noteMargin)`.
-                    // Our note padding total is `2*noteMargin`/`2*wrapPadding` in the default config.
-                    note_w = note_w.max((w0 + note_text_pad_total).round().max(1.0));
-                    note_x = fx - 25.0 - note_w;
-                }
-
-                let wrap_w = (note_w - note_text_pad_total).max(1.0);
-                let wrap_slack = if placement == 0 {
-                    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX
-                } else {
-                    SEQUENCE_NOTE_WRAP_SLACK_PX
-                };
-                let lines = wrap_label_like_mermaid_lines_floored_bbox(
-                    text,
-                    measurer,
-                    &note_text_style,
-                    (wrap_w + wrap_slack).max(1.0),
-                );
-                let wrapped = lines.join("<br/>");
-                let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);
-                (w.max(0.0), h.max(0.0))
-            } else {
-                measure_svg_like_with_html_br(measurer, text, &note_text_style)
+                },
+            ) else {
+                continue;
             };
-
-            // Mermaid's `buildNoteModel(...)` widens the note box when the text would overflow the
-            // configured default width. This is observable in strict SVG XML baselines when the
-            // note contains literal `<br ...>` markup that is *not* treated as a line break.
-            let padded_w = (text_w + note_text_pad_total).round().max(1.0);
-            if !msg.wrap || is_math_note {
-                match placement {
-                    // leftOf / rightOf notes clamp width to fit label text.
-                    0 | 1 => {
-                        note_w = note_w.max(padded_w);
-                        if placement == 0 {
-                            note_x = fx - 25.0 - note_w;
-                        }
-                    }
-                    // over: only clamp when the note is over a single actor (`from == to`).
-                    _ => {
-                        if (fx - tx).abs() < 0.0001 {
-                            note_w = note_w.max(padded_w);
-                            note_x = fx - note_w / 2.0;
-                        }
-                    }
-                }
-            }
-            let note_h = (h + note_text_pad_total).round().max(1.0);
-            let note_y = (cursor_y - note_top_offset).round();
-
-            nodes.push(LayoutNode {
-                id: format!("note-{}", msg.id),
-                x: note_x + note_w / 2.0,
-                y: note_y + note_h / 2.0,
-                width: note_w.max(1.0),
-                height: note_h,
-                is_cluster: false,
-                label_width: None,
-                label_height: None,
-            });
 
             for open in rect_stack.iter_mut() {
-                open.include_min_max(note_x - 10.0, note_x + note_w + 10.0, note_y + note_h);
+                open.include_min_max(note.rect_min_x, note.rect_max_x, note.rect_max_y);
             }
 
-            cursor_y += note_h + note_gap;
+            nodes.push(note.node);
+            cursor_y += note.cursor_step;
             continue;
         }
 
