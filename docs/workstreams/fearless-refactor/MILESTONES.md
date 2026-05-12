@@ -350,6 +350,9 @@ Progress:
 - Moved bottom actor box and lifeline construction into
   `crates/merman-render/src/sequence/actors.rs`, keeping participant footer geometry with the same
   actor lifecycle owner.
+- Split Sequence root content/viewBox bounds derivation into
+  `crates/merman-render/src/sequence/root_bounds.rs`, so mirror actor, popup panel, boxed
+  participant, and self-message sizing quirks have a local owner before further root-pin cleanup.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

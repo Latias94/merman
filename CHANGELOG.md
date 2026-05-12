@@ -87,6 +87,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   state object.
 - Sequence layout internals: move bottom actor box and lifeline construction into
   `sequence/actors.rs`, so participant lifecycle geometry has a single layout owner.
+- Sequence layout internals: split root content/viewBox bounds derivation into
+  `sequence/root_bounds.rs`, localizing mirror actor, popup, boxed participant, and self-message
+  root sizing quirks.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with

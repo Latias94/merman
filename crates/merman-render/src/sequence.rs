@@ -1,5 +1,5 @@
 use crate::math::MathRenderer;
-use crate::model::{Bounds, LayoutCluster, LayoutEdge, LayoutNode, SequenceDiagramLayout};
+use crate::model::{LayoutCluster, LayoutEdge, LayoutNode, SequenceDiagramLayout};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
@@ -16,6 +16,7 @@ mod messages;
 mod metrics;
 mod notes;
 mod rect;
+mod root_bounds;
 
 pub(crate) use constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
@@ -39,6 +40,7 @@ use messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
 use notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use rect::{SequenceRectOpen, sequence_rect_stack_x_bounds};
+use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
 
 pub fn layout_sequence_diagram(
     semantic: &Value,
@@ -686,149 +688,31 @@ pub fn layout_sequence_diagram_typed(
         }
     }
 
-    let mut content_min_x = f64::INFINITY;
-    let mut content_max_x = f64::NEG_INFINITY;
-    let mut content_max_y = f64::NEG_INFINITY;
-    for n in &nodes {
-        let left = n.x - n.width / 2.0;
-        let right = n.x + n.width / 2.0;
-        let bottom = n.y + n.height / 2.0;
-        content_min_x = content_min_x.min(left);
-        content_max_x = content_max_x.max(right);
-        // When `mirrorActors=false`, Mermaid does not draw footer actor boxes. The internal
-        // bottom actor placeholders still anchor lifelines in our layout, but upstream root
-        // sizing ignores those invisible placeholders and uses message/popup geometry instead.
-        if mirror_actors || !n.id.starts_with("actor-bottom-") {
-            content_max_y = content_max_y.max(bottom);
-        }
-    }
-    if !mirror_actors {
-        for e in &edges {
-            if e.id.starts_with("lifeline-") {
-                continue;
-            }
-            for p in &e.points {
-                content_max_y = content_max_y.max(p.y);
-            }
-            if let Some(label) = e.label.as_ref() {
-                content_max_y = content_max_y.max(label.y + label.height / 2.0);
-            }
-        }
-    }
-    if !content_min_x.is_finite() {
-        content_min_x = 0.0;
-        content_max_x = actor_width_min.max(1.0);
-        content_max_y = (bottom_box_top_y + actor_height).max(1.0);
-    }
-
-    if let Some(block_bounds) = block_bounds {
-        content_min_x = content_min_x.min(block_bounds.min_x);
-        content_max_x = content_max_x.max(block_bounds.max_x);
-        content_max_y = content_max_y.max(block_bounds.max_y);
-    }
-
-    // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
-    // present, even when they are emitted hidden by default. Account for the menu panel bottom so
-    // root height stays aligned with upstream for link-only fixtures.
-    for actor_id in &model.actor_order {
-        let Some(actor) = model.actors.get(actor_id) else {
-            continue;
-        };
-        if actor.links.is_empty() {
-            continue;
-        }
-        let popup_bottom = actor_height + sequence_actor_popup_panel_height(actor.links.len());
-        let popup_content_bottom = if mirror_actors {
-            popup_bottom - diagram_margin_y - if has_boxes { box_margin } else { 0.0 }
-        } else {
-            popup_bottom
-        };
-        content_max_y = content_max_y.max(popup_content_bottom.max(0.0));
-    }
-
-    // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
-    // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
-    let extra_vert_for_title = if model.title.is_some() { 40.0 } else { 0.0 };
-
-    // Mermaid's sequence renderer sets the viewBox y origin to `-(diagramMarginY + extraVertForTitle)`
-    // regardless of diagram contents.
-    let vb_min_y = -(diagram_margin_y + extra_vert_for_title);
-
-    // Mermaid's sequence renderer uses a bounds box with `starty = 0` and computes `height` from
-    // `stopy - starty`. Our headless layout models message spacing in content coordinates, but for
-    // viewBox parity we must follow the upstream formula.
-    //
-    // When boxes exist, Mermaid's bounds logic ends up extending the vertical bounds by `boxMargin`
-    // (diagramMarginY covers the remaining box padding), so include it here.
-    let mut bounds_box_stopy = if mirror_actors {
-        content_max_y + bottom_margin_adj
-    } else {
-        content_max_y
-    }
-    .max(0.0);
-    if has_boxes {
-        bounds_box_stopy += box_margin;
-    }
-
-    // Mermaid's bounds box includes the per-box inner margins (`box.margin`) when boxes exist.
-    // Approximate this by extending actor bounds by their enclosing box margin.
-    let mut bounds_box_startx = content_min_x;
-    let mut bounds_box_stopx = content_max_x;
-    for i in 0..model.actor_order.len() {
-        let left = actor_left_x[i];
-        let right = left + actor_widths[i];
-        if let Some(bi) = actor_box[i] {
-            let m = box_margins[bi];
-            bounds_box_startx = bounds_box_startx.min(left - m);
-            bounds_box_stopx = bounds_box_stopx.max(right + m);
-        } else {
-            bounds_box_startx = bounds_box_startx.min(left);
-            bounds_box_stopx = bounds_box_stopx.max(right);
-        }
-    }
-
-    // Mermaid's self-message bounds insert expands horizontally by `dx = max(textWidth/2, conf.width/2)`,
-    // where `conf.width` is the configured actor width (150 by default). This can increase `box.stopx`
-    // by ~1px due to `from_x + 1` rounding behavior in message geometry, affecting viewBox width.
-    for msg in &model.messages {
-        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-            continue;
-        };
-        if from != to {
-            continue;
-        }
-        // Notes can use `from==to` for `rightOf`/`leftOf`; ignore them here.
-        if msg.message_type == 2 {
-            continue;
-        }
-        let Some(&i) = actor_index.get(from) else {
-            continue;
-        };
-        let center_x = actor_centers_x[i] + 1.0;
-        let text = msg.message_text();
-        let (text_w, _text_h) = if text.is_empty() {
-            (1.0, 1.0)
-        } else {
-            measure_sequence_label_for_layout(
-                measurer,
-                text,
-                &msg_text_style,
-                &math_config,
-                math_renderer,
-                SequenceMathHeightMode::Bound,
-            )
-        };
-        let dx = (text_w.max(1.0) / 2.0).max(actor_width_min / 2.0);
-        bounds_box_startx = bounds_box_startx.min(center_x - dx);
-        bounds_box_stopx = bounds_box_stopx.max(center_x + dx);
-    }
-
-    let bounds = Some(Bounds {
-        min_x: bounds_box_startx - diagram_margin_x,
-        min_y: vb_min_y,
-        max_x: bounds_box_stopx + diagram_margin_x,
-        max_y: bounds_box_stopy + diagram_margin_y,
-    });
+    let bounds = Some(sequence_root_bounds(SequenceRootBoundsContext {
+        model,
+        nodes: &nodes,
+        edges: &edges,
+        block_bounds,
+        actor_index: &actor_index,
+        actor_centers_x: &actor_centers_x,
+        actor_left_x: &actor_left_x,
+        actor_widths: &actor_widths,
+        actor_box: &actor_box,
+        box_margins: &box_margins,
+        actor_width_min,
+        actor_height,
+        bottom_box_top_y,
+        diagram_margin_x,
+        diagram_margin_y,
+        bottom_margin_adj,
+        box_margin,
+        has_boxes,
+        mirror_actors,
+        measurer,
+        msg_text_style: &msg_text_style,
+        math_config: &math_config,
+        math_renderer,
+    }));
 
     Ok(SequenceDiagramLayout {
         nodes,

@@ -12,6 +12,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Moved bottom actor box and lifeline construction into `sequence/actors.rs`, so the actor module
   now owns footer participant geometry alongside created/destroyed lifecycle state while preserving
   render nextest, render clippy, Sequence `parity-root`, and override no-growth.
+- Split Sequence root content/viewBox bounds derivation out of `sequence.rs` into
+  `sequence/root_bounds.rs`, localizing mirror actor, popup panel, boxed participant, and
+  self-message root sizing quirks while preserving render nextest, render clippy, Sequence
+  `parity-root`, and override no-growth.
 
 ## 2026-05-12
 
