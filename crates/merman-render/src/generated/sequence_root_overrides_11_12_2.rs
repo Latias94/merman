@@ -102,7 +102,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_nested_frames_001" => Some(("-50 -10 850 1045", "850")),
         "stress_unicode_punct_012" => Some(("-50 -10 782.5 333", "782.5")),
         "stress_sequence_batch5_alt_par_nested_040" => Some(("-50 -10 861 769", "861")),
-        "stress_sequence_batch5_wrap_html_br_spans_042" => Some(("-50 -10 586 344", "586")),
         "stress_sequence_batch5_create_destroy_in_par_046" => Some(("-50 -10 734 556", "734")),
         "stress_sequence_batch5_reserved_words_in_labels_049" => Some(("-50 -10 580 408", "580")),
         "stress_sequence_batch5_whitespace_semicolons_051" => Some(("-50 -10 450 506", "450")),

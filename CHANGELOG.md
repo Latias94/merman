@@ -63,6 +63,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence layout/SVG parity: move the wrapped HTML `<br/>` message-width browser metric into the
+  Sequence SVG metric table, deleting the `stress_sequence_batch5_wrap_html_br_spans_042` root
+  viewport pin without growing the table budget.
 - Sequence layout/SVG parity: recalibrate the literal `<br \t/>` single-line SVG width used by
   Sequence labels, deleting the `html_br_variants_and_wrap` root viewport pin.
 - State layout/SVG parity: decode Mermaid `encodeEntities` placeholders before measuring State

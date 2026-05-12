@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Moved the wrapped Sequence HTML `<br/>` message-line browser metric into the Sequence SVG metric
+  table, removed the now-derived `stress_sequence_batch5_wrap_html_br_spans_042` root pin, kept
+  the SVG metric table at `186` rows by replacing an unused stale row, and revalidated focused
+  normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.
 - Recalibrated the Sequence SVG metric for literal `<br \t/>` single-line labels from 132px to
   131px, removed the now-derived `html_br_variants_and_wrap` root pin, and revalidated focused
   normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.

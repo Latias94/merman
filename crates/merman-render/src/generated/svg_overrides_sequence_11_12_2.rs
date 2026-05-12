@@ -161,7 +161,6 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("Start booking process", 0.0, 8.6875),
     ("Successfully posted", 0.0, 8.125),
     ("Thanks for asking", 0.0, 7.25),
-    ("Time spent looking for movie", 0.0, 13.101706112132353),
     ("We are too many", 0.0, 6.8125),
     ("What do you think about it?", 0.0, 11.1875),
     (
@@ -195,6 +194,7 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("isWell", 0.0, 2.5625),
     ("lead", 0.0, 1.75),
     ("left note", 0.0, 3.3125),
+    ("line break and more words to wrap nicely", 0.0, 16.625),
     ("message", 0.0, 3.4375),
     ("multiline", 0.0, 3.6875),
     ("multiline<br />text", 0.0, 3.6875),

@@ -2,6 +2,11 @@
 
 ## 2026-05-12
 
+- Moved the wrapped Sequence HTML `<br/>` message-line browser metric into the Sequence SVG metric
+  table, removed `stress_sequence_batch5_wrap_html_br_spans_042`, tightened the root budget to
+  `620` with Sequence at `82`, kept the SVG metric table at `186` rows by replacing an unused
+  stale row, and revalidated focused normal/disabled-root `parity-root` plus
+  `report-overrides --check-no-growth`.
 - Recalibrated the Sequence SVG metric for literal `<br \t/>` labels to match the upstream
   131px single-line bbox, removed the now-derived `html_br_variants_and_wrap` root pin, and
   revalidated focused normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.
