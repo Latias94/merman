@@ -51,6 +51,10 @@
   `upstream_pkgtests_sequencediagram_spec_007`, `upstream_pkgtests_sequencediagram_spec_009`, and
   `upstream_pkgtests_sequencediagram_spec_042`, tightening the root budget to `726` and Sequence
   root pins to `188` without growing the SVG text metric table.
+- Removed the whitespace/comment `Bob thinks` note-right Sequence trio
+  `upstream_pkgtests_sequencediagram_spec_043`, `upstream_pkgtests_sequencediagram_spec_045`, and
+  `upstream_pkgtests_sequencediagram_spec_046`, tightening the root budget to `723` and Sequence
+  root pins to `185` without growing the SVG text metric table.
 
 ## 2026-05-11
 

@@ -143,6 +143,10 @@ Progress:
   `upstream_pkgtests_sequencediagram_spec_042`; focused disabled-root `parity-root` proves the
   existing Sequence note/message bounds now cover these variants without additional SVG metric
   rows.
+- Removed the whitespace/comment `Bob thinks` note-right trio
+  `upstream_pkgtests_sequencediagram_spec_043`, `upstream_pkgtests_sequencediagram_spec_045`, and
+  `upstream_pkgtests_sequencediagram_spec_046`; the same focused disabled-root gate proves these
+  formatting variants are now covered by the existing Sequence note/message bounds.
 
 Exit criteria:
 
