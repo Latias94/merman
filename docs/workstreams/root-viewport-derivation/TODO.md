@@ -203,6 +203,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_pkgtests_sequencediagram_spec_059`, and `upstream_alt_multiple_elses_spec` pass focused
   disabled-root `parity-root`, so their root pins were deleted without growing the SVG text metric
   table.
+- [x] Remove the Sequence long-note / long-message six-pack with one shared SVG metric fact.
+  Evidence: the two leftOf long-note fixtures and four long-message fixtures pass focused
+  disabled-root `parity-root` after fixing leftOf note start recomputation and adding the shared
+  long-message browser SVG metric fact. The stale `FRIENDS` row was deleted so the SVG text metric
+  table stayed at `186`; full Sequence `parity-root` and `report-overrides --check-no-growth`
+  passed.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.
@@ -210,7 +216,7 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 ## P3: Release Closeout
 
 - [x] Run `cargo run -p xtask -- verify --strict`.
-  Evidence: strict passed after the latest Sequence alt-control note-right pass, including fmt,
+  Evidence: strict passed after the Sequence alt-control note-right pass, including fmt,
   workspace clippy, workspace nextest, override no-growth, feature matrix, normal DOM parity, and
   root DOM parity.
 - [x] Run `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`.

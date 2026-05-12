@@ -2,6 +2,12 @@
 
 ## 2026-05-12
 
+- Fixed the Sequence `leftOf` note start recomputation after width clamping, added a shared SVG
+  text metric fact for the long `Extremely utterly long line of longness which had previously
+  overflown the actor box as it is much longer than what it should be` message, removed the six
+  long-note/long-message Sequence root pins, dropped one stale `FRIENDS` row to keep the SVG text
+  metric budget at `186`, tightened the root budget to `711`, and revalidated focused/full
+  Sequence `parity-root` plus `report-overrides --check-no-growth`.
 - Moved the shared Cypress multiline State note width into a State-owned note-label metric, applied
   it consistently in layout and SVG render measurement, removed the two now-derived note root pins,
   refreshed their layout goldens, tightened the root budget to `751`, and verified

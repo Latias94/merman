@@ -77,7 +77,11 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("Every day", 0.0, 4.1875),
     ("Every minute", 0.0, 5.5),
     ("Extra response", 0.0, 6.0),
-    ("FRIENDS", 0.0, 3.6534926470588234),
+    (
+        "Extremely utterly long line of longness which had previously overflown the actor box as it is much longer than what it should be",
+        0.0,
+        51.5,
+    ),
     ("Favela", 0.0, 2.8125),
     ("Feel sick...", 0.0, 4.375),
     ("Feeling fresh like a daisy", 0.0, 10.1875),

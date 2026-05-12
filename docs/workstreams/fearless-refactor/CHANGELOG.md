@@ -3,6 +3,15 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-12
+
+- Fixed Sequence `leftOf` note start recomputation after width clamping, added a shared SVG text
+  metric fact for the long `Extremely utterly long line of longness which had previously
+  overflown the actor box as it is much longer than what it should be` message, removed six
+  long-note/long-message Sequence root pins, dropped one stale `FRIENDS` row to keep the SVG text
+  metric budget at `186`, reduced the Sequence root viewport budget to `711`, and revalidated
+  focused/full `parity-root` plus `report-overrides --check-no-growth`.
+
 ## 2026-05-11
 
 - Restored full SVG root parity as a strict release-gate invariant: added six required Sequence

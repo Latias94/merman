@@ -1311,6 +1311,9 @@ pub fn layout_sequence_diagram_typed(
                     // leftOf / rightOf notes clamp width to fit label text.
                     0 | 1 => {
                         note_w = note_w.max(padded_w);
+                        if placement == 0 {
+                            note_x = fx - 25.0 - note_w;
+                        }
                     }
                     // over: only clamp when the note is over a single actor (`from == to`).
                     _ => {

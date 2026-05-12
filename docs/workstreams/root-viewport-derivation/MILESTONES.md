@@ -155,6 +155,11 @@ Progress:
   `upstream_pkgtests_sequencediagram_spec_058`, `upstream_pkgtests_sequencediagram_spec_059`, and
   `upstream_alt_multiple_elses_spec`; existing Sequence note/message bounds now cover these simple
   `alt`/`else` wrappers without adding SVG metric rows.
+- Removed the long-note / long-message Sequence six-pack after fixing leftOf note start
+  recomputation and adding one shared long-message SVG metric fact. Focused disabled-root
+  `parity-root` checks passed for the long-note and long-message fixtures; the stale `FRIENDS`
+  row was dropped so the SVG text metric table stayed at `186` rows and `report-overrides
+  --check-no-growth` remained green.
 
 Exit criteria:
 

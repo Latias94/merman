@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and nineteen Sequence root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and twenty-five Sequence root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, and Sequence passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -31,21 +31,17 @@ Current counts after the State style/entity-placeholder/note-label/transition-la
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, and the first
 Sequence font-size precedence, boundary message-width, title/accessibility message-width,
-residual default-title, and simple note-right passes:
+residual default-title, simple note-right, and long-note/long-message passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `179` entries.
-- Root viewport total: `717` entries.
-- Text lookup total: `484` entries. This is an intentional four-entry increase because State-owned
-  edge-label, note-label, and node-label metrics replaced seven fixture-scoped root viewport pins.
-  The simple transition-label pass reused an existing State edge-label metric arm, so it removed
-  two more State root pins without increasing text lookup debt. The package style node-label pass
-  reused an existing styled node-label metric arm, so it removed one more State root pin without
-  increasing text lookup debt. The docs cloud and wrapping-label Mindmap passes did not add any
-  text lookup debt.
-- SVG text metric table total: `186` rows. This is an intentional two-row increase because two
-  Sequence message-width facts replaced the docs boundary root viewport pin.
+- Sequence: `173` entries.
+- Root viewport total: `711` entries.
+- Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
+  fact replaced one stale `FRIENDS` row while the leftOf fix removed six root pins without growing
+  the table.
+- SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
+  the stale row cleanup.
 
 The latest Mindmap focused disabled-root checks show the plain wrapping prose/icon trio and five
 additional stale retained pins are covered by the current layout/bounds derivation. The remaining
@@ -59,16 +55,19 @@ long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multil
 unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
 
 The latest Sequence checks removed the small-font precedence root pin, the docs boundary root pin,
-three title/accessibility root pins, two residual default-title root pins, and twelve simple
-`Bob thinks` note-right root pins. The boundary fixture now derives actor spacing from the
-single-run text-dimension width path plus two Sequence message-width facts, replacing the previous
-16px actor-column drift with typed measurement data. The title/default-title cluster now derives
-from default-message width facts that preserve Mermaid's trailing-semicolon default font family.
-The simple note-right clusters now derive from the existing Sequence note/message bounds without
-new SVG metric rows, including the whitespace/comment variants.
-The block note-right trio extends that coverage to loop, rect, and nested-rect wrappers while
-keeping larger frame-expansion debt out of scope.
-The alt-control trio extends the same coverage to simple `alt`/`else` control wrappers.
+three title/accessibility root pins, two residual default-title root pins, twelve simple
+`Bob thinks` note-right root pins, and the long-note / long-message six-pack. The boundary fixture
+now derives actor spacing from the single-run text-dimension width path plus two Sequence
+message-width facts, replacing the previous 16px actor-column drift with typed measurement data.
+The title/default-title cluster now derives from default-message width facts that preserve
+Mermaid's trailing-semicolon default font family. The simple note-right clusters now derive from
+the existing Sequence note/message bounds without new SVG metric rows, including the
+whitespace/comment variants. The block note-right trio extends that coverage to loop, rect, and
+nested-rect wrappers while keeping larger frame-expansion debt out of scope. The alt-control trio
+extends the same coverage to simple `alt`/`else` control wrappers. The long-note / long-message
+follow-up fixed `leftOf` note start recomputation after width clamping, added a shared SVG text
+metric fact for the long message, and dropped the stale `FRIENDS` row so the SVG text metric
+budget stayed at `186` without changing `report-overrides --check-no-growth`.
 
 ## Focused Commands
 
@@ -92,6 +91,11 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused `compare-sequence-svgs`
+  `--check-dom --dom-mode parity-root --dom-decimals 3` passed for the six long-note/long-message
+  fixtures after fixing leftOf note start recomputation and adding the shared long-message SVG
+  metric fact. `report-overrides --check-no-growth` passed with root total `711`, Sequence root
+  count `173`, and SVG text metric total `186`.
 - 2026-05-11: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root
   --dom-decimals 3 --filter can_have_styles_applied` passed after deleting the State root pin.
 - 2026-05-11: `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity
