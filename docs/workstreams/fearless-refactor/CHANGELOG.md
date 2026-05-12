@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split Sequence layout config lookup, Mermaid geometry constants, and text/math measurement
+  helpers out of the large `sequence.rs` implementation into focused `sequence/` submodules,
+  preserving the public crate-level helper paths used by SVG parity code and revalidating render
+  nextest, render clippy, Sequence `parity-root`, and override no-growth.
 - Moved the Sequence participant `<br/>` label line-width browser facts into the Sequence SVG
   metric table, removed the now-derived `stress_long_participant_labels_br_031` root pin, kept the
   SVG metric table at `186` rows by replacing unused stale rows, tightened the root budget to
