@@ -2121,4 +2121,24 @@ mod tests {
         assert_eq!(super::SEQUENCE_FRAME_SIDE_PAD_PX, 11.0);
         assert_eq!(super::SEQUENCE_FRAME_GEOM_PAD_PX, 10.0);
     }
+
+    #[test]
+    fn sequence_default_message_widths_match_mermaid_default_font_family() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = crate::text::TextStyle {
+            // Mermaid's default global font family includes the trailing semicolon, and Sequence
+            // copies that value into messageFontFamily before calculateTextDimensions runs.
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        let (hello_bob_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are you?", &style);
+        assert_eq!(hello_bob_w, 160.0);
+
+        let (hello_john_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Hello John, how are you?", &style);
+        assert_eq!(hello_john_w, 164.0);
+    }
 }

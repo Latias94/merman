@@ -131,6 +131,10 @@ Progress:
   measurement through the single-run SVG metric path and adding the two boundary message-width
   facts exposed by the upstream fixture. The root pin is deleted; the remaining Sequence bucket
   should still target reusable message/note/frame bounds before broad table pruning.
+- Derived the small Sequence title/accessibility root cluster by correcting the default
+  trailing-semicolon font-family message width facts for `Hello Bob, how are you?` and
+  `Hello John, how are you?`. The three title/accessibility root pins are deleted while the SVG
+  metric table row count stays flat.
 
 Exit criteria:
 

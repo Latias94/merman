@@ -204,8 +204,6 @@ pub fn lookup_sequence_root_viewport_override(
         "comments_and_blank_lines" => Some(("-50 -10 580 352", "580")),
         "no_label_blocks" => Some(("-50 -10 480 669", "480")),
         "semicolons_and_comments" => Some(("-50 -10 580 308", "580")),
-        "title_and_accdescr_multiline" => Some(("-50 -50 480 255", "480")),
-        "upstream_accessibility_single_line_spec" => Some(("-50 -50 480 255", "480")),
         "upstream_alias_participants_spec" => Some(("-50 -10 480 259", "480")),
         "upstream_alt_multiple_elses_spec" => Some(("-50 -10 580 541", "580")),
         "upstream_cypress_sequencediagram_spec_example_001" => Some(("-50 -10 810 979", "810")),
@@ -246,7 +244,6 @@ pub fn lookup_sequence_root_viewport_override(
             Some(("-80 -10 692 615", "692"))
         }
         "upstream_break_spec" => Some(("-50 -10 859 416", "859")),
-        "upstream_docs_accessibility_sequence_diagram_014" => Some(("-50 -10 484 303", "484")),
         "upstream_docs_directives_changing_sequence_diagram_config_via_directive_016" => {
             Some(("-50 -10 751 364", "751"))
         }

@@ -583,7 +583,10 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
          width: 1,
          wrapPadding: 10,
          messageFontSize: 16,
-         messageFontFamily: '\"trebuchet ms\", verdana, arial, sans-serif',
+         // Mermaid's default global fontFamily includes the trailing semicolon. Preserve it here
+         // because Sequence copies that value into messageFontFamily before calling
+         // calculateTextDimensions.
+         messageFontFamily: '\"trebuchet ms\", verdana, arial, sans-serif;',
        },
      });
      const cfg = mermaid.mermaidAPI && mermaid.mermaidAPI.getConfig ? mermaid.mermaidAPI.getConfig() : null;

@@ -89,6 +89,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout/SVG parity: route Mermaid-like text-dimension widths through the single-run SVG
   metric path and add the two boundary message-width facts, deleting the
   `upstream_docs_sequencediagram_boundary_008` root viewport pin.
+- Sequence layout/SVG parity: correct default trailing-semicolon font-family message widths for
+  common `Hello Bob`/`Hello John` labels, deleting three title/accessibility root viewport pins
+  without growing the SVG text metric table.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

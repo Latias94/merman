@@ -172,6 +172,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   path and includes the two boundary message-width facts; `upstream_docs_sequencediagram_boundary_008`
   passes focused `parity-root` with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, so its root pin was
   deleted.
+- [x] Derive the small Sequence title/accessibility root cluster through default-message widths.
+  Evidence: the Sequence SVG metric facts for `Hello Bob, how are you?` and
+  `Hello John, how are you?` now reflect Mermaid's default trailing-semicolon font family, and
+  `title_and_accdescr_multiline`, `upstream_accessibility_single_line_spec`, and
+  `upstream_docs_accessibility_sequence_diagram_014` pass focused disabled-root `parity-root`, so
+  their root pins were deleted.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.
@@ -179,12 +185,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 ## P3: Release Closeout
 
 - [x] Run `cargo run -p xtask -- verify --strict`.
-  Evidence: strict passed after the Sequence pass, including fmt, workspace clippy, workspace
-  nextest, override no-growth, feature matrix, normal DOM parity, and root DOM parity.
+  Evidence: strict passed after the latest Sequence title/accessibility pass, including fmt,
+  workspace clippy, workspace nextest, override no-growth, feature matrix, normal DOM parity, and
+  root DOM parity.
 - [x] Run `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`.
   Evidence: focused render clippy passed before the final strict gate.
 - [x] Run `cargo nextest run` if shared rendering/layout behavior changed.
-  Evidence: the final strict gate reran workspace nextest with `1022` passed and `3` skipped after
-  refreshing the affected Sequence layout golden.
+  Evidence: the final strict gate reran workspace nextest with `1023` passed and `3` skipped after
+  the Sequence title/accessibility width pass.
 - [x] Update `CHANGELOG.md` and the workstream changelog.
 - [x] Complete `AUDIT.md` with prompt-to-artifact evidence.

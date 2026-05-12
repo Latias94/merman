@@ -39,6 +39,11 @@
   path, added the two docs boundary message-width facts, removed
   `upstream_docs_sequencediagram_boundary_008`, tightened the root budget to `734`, and raised the
   SVG text metric table budget to `186` with focused and full Sequence `parity-root` checks green.
+- Corrected the default trailing-semicolon Sequence font-family width facts for
+  `Hello Bob, how are you?` and `Hello John, how are you?`, removed
+  `title_and_accdescr_multiline`, `upstream_accessibility_single_line_spec`, and
+  `upstream_docs_accessibility_sequence_diagram_014`, and tightened the root budget to `731`
+  without growing the SVG text metric table.
 
 ## 2026-05-11
 
