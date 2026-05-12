@@ -12,6 +12,8 @@ use serde_json::Value;
 pub(crate) const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 12.0;
 pub(crate) const SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX: f64 = 3.0;
 pub(crate) const SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX: f64 = 16.0;
+pub(crate) const SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX: f64 = 4.0;
+pub(crate) const SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR: f64 = 4.5;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
 pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
 pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
@@ -321,7 +323,13 @@ pub fn layout_sequence_diagram_typed(
         };
         let (w0, _h0) = measure_svg_like_with_html_br(measurer, &measured_text, style);
         let w0 = w0 * message_width_scale;
-        let message_w = (w0 + 2.0 * wrap_padding).max(0.0);
+        let mut message_w = (w0 + 2.0 * wrap_padding).max(0.0);
+        if msg.wrap
+            && message_w > actor_width_min
+            && message_w <= actor_width_min + SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX
+        {
+            message_w = actor_width_min;
+        }
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
         let next_idx = if to_idx + 1 < model.actor_order.len() {
@@ -1461,9 +1469,10 @@ pub fn layout_sequence_diagram_typed(
         let bounded_width = (startx - stopx).abs().max(0.0);
         let wrapped_text = if !text.is_empty() && msg.wrap {
             // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
-            // Note: a small extra margin helps keep wrap breakpoints aligned with upstream SVG
-            // baselines for long sentences under our vendored metrics.
-            let wrap_w = (bounded_width + 3.0 * wrap_padding)
+            // Our vendored bbox widths are slightly conservative for Sequence prose, so use the
+            // same calibrated slack as the SVG emitter to keep cursor height and rendered lines in
+            // lockstep without adding fixture-specific text rows.
+            let wrap_w = (bounded_width + SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR * wrap_padding)
                 .max(actor_width_min)
                 .max(1.0);
             let lines =
@@ -2129,6 +2138,8 @@ mod tests {
         assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 12.0);
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 3.0);
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 16.0);
+        assert_eq!(super::SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, 4.0);
+        assert_eq!(super::SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, 4.5);
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);

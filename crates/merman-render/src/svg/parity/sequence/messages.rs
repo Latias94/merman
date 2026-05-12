@@ -1,6 +1,6 @@
 use super::super::*;
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
-use crate::sequence::sequence_text_line_step_px;
+use crate::sequence::{SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, sequence_text_line_step_px};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceMessageRenderContext<'a> {
@@ -71,7 +71,8 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 // vendored metrics are close but can be slightly more conservative in some edge
                 // cases; give message wrapping a bit of extra horizontal slack so line breaks match
                 // upstream Cypress baselines.
-                let wrap_w = (bounded_width + 4.5 * ctx.wrap_padding)
+                let wrap_w = (bounded_width
+                    + SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR * ctx.wrap_padding)
                     .max(ctx.sequence_width)
                     .max(1.0);
                 let raw_lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(

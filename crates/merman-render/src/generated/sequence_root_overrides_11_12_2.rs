@@ -283,8 +283,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_pkgtests_sequencediagram_spec_091" => Some(("-50 -10 480 314", "480")),
         "upstream_pkgtests_sequencediagram_spec_093" => Some(("-50 -10 480 259", "480")),
         "upstream_pkgtests_sequencediagram_spec_095" => Some(("-50 -10 450 215", "450")),
-        "upstream_pkgtests_sequencediagram_spec_098" => Some(("-150 -10 550 359", "550")),
-        "upstream_pkgtests_sequencediagram_spec_099" => Some(("-150 -10 550 359", "550")),
         "upstream_pkgtests_sequencediagram_spec_100" => Some(("-150 -10 550 359", "550")),
         "upstream_pkgtests_sequencediagram_spec_102" => Some(("-50 -10 509 289", "509")),
         "upstream_pkgtests_sequencediagram_spec_105" => {
