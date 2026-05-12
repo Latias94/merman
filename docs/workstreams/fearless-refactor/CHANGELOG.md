@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Derived non-mirrored Sequence root height from visible message/popup geometry instead of hidden
+  footer actor placeholders and `bottomMarginAdj`, refreshed the two affected layout goldens, and
+  removed the stale `upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_when_not_mirrored_expe_054`
+  root pin after its raw root viewport matched upstream.
 - Removed four stale Sequence root viewport pins for the actor-popup pkgtest fixtures after the
   derived popup panel bounds made the raw root viewports match upstream without overrides.
 - Accounted for Sequence actor popup menu panel bottoms in root bounds, which fixed the link-only

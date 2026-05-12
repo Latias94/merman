@@ -2043,7 +2043,25 @@ pub fn layout_sequence_diagram_typed(
         let bottom = n.y + n.height / 2.0;
         content_min_x = content_min_x.min(left);
         content_max_x = content_max_x.max(right);
-        content_max_y = content_max_y.max(bottom);
+        // When `mirrorActors=false`, Mermaid does not draw footer actor boxes. The internal
+        // bottom actor placeholders still anchor lifelines in our layout, but upstream root
+        // sizing ignores those invisible placeholders and uses message/popup geometry instead.
+        if mirror_actors || !n.id.starts_with("actor-bottom-") {
+            content_max_y = content_max_y.max(bottom);
+        }
+    }
+    if !mirror_actors {
+        for e in &edges {
+            if e.id.starts_with("lifeline-") {
+                continue;
+            }
+            for p in &e.points {
+                content_max_y = content_max_y.max(p.y);
+            }
+            if let Some(label) = e.label.as_ref() {
+                content_max_y = content_max_y.max(label.y + label.height / 2.0);
+            }
+        }
     }
     if !content_min_x.is_finite() {
         content_min_x = 0.0;
@@ -2068,8 +2086,11 @@ pub fn layout_sequence_diagram_typed(
             continue;
         }
         let popup_bottom = actor_height + sequence_actor_popup_panel_height(actor.links.len());
-        let popup_content_bottom =
-            popup_bottom - diagram_margin_y - if has_boxes { box_margin } else { 0.0 };
+        let popup_content_bottom = if mirror_actors {
+            popup_bottom - diagram_margin_y - if has_boxes { box_margin } else { 0.0 }
+        } else {
+            popup_bottom
+        };
         content_max_y = content_max_y.max(popup_content_bottom.max(0.0));
     }
 
@@ -2087,7 +2108,12 @@ pub fn layout_sequence_diagram_typed(
     //
     // When boxes exist, Mermaid's bounds logic ends up extending the vertical bounds by `boxMargin`
     // (diagramMarginY covers the remaining box padding), so include it here.
-    let mut bounds_box_stopy = (content_max_y + bottom_margin_adj).max(0.0);
+    let mut bounds_box_stopy = if mirror_actors {
+        content_max_y + bottom_margin_adj
+    } else {
+        content_max_y
+    }
+    .max(0.0);
     if has_boxes {
         bounds_box_stopy += box_margin;
     }

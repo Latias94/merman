@@ -64,9 +64,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_handle_bidirectional_arrows_with_autonumber_053" => {
             Some(("-50 -10 517 259", "517"))
         }
-        "upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_when_not_mirrored_expe_054" => {
-            Some(("-50 -10 450 225", "450"))
-        }
         "upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004" => {
             Some(("-50 -10 1002 687", "1002"))
         }
