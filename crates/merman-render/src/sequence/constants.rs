@@ -55,3 +55,25 @@ pub(super) fn sequence_actor_lifeline_start_y(
         _ => base_height,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sequence_text_and_frame_constants_match_mermaid() {
+        assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 12.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 3.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 16.0);
+        assert_eq!(super::SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, 4.0);
+        assert_eq!(super::SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, 4.5);
+        assert_eq!(super::SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, 20.0);
+        assert_eq!(super::SEQUENCE_ACTOR_POPUP_ROW_HEIGHT, 30.0);
+        assert_eq!(super::sequence_actor_popup_panel_height(0), 20.0);
+        assert_eq!(super::sequence_actor_popup_panel_height(4), 140.0);
+        assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
+        assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
+        assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
+        assert_eq!(super::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, 60.0);
+        assert_eq!(super::SEQUENCE_FRAME_SIDE_PAD_PX, 11.0);
+        assert_eq!(super::SEQUENCE_FRAME_GEOM_PAD_PX, 10.0);
+    }
+}
