@@ -36,6 +36,16 @@ pub(super) struct SequenceFooterActorContext<'a, 'b> {
     pub(super) box_text_margin: f64,
 }
 
+pub(super) struct SequenceTopActorContext<'a> {
+    pub(super) actor_order: &'a [String],
+    pub(super) actors: &'a BTreeMap<String, SequenceActor>,
+    pub(super) actor_widths: &'a [f64],
+    pub(super) actor_centers_x: &'a [f64],
+    pub(super) actor_base_heights: &'a [f64],
+    pub(super) actor_top_offset_y: f64,
+    pub(super) label_box_height: f64,
+}
+
 impl<'a> SequenceActorLifecycle<'a> {
     pub(super) fn new(ctx: SequenceActorLifecycleContext<'a>) -> Self {
         Self {
@@ -140,6 +150,34 @@ pub(super) fn sequence_actor_is_type_width_limited(
             )
         })
         .unwrap_or(false)
+}
+
+pub(super) fn append_sequence_top_actors(
+    nodes: &mut Vec<LayoutNode>,
+    ctx: SequenceTopActorContext<'_>,
+) {
+    for (idx, id) in ctx.actor_order.iter().enumerate() {
+        let w = ctx.actor_widths[idx];
+        let cx = ctx.actor_centers_x[idx];
+        let base_h = ctx.actor_base_heights[idx];
+        let actor_type = ctx
+            .actors
+            .get(id)
+            .map(|a| a.actor_type.as_str())
+            .unwrap_or("participant");
+        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, ctx.label_box_height);
+        let top_y = ctx.actor_top_offset_y + visual_h / 2.0;
+        nodes.push(LayoutNode {
+            id: format!("actor-top-{id}"),
+            x: cx,
+            y: top_y,
+            width: w,
+            height: visual_h,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        });
+    }
 }
 
 pub(super) fn append_sequence_footer_actors(

@@ -16,6 +16,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `sequence/root_bounds.rs`, localizing mirror actor, popup panel, boxed participant, and
   self-message root sizing quirks while preserving render nextest, render clippy, Sequence
   `parity-root`, and override no-growth.
+- Moved top actor box construction into `sequence/actors.rs` and removed the obsolete
+  `max_actor_visual_height` accumulator while preserving render nextest, render clippy, Sequence
+  `parity-root`, and override no-growth.
 
 ## 2026-05-12
 

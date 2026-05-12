@@ -90,6 +90,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout internals: split root content/viewBox bounds derivation into
   `sequence/root_bounds.rs`, localizing mirror actor, popup, boxed participant, and self-message
   root sizing quirks.
+- Sequence layout internals: move top actor box construction into `sequence/actors.rs` and remove
+  the obsolete `max_actor_visual_height` accumulator.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with

@@ -30,12 +30,12 @@ pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 use activation::SequenceActivationState;
 use actors::{
     SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
-    append_sequence_footer_actors, sequence_actor_is_type_width_limited,
+    SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
+    sequence_actor_is_type_width_limited,
 };
 use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
-use constants::sequence_actor_visual_height;
 use messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
 use notes::{SequenceNoteLayoutContext, layout_sequence_note};
@@ -428,30 +428,18 @@ pub fn layout_sequence_diagram_typed(
         .copied()
         .fold(0.0_f64, f64::max)
         .max(1.0);
-    let mut max_actor_visual_height: f64 = 0.0;
-    for (idx, id) in model.actor_order.iter().enumerate() {
-        let w = actor_widths[idx];
-        let cx = actor_centers_x[idx];
-        let base_h = actor_base_heights[idx];
-        let actor_type = model
-            .actors
-            .get(id)
-            .map(|a| a.actor_type.as_str())
-            .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, label_box_height);
-        max_actor_visual_height = max_actor_visual_height.max(visual_h.max(1.0));
-        let top_y = actor_top_offset_y + visual_h / 2.0;
-        nodes.push(LayoutNode {
-            id: format!("actor-top-{id}"),
-            x: cx,
-            y: top_y,
-            width: w,
-            height: visual_h,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        });
-    }
+    append_sequence_top_actors(
+        &mut nodes,
+        SequenceTopActorContext {
+            actor_order: &model.actor_order,
+            actors: &model.actors,
+            actor_widths: &actor_widths,
+            actor_centers_x: &actor_centers_x,
+            actor_base_heights: &actor_base_heights,
+            actor_top_offset_y,
+            label_box_height,
+        },
+    );
 
     // Message edges.
     let directive_steps = plan_sequence_directive_steps(BlockStepPlanContext {
