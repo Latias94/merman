@@ -138,6 +138,11 @@ Progress:
 - Removed the residual default-title pair `upstream_title_without_colon_spec` and
   `upstream_pkgtests_sequencediagram_spec_020`; both derive from the same corrected
   `Hello Bob, how are you?` message-width fact and no additional SVG metric rows were added.
+- Removed the simple `Bob thinks` note-right trio
+  `upstream_pkgtests_sequencediagram_spec_007`, `upstream_pkgtests_sequencediagram_spec_009`, and
+  `upstream_pkgtests_sequencediagram_spec_042`; focused disabled-root `parity-root` proves the
+  existing Sequence note/message bounds now cover these variants without additional SVG metric
+  rows.
 
 Exit criteria:
 

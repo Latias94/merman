@@ -47,6 +47,10 @@
 - Removed the residual default-title Sequence pins `upstream_title_without_colon_spec` and
   `upstream_pkgtests_sequencediagram_spec_020`, tightening the root budget to `729` and Sequence
   root pins to `191` without growing the SVG text metric table.
+- Removed the simple `Bob thinks` note-right Sequence trio
+  `upstream_pkgtests_sequencediagram_spec_007`, `upstream_pkgtests_sequencediagram_spec_009`, and
+  `upstream_pkgtests_sequencediagram_spec_042`, tightening the root budget to `726` and Sequence
+  root pins to `188` without growing the SVG text metric table.
 
 ## 2026-05-11
 

@@ -22,10 +22,11 @@ strict release gates green.
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
   the stale retained pins exposed by the post-wrapping disabled-root sweep.
-- Current Sequence root viewport overrides: `191` entries after deriving the small-font Sequence
+- Current Sequence root viewport overrides: `188` entries after deriving the small-font Sequence
   note/message height path, the docs boundary actor-spacing path, and the title/accessibility
-  default-message width path, including the residual default-title pair.
-- Current root viewport override budget: `729` entries.
+  default-message width path, including the residual default-title pair and a simple note-right
+  cluster.
+- Current root viewport override budget: `726` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.
