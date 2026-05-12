@@ -478,6 +478,15 @@ fn sequence_svg_overrides_drive_simple_bbox_width_for_wrap_label_probes() {
         measurer.measure_svg_simple_text_bbox_width_px(no_wrap, &style),
         432.0
     );
+
+    assert_eq!(
+        measurer.measure_svg_simple_text_bbox_width_px("very-long-participant-label", &style),
+        172.0
+    );
+    assert_eq!(
+        measurer.measure_svg_simple_text_bbox_width_px("another-long-participant-label", &style),
+        192.0
+    );
 }
 
 #[test]

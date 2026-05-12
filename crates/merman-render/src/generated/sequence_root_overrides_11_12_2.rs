@@ -20,7 +20,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_wrap_directive_and_prefixes_028" => Some(("-50 -10 1022 412", "1022")),
         "stress_nested_rect_par_029" => Some(("-50 -10 650 712", "650")),
         "stress_create_destroy_inside_alt_030" => Some(("-50 -10 734 679", "734")),
-        "stress_long_participant_labels_br_031" => Some(("-50 -10 754 458", "754")),
         "stress_critical_options_notes_033" => Some(("-50 -10 560 679", "560")),
         "stress_html_entities_and_escaping_038" => Some(("-50 -10 730 327", "730")),
         "stress_message_text_with_colons_039" => Some(("-50 -10 986 318", "986")),

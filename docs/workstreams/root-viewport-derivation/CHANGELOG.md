@@ -2,6 +2,10 @@
 
 ## 2026-05-12
 
+- Moved the Sequence participant `<br/>` label line-width browser facts into the Sequence SVG
+  metric table, removed `stress_long_participant_labels_br_031`, tightened the root budget to
+  `618` with Sequence at `80`, kept the SVG metric table at `186` rows, and revalidated focused
+  normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.
 - Routed simple SVG bbox width probes through the existing Sequence metric table, replaced unused
   empty/zero-width rows with the `stress_br_in_messages_notes_011` no-wrap and wrap-prefix layout
   widths, removed its root pin, tightened the root budget to `619` with Sequence at `81`, kept the

@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Moved the Sequence participant `<br/>` label line-width browser facts into the Sequence SVG
+  metric table, removed the now-derived `stress_long_participant_labels_br_031` root pin, kept the
+  SVG metric table at `186` rows by replacing unused stale rows, tightened the root budget to
+  `618` with Sequence at `80`, and revalidated focused normal/disabled-root `parity-root` plus
+  `report-overrides --check-no-growth`.
 - Routed simple SVG bbox width probes through the existing Sequence metric table so
   `wrapLabel(...)` and `calculateTextDimensions(...)` use the same exact width facts, replaced
   unused empty/zero-width rows with the `stress_br_in_messages_notes_011` no-wrap and wrap-prefix

@@ -63,6 +63,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
+  Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
+  while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with
+  Sequence at `80`.
 - Sequence layout/SVG parity: let simple SVG bbox measurement reuse Sequence metric facts for
   `wrapLabel` width probes, deriving the `stress_br_in_messages_notes_011` no-wrap/wrap root
   viewport without growing the SVG metric table.
