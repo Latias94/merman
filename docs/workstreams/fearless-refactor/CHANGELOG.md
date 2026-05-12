@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split Sequence rect layout helpers out of `sequence.rs` into `sequence/rect.rs`, covering the
+  open-rect stack geometry and final rect horizontal bounds pass while preserving render nextest,
+  render clippy, Sequence `parity-root`, and override no-growth.
 - Split Sequence block frame bounds accumulation out of `sequence.rs` into
   `sequence/block_bounds.rs`, turning the final block-frame `getBBox` expansion pass into a
   focused module while keeping render nextest, render clippy, Sequence `parity-root`, and override

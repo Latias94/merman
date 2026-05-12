@@ -332,6 +332,8 @@ Progress:
 - Split Sequence layout block frame bounds accumulation into
   `crates/merman-render/src/sequence/block_bounds.rs`, so the final root-bounds expansion pass has
   its own block-stack owner instead of a large inline local state machine.
+- Split Sequence layout rect open-stack geometry and final rect horizontal bounds into
+  `crates/merman-render/src/sequence/rect.rs`, keeping rect-specific quirks local to one owner.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /
