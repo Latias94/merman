@@ -198,7 +198,7 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("message", 0.0, 3.4375),
     ("multiline", 0.0, 3.6875),
     ("multiline<br />text", 0.0, 3.6875),
-    ("multiline<br \\t/>text", 0.0, 8.25),
+    ("multiline<br \\t/>text", 0.0, 8.1875),
     ("multiline<br/>text", 0.0, 3.6875),
     ("multiline<br>text", 0.0, 3.6875),
     ("no", 0.0, 1.0625),

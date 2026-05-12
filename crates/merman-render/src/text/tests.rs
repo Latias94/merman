@@ -455,7 +455,7 @@ fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let text = "multiline<br \\t/>text";
     let m = measurer.measure_wrapped(text, &style, None, WrapMode::SvgLikeSingleRun);
     assert_eq!(m.line_count, 1);
-    assert_eq!(m.width, 132.0);
+    assert_eq!(m.width, 131.0);
 }
 
 #[test]

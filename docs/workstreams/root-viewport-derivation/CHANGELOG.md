@@ -2,6 +2,9 @@
 
 ## 2026-05-12
 
+- Recalibrated the Sequence SVG metric for literal `<br \t/>` labels to match the upstream
+  131px single-line bbox, removed the now-derived `html_br_variants_and_wrap` root pin, and
+  revalidated focused normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.
 - Derived wrapped Sequence `leftOf` note width and final rewrap behavior with leftOf-owned bbox
   calibration, refreshed the affected Sequence/ZenUML layout goldens, removed nine more Sequence
   root pins, tightened the root budget to `702` and Sequence root pins to `164`, and revalidated

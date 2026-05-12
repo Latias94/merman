@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Recalibrated the Sequence SVG metric for literal `<br \t/>` single-line labels from 132px to
+  131px, removed the now-derived `html_br_variants_and_wrap` root pin, and revalidated focused
+  normal/disabled-root `parity-root` plus `report-overrides --check-no-growth`.
 - Wired Sequence layout, parity SVG rendering, and `xtask compare-sequence-svgs` through the Node
   KaTeX backend for math actors/messages/notes/block labels, refreshed the math Sequence layout
   golden, and revalidated focused `parity-root`, render nextest, and render/xtask Clippy.

@@ -95,7 +95,7 @@ fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
 
     // Mermaid's text-dimension probe treats the escaped `<br \t/>` as literal single-run text,
     // then adds the normal note padding.
-    assert_eq!(note.width, 152.0);
+    assert_eq!(note.width, 151.0);
 }
 
 #[test]

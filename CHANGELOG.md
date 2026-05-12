@@ -63,6 +63,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence layout/SVG parity: recalibrate the literal `<br \t/>` single-line SVG width used by
+  Sequence labels, deleting the `html_br_variants_and_wrap` root viewport pin.
 - State layout/SVG parity: decode Mermaid `encodeEntities` placeholders before measuring State
   labels, and move the `test({ foo: 'far' })` edge-label browser width into State text metrics so
   two fixture-scoped State root viewport pins can be deleted.

@@ -10,7 +10,6 @@ pub fn lookup_sequence_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "html_br_variants_and_wrap" => Some(("-50 -10 951.5 651", "951.5")),
         "stress_deep_nested_frames_018" => Some(("-50 -10 850 967", "850")),
         "stress_end_in_labels_025" => Some(("-50 -10 450 507", "450")),
         "stress_end_keyword_016" => Some(("-50 -10 652 451", "652")),
