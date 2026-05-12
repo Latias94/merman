@@ -141,7 +141,7 @@ fn render_sequence_diagram_svg_inner(
     let _ = write!(
         &mut out,
         r#"<style>{}</style><g/>"#,
-        sequence_css(diagram_id)
+        sequence_css(diagram_id, settings.actor_label_font_size)
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.

@@ -15,7 +15,7 @@ pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
 pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
 
 pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
-    (font_size_px.max(1.0) * (17.0 / 16.0)).max(1.0)
+    (font_size_px.max(1.0) * (17.0 / 16.0)).round().max(1.0)
 }
 
 pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
@@ -47,8 +47,17 @@ fn measure_svg_like_with_html_br(
 ) -> (f64, f64) {
     let lines = split_html_br_lines(text);
     let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
+    let calculated_line_height = sequence_text_dimensions_height_px(style.font_size);
+    let normalize_line_height = |height: f64| {
+        let h = height.max(0.0);
+        if style.font_size < 16.0 {
+            h.min(calculated_line_height)
+        } else {
+            h
+        }
+    };
     if lines.len() <= 1 {
-        // Mermaid rounds the SVG-like width, but keeps the height from the single-run path.
+        // Mermaid rounds the SVG-like width, but keeps the height from the single-run bbox path.
         let width_metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
         let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
         let h = if metrics.height > 0.0 {
@@ -56,12 +65,14 @@ fn measure_svg_like_with_html_br(
         } else {
             default_line_height
         };
-        return (width_metrics.width.round().max(0.0), h.max(0.0));
+        return (
+            width_metrics.width.round().max(0.0),
+            normalize_line_height(h),
+        );
     }
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
-        // Mermaid rounds each SVG-like line width before choosing the max.
         let width_metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLike);
         max_w = max_w.max(width_metrics.width.round().max(0.0));
         let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
@@ -70,7 +81,7 @@ fn measure_svg_like_with_html_br(
         } else {
             default_line_height
         };
-        line_h = line_h.max(h.max(0.0));
+        line_h = line_h.max(normalize_line_height(h));
     }
     (
         max_w,
@@ -450,8 +461,9 @@ pub fn layout_sequence_diagram_typed(
         actor_centers_x.push(actor_left_x[i] + actor_widths[i] / 2.0);
     }
 
-    let message_step = message_margin + (message_font_size / 2.0) + bottom_margin_adj;
-    let msg_label_offset = (message_step - message_font_size) + bottom_margin_adj;
+    let message_text_line_height = sequence_text_dimensions_height_px(message_font_size);
+    let message_step = box_margin + 2.0 * message_text_line_height;
+    let msg_label_offset = (2.0 * message_text_line_height - wrap_padding / 2.0).max(0.0);
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     let mut nodes: Vec<LayoutNode> = Vec::new();
@@ -1467,8 +1479,7 @@ pub fn layout_sequence_diagram_typed(
             // Mermaid's `calculateTextDimensions(...).height` is consistently ~2px smaller per
             // line than the rendered `drawText(...)` getBBox, so use a bbox-like per-line height
             // for the cursor math here.
-            let bbox_line_h = (message_font_size + bottom_margin_adj).max(0.0);
-            let extra = (lines.saturating_sub(1) as f64) * bbox_line_h;
+            let extra = (lines.saturating_sub(1) as f64) * message_text_line_height;
             (cursor_y + extra, cursor_y, message_step + extra)
         };
 
@@ -1554,7 +1565,7 @@ pub fn layout_sequence_diagram_typed(
         }
     }
 
-    let bottom_margin = message_margin - message_font_size + bottom_margin_adj;
+    let bottom_margin = 2.0 * box_margin;
     let bottom_box_top_y = (cursor_y - message_step) + bottom_margin;
 
     // Apply created-actor `starty` overrides now that we know the creation message y.
@@ -2103,6 +2114,7 @@ mod tests {
     fn sequence_text_and_frame_constants_match_mermaid() {
         assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 12.0);
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
+        assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
         assert_eq!(super::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, 60.0);
         assert_eq!(super::SEQUENCE_FRAME_SIDE_PAD_PX, 11.0);

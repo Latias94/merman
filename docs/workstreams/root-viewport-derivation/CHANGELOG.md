@@ -27,6 +27,14 @@
   of unwrapped paragraph width, removed three now-derived wrapping/icon root pins, and tightened the
   root budget to `741` without growing text lookup debt; refreshed the affected Mindmap layout
   goldens and verified `xtask verify --strict`.
+- Removed five stale Mindmap root pins found by the post-wrapping disabled-root sweep and tightened
+  the root budget to `736` without growing text lookup debt.
+- Derived the Sequence small-font precedence fixture by rounding the Sequence text-dimension height
+  and emitting root CSS with the configured actor label font size, removed
+  `stress_sequence_font_size_precedence_090`, kept the boundary docs fixture pinned because its
+  actor spacing still has a 16px message-width gap, and tightened the root budget to `735` without
+  growing text lookup debt; refreshed the affected Sequence layout golden and verified
+  `xtask verify --strict`.
 
 ## 2026-05-11
 

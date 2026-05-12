@@ -21,9 +21,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_braches_008" => {
             Some(("5 5 611.6260375976562 360.7017517089844", "611.626"))
         }
-        "upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009" => {
-            Some(("5 5 615.91748046875 440.98748779296875", "615.917"))
-        }
         "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017" => {
             Some(("5 5 553.4945068359375 112", "553.495"))
         }
@@ -48,9 +45,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_tidy_tree_spec_3_tidy_tree_should_render_a_mindmap_with_different_shapes_003" => {
             Some(("5 5 1144.203369140625 700.1749877929688", "1144.2"))
         }
-        "upstream_docs_tidy_tree_example_usage_002" => {
-            Some(("5 5 796.6170043945312 671.435546875", "796.617"))
-        }
         "upstream_docs_intro_how_can_i_help_001" => {
             Some(("5 5 893.5901489257812 384.7295837402344", "893.59"))
         }
@@ -74,7 +68,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_deep_wide_combo_011" => {
             Some(("5 5 785.1439819335938 678.3199462890625", "785.144"))
         }
-        "stress_label_escaping_012" => Some(("5 5 623.0265502929688 363.4689025878906", "623.027")),
         "stress_mindmap_html_sanitization_013" => {
             Some(("5 5 233.390625 258.71905517578125", "233.391"))
         }
@@ -90,9 +83,6 @@ pub fn lookup_mindmap_root_viewport_override(
         }
         "stress_mindmap_whitespace_comments_indent_018" => {
             Some(("5 5 435.1615905761719 589.0218505859375", "435.162"))
-        }
-        "stress_mindmap_delimiters_and_quotes_019" => {
-            Some(("5 5 271.44976806640625 549.0762329101562", "271.45"))
         }
         "stress_mindmap_unicode_punct_020" => {
             Some(("5 5 635.117919921875 257.3459167480469", "635.118"))
@@ -113,7 +103,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_mindmap_shapes_with_ids_and_labels_028" => {
             Some(("5 5 563.7918701171875 368.91632080078125", "563.792"))
         }
-        "stress_mindmap_unicode_rtl_mixed_029" => Some(("5 5 260 582.5546875", "260")),
         "stress_mindmap_markdown_vs_verbatim_030" => {
             Some(("5 5 427.04827880859375 264.58648681640625", "427.048"))
         }

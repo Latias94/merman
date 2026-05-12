@@ -7,8 +7,9 @@ measurement derivation targets.
 ## Objective
 
 Replace fixture-scoped root viewport overrides with typed layout bounds, emitted SVG bounds, or
-shared browser-measurement derivation where practical, starting with State and Mindmap, while
-keeping `parity-root` and strict release gates green.
+shared browser-measurement derivation where practical, starting with State and Mindmap and then
+revisiting Sequence once the first derivation patterns are proven, while keeping `parity-root` and
+strict release gates green.
 
 ## Initial Scope
 
@@ -17,10 +18,15 @@ keeping `parity-root` and strict release gates green.
 - Current State root viewport overrides: `34` entries after the style-directive border,
   Mermaid entity-placeholder edge-label, multiline note-label, transition edge-label, and shared
   alias/styled node-label derivation passes.
-- Current Mindmap root viewport overrides: `44` entries after deriving the single-line delimiter
+- Current Mindmap root viewport overrides: `39` entries after deriving the single-line delimiter
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
-  measurement path, the docs cloud emitted path bbox, and plain wrapping-label container bounds.
-- Current root viewport override budget: `741` entries.
+  measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
+  the stale retained pins exposed by the post-wrapping disabled-root sweep.
+- Current Sequence root viewport overrides: `197` entries after deriving the small-font Sequence
+  note/message height path for `stress_sequence_font_size_precedence_090`. The docs boundary
+  fixture remains pinned because its actor spacing still exposes a 16px message-width derivation
+  gap.
+- Current root viewport override budget: `735` entries.
 - Keep the existing strict gate green:
 
 ```sh
@@ -34,6 +40,7 @@ Use focused parity-root audits before and after each candidate deletion:
 ```sh
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 ```
 
 Use disabled-root sweeps only as diagnostic input. They are expected to fail until each bucket has

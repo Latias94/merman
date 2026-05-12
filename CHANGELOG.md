@@ -83,6 +83,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Mindmap layout/SVG parity: keep plain Mindmap label measurement on raw font metrics so
   cross-diagram HTML width overrides do not inflate shaped roots, deleting the docs circle root
   viewport pin.
+- Sequence layout/SVG parity: derive the small-font precedence fixture by rounding
+  Mermaid-like text-dimension heights and emitting Sequence root CSS with the configured actor
+  label font size, deleting one fixture-scoped root viewport pin while keeping the boundary docs
+  pin as message-width derivation debt.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

@@ -141,6 +141,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [x] Tighten the current Mindmap root budget after the wrapping-label pass.
   Evidence: Mindmap root count is now `44`, root viewport total is `741`, and text lookup debt did
   not grow.
+- [x] Sweep remaining Mindmap root pins after the wrapping-label derivation.
+  Evidence: focused disabled-root checks showed five retained pins were already covered by the new
+  layout/bounds rules, replacing:
+  `upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009`,
+  `upstream_docs_tidy_tree_example_usage_002`, `stress_label_escaping_012`,
+  `stress_mindmap_delimiters_and_quotes_019`, and `stress_mindmap_unicode_rtl_mixed_029`.
+- [x] Tighten the current Mindmap root budget after the post-wrapping sweep.
+  Evidence: Mindmap root count is now `39`, root viewport total is `736`, and text lookup debt did
+  not grow.
 - [x] Classify the immediate docs shape candidates that remain pinned for now.
   Evidence: disabled-root checks show `upstream_docs_mindmap_bang_013` is now down to a small
   browser text/shape float delta after the typed bang path bbox is included, while
@@ -154,13 +163,27 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 ## P2: Larger Buckets
 
 - [ ] Revisit Flowchart after State/Mindmap patterns are proven.
-- [ ] Revisit Sequence after typed note/message/frame bounds have a reusable derivation pattern.
+- [x] Revisit the first low-risk Sequence root candidate after State/Mindmap patterns are proven.
+  Evidence: Sequence small-font text height now rounds Mermaid-like
+  `calculateTextDimensions(...).height`, the SVG root CSS follows the configured actor label font
+  size, and `stress_sequence_font_size_precedence_090` passes `parity-root` without a root pin.
+- [x] Keep the Sequence boundary fixture retained until message-width derivation improves.
+  Evidence: removing `upstream_docs_sequencediagram_boundary_008` still produces local
+  `max-width: 487px` versus upstream `471px`; Bob's actor column is 16px too far right, so the
+  remaining drift is message text width / actor-margin derivation, not a stale root pin.
+- [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
+  without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.
 
 ## P3: Release Closeout
 
-- [ ] Run `cargo run -p xtask -- verify --strict`.
-- [ ] Run `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`.
-- [ ] Run `cargo nextest run` if shared rendering/layout behavior changed.
-- [ ] Update `CHANGELOG.md` and the workstream changelog.
-- [ ] Complete `AUDIT.md` with prompt-to-artifact evidence.
+- [x] Run `cargo run -p xtask -- verify --strict`.
+  Evidence: strict passed after the Sequence pass, including fmt, workspace clippy, workspace
+  nextest, override no-growth, feature matrix, normal DOM parity, and root DOM parity.
+- [x] Run `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`.
+  Evidence: focused render clippy passed before the final strict gate.
+- [x] Run `cargo nextest run` if shared rendering/layout behavior changed.
+  Evidence: the final strict gate reran workspace nextest with `1022` passed and `3` skipped after
+  refreshing the affected Sequence layout golden.
+- [x] Update `CHANGELOG.md` and the workstream changelog.
+- [x] Complete `AUDIT.md` with prompt-to-artifact evidence.

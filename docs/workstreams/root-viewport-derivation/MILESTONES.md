@@ -101,6 +101,8 @@ Progress:
   stopped re-expanding normal prose to unwrapped paragraph width. The wrapped/min-content metric now
   covers both root wrapping prose and the icon-bearing wrapping Cypress fixture without adding text
   lookup debt.
+- Removed five additional stale Mindmap root pins after a post-wrapping disabled-root sweep proved
+  those fixtures were already covered by the new layout/bounds rules.
 
 Exit criteria:
 
@@ -112,11 +114,23 @@ Exit criteria:
 
 ## M3: Broader Root-Debt Plan
 
+Status: started.
+
 Scope:
 
 - Decide whether the State/Mindmap derivation patterns apply to Architecture, Flowchart, Sequence,
   or GitGraph.
 - Record the next bucket order using evidence from the first passes.
+
+Progress:
+
+- Started Sequence with the lowest-risk font-size precedence candidate. The height path now rounds
+  the Mermaid-like text-dimension height and root CSS inherits the configured Sequence font size,
+  allowing `stress_sequence_font_size_precedence_090` to derive its root viewport without a pin.
+- Retained `upstream_docs_sequencediagram_boundary_008` because its disabled-root drift is still a
+  16px message-width / actor-margin gap (`487px` local max-width versus `471px` upstream), so the
+  next Sequence work should target reusable message-width inference rather than deleting that root
+  pin.
 
 Exit criteria:
 

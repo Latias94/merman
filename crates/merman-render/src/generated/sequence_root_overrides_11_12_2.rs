@@ -25,7 +25,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_critical_options_notes_033" => Some(("-50 -10 560 679", "560")),
         "stress_html_entities_and_escaping_038" => Some(("-50 -10 730 327", "730")),
         "stress_message_text_with_colons_039" => Some(("-50 -10 986 318", "986")),
-        "stress_sequence_font_size_precedence_090" => Some(("-50 -10 550 244", "550")),
         "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
             Some(("-50 -10 512 435", "512"))
         }

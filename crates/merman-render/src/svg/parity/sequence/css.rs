@@ -1,6 +1,6 @@
 use super::super::*;
 
-pub(super) fn sequence_css(diagram_id: &str) -> String {
+pub(super) fn sequence_css(diagram_id: &str, font_size_px: f64) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
@@ -8,8 +8,10 @@ pub(super) fn sequence_css(diagram_id: &str) -> String {
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
+        id,
+        font,
+        fmt(font_size_px)
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -36,8 +38,11 @@ pub(super) fn sequence_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        id,
+        font,
+        fmt(font_size_px),
+        id
     );
 
     // Sequence styles.
@@ -149,4 +154,19 @@ pub(super) fn sequence_css(diagram_id: &str) -> String {
         id, font
     );
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequence_css_uses_configured_font_size() {
+        let css = sequence_css("seq", 24.0);
+
+        assert!(css.contains(
+            r#"#seq{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:#333;}"#
+        ));
+        assert!(css.contains(r#"#seq svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;}#seq p{margin:0;}"#));
+    }
 }
