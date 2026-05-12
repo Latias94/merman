@@ -340,6 +340,10 @@ Progress:
 - Split Sequence note layout into `crates/merman-render/src/sequence/notes.rs`, so note placement,
   wrapped-note measurement quirks, rect-bounds contribution, and cursor increment live behind one
   focused helper.
+- Split regular Sequence message edge layout into
+  `crates/merman-render/src/sequence/messages.rs`, so endpoint adjustment, wrapped-message text,
+  label measurement, and cursor-step geometry live behind one focused helper while the main loop
+  applies actor lifecycle state.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

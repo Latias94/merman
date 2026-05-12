@@ -79,6 +79,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout internals: split note node layout and wrapped-note measurement quirks into
   `sequence/notes.rs`, leaving the main message loop to apply the produced node, rect bounds, and
   cursor step.
+- Sequence layout internals: split regular message edge layout into `sequence/messages.rs`,
+  keeping endpoint, wrap, label, and cursor geometry behind a focused helper while the main loop
+  applies actor lifecycle state.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with

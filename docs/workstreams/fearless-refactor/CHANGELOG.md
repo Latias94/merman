@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split regular Sequence message edge layout out of `sequence.rs` into `sequence/messages.rs`,
+  including endpoint adjustment, wrapped-message text, label measurement, and cursor-step geometry
+  while leaving created/destroyed actor lifecycle state in the main orchestration loop; revalidated
+  render nextest, render clippy, Sequence `parity-root`, and override no-growth.
 - Split Sequence note layout out of `sequence.rs` into `sequence/notes.rs`, including note
   placement, wrapped-note SVG measurement quirks, rect-bounds contribution, and cursor increment
   output while preserving render nextest, render clippy, Sequence `parity-root`, and override

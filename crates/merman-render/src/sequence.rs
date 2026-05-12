@@ -1,11 +1,8 @@
 use crate::math::MathRenderer;
 use crate::model::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
+    Bounds, LayoutCluster, LayoutEdge, LayoutNode, LayoutPoint, SequenceDiagramLayout,
 };
-use crate::text::{
-    TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines,
-    wrap_label_like_mermaid_lines_floored_bbox,
-};
+use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
@@ -16,6 +13,7 @@ mod block_bounds;
 mod block_steps;
 mod config;
 mod constants;
+mod messages;
 mod metrics;
 mod notes;
 mod rect;
@@ -34,6 +32,7 @@ use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
 use constants::{sequence_actor_lifeline_start_y, sequence_actor_visual_height};
+use messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
 use notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use rect::{SequenceRectOpen, sequence_rect_stack_x_bounds};
@@ -596,217 +595,56 @@ pub fn layout_sequence_diagram_typed(
         }
 
         // Regular message edges.
-        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+        let Some(message) = layout_sequence_message(
+            msg,
+            SequenceMessageLayoutContext {
+                actor_index: &actor_index,
+                actor_centers_x: &actor_centers_x,
+                actor_widths: &actor_widths,
+                activation_state: &activation_state,
+                msg_idx,
+                actor_width_min,
+                box_margin,
+                wrap_padding,
+                message_text_line_height,
+                message_step,
+                msg_label_offset,
+                message_font_size,
+                message_width_scale,
+                cursor_y,
+                measurer,
+                msg_text_style: &msg_text_style,
+                math_config: &math_config,
+                math_renderer,
+                created_actor_index: msg
+                    .to
+                    .as_deref()
+                    .and_then(|to| model.created_actors.get(to).copied()),
+                destroyed_from_index: msg
+                    .from
+                    .as_deref()
+                    .and_then(|from| model.destroyed_actors.get(from).copied()),
+                destroyed_to_index: msg
+                    .to
+                    .as_deref()
+                    .and_then(|to| model.destroyed_actors.get(to).copied()),
+                actor_is_type_width_limited: &actor_is_type_width_limited,
+            },
+        ) else {
             continue;
         };
-        let (Some(fi), Some(ti)) = (actor_index.get(from).copied(), actor_index.get(to).copied())
-        else {
-            continue;
-        };
-        let from_x = actor_centers_x[fi];
-        let to_x = actor_centers_x[ti];
-
-        let (from_left, from_right) = activation_state.actor_bounds(from, from_x);
-        let (to_left, to_right) = activation_state.actor_bounds(to, to_x);
-
-        let is_arrow_to_right = from_left <= to_left;
-        let mut startx = if is_arrow_to_right {
-            from_right
-        } else {
-            from_left
-        };
-        let mut stopx = if is_arrow_to_right { to_left } else { to_right };
-
-        let adjust_value = |v: f64| if is_arrow_to_right { -v } else { v };
-        let is_arrow_to_activation = (to_left - to_right).abs() > 2.0;
-
-        let is_self = from == to;
-        if is_self {
-            stopx = startx;
-        } else {
-            if msg.activate && !is_arrow_to_activation {
-                stopx += adjust_value(activation_state.width() / 2.0 - 1.0);
-            }
-
-            if !matches!(msg.message_type, 5 | 6) {
-                stopx += adjust_value(3.0);
-            }
-
-            if matches!(msg.message_type, 33 | 34) {
-                startx -= adjust_value(3.0);
-            }
-        }
-
-        if !is_self {
-            // Mermaid adjusts creating/destroying messages so arrowheads land outside the actor box.
-            const ACTOR_TYPE_WIDTH_HALF: f64 = 18.0;
-            if model
-                .created_actors
-                .get(to)
-                .is_some_and(|&idx| idx == msg_idx)
-            {
-                let adjustment = if actor_is_type_width_limited(to) {
-                    ACTOR_TYPE_WIDTH_HALF + 3.0
-                } else {
-                    actor_widths[ti] / 2.0 + 3.0
-                };
-                if to_x < from_x {
-                    stopx += adjustment;
-                } else {
-                    stopx -= adjustment;
-                }
-            } else if model
-                .destroyed_actors
-                .get(from)
-                .is_some_and(|&idx| idx == msg_idx)
-            {
-                let adjustment = if actor_is_type_width_limited(from) {
-                    ACTOR_TYPE_WIDTH_HALF
-                } else {
-                    actor_widths[fi] / 2.0
-                };
-                if from_x < to_x {
-                    startx += adjustment;
-                } else {
-                    startx -= adjustment;
-                }
-            } else if model
-                .destroyed_actors
-                .get(to)
-                .is_some_and(|&idx| idx == msg_idx)
-            {
-                let adjustment = if actor_is_type_width_limited(to) {
-                    ACTOR_TYPE_WIDTH_HALF + 3.0
-                } else {
-                    actor_widths[ti] / 2.0 + 3.0
-                };
-                if to_x < from_x {
-                    stopx += adjustment;
-                } else {
-                    stopx -= adjustment;
-                }
-            }
-        }
-
-        let text = msg.message_text();
-        let bounded_width = (startx - stopx).abs().max(0.0);
-        let is_math_message = text.contains("$$");
-        let wrapped_text = if !text.is_empty() && msg.wrap && !is_math_message {
-            // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
-            // Our vendored bbox widths are slightly conservative for Sequence prose, so use the
-            // same calibrated slack as the SVG emitter to keep cursor height and rendered lines in
-            // lockstep without adding fixture-specific text rows.
-            let wrap_w = (bounded_width + SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR * wrap_padding)
-                .max(actor_width_min)
-                .max(1.0);
-            let lines =
-                wrap_label_like_mermaid_lines_floored_bbox(text, measurer, &msg_text_style, wrap_w);
-            Some(lines.join("<br>"))
-        } else {
-            None
-        };
-        let effective_text = wrapped_text.as_deref().unwrap_or(text);
-
-        let (line_y, label_base_y, cursor_step) = if effective_text.is_empty() {
-            // Mermaid's `boundMessage(...)` uses the measured text bbox height. For empty labels
-            // (trailing colon `Alice->Bob:`) the bbox height becomes 0, collapsing the extra
-            // vertical offset and producing a much earlier message line.
-            //
-            // Our cursor model uses `message_step` (a typical 1-line height) as the baseline.
-            // Shift the line up and only advance by `boxMargin` to match the upstream footer actor
-            // placement and overall viewBox height.
-            let line_y = cursor_y - (message_step - box_margin);
-            (line_y, cursor_y, box_margin)
-        } else if is_math_message {
-            // Mermaid's `boundMessage(...)` uses `calculateMathMLDimensions(...)` for KaTeX and
-            // skips the extra ordinary-text line-height bump. Our cursor model keeps `cursor_y`
-            // one `message_step` ahead of Mermaid's internal vertical position, so translate back
-            // to that base before applying the KaTeX total offset.
-            let (_w, h) = measure_sequence_label_for_layout(
-                measurer,
-                effective_text,
-                &msg_text_style,
-                &math_config,
-                math_renderer,
-                SequenceMathHeightMode::Bound,
-            );
-            let base_y = cursor_y - message_step;
-            let line_y = base_y + box_margin + h;
-            (line_y, line_y, box_margin + h)
-        } else {
-            // Mermaid's `boundMessage(...)` uses `common.splitBreaks(message)` to derive a
-            // `lines` count and adjusts the message line y-position and cursor increment by the
-            // per-line height. This applies both to explicit `<br>` breaks and to `wrap: true`
-            // labels (which are wrapped via `wrapLabel(...)` and stored with `<br/>` separators).
-            let lines = split_html_br_lines(effective_text).len().max(1);
-            // Mermaid's `calculateTextDimensions(...).height` is consistently ~2px smaller per
-            // line than the rendered `drawText(...)` getBBox, so use a bbox-like per-line height
-            // for the cursor math here.
-            let extra = (lines.saturating_sub(1) as f64) * message_text_line_height;
-            (cursor_y + extra, cursor_y, message_step + extra)
-        };
-
-        let x1 = startx;
-        let x2 = stopx;
-
-        let label = if effective_text.is_empty() {
-            // Mermaid renders an (empty) message text node even when the label is empty (e.g.
-            // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
-            Some(LayoutLabel {
-                x: ((x1 + x2) / 2.0).round(),
-                y: (label_base_y - msg_label_offset).round(),
-                width: 1.0,
-                height: message_font_size.max(1.0),
-            })
-        } else {
-            let (w, h) = measure_sequence_label_for_layout(
-                measurer,
-                effective_text,
-                &msg_text_style,
-                &math_config,
-                math_renderer,
-                if is_math_message {
-                    SequenceMathHeightMode::Draw
-                } else {
-                    SequenceMathHeightMode::Bound
-                },
-            );
-            Some(LayoutLabel {
-                x: ((x1 + x2) / 2.0).round(),
-                y: (label_base_y - msg_label_offset).round(),
-                width: (w * message_width_scale).max(1.0),
-                height: h.max(1.0),
-            })
-        };
-
-        edges.push(LayoutEdge {
-            id: format!("msg-{}", msg.id),
-            from: from.to_string(),
-            to: to.to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint { x: x1, y: line_y },
-                LayoutPoint { x: x2, y: line_y },
-            ],
-            label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        });
 
         for open in rect_stack.iter_mut() {
-            let lx = from_x.min(to_x) - 11.0;
-            let rx = from_x.max(to_x) + 11.0;
-            open.include_min_max(lx, rx, line_y);
+            let lx = message.from_x.min(message.to_x) - 11.0;
+            let rx = message.from_x.max(message.to_x) + 11.0;
+            open.include_min_max(lx, rx, message.line_y);
         }
 
-        cursor_y += cursor_step;
-        if is_self {
+        let from = message.from;
+        let to = message.to;
+        let line_y = message.line_y;
+        cursor_y += message.cursor_step;
+        if message.is_self {
             // Mermaid adds extra vertical space for self-messages to accommodate the loop curve.
             cursor_y += 30.0;
         }
@@ -837,6 +675,7 @@ pub fn layout_sequence_diagram_typed(
             destroyed_actor_bottom_top_y.insert(to.to_string(), line_y - h / 2.0);
             cursor_y += h / 2.0;
         }
+        edges.push(message.edge);
     }
 
     let bottom_margin = 2.0 * box_margin;
