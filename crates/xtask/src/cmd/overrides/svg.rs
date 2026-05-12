@@ -607,7 +607,19 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
       // Use a stable SVG id to mirror `mmdc` defaults (unless the user passes `--svgId`).
       // This reduces the risk of accidental id-scoped CSS differences affecting measurement.
       container.innerHTML = '';
-      const { svg } = await mermaid.render('my-svg', def, container);
+      let svg;
+      try {
+        const rendered = await mermaid.render('my-svg', def, container);
+        svg = rendered.svg;
+      } catch (e) {
+        results.push({
+          width_px: null,
+          center_diff: null,
+          margin_px: null,
+          debug_svg_start: debug ? String(e && e.message ? e.message : e).slice(0, 160) : null,
+        });
+        continue;
+      }
 
        const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
        const parseNumber = (v) => {
@@ -782,7 +794,9 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
                 }
             }
             let raw = infer_sequence_message_dimensions_width_px_via_mermaid_layout(
-                &node_cwd, None, &strings,
+                &node_cwd,
+                Some(&browser_exe),
+                &strings,
             )?;
             let widths = raw.iter().map(|m| m.width_px).collect::<Vec<_>>();
             if debug {

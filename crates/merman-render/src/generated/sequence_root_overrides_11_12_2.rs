@@ -166,7 +166,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_wrapping_text_017" => {
             Some(("-50 -10 1650 660", "1650"))
         }
-        "upstream_docs_sequencediagram_boundary_008" => Some(("-50 -10 471 274", "471")),
         "upstream_docs_sequencediagram_collections_016" => Some(("-50 -10 453 259", "453")),
         "upstream_docs_sequencediagram_parallel_054" => Some(("-50 -10 1062 547", "1062")),
         "upstream_docs_directives_changing_sequence_diagram_config_via_directive_013" => {

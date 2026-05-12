@@ -127,10 +127,10 @@ Progress:
 - Started Sequence with the lowest-risk font-size precedence candidate. The height path now rounds
   the Mermaid-like text-dimension height and root CSS inherits the configured Sequence font size,
   allowing `stress_sequence_font_size_precedence_090` to derive its root viewport without a pin.
-- Retained `upstream_docs_sequencediagram_boundary_008` because its disabled-root drift is still a
-  16px message-width / actor-margin gap (`487px` local max-width versus `471px` upstream), so the
-  next Sequence work should target reusable message-width inference rather than deleting that root
-  pin.
+- Derived `upstream_docs_sequencediagram_boundary_008` by routing Sequence text-dimension width
+  measurement through the single-run SVG metric path and adding the two boundary message-width
+  facts exposed by the upstream fixture. The root pin is deleted; the remaining Sequence bucket
+  should still target reusable message/note/frame bounds before broad table pruning.
 
 Exit criteria:
 

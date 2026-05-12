@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-11
+## Snapshot: 2026-05-12
 
 Command:
 
@@ -68,7 +68,10 @@ and circle shape bounds from single-line delimiter label measurement and removed
 pins, tightening the current root viewport budget to `754`. A follow-up Mindmap pass kept plain
 Mindmap label measurement on raw font metrics so cross-diagram HTML width overrides no longer
 inflate the docs circle root, deleting one more root pin and tightening the current root viewport
-budget to `753`.
+budget to `753`. Later State/Mindmap/Sequence root-viewport derivation passes tightened the root
+viewport budget to `734`; the latest Sequence boundary pass intentionally raised the SVG text
+metric table budget to `186` rows to replace a fixture-scoped root pin with two message-width
+facts.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -246,7 +249,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `753`.
+Total entries reported by `xtask`: `734`.
 
 | file | entries |
 | --- | ---: |
@@ -256,11 +259,11 @@ Total entries reported by `xtask`: `753`.
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
 | `gitgraph_root_overrides_11_12_2.rs` | 228 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
-| `mindmap_root_overrides_11_12_2.rs` | 48 |
+| `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 198 |
-| `state_root_overrides_11_12_2.rs` | 42 |
+| `sequence_root_overrides_11_12_2.rs` | 196 |
+| `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
 Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root
@@ -318,6 +321,8 @@ viewBox dimensions, and one KaTeX-related DOM skip. The largest width deltas cam
 and long-message fixtures, including `-203px` drift on the left-of-actor long-note cases and
 `+171px` drift on the Mermaid API sequence fixture, so the remaining table should be reduced by
 typed bounds work rather than by another blind deletion pass.
+The later docs boundary pass removed `upstream_docs_sequencediagram_boundary_008` by using the
+single-run Sequence text-dimension path plus two measured message-width facts.
 
 Journey note: the table was reintroduced with two tiny browser-float root guards after full
 `parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
@@ -337,14 +342,14 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `gitgraph`: 228
-- `sequence`: 198
+- `sequence`: 196
 - `flowchart`: 125
-- `mindmap`: 48
-- `state`: 42
+- `mindmap`: 39
+- `state`: 34
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `481`.
+Total lookup entries reported by `xtask`: `484`.
 
 | file | lookup entries |
 | --- | ---: |
@@ -353,7 +358,7 @@ Total lookup entries reported by `xtask`: `481`.
 | `er_text_overrides_11_12_2.rs` | 3 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
-| `state_text_overrides_11_12_2.rs` | 26 |
+| `state_text_overrides_11_12_2.rs` | 29 |
 | `timeline_text_overrides_11_12_2.rs` | 1 |
 
 GitGraph note: the 9-entry glyph correction module was deleted after
@@ -436,7 +441,7 @@ drift when disabled.
 
 | file | table rows |
 | --- | ---: |
-| `svg_overrides_sequence_11_12_2.rs` | 184 |
+| `svg_overrides_sequence_11_12_2.rs` | 186 |
 
 ### Font Metric Tables
 

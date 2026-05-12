@@ -167,10 +167,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Evidence: Sequence small-font text height now rounds Mermaid-like
   `calculateTextDimensions(...).height`, the SVG root CSS follows the configured actor label font
   size, and `stress_sequence_font_size_precedence_090` passes `parity-root` without a root pin.
-- [x] Keep the Sequence boundary fixture retained until message-width derivation improves.
-  Evidence: removing `upstream_docs_sequencediagram_boundary_008` still produces local
-  `max-width: 487px` versus upstream `471px`; Bob's actor column is 16px too far right, so the
-  remaining drift is message text width / actor-margin derivation, not a stale root pin.
+- [x] Derive the Sequence boundary docs fixture through message-width measurement.
+  Evidence: Sequence now measures `calculateTextDimensions` widths through the single-run SVG text
+  path and includes the two boundary message-width facts; `upstream_docs_sequencediagram_boundary_008`
+  passes focused `parity-root` with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, so its root pin was
+  deleted.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.

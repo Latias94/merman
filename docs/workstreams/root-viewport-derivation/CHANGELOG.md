@@ -35,6 +35,10 @@
   actor spacing still has a 16px message-width gap, and tightened the root budget to `735` without
   growing text lookup debt; refreshed the affected Sequence layout golden and verified
   `xtask verify --strict`.
+- Routed Sequence `calculateTextDimensions` width measurement through the single-run SVG metric
+  path, added the two docs boundary message-width facts, removed
+  `upstream_docs_sequencediagram_boundary_008`, tightened the root budget to `734`, and raised the
+  SVG text metric table budget to `186` with focused and full Sequence `parity-root` checks green.
 
 ## 2026-05-11
 

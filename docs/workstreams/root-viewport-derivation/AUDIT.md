@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and one Sequence root pin removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and two Sequence root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, and Sequence passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -30,12 +30,12 @@ The fearless-refactor closeout recorded these root viewport counts:
 Current counts after the State style/entity-placeholder/note-label/transition-label/alias
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, and the first
-Sequence font-size precedence pass:
+Sequence font-size precedence and boundary message-width passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `197` entries.
-- Root viewport total: `735` entries.
+- Sequence: `196` entries.
+- Root viewport total: `734` entries.
 - Text lookup total: `484` entries. This is an intentional four-entry increase because State-owned
   edge-label, note-label, and node-label metrics replaced seven fixture-scoped root viewport pins.
   The simple transition-label pass reused an existing State edge-label metric arm, so it removed
@@ -43,6 +43,8 @@ Sequence font-size precedence pass:
   reused an existing styled node-label metric arm, so it removed one more State root pin without
   increasing text lookup debt. The docs cloud and wrapping-label Mindmap passes did not add any
   text lookup debt.
+- SVG text metric table total: `186` rows. This is an intentional two-row increase because two
+  Sequence message-width facts replaced the docs boundary root viewport pin.
 
 The latest Mindmap focused disabled-root checks show the plain wrapping prose/icon trio and five
 additional stale retained pins are covered by the current layout/bounds derivation. The remaining
@@ -55,9 +57,10 @@ acting as current guards. They cluster around HTML-sanitized notes, right-to-lef
 long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multiline-label geometry,
 unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
 
-The latest Sequence check removed the small-font precedence root pin after the text-dimension height
-path started rounding to Mermaid-like values. The boundary docs fixture remains pinned: disabled-root
-diagnostics still show a 16px actor-column drift from message-width / actor-margin derivation.
+The latest Sequence checks removed the small-font precedence root pin and the docs boundary root
+pin. The boundary fixture now derives actor spacing from the single-run text-dimension width path
+plus two Sequence message-width facts, replacing the previous 16px actor-column drift with typed
+measurement data.
 
 ## Focused Commands
 
@@ -368,15 +371,17 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   after deleting the Sequence small-font precedence root pin.
 - 2026-05-12: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root
   --dom-decimals 3 --filter upstream_docs_sequencediagram_boundary_008 --report-root-all` passed
-  with the boundary root pin retained. Removing it still leaves local `max-width: 487px` versus
-  upstream `471px`, so this remains message-width / actor-margin derivation debt.
+  after deleting the boundary root pin and deriving the actor spacing through Sequence
+  message-width metrics.
+- 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the same focused boundary
+  `parity-root` check passed, proving the root viewport is no longer fixture-pinned.
 - 2026-05-12: `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root
   --dom-decimals 3 --report-root-all` passed for all Sequence fixtures.
 - 2026-05-12: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
-  `735`, State root count `34`, Mindmap root count `39`, Sequence root count `197`, text lookup
-  total `484`, and zero manual raw SVG/path bridges.
-- 2026-05-12: `cargo run -p xtask -- verify --strict` passed after the Sequence pass. The strict
-  gate included `cargo fmt --check`, workspace `cargo clippy --all-targets --all-features
+  `734`, State root count `34`, Mindmap root count `39`, Sequence root count `196`, text lookup
+  total `484`, SVG text metric table total `186`, and zero manual raw SVG/path bridges.
+- 2026-05-12: `cargo run -p xtask -- verify --strict` passed after the Sequence boundary pass.
+  The strict gate included `cargo fmt --check`, workspace `cargo clippy --all-targets --all-features
   -- -D warnings`, workspace `cargo nextest run` (`1022` passed, `3` skipped), override
   no-growth, feature matrix checks, normal SVG DOM parity, and root SVG DOM parity.
 - 2026-05-12: refreshed the 29 affected Mindmap layout golden snapshots after the wrapped-label

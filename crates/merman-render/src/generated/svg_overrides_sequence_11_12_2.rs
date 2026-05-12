@@ -149,6 +149,8 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("Rational thoughts<br/>prevail...", 0.0, 7.125),
     ("Red Box", 0.0, 3.625),
     ("Repo", 0.0, 2.1875),
+    ("Request from boundary", 0.0, 9.4375),
+    ("Response to boundary", 0.0, 8.6875),
     ("See you later!", 0.0, 5.5625),
     ("Service", 0.0, 3.0),
     ("Start billing process", 0.0, 8.0),

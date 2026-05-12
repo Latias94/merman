@@ -93,9 +93,9 @@ fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
         .find(|n| n.id == "note-7")
         .expect("expected note-7 layout node");
 
-    // The SVG-like width rounding keeps the literal `<br \\t/>` markup on one line here, which
-    // yields a 171px note width in vendored mode.
-    assert_eq!(note.width, 171.0);
+    // Mermaid's text-dimension probe treats the escaped `<br \t/>` as literal single-run text,
+    // then adds the normal note padding.
+    assert_eq!(note.width, 152.0);
 }
 
 #[test]
