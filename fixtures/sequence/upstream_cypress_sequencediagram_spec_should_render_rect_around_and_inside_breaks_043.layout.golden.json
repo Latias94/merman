@@ -29,17 +29,17 @@
         },
         {
           "id": "rect-3",
-          "x": 475.0,
+          "x": 476.0,
           "y": 216.0,
-          "width": 22.0,
+          "width": 170.0,
           "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "rect-1",
-          "x": 475.0,
+          "x": 476.0,
           "y": 188.5,
-          "width": 42.0,
+          "width": 210.0,
           "height": 139.0,
           "is_cluster": false
         },
@@ -239,7 +239,7 @@
       "bounds": {
         "min_x": -50.0,
         "min_y": -10.0,
-        "max_x": 601.0,
+        "max_x": 631.0,
         "max_y": 468.0
       }
     }

@@ -37,25 +37,25 @@
         },
         {
           "id": "rect-4",
-          "x": 475.0,
+          "x": 476.0,
           "y": 260.0,
-          "width": 22.0,
+          "width": 170.0,
           "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "rect-1",
-          "x": 570.0,
+          "x": 531.0,
           "y": 210.5,
-          "width": 232.0,
+          "width": 320.0,
           "height": 183.0,
           "is_cluster": false
         },
         {
           "id": "rect-10",
-          "x": 475.0,
+          "x": 476.0,
           "y": 459.0,
-          "width": 22.0,
+          "width": 170.0,
           "height": 64.0,
           "is_cluster": false
         },

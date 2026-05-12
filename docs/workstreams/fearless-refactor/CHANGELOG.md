@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Derived nested Sequence `rect` block horizontal bounds from Mermaid's open-block stack depth,
+  refreshed the affected `rect around and inside ...` layout goldens, and removed the now-stale
+  `alts`, `breaks`, and `criticals` Sequence root pins; the sibling `loops` fixture remains pinned
+  for its separate vertical cursor drift.
 - Derived non-mirrored Sequence root height from visible message/popup geometry instead of hidden
   footer actor placeholders and `bottomMarginAdj`, refreshed the two affected layout goldens, and
   removed the stale `upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_when_not_mirrored_expe_054`

@@ -1085,6 +1085,132 @@ pub fn layout_sequence_diagram_typed(
         }
     }
 
+    fn rect_stack_x_bounds(
+        model: &SequenceDiagramRenderModel,
+        actor_index: &std::collections::HashMap<&str, usize>,
+        actor_centers_x: &[f64],
+        edges: &[LayoutEdge],
+        nodes: &[LayoutNode],
+        actor_width_min: f64,
+        box_margin: f64,
+    ) -> std::collections::HashMap<String, (f64, f64)> {
+        #[derive(Debug, Clone)]
+        enum StackItem {
+            Rect {
+                start_id: String,
+                min_x: f64,
+                max_x: f64,
+            },
+            Control,
+        }
+
+        fn update_stack(stack: &mut [StackItem], x1: f64, x2: f64, box_margin: f64) {
+            let len = stack.len();
+            for (idx, item) in stack.iter_mut().enumerate() {
+                let n = (len - idx) as f64;
+                if let StackItem::Rect { min_x, max_x, .. } = item {
+                    *min_x = min_x.min(x1 - n * box_margin);
+                    *max_x = max_x.max(x2 + n * box_margin);
+                }
+            }
+        }
+
+        fn message_x_range(
+            msg: &SequenceMessage,
+            actor_index: &std::collections::HashMap<&str, usize>,
+            actor_centers_x: &[f64],
+            edges_by_id: &std::collections::HashMap<&str, &LayoutEdge>,
+            nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+            actor_width_min: f64,
+        ) -> Option<(f64, f64)> {
+            if msg.message_type == 2 {
+                let note_id = format!("note-{}", msg.id);
+                let n = nodes_by_id.get(note_id.as_str()).copied()?;
+                return Some((n.x - n.width / 2.0, n.x + n.width / 2.0));
+            }
+
+            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+                return None;
+            };
+            let edge_id = format!("msg-{}", msg.id);
+            let e = edges_by_id.get(edge_id.as_str()).copied()?;
+
+            if from == to {
+                let line_x = e
+                    .points
+                    .first()
+                    .map(|p| p.x)
+                    .or_else(|| actor_index.get(from).map(|&i| actor_centers_x[i] + 1.0))?;
+                let label_width = e.label.as_ref().map(|label| label.width).unwrap_or(1.0);
+                let dx = (label_width / 2.0).max(actor_width_min / 2.0);
+                return Some((line_x - dx, line_x + dx));
+            }
+
+            let mut min_x = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            for p in &e.points {
+                min_x = min_x.min(p.x);
+                max_x = max_x.max(p.x);
+            }
+            if !min_x.is_finite() || !max_x.is_finite() {
+                return None;
+            }
+            Some((min_x, max_x))
+        }
+
+        let edges_by_id: std::collections::HashMap<&str, &LayoutEdge> =
+            edges.iter().map(|e| (e.id.as_str(), e)).collect();
+        let nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
+            nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+
+        let mut stack: Vec<StackItem> = Vec::new();
+        let mut rect_bounds: std::collections::HashMap<String, (f64, f64)> =
+            std::collections::HashMap::new();
+
+        for msg in &model.messages {
+            match msg.message_type {
+                10 | 12 | 15 | 19 | 27 | 30 | 32 => stack.push(StackItem::Control),
+                11 | 14 | 16 | 21 | 29 | 31 => {
+                    let _ = stack.pop();
+                }
+                22 => stack.push(StackItem::Rect {
+                    start_id: msg.id.clone(),
+                    min_x: f64::INFINITY,
+                    max_x: f64::NEG_INFINITY,
+                }),
+                23 => {
+                    if let Some(StackItem::Rect {
+                        start_id,
+                        min_x,
+                        max_x,
+                    }) = stack.pop()
+                    {
+                        if min_x.is_finite() && max_x.is_finite() {
+                            rect_bounds.insert(start_id, (min_x, max_x));
+                        }
+                    }
+                }
+                _ => {
+                    if stack.is_empty() {
+                        continue;
+                    }
+                    if let Some((x1, x2)) = message_x_range(
+                        msg,
+                        actor_index,
+                        actor_centers_x,
+                        &edges_by_id,
+                        &nodes_by_id,
+                        actor_width_min,
+                    ) {
+                        update_stack(&mut stack, x1, x2, box_margin);
+                    }
+                }
+            }
+        }
+
+        rect_bounds
+    }
+
     // Mermaid's sequence renderer advances a "cursor" even for non-message directives (notes,
     // rect blocks). To avoid overlapping bottom actors and to match upstream viewBox sizes, we
     // model these increments in headless layout as well.
@@ -2033,6 +2159,28 @@ pub fn layout_sequence_diagram_typed(
             None
         }
     };
+
+    let rect_x_bounds = rect_stack_x_bounds(
+        model,
+        &actor_index,
+        &actor_centers_x,
+        &edges,
+        &nodes,
+        actor_width_min,
+        box_margin,
+    );
+    if !rect_x_bounds.is_empty() {
+        for n in &mut nodes {
+            let Some(start_id) = n.id.strip_prefix("rect-") else {
+                continue;
+            };
+            let Some((min_x, max_x)) = rect_x_bounds.get(start_id).copied() else {
+                continue;
+            };
+            n.x = (min_x + max_x) / 2.0;
+            n.width = (max_x - min_x).max(1.0);
+        }
+    }
 
     let mut content_min_x = f64::INFINITY;
     let mut content_max_x = f64::NEG_INFINITY;

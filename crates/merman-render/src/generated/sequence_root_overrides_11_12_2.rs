@@ -43,17 +43,8 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_rects_036" => {
             Some(("-50 -10 1250 717", "1250"))
         }
-        "upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_alts_040" => {
-            Some(("-50 -10 681 597", "681"))
-        }
         "upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_loops_039" => {
             Some(("-50 -10 871 695", "871"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_criticals_042" => {
-            Some(("-50 -10 681 597", "681"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_breaks_043" => {
-            Some(("-50 -10 681 478", "681"))
         }
         "upstream_cypress_sequencediagram_spec_should_override_config_with_directive_settings_050" => {
             Some(("-235 -10 635 327", "635"))
