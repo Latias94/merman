@@ -9,6 +9,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `sequence/actors.rs`, keeping Mermaid `starty`/`stopy` anchors, actor visual-height lookup, and
   cursor bump handling behind one state object while preserving render nextest, render clippy,
   Sequence `parity-root`, and override no-growth.
+- Moved bottom actor box and lifeline construction into `sequence/actors.rs`, so the actor module
+  now owns footer participant geometry alongside created/destroyed lifecycle state while preserving
+  render nextest, render clippy, Sequence `parity-root`, and override no-growth.
 
 ## 2026-05-12
 

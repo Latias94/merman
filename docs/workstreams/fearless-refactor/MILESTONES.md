@@ -347,6 +347,9 @@ Progress:
 - Split created/destroyed Sequence actor vertical lifecycle state into
   `crates/merman-render/src/sequence/actors.rs`, so Mermaid `starty`/`stopy` anchors, visual-height
   lookup, and cursor bump handling have one owner.
+- Moved bottom actor box and lifeline construction into
+  `crates/merman-render/src/sequence/actors.rs`, keeping participant footer geometry with the same
+  actor lifecycle owner.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

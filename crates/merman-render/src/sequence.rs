@@ -1,7 +1,5 @@
 use crate::math::MathRenderer;
-use crate::model::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutNode, LayoutPoint, SequenceDiagramLayout,
-};
+use crate::model::{Bounds, LayoutCluster, LayoutEdge, LayoutNode, SequenceDiagramLayout};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
@@ -30,12 +28,13 @@ pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 
 use activation::SequenceActivationState;
 use actors::{
-    SequenceActorLifecycle, SequenceActorLifecycleContext, sequence_actor_is_type_width_limited,
+    SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
+    append_sequence_footer_actors, sequence_actor_is_type_width_limited,
 };
 use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
-use constants::{sequence_actor_lifeline_start_y, sequence_actor_visual_height};
+use constants::sequence_actor_visual_height;
 use messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
 use notes::{SequenceNoteLayoutContext, layout_sequence_note};
@@ -641,64 +640,23 @@ pub fn layout_sequence_diagram_typed(
 
     actor_lifecycle.apply_created_top_actor_positions(&mut nodes);
 
-    for (idx, id) in model.actor_order.iter().enumerate() {
-        let w = actor_widths[idx];
-        let cx = actor_centers_x[idx];
-        let base_h = actor_base_heights[idx];
-        let actor_type = model
-            .actors
-            .get(id)
-            .map(|a| a.actor_type.as_str())
-            .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, label_box_height);
-        let bottom_top_y = actor_lifecycle
-            .destroyed_bottom_top_y(id)
-            .unwrap_or(bottom_box_top_y);
-        let bottom_visual_h = if mirror_actors { visual_h } else { 0.0 };
-        nodes.push(LayoutNode {
-            id: format!("actor-bottom-{id}"),
-            x: cx,
-            y: bottom_top_y + bottom_visual_h / 2.0,
-            width: w,
-            height: bottom_visual_h,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        });
-
-        let top_center_y = actor_lifecycle
-            .created_top_center_y(id)
-            .unwrap_or(actor_top_offset_y + visual_h / 2.0);
-        let top_left_y = top_center_y - visual_h / 2.0;
-        let lifeline_start_y =
-            top_left_y + sequence_actor_lifeline_start_y(actor_type, base_h, box_text_margin);
-
-        edges.push(LayoutEdge {
-            id: format!("lifeline-{id}"),
-            from: format!("actor-top-{id}"),
-            to: format!("actor-bottom-{id}"),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint {
-                    x: cx,
-                    y: lifeline_start_y,
-                },
-                LayoutPoint {
-                    x: cx,
-                    y: bottom_top_y,
-                },
-            ],
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        });
-    }
+    append_sequence_footer_actors(
+        &mut nodes,
+        &mut edges,
+        SequenceFooterActorContext {
+            actor_order: &model.actor_order,
+            actors: &model.actors,
+            actor_widths: &actor_widths,
+            actor_centers_x: &actor_centers_x,
+            actor_base_heights: &actor_base_heights,
+            actor_lifecycle: &actor_lifecycle,
+            actor_top_offset_y,
+            bottom_box_top_y,
+            mirror_actors,
+            label_box_height,
+            box_text_margin,
+        },
+    );
 
     // Mermaid's SVG `viewBox` is derived from `svg.getBBox()` plus diagram margins. Block frames
     // (`alt`, `par`, `loop`, `opt`, `break`, `critical`) can extend beyond the node/edge graph we
