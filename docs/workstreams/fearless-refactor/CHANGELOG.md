@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split Sequence layout activation stack state out of `sequence.rs` into
+  `sequence/activation.rs`, keeping ACTIVE_START/ACTIVE_END stack updates and active endpoint
+  bounds behind a small state object while preserving render nextest, render clippy, Sequence
+  `parity-root`, and override no-growth.
 - Split Sequence rect layout helpers out of `sequence.rs` into `sequence/rect.rs`, covering the
   open-rect stack geometry and final rect horizontal bounds pass while preserving render nextest,
   render clippy, Sequence `parity-root`, and override no-growth.

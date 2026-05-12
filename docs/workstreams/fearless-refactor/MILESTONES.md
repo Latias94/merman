@@ -334,6 +334,9 @@ Progress:
   its own block-stack owner instead of a large inline local state machine.
 - Split Sequence layout rect open-stack geometry and final rect horizontal bounds into
   `crates/merman-render/src/sequence/rect.rs`, keeping rect-specific quirks local to one owner.
+- Split Sequence layout activation stack state into
+  `crates/merman-render/src/sequence/activation.rs`, leaving the main message loop to ask for
+  active actor endpoint bounds instead of manipulating activation stacks directly.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /

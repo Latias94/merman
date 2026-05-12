@@ -74,6 +74,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   root bounds.
 - Sequence layout internals: split rect open-stack geometry and final rect horizontal bounds into
   `sequence/rect.rs`, keeping rect-specific Mermaid quirks out of the main message layout loop.
+- Sequence layout internals: split activation stack state into `sequence/activation.rs`, narrowing
+  the main message layout loop to endpoint geometry decisions.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with

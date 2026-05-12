@@ -11,6 +11,7 @@ use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use serde_json::Value;
 
+mod activation;
 mod block_bounds;
 mod block_steps;
 mod config;
@@ -28,6 +29,7 @@ pub(crate) use constants::{
 };
 pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 
+use activation::SequenceActivationState;
 use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
@@ -485,8 +487,7 @@ pub fn layout_sequence_diagram_typed(
     let activation_width = config_f64(seq_cfg, &["activationWidth"])
         .unwrap_or(10.0)
         .max(1.0);
-    let mut activation_stacks: std::collections::BTreeMap<&str, Vec<f64>> =
-        std::collections::BTreeMap::new();
+    let mut activation_state = SequenceActivationState::new(activation_width);
 
     // Mermaid adjusts created/destroyed actors while processing messages:
     // - created actor: `starty = lineStartY - actor.height/2`
@@ -524,33 +525,8 @@ pub fn layout_sequence_diagram_typed(
     };
 
     for (msg_idx, msg) in model.messages.iter().enumerate() {
-        match msg.message_type {
-            // ACTIVE_START
-            17 => {
-                let Some(actor_id) = msg.from.as_deref() else {
-                    continue;
-                };
-                let Some(&idx) = actor_index.get(actor_id) else {
-                    continue;
-                };
-                let cx = actor_centers_x[idx];
-                let stack = activation_stacks.entry(actor_id).or_default();
-                let stacked_size = stack.len();
-                let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
-                stack.push(startx);
-                continue;
-            }
-            // ACTIVE_END
-            18 => {
-                let Some(actor_id) = msg.from.as_deref() else {
-                    continue;
-                };
-                if let Some(stack) = activation_stacks.get_mut(actor_id) {
-                    let _ = stack.pop();
-                }
-                continue;
-            }
-            _ => {}
+        if activation_state.handle_directive(msg, &actor_index, &actor_centers_x) {
+            continue;
         }
 
         if let Some(step) = directive_steps.get(msg.id.as_str()).copied() {
@@ -744,17 +720,8 @@ pub fn layout_sequence_diagram_typed(
         let from_x = actor_centers_x[fi];
         let to_x = actor_centers_x[ti];
 
-        let (from_left, from_right) = activation_stacks
-            .get(from)
-            .and_then(|s| s.last().copied())
-            .map(|startx| (startx, startx + activation_width))
-            .unwrap_or((from_x - 1.0, from_x + 1.0));
-
-        let (to_left, to_right) = activation_stacks
-            .get(to)
-            .and_then(|s| s.last().copied())
-            .map(|startx| (startx, startx + activation_width))
-            .unwrap_or((to_x - 1.0, to_x + 1.0));
+        let (from_left, from_right) = activation_state.actor_bounds(from, from_x);
+        let (to_left, to_right) = activation_state.actor_bounds(to, to_x);
 
         let is_arrow_to_right = from_left <= to_left;
         let mut startx = if is_arrow_to_right {
@@ -772,7 +739,7 @@ pub fn layout_sequence_diagram_typed(
             stopx = startx;
         } else {
             if msg.activate && !is_arrow_to_activation {
-                stopx += adjust_value(activation_width / 2.0 - 1.0);
+                stopx += adjust_value(activation_state.width() / 2.0 - 1.0);
             }
 
             if !matches!(msg.message_type, 5 | 6) {
