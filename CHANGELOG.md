@@ -98,6 +98,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   covered by existing Sequence note/message bounds.
 - Sequence layout/SVG parity: delete the follow-up `Bob thinks` whitespace/comment note-right
   root viewport trio under the same existing Sequence note/message bounds.
+- Sequence layout/SVG parity: delete the simple loop/rect/nested-rect `Bob thinks` block note-right
+  root viewport trio under the same existing Sequence note/message bounds.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

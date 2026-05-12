@@ -147,6 +147,10 @@ Progress:
   `upstream_pkgtests_sequencediagram_spec_043`, `upstream_pkgtests_sequencediagram_spec_045`, and
   `upstream_pkgtests_sequencediagram_spec_046`; the same focused disabled-root gate proves these
   formatting variants are now covered by the existing Sequence note/message bounds.
+- Removed the loop/rect/nested-rect `Bob thinks` block note-right trio
+  `upstream_pkgtests_sequencediagram_spec_054`, `upstream_pkgtests_sequencediagram_spec_055`, and
+  `upstream_pkgtests_sequencediagram_spec_056`; existing Sequence note/message bounds now cover
+  these block wrappers without adding SVG metric rows.
 
 Exit criteria:
 
