@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Accounted for Sequence actor popup menu panel bottoms in root bounds, which fixed the link-only
+  `upstream_pkgtests_sequencediagram_spec_074/076/077/078` root heights, refreshed the matching
+  layout goldens, kept `compare-sequence-svgs --dom-mode parity-root --dom-decimals 6` green,
+  and revalidated `report-overrides --check-no-growth`, render clippy, and render nextest.
 - Derived wrapped Sequence `leftOf` note width and final rewrap behavior, refreshed the affected
   Sequence/ZenUML layout goldens, removed nine more Sequence root pins, reduced the root viewport
   budget to `702` with Sequence at `164`, and revalidated focused disabled-root checks, full

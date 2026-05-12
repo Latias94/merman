@@ -53,7 +53,7 @@ pub(super) fn render_sequence_actor_popup_menus(
         let (x, _y) = node_left_top(n);
 
         let mut link_y: f64 = 20.0;
-        let panel_height = 20.0 + (actor.links.len() as f64) * 30.0;
+        let panel_height = crate::sequence::sequence_actor_popup_panel_height(actor.links.len());
 
         let _ = write!(
             out,

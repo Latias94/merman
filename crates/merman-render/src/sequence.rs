@@ -17,6 +17,8 @@ pub(crate) const SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR: f64 = 4.5;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
 pub(crate) const SEQUENCE_FRAME_SIDE_PAD_PX: f64 = 11.0;
 pub(crate) const SEQUENCE_FRAME_GEOM_PAD_PX: f64 = 10.0;
+pub(crate) const SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT: f64 = 20.0;
+pub(crate) const SEQUENCE_ACTOR_POPUP_ROW_HEIGHT: f64 = 30.0;
 
 pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
     (font_size_px.max(1.0) * (17.0 / 16.0)).round().max(1.0)
@@ -24,6 +26,10 @@ pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
 
 pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
     font_size_px.max(1.0) * 1.1875
+}
+
+pub(crate) fn sequence_actor_popup_panel_height(link_count: usize) -> f64 {
+    SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT + (link_count as f64) * SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
 }
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -2051,6 +2057,22 @@ pub fn layout_sequence_diagram_typed(
         content_max_y = content_max_y.max(max_y);
     }
 
+    // Mermaid's root `getBBox()` still includes actor popup menu panels when links/directives are
+    // present, even when they are emitted hidden by default. Account for the menu panel bottom so
+    // root height stays aligned with upstream for link-only fixtures.
+    for actor_id in &model.actor_order {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        if actor.links.is_empty() {
+            continue;
+        }
+        let popup_bottom = actor_height + sequence_actor_popup_panel_height(actor.links.len());
+        let popup_content_bottom =
+            popup_bottom - diagram_margin_y - if has_boxes { box_margin } else { 0.0 };
+        content_max_y = content_max_y.max(popup_content_bottom.max(0.0));
+    }
+
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
     let extra_vert_for_title = if model.title.is_some() { 40.0 } else { 0.0 };
@@ -2140,6 +2162,10 @@ mod tests {
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 16.0);
         assert_eq!(super::SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, 4.0);
         assert_eq!(super::SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, 4.5);
+        assert_eq!(super::SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, 20.0);
+        assert_eq!(super::SEQUENCE_ACTOR_POPUP_ROW_HEIGHT, 30.0);
+        assert_eq!(super::sequence_actor_popup_panel_height(0), 20.0);
+        assert_eq!(super::sequence_actor_popup_panel_height(4), 140.0);
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
