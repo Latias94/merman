@@ -1,7 +1,7 @@
+use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, LayoutEdge, LayoutNode, SequenceDiagramLayout};
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
-use crate::{Error, Result};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use serde_json::Value;
@@ -22,22 +22,22 @@ pub(crate) use constants::{
     SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
     SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR,
     SEQUENCE_NOTE_WRAP_SLACK_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
-    SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, sequence_actor_popup_panel_height,
-    sequence_text_dimensions_height_px, sequence_text_line_step_px,
+    sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
+    sequence_text_line_step_px,
 };
 pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
 
 use activation::SequenceActivationState;
 use actors::{
-    SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
-    SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
+    SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, SequenceActorLifecycle,
+    SequenceActorLifecycleContext, SequenceFooterActorContext, SequenceTopActorContext,
+    append_sequence_footer_actors, append_sequence_top_actors, plan_sequence_actors,
     sequence_actor_is_type_width_limited,
 };
 use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
 use config::{config_f64, config_string};
 use messages::{SequenceMessageLayoutContext, layout_sequence_message};
-use metrics::{measure_sequence_label_for_layout, measure_svg_like_with_html_br};
 use notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use rect::{SequenceRectOpen, sequence_rect_stack_x_bounds};
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
@@ -132,285 +132,35 @@ pub fn layout_sequence_diagram_typed(
         font_weight: message_font_weight,
     };
 
-    let has_boxes = !model.boxes.is_empty();
-    let has_box_titles = model
-        .boxes
-        .iter()
-        .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
-
-    // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles and stores the max
-    // across boxes in `box.textMaxHeight` (used for bumping actor `starty` when any title exists).
-    //
-    // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
-    // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
-    let max_box_title_height = if has_box_titles {
-        let line_h = sequence_text_dimensions_height_px(message_font_size);
-        model
-            .boxes
-            .iter()
-            .filter_map(|b| b.name.as_deref())
-            .map(|s| split_html_br_lines(s).len().max(1) as f64 * line_h)
-            .fold(0.0, f64::max)
-    } else {
-        0.0
-    };
-
-    if model.actor_order.is_empty() {
-        return Err(Error::InvalidModel {
-            message: "sequence model has no actorOrder".to_string(),
-        });
-    }
-
-    // Measure participant boxes.
-    let mut actor_widths: Vec<f64> = Vec::with_capacity(model.actor_order.len());
-    let mut actor_base_heights: Vec<f64> = Vec::with_capacity(model.actor_order.len());
-    for id in &model.actor_order {
-        let a = model.actors.get(id).ok_or_else(|| Error::InvalidModel {
-            message: format!("missing actor {id}"),
-        })?;
-        if a.wrap {
-            // Upstream wraps actor descriptions to `conf.width - 2*wrapPadding` and clamps the
-            // actor box width to `conf.width`.
-            let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
-            let wrapped_lines =
-                wrap_label_like_mermaid_lines(&a.description, measurer, &actor_text_style, wrap_w);
-            let line_count = wrapped_lines.len().max(1) as f64;
-            let text_h = sequence_text_dimensions_height_px(actor_font_size) * line_count;
-            actor_base_heights.push(actor_height.max(text_h).max(1.0));
-            actor_widths.push(actor_width_min.max(1.0));
-        } else {
-            let (w0, _h0) = measure_sequence_label_for_layout(
-                measurer,
-                &a.description,
-                &actor_text_style,
-                &math_config,
-                math_renderer,
-                SequenceMathHeightMode::Actor,
-            );
-            let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
-            actor_base_heights.push(actor_height.max(1.0));
-            actor_widths.push(w.max(1.0));
-        }
-    }
-
-    // Determine the per-actor margins using Mermaid's `getMaxMessageWidthPerActor(...)` rules,
-    // then compute actor x positions from those margins (see upstream `boundActorData`).
-    let mut actor_index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for (i, id) in model.actor_order.iter().enumerate() {
-        actor_index.insert(id.as_str(), i);
-    }
-
-    let mut actor_to_message_width: Vec<f64> = vec![0.0; model.actor_order.len()];
-    for msg in &model.messages {
-        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-            continue;
-        };
-        let Some(&from_idx) = actor_index.get(from) else {
-            continue;
-        };
-        let Some(&to_idx) = actor_index.get(to) else {
-            continue;
-        };
-
-        let placement = msg.placement;
-        // If this is the first actor, and the note is left of it, no need to calculate the margin.
-        if placement == Some(0) && to_idx == 0 {
-            continue;
-        }
-        // If this is the last actor, and the note is right of it, no need to calculate the margin.
-        if placement == Some(1) && to_idx + 1 == model.actor_order.len() {
-            continue;
-        }
-
-        let is_note = placement.is_some();
-        let is_message = !is_note;
-        let style = if is_note {
-            &note_text_style
-        } else {
-            &msg_text_style
-        };
-        let text = msg.message_text();
-        if text.is_empty() {
-            continue;
-        }
-
-        let (w0, _h0) = if text.contains("$$") {
-            measure_sequence_label_for_layout(
-                measurer,
-                text,
-                style,
-                &math_config,
-                math_renderer,
-                SequenceMathHeightMode::Bound,
-            )
-        } else {
-            let measured_text = if msg.wrap {
-                // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when computing
-                // max per-actor message widths for spacing.
-                let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
-                let lines = wrap_label_like_mermaid_lines(text, measurer, style, wrap_w);
-                lines.join("<br>")
-            } else {
-                text.to_string()
-            };
-            measure_svg_like_with_html_br(measurer, &measured_text, style)
-        };
-        let w0 = w0 * message_width_scale;
-        let mut message_w = (w0 + 2.0 * wrap_padding).max(0.0);
-        if msg.wrap
-            && message_w > actor_width_min
-            && message_w <= actor_width_min + SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX
-        {
-            message_w = actor_width_min;
-        }
-
-        let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
-        let next_idx = if to_idx + 1 < model.actor_order.len() {
-            Some(to_idx + 1)
-        } else {
-            None
-        };
-
-        if is_message && next_idx.is_some_and(|n| n == from_idx) {
-            actor_to_message_width[to_idx] = actor_to_message_width[to_idx].max(message_w);
-        } else if is_message && prev_idx.is_some_and(|p| p == from_idx) {
-            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(message_w);
-        } else if is_message && from_idx == to_idx {
-            let half = message_w / 2.0;
-            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(half);
-            actor_to_message_width[to_idx] = actor_to_message_width[to_idx].max(half);
-        } else if placement == Some(1) {
-            // RIGHTOF
-            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(message_w);
-        } else if placement == Some(0) {
-            // LEFTOF
-            if let Some(p) = prev_idx {
-                actor_to_message_width[p] = actor_to_message_width[p].max(message_w);
-            }
-        } else if placement == Some(2) {
-            // OVER
-            if let Some(p) = prev_idx {
-                actor_to_message_width[p] = actor_to_message_width[p].max(message_w / 2.0);
-            }
-            if next_idx.is_some() {
-                actor_to_message_width[from_idx] =
-                    actor_to_message_width[from_idx].max(message_w / 2.0);
-            }
-        }
-    }
-
-    let mut actor_margins: Vec<f64> = vec![actor_margin; model.actor_order.len()];
-    for i in 0..model.actor_order.len() {
-        let msg_w = actor_to_message_width[i];
-        if msg_w <= 0.0 {
-            continue;
-        }
-        let w0 = actor_widths[i];
-        let actor_w = if i + 1 < model.actor_order.len() {
-            let w1 = actor_widths[i + 1];
-            msg_w + actor_margin - (w0 / 2.0) - (w1 / 2.0)
-        } else {
-            msg_w + actor_margin - (w0 / 2.0)
-        };
-        actor_margins[i] = actor_w.max(actor_margin);
-    }
-
-    // Mermaid's `calculateActorMargins(...)` computes per-box `box.margin` based on total actor
-    // widths/margins and the box title width. For totalWidth, Mermaid only counts `actor.margin`
-    // if it was set (actors without messages have `margin === undefined` until render-time).
-    let mut box_margins: Vec<f64> = vec![box_text_margin; model.boxes.len()];
-    for (box_idx, b) in model.boxes.iter().enumerate() {
-        let mut total_width = 0.0;
-        for actor_key in &b.actor_keys {
-            let Some(&i) = actor_index.get(actor_key.as_str()) else {
-                continue;
-            };
-            let actor_margin_for_box = if actor_to_message_width[i] > 0.0 {
-                actor_margins[i]
-            } else {
-                0.0
-            };
-            total_width += actor_widths[i] + actor_margin_for_box;
-        }
-
-        total_width += box_margin * 8.0;
-        total_width -= 2.0 * box_text_margin;
-
-        let Some(name) = b.name.as_deref().filter(|s| !s.trim().is_empty()) else {
-            continue;
-        };
-
-        let (text_w, _text_h) = measure_sequence_label_for_layout(
-            measurer,
-            name,
-            &msg_text_style,
-            &math_config,
-            math_renderer,
-            SequenceMathHeightMode::Bound,
-        );
-        let min_width = total_width.max(text_w + 2.0 * wrap_padding);
-        if total_width < min_width {
-            box_margins[box_idx] += (min_width - total_width) / 2.0;
-        }
-    }
-
-    // Actors start lower when boxes exist, to make room for box headers.
-    let mut actor_top_offset_y = 0.0;
-    if has_boxes {
-        actor_top_offset_y += box_margin;
-        if has_box_titles {
-            actor_top_offset_y += max_box_title_height;
-        }
-    }
-
-    // Assign each actor to at most one box (Mermaid's db assigns a single `actor.box` reference).
-    let mut actor_box: Vec<Option<usize>> = vec![None; model.actor_order.len()];
-    for (box_idx, b) in model.boxes.iter().enumerate() {
-        for actor_key in &b.actor_keys {
-            let Some(&i) = actor_index.get(actor_key.as_str()) else {
-                continue;
-            };
-            actor_box[i] = Some(box_idx);
-        }
-    }
-
-    let mut actor_left_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
-    let mut prev_width = 0.0;
-    let mut prev_margin = 0.0;
-    let mut prev_box: Option<usize> = None;
-    for i in 0..model.actor_order.len() {
-        let w = actor_widths[i];
-        let cur_box = actor_box[i];
-
-        // end of box
-        if prev_box.is_some() && prev_box != cur_box {
-            if let Some(prev) = prev_box {
-                prev_margin += box_margin + box_margins[prev];
-            }
-        }
-
-        // new box
-        if cur_box.is_some() && cur_box != prev_box {
-            if let Some(bi) = cur_box {
-                prev_margin += box_margins[bi];
-            }
-        }
-
-        // Mermaid widens the margin before a created actor by `actor.width / 2`.
-        if model.created_actors.contains_key(&model.actor_order[i]) {
-            prev_margin += w / 2.0;
-        }
-        let x = prev_width + prev_margin;
-        actor_left_x.push(x);
-        prev_width += w + prev_margin;
-        prev_margin = actor_margins[i];
-        prev_box = cur_box;
-    }
-
-    let mut actor_centers_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
-    for i in 0..model.actor_order.len() {
-        actor_centers_x.push(actor_left_x[i] + actor_widths[i] / 2.0);
-    }
+    let SequenceActorLayoutPlan {
+        actor_index,
+        actor_widths,
+        actor_base_heights,
+        actor_box,
+        actor_left_x,
+        actor_centers_x,
+        box_margins,
+        actor_top_offset_y,
+        max_actor_layout_height,
+        has_boxes,
+    } = plan_sequence_actors(SequenceActorLayoutPlanContext {
+        model,
+        measurer,
+        actor_text_style: &actor_text_style,
+        note_text_style: &note_text_style,
+        msg_text_style: &msg_text_style,
+        math_config: &math_config,
+        math_renderer,
+        actor_width_min,
+        actor_height,
+        actor_margin,
+        actor_font_size,
+        box_margin,
+        box_text_margin,
+        wrap_padding,
+        message_width_scale,
+        message_font_size,
+    })?;
 
     let message_text_line_height = sequence_text_dimensions_height_px(message_font_size);
     let message_step = box_margin + 2.0 * message_text_line_height;
@@ -423,11 +173,6 @@ pub fn layout_sequence_diagram_typed(
     // Actor boxes: Mermaid renders both a "top" and "bottom" actor box.
     // The bottom boxes start after all messages are placed. Created actors will have their `y`
     // adjusted later once we know the creation message position.
-    let max_actor_layout_height = actor_base_heights
-        .iter()
-        .copied()
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
     append_sequence_top_actors(
         &mut nodes,
         SequenceTopActorContext {

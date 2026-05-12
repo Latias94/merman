@@ -19,6 +19,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 - Moved top actor box construction into `sequence/actors.rs` and removed the obsolete
   `max_actor_visual_height` accumulator while preserving render nextest, render clippy, Sequence
   `parity-root`, and override no-growth.
+- Bundled Sequence actor measurement, per-message spacing, box margin calculation, actor box
+  membership, and x-coordinate planning into `SequenceActorLayoutPlan`, dropping
+  `sequence.rs` to a focused orchestration layer while preserving render nextest, render clippy,
+  Sequence `parity-root`, and override no-growth.
 
 ## 2026-05-12
 

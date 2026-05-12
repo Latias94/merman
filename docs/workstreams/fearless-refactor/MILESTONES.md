@@ -356,6 +356,10 @@ Progress:
 - Moved top actor box construction into `crates/merman-render/src/sequence/actors.rs`, so top and
   footer actor geometry now share the same module and the obsolete `max_actor_visual_height`
   accumulator is gone.
+- Bundled Sequence actor measurement, per-message spacing, box margin calculation, actor box
+  membership, and x-coordinate planning into `SequenceActorLayoutPlan`, leaving
+  `layout_sequence_diagram_typed` to consume an explicit actor plan instead of owning the spacing
+  state machine.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /
