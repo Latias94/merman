@@ -9,6 +9,7 @@ use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -84,11 +85,27 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let parse_opts = merman::ParseOptions {
         suppress_errors: true,
     };
+    let sequence_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
+        let node_cwd = crate::cmd::mermaid_cli_root();
+        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
+            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
+                node_cwd,
+            )))
+        } else {
+            None
+        }
+    };
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (Mermaid 11.12.3)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
-        dom_mode, dom_decimals
+        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (Mermaid 11.12.3)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n",
+        dom_mode,
+        dom_decimals,
+        if sequence_math_renderer.is_some() {
+            "node-katex"
+        } else {
+            "none"
+        }
     );
 
     let mut failures: Vec<String> = Vec::new();
@@ -131,9 +148,10 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
         };
 
         // Upstream Mermaid renders `$$...$$` fragments via KaTeX (JS) and measures the resulting
-        // HTML via DOM. merman is pure-Rust by default, so DOM parity is not expected for these
-        // fixtures until we have a real math backend.
-        let skip_dom_compare_for_math = check_dom && text.contains("$$");
+        // HTML via DOM. When the local Node/Puppeteer-backed math backend is unavailable, keep
+        // these fixtures renderable but skip strict DOM assertions.
+        let skip_dom_compare_for_math =
+            check_dom && text.contains("$$") && sequence_math_renderer.is_none();
 
         let parsed = match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
             Ok(Some(v)) => v,
@@ -151,6 +169,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
             text_measurer: std::sync::Arc::new(
                 merman_render::text::VendoredFontMetricsTextMeasurer::default(),
             ),
+            math_renderer: sequence_math_renderer.clone(),
             ..Default::default()
         };
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -172,6 +191,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
 
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
+            math_renderer: sequence_math_renderer.clone(),
             ..Default::default()
         };
 
@@ -240,7 +260,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
             }
         } else if check_dom && skip_dom_compare_for_math {
             skipped.push(format!(
-                "skipped {stem}: contains `$$...$$` (KaTeX DOM parity not implemented)"
+                "skipped {stem}: contains `$$...$$` (Node KaTeX backend unavailable)"
             ));
         }
     }

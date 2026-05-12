@@ -1,11 +1,13 @@
+use crate::math::MathRenderer;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
 };
 use crate::text::{
-    TextMeasurer, TextStyle, WrapMode, split_html_br_lines, wrap_label_like_mermaid_lines,
-    wrap_label_like_mermaid_lines_floored_bbox,
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, split_html_br_lines,
+    wrap_label_like_mermaid_lines, wrap_label_like_mermaid_lines_floored_bbox,
 };
 use crate::{Error, Result};
+use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use serde_json::Value;
 
@@ -100,6 +102,90 @@ fn measure_svg_like_with_html_br(
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SequenceMathHeightMode {
+    Actor,
+    Bound,
+    Draw,
+}
+
+fn sequence_math_chunks(text: &str) -> Vec<&str> {
+    let mut chunks = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(start_rel) = text[search_from..].find("$$") {
+        let start = search_from + start_rel;
+        let content_start = start + 2;
+        let Some(end_rel) = text[content_start..].find("$$") else {
+            break;
+        };
+        let end = content_start + end_rel + 2;
+        chunks.push(&text[start..end]);
+        search_from = end;
+    }
+    chunks
+}
+
+fn sequence_math_height_px(
+    text: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+    mode: SequenceMathHeightMode,
+    full_metrics: &TextMetrics,
+) -> f64 {
+    match mode {
+        SequenceMathHeightMode::Actor => full_metrics.height.round().max(1.0),
+        SequenceMathHeightMode::Bound | SequenceMathHeightMode::Draw => {
+            let line_step = sequence_text_line_step_px(style.font_size).round().max(1.0);
+            let base = if mode == SequenceMathHeightMode::Draw {
+                line_step
+            } else {
+                (line_step - 1.0)
+                    .max(sequence_text_dimensions_height_px(style.font_size))
+                    .max(1.0)
+            };
+            let math_h = sequence_math_chunks(text)
+                .into_iter()
+                .filter_map(|chunk| math_renderer.measure_sequence_html_label(chunk, config))
+                .map(|m| m.height.round() + 2.0)
+                .fold(base, f64::max);
+            math_h.round().max(1.0)
+        }
+    }
+}
+
+pub(crate) fn measure_sequence_math_label(
+    text: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: SequenceMathHeightMode,
+) -> Option<(f64, f64)> {
+    if !text.contains("$$") {
+        return None;
+    }
+    let renderer = math_renderer?;
+    let full_metrics = renderer
+        .measure_sequence_html_label(text, config)
+        .or_else(|| {
+            renderer.measure_html_label(text, config, style, Some(10_000.0), WrapMode::HtmlLike)
+        })?;
+    let height = sequence_math_height_px(text, style, config, renderer, mode, &full_metrics);
+    Some((full_metrics.width.round().max(1.0), height))
+}
+
+fn measure_sequence_label_for_layout(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    mode: SequenceMathHeightMode,
+) -> (f64, f64) {
+    measure_sequence_math_label(text, style, config, math_renderer, mode)
+        .unwrap_or_else(|| measure_svg_like_with_html_br(measurer, text, style))
+}
+
 fn sequence_actor_visual_height(
     actor_type: &str,
     base_width: f64,
@@ -139,16 +225,19 @@ pub fn layout_sequence_diagram(
     semantic: &Value,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<SequenceDiagramLayout> {
     let model: SequenceDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_sequence_diagram_typed(&model, effective_config, measurer)
+    layout_sequence_diagram_typed(&model, effective_config, measurer, math_renderer)
 }
 
 pub fn layout_sequence_diagram_typed(
     model: &SequenceDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<SequenceDiagramLayout> {
+    let math_config = MermaidConfig::from_value(effective_config.clone());
     let seq_cfg = effective_config.get("sequence").unwrap_or(&Value::Null);
     let diagram_margin_x = config_f64(seq_cfg, &["diagramMarginX"]).unwrap_or(50.0);
     let diagram_margin_y = config_f64(seq_cfg, &["diagramMarginY"]).unwrap_or(10.0);
@@ -269,8 +358,14 @@ pub fn layout_sequence_diagram_typed(
             actor_base_heights.push(actor_height.max(text_h).max(1.0));
             actor_widths.push(actor_width_min.max(1.0));
         } else {
-            let (w0, _h0) =
-                measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
+            let (w0, _h0) = measure_sequence_label_for_layout(
+                measurer,
+                &a.description,
+                &actor_text_style,
+                &math_config,
+                math_renderer,
+                SequenceMathHeightMode::Actor,
+            );
             let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
             actor_base_heights.push(actor_height.max(1.0));
             actor_widths.push(w.max(1.0));
@@ -318,16 +413,27 @@ pub fn layout_sequence_diagram_typed(
             continue;
         }
 
-        let measured_text = if msg.wrap {
-            // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when computing
-            // max per-actor message widths for spacing.
-            let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
-            let lines = wrap_label_like_mermaid_lines(text, measurer, style, wrap_w);
-            lines.join("<br>")
+        let (w0, _h0) = if text.contains("$$") {
+            measure_sequence_label_for_layout(
+                measurer,
+                text,
+                style,
+                &math_config,
+                math_renderer,
+                SequenceMathHeightMode::Bound,
+            )
         } else {
-            text.to_string()
+            let measured_text = if msg.wrap {
+                // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when computing
+                // max per-actor message widths for spacing.
+                let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
+                let lines = wrap_label_like_mermaid_lines(text, measurer, style, wrap_w);
+                lines.join("<br>")
+            } else {
+                text.to_string()
+            };
+            measure_svg_like_with_html_br(measurer, &measured_text, style)
         };
-        let (w0, _h0) = measure_svg_like_with_html_br(measurer, &measured_text, style);
         let w0 = w0 * message_width_scale;
         let mut message_w = (w0 + 2.0 * wrap_padding).max(0.0);
         if msg.wrap
@@ -413,7 +519,14 @@ pub fn layout_sequence_diagram_typed(
             continue;
         };
 
-        let (text_w, _text_h) = measure_svg_like_with_html_br(measurer, name, &msg_text_style);
+        let (text_w, _text_h) = measure_sequence_label_for_layout(
+            measurer,
+            name,
+            &msg_text_style,
+            &math_config,
+            math_renderer,
+            SequenceMathHeightMode::Bound,
+        );
         let min_width = total_width.max(text_w + 2.0 * wrap_padding);
         if total_width < min_width {
             box_margins[box_idx] += (min_width - total_width) / 2.0;
@@ -577,38 +690,6 @@ pub fn layout_sequence_diagram_typed(
             .is_some_and(|from| Some(from) == msg.to.as_deref())
     }
 
-    fn message_span_x(
-        msg: &SequenceMessage,
-        actor_index: &std::collections::HashMap<&str, usize>,
-        actor_centers_x: &[f64],
-        measurer: &dyn TextMeasurer,
-        msg_text_style: &TextStyle,
-        message_width_scale: f64,
-    ) -> Option<(f64, f64)> {
-        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-            return None;
-        };
-        let (Some(fi), Some(ti)) = (actor_index.get(from).copied(), actor_index.get(to).copied())
-        else {
-            return None;
-        };
-        let from_x = actor_centers_x[fi];
-        let to_x = actor_centers_x[ti];
-        let sign = if to_x >= from_x { 1.0 } else { -1.0 };
-        let x1 = from_x + sign * 1.0;
-        let x2 = if from == to { x1 } else { to_x - sign * 4.0 };
-        let cx = (x1 + x2) / 2.0;
-
-        let text = msg.message_text();
-        let w = if text.is_empty() {
-            1.0
-        } else {
-            let (w, _h) = measure_svg_like_with_html_br(measurer, text, msg_text_style);
-            (w * message_width_scale).max(1.0)
-        };
-        Some((cx - w / 2.0, cx + w / 2.0))
-    }
-
     #[derive(Clone, Copy)]
     struct BlockFrameWidthContext<'a> {
         msg_by_id: &'a std::collections::HashMap<&'a str, &'a SequenceMessage>,
@@ -620,7 +701,46 @@ pub fn layout_sequence_diagram_typed(
         bottom_margin_adj: f64,
         measurer: &'a dyn TextMeasurer,
         msg_text_style: &'a TextStyle,
+        math_config: &'a MermaidConfig,
+        math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         message_width_scale: f64,
+    }
+
+    fn message_span_x(
+        msg: &SequenceMessage,
+        ctx: BlockFrameWidthContext<'_>,
+    ) -> Option<(f64, f64)> {
+        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+            return None;
+        };
+        let (Some(fi), Some(ti)) = (
+            ctx.actor_index.get(from).copied(),
+            ctx.actor_index.get(to).copied(),
+        ) else {
+            return None;
+        };
+        let from_x = ctx.actor_centers_x[fi];
+        let to_x = ctx.actor_centers_x[ti];
+        let sign = if to_x >= from_x { 1.0 } else { -1.0 };
+        let x1 = from_x + sign * 1.0;
+        let x2 = if from == to { x1 } else { to_x - sign * 4.0 };
+        let cx = (x1 + x2) / 2.0;
+
+        let text = msg.message_text();
+        let w = if text.is_empty() {
+            1.0
+        } else {
+            let (w, _h) = measure_sequence_label_for_layout(
+                ctx.measurer,
+                text,
+                ctx.msg_text_style,
+                ctx.math_config,
+                ctx.math_renderer,
+                SequenceMathHeightMode::Bound,
+            );
+            (w * ctx.message_width_scale).max(1.0)
+        };
+        Some((cx - w / 2.0, cx + w / 2.0))
     }
 
     fn block_frame_width(message_ids: &[String], ctx: BlockFrameWidthContext<'_>) -> Option<f64> {
@@ -666,14 +786,7 @@ pub fn layout_sequence_diagram_typed(
             let Some(msg) = ctx.msg_by_id.get(msg_id.as_str()).copied() else {
                 continue;
             };
-            let Some((l, r)) = message_span_x(
-                msg,
-                ctx.actor_index,
-                ctx.actor_centers_x,
-                ctx.measurer,
-                ctx.msg_text_style,
-                ctx.message_width_scale,
-            ) else {
+            let Some((l, r)) = message_span_x(msg, ctx) else {
                 continue;
             };
             if l < x1 {
@@ -728,6 +841,8 @@ pub fn layout_sequence_diagram_typed(
         bottom_margin_adj,
         measurer,
         msg_text_style: &msg_text_style,
+        math_config: &math_config,
+        math_renderer,
         message_width_scale,
     };
 
@@ -1402,7 +1517,17 @@ pub fn layout_sequence_diagram_typed(
             };
 
             let text = msg.message_text();
-            let (text_w, h) = if msg.wrap {
+            let is_math_note = text.contains("$$");
+            let (text_w, h) = if is_math_note {
+                measure_sequence_label_for_layout(
+                    measurer,
+                    text,
+                    &note_text_style,
+                    &math_config,
+                    math_renderer,
+                    SequenceMathHeightMode::Bound,
+                )
+            } else if msg.wrap {
                 // Mermaid Sequence notes are wrapped via `wrapLabel(...)`, then measured via SVG
                 // bbox probes (not HTML wrapping). Model this by producing wrapped `<br/>` lines
                 // and then measuring them.
@@ -1455,7 +1580,7 @@ pub fn layout_sequence_diagram_typed(
             // configured default width. This is observable in strict SVG XML baselines when the
             // note contains literal `<br ...>` markup that is *not* treated as a line break.
             let padded_w = (text_w + note_text_pad_total).round().max(1.0);
-            if !msg.wrap {
+            if !msg.wrap || is_math_note {
                 match placement {
                     // leftOf / rightOf notes clamp width to fit label text.
                     0 | 1 => {
@@ -1599,7 +1724,8 @@ pub fn layout_sequence_diagram_typed(
 
         let text = msg.message_text();
         let bounded_width = (startx - stopx).abs().max(0.0);
-        let wrapped_text = if !text.is_empty() && msg.wrap {
+        let is_math_message = text.contains("$$");
+        let wrapped_text = if !text.is_empty() && msg.wrap && !is_math_message {
             // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
             // Our vendored bbox widths are slightly conservative for Sequence prose, so use the
             // same calibrated slack as the SVG emitter to keep cursor height and rendered lines in
@@ -1625,6 +1751,22 @@ pub fn layout_sequence_diagram_typed(
             // placement and overall viewBox height.
             let line_y = cursor_y - (message_step - box_margin);
             (line_y, cursor_y, box_margin)
+        } else if is_math_message {
+            // Mermaid's `boundMessage(...)` uses `calculateMathMLDimensions(...)` for KaTeX and
+            // skips the extra ordinary-text line-height bump. Our cursor model keeps `cursor_y`
+            // one `message_step` ahead of Mermaid's internal vertical position, so translate back
+            // to that base before applying the KaTeX total offset.
+            let (_w, h) = measure_sequence_label_for_layout(
+                measurer,
+                effective_text,
+                &msg_text_style,
+                &math_config,
+                math_renderer,
+                SequenceMathHeightMode::Bound,
+            );
+            let base_y = cursor_y - message_step;
+            let line_y = base_y + box_margin + h;
+            (line_y, line_y, box_margin + h)
         } else {
             // Mermaid's `boundMessage(...)` uses `common.splitBreaks(message)` to derive a
             // `lines` count and adjusts the message line y-position and cursor increment by the
@@ -1651,7 +1793,18 @@ pub fn layout_sequence_diagram_typed(
                 height: message_font_size.max(1.0),
             })
         } else {
-            let (w, h) = measure_svg_like_with_html_br(measurer, effective_text, &msg_text_style);
+            let (w, h) = measure_sequence_label_for_layout(
+                measurer,
+                effective_text,
+                &msg_text_style,
+                &math_config,
+                math_renderer,
+                if is_math_message {
+                    SequenceMathHeightMode::Draw
+                } else {
+                    SequenceMathHeightMode::Bound
+                },
+            );
             Some(LayoutLabel {
                 x: ((x1 + x2) / 2.0).round(),
                 y: (label_base_y - msg_label_offset).round(),
@@ -2305,7 +2458,14 @@ pub fn layout_sequence_diagram_typed(
         let (text_w, _text_h) = if text.is_empty() {
             (1.0, 1.0)
         } else {
-            measure_svg_like_with_html_br(measurer, text, &msg_text_style)
+            measure_sequence_label_for_layout(
+                measurer,
+                text,
+                &msg_text_style,
+                &math_config,
+                math_renderer,
+                SequenceMathHeightMode::Bound,
+            )
         };
         let dx = (text_w.max(1.0) / 2.0).max(actor_width_min / 2.0);
         bounds_box_startx = bounds_box_startx.min(center_x - dx);

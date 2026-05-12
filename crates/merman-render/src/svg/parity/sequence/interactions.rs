@@ -7,7 +7,7 @@ use super::blocks::{
     render_simple_sequence_block,
 };
 use super::model::*;
-use super::notes::render_sequence_note;
+use super::notes::{SequenceNoteRenderContext, render_sequence_note};
 use super::settings::SequenceRenderSettings;
 use rustc_hash::FxHashMap;
 
@@ -17,6 +17,8 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) seq_cfg: &'a serde_json::Value,
     pub(super) effective_config: &'a serde_json::Value,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) settings: &'a SequenceRenderSettings,
     pub(super) measurer: &'a dyn TextMeasurer,
 }
@@ -73,18 +75,19 @@ pub(super) fn render_sequence_interaction_overlays(
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
     };
+    let note_ctx = SequenceNoteRenderContext {
+        nodes_by_id: ctx.nodes_by_id,
+        measurer: ctx.measurer,
+        actor_label_font_size: ctx.settings.actor_label_font_size,
+        wrap_padding: ctx.settings.wrap_padding,
+        note_text_style: &ctx.settings.note_text_style,
+        sanitize_config: ctx.sanitize_config,
+        math_renderer: ctx.math_renderer,
+    };
 
     for msg in &ctx.model.messages {
         render_sequence_activation_group(out, &activation_plan, &msg.id);
-        render_sequence_note(
-            out,
-            msg,
-            ctx.nodes_by_id,
-            ctx.measurer,
-            ctx.settings.actor_label_font_size,
-            ctx.settings.wrap_padding,
-            &ctx.settings.note_text_style,
-        );
+        render_sequence_note(out, msg, &note_ctx);
 
         let Some(idxs) = blocks_by_end_id.get(msg.id.as_str()) else {
             continue;

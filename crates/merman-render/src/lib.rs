@@ -183,6 +183,7 @@ pub fn layout_parsed_render_layout_only(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
+                options.math_renderer.as_deref(),
             )?)),
         ),
         (RenderSemanticModel::Class(model), "classDiagram" | "class") => {
@@ -414,6 +415,7 @@ fn layout_json_by_type(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),
+                options.math_renderer.as_deref(),
             )?,
         ))),
         "info" => Ok(LayoutDiagram::InfoDiagram(Box::new(

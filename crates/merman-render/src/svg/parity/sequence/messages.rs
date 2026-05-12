@@ -1,12 +1,17 @@
 use super::super::*;
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
-use crate::sequence::{SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, sequence_text_line_step_px};
+use crate::sequence::{
+    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_text_line_step_px,
+};
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
     pub(super) actor_height: f64,
@@ -66,7 +71,21 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 "left" => (p0.x + 10.0, "start"),
                 _ => (lbl.x, "middle"),
             };
-            if msg.wrap && !text.is_empty() {
+            if let Some(katex) = sequence_katex_label(
+                text,
+                ctx.loop_text_style,
+                ctx.sanitize_config,
+                ctx.math_renderer,
+                SequenceMathHeightMode::Draw,
+            ) {
+                let center_x = (p0.x + p1.x) / 2.0;
+                write_sequence_katex_foreign_object(
+                    out,
+                    &katex,
+                    (center_x - katex.width / 2.0).round(),
+                    (p0.y - katex.height).round(),
+                );
+            } else if msg.wrap && !text.is_empty() {
                 // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
                 // vendored metrics are close but can be slightly more conservative in some edge
                 // cases; give message wrapping a bit of extra horizontal slack so line breaks match

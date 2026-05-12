@@ -8,6 +8,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- Sequence parity: add KaTeX/math measurement and SVG rendering for actors, messages, notes, and
+  box/block labels, and wire the Sequence SVG comparer to the Node KaTeX backend.
 - Docs: add the `docs/workstreams/fearless-refactor/` workstream with roadmap, TODOs, milestones,
   and render-model inventory for the next cleanup-focused release.
 - Docs: add a generated parity override footprint snapshot for fearless-refactor governance.

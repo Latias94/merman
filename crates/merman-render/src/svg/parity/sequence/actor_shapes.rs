@@ -1,11 +1,15 @@
 use super::super::*;
 use super::geometry::node_left_top;
+use super::math_label::sequence_katex_label;
+use crate::sequence::SequenceMathHeightMode;
 use merman_core::diagrams::sequence::SequenceActor;
 
 pub(super) struct ActorLabelContext<'a> {
     wrap_width_px: f64,
     measurer: &'a dyn TextMeasurer,
     style: &'a TextStyle,
+    config: &'a merman_core::MermaidConfig,
+    math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
 impl<'a> ActorLabelContext<'a> {
@@ -13,11 +17,15 @@ impl<'a> ActorLabelContext<'a> {
         wrap_width_px: f64,
         measurer: &'a dyn TextMeasurer,
         style: &'a TextStyle,
+        config: &'a merman_core::MermaidConfig,
+        math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     ) -> Self {
         Self {
             wrap_width_px,
             measurer,
             style,
+            config,
+            math_renderer,
         }
     }
 
@@ -257,6 +265,34 @@ fn write_actor_label(
     wrap: bool,
     ctx: &ActorLabelContext<'_>,
 ) {
+    if !wrap {
+        if let Some(katex) = sequence_katex_label(
+            label,
+            ctx.style,
+            ctx.config,
+            ctx.math_renderer,
+            SequenceMathHeightMode::Actor,
+        ) {
+            let x = cx - katex.width / 2.0;
+            let y = cy - katex.height / 2.0;
+            out.push_str("<switch>");
+            let _ = write!(
+                out,
+                r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}"><div class="actor actor-box" xmlns="http://www.w3.org/1999/xhtml" style="height: 100%; width: 100%;"><div style="text-align: center; vertical-align: middle;">{html}</div></div></foreignObject>"#,
+                x = fmt(x),
+                y = fmt(y),
+                w = fmt(katex.width),
+                h = fmt(katex.height),
+                html = katex.html,
+            );
+            let raw_lines = crate::text::split_html_br_lines(label);
+            let line_count = raw_lines.len();
+            write_actor_label_lines(out, cx, cy, raw_lines, line_count, ctx.style);
+            out.push_str("</switch>");
+            return;
+        }
+    }
+
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
     if wrap {

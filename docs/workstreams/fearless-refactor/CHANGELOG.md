@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Wired Sequence layout, parity SVG rendering, and `xtask compare-sequence-svgs` through the Node
+  KaTeX backend for math actors/messages/notes/block labels, refreshed the math Sequence layout
+  golden, and revalidated focused `parity-root`, render nextest, and render/xtask Clippy.
 - Derived nested Sequence `rect` block horizontal bounds from Mermaid's open-block stack depth,
   refreshed the affected `rect around and inside ...` layout goldens, and removed the now-stale
   `alts`, `breaks`, and `criticals` Sequence root pins; the sibling `loops` fixture remains pinned

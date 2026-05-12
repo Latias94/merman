@@ -1,20 +1,27 @@
 use super::super::*;
 use super::geometry::node_left_top;
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use crate::sequence::{
-    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_NOTE_WRAP_SLACK_PX,
+    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_NOTE_WRAP_SLACK_PX, SequenceMathHeightMode,
     sequence_text_line_step_px,
 };
 use merman_core::diagrams::sequence::SequenceMessage;
 use rustc_hash::FxHashMap;
 
+pub(super) struct SequenceNoteRenderContext<'a> {
+    pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) actor_label_font_size: f64,
+    pub(super) wrap_padding: f64,
+    pub(super) note_text_style: &'a TextStyle,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+}
+
 pub(super) fn render_sequence_note(
     out: &mut String,
     msg: &SequenceMessage,
-    nodes_by_id: &FxHashMap<&str, &LayoutNode>,
-    measurer: &dyn TextMeasurer,
-    actor_label_font_size: f64,
-    wrap_padding: f64,
-    note_text_style: &TextStyle,
+    ctx: &SequenceNoteRenderContext<'_>,
 ) {
     if msg.message_type != 2 {
         return;
@@ -23,13 +30,13 @@ pub(super) fn render_sequence_note(
     let id = &msg.id;
     let raw = msg.message_text();
     let node_id = format!("note-{id}");
-    let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+    let Some(n) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
         return;
     };
     let (x, y) = node_left_top(n);
     let cx = x + (n.width / 2.0);
     let text_y = y + 5.0;
-    let line_step = sequence_text_line_step_px(actor_label_font_size);
+    let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
     out.push_str(r#"<g>"#);
     let _ = write!(
         &mut *out,
@@ -39,7 +46,20 @@ pub(super) fn render_sequence_note(
         w = fmt(n.width),
         h = fmt(n.height)
     );
-    if msg.wrap {
+    if let Some(katex) = sequence_katex_label(
+        raw,
+        ctx.note_text_style,
+        ctx.sanitize_config,
+        ctx.math_renderer,
+        SequenceMathHeightMode::Draw,
+    ) {
+        write_sequence_katex_foreign_object(
+            out,
+            &katex,
+            (x + n.width / 2.0 - katex.width / 2.0).round(),
+            (y + n.height / 2.0 - katex.height / 2.0).round(),
+        );
+    } else if msg.wrap {
         // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
         //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
         //
@@ -51,11 +71,11 @@ pub(super) fn render_sequence_note(
         } else {
             SEQUENCE_NOTE_WRAP_SLACK_PX
         };
-        let wrap_w = (n.width - 2.0 * wrap_padding + wrap_slack).max(1.0);
+        let wrap_w = (n.width - 2.0 * ctx.wrap_padding + wrap_slack).max(1.0);
         let lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
             raw,
-            measurer,
-            note_text_style,
+            ctx.measurer,
+            ctx.note_text_style,
             wrap_w,
         );
         render_sequence_note_lines(
@@ -64,7 +84,7 @@ pub(super) fn render_sequence_note(
             cx,
             text_y,
             line_step,
-            actor_label_font_size,
+            ctx.actor_label_font_size,
         );
     } else {
         render_sequence_note_lines(
@@ -73,7 +93,7 @@ pub(super) fn render_sequence_note(
             cx,
             text_y,
             line_step,
-            actor_label_font_size,
+            ctx.actor_label_font_size,
         );
     }
     out.push_str("</g>");

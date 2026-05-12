@@ -866,6 +866,29 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             ""
         }
 
+        if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+            && n.tag_name().name() == "g"
+            && children.iter().any(|c| {
+                c.name == "rect"
+                    && c.attrs.get("class").is_some_and(|class| {
+                        let mut has_actor = false;
+                        let mut has_bottom = false;
+                        for token in class.split_whitespace() {
+                            has_actor |= token == "actor";
+                            has_bottom |= token == "actor-bottom";
+                        }
+                        has_actor && has_bottom
+                    })
+            })
+            && children.iter().any(|c| c.name == "switch")
+        {
+            // Mermaid Sequence calls the async KaTeX actor-label renderer from a synchronous
+            // footer actor path. Exported SVGs can therefore contain missing or half-populated
+            // bottom actor `<switch>` labels depending on timing. Treat those footer switches as
+            // non-semantic in parity modes; top actor labels still compare normally.
+            children.retain(|c| c.name != "switch");
+        }
+
         children.sort_by(|a, b| {
             let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
             let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");

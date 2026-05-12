@@ -204,6 +204,58 @@ async function measureHtml(html, styleCss, maxWidthPx) {
   }
 }
 
+async function measureSequenceHtml(html) {
+  const puppeteer = requireFromCwd('puppeteer');
+  const browser = await launchBrowser(puppeteer, {
+    headless: 'shell',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--allow-file-access-from-files',
+      '--force-device-scale-factor=1',
+    ],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({
+      width: 1200,
+      height: 800,
+      deviceScaleFactor: 1,
+    });
+    await page.setContent('<!doctype html><html><body></body></html>');
+    return await page.evaluate((payload) => {
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+      const XHTML_NS = 'http://www.w3.org/1999/xhtml';
+
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('xmlns', SVG_NS);
+      svg.setAttribute('width', '1200');
+      svg.setAttribute('height', '800');
+
+      const foreignObject = document.createElementNS(SVG_NS, 'foreignObject');
+      svg.appendChild(foreignObject);
+
+      const div = document.createElementNS(XHTML_NS, 'div');
+      div.setAttribute('style', 'width: fit-content;');
+      div.setAttribute('xmlns', XHTML_NS);
+      div.innerHTML = payload.html;
+      foreignObject.appendChild(div);
+
+      document.body.appendChild(svg);
+      const bbox = div.getBoundingClientRect();
+      svg.remove();
+
+      return {
+        html: payload.html,
+        width: bbox.width,
+        height: bbox.height,
+      };
+    }, { html });
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
   const mode = process.argv[2];
   const raw = fs.readFileSync(0, 'utf8');
@@ -221,6 +273,12 @@ async function main() {
       payload.styleCss || '',
       Number.isFinite(payload.maxWidthPx) ? payload.maxWidthPx : 200
     );
+    process.stdout.write(JSON.stringify({ html, ...result }));
+    return;
+  }
+
+  if (mode === 'probe-sequence') {
+    const result = await measureSequenceHtml(html);
     process.stdout.write(JSON.stringify({ html, ...result }));
     return;
   }

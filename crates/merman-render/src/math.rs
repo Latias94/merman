@@ -46,6 +46,19 @@ pub trait MathRenderer: std::fmt::Debug {
     ) -> Option<TextMetrics> {
         None
     }
+
+    /// Optionally measures a Sequence `drawKatex(...)` label in pixels.
+    ///
+    /// Mermaid Sequence does not wrap KaTeX labels in the flowchart HTML-label shell; it appends
+    /// a bare `<foreignObject><div style="width: fit-content;">...</div></foreignObject>`.
+    /// This hook lets Sequence callers avoid inheriting flowchart-specific table-cell metrics.
+    fn measure_sequence_html_label(
+        &self,
+        _text: &str,
+        _config: &MermaidConfig,
+    ) -> Option<TextMetrics> {
+        None
+    }
 }
 
 /// Default math renderer: does nothing.
@@ -133,6 +146,7 @@ pub struct NodeKatexMathRenderer {
     node_command: PathBuf,
     render_cache: Mutex<HashMap<RenderCacheKey, Option<String>>>,
     probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
+    sequence_probe_cache: Mutex<HashMap<RenderCacheKey, Option<ProbeCacheValue>>>,
 }
 
 impl NodeKatexMathRenderer {
@@ -142,6 +156,7 @@ impl NodeKatexMathRenderer {
             node_command: PathBuf::from("node"),
             render_cache: Mutex::new(HashMap::new()),
             probe_cache: Mutex::new(HashMap::new()),
+            sequence_probe_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -330,6 +345,54 @@ impl NodeKatexMathRenderer {
 
         probed
     }
+
+    fn sequence_probe_cached(&self, text: &str, config: &MermaidConfig) -> Option<ProbeCacheValue> {
+        let key = Self::render_key(text, config);
+        if let Some(cached) = self
+            .sequence_probe_cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(&key).cloned())
+        {
+            return cached;
+        }
+
+        let response: Option<NodeProbeResponse> = self.run_node_request(
+            "probe-sequence",
+            &NodeRenderRequest {
+                text: key.text.clone(),
+                config: NodeMathConfig {
+                    legacy_mathml: key.legacy_mathml,
+                    force_legacy_mathml: key.force_legacy_mathml,
+                },
+            },
+        );
+        let probed = response.and_then(|value| {
+            if !value.width.is_finite() || !value.height.is_finite() {
+                return None;
+            }
+            let line_count = value.html.match_indices("<div").count().max(1);
+            Some(ProbeCacheValue {
+                html: value.html,
+                width: value.width.max(0.0),
+                height: value.height.max(0.0),
+                line_count,
+            })
+        });
+
+        if let Some(probed_value) = probed.clone() {
+            if let Ok(mut render_cache) = self.render_cache.lock() {
+                render_cache
+                    .entry(key.clone())
+                    .or_insert_with(|| Some(probed_value.html.clone()));
+            }
+        }
+        if let Ok(mut cache) = self.sequence_probe_cache.lock() {
+            cache.insert(key, probed.clone());
+        }
+
+        probed
+    }
 }
 
 impl MathRenderer for NodeKatexMathRenderer {
@@ -352,6 +415,22 @@ impl MathRenderer for NodeKatexMathRenderer {
             return None;
         }
         let probed = self.probe_cached(text, config, style, max_width_px, wrap_mode)?;
+        Some(TextMetrics {
+            width: crate::text::round_to_1_64_px(probed.width),
+            height: crate::text::round_to_1_64_px(probed.height),
+            line_count: probed.line_count,
+        })
+    }
+
+    fn measure_sequence_html_label(
+        &self,
+        text: &str,
+        config: &MermaidConfig,
+    ) -> Option<TextMetrics> {
+        if !text.contains("$$") {
+            return None;
+        }
+        let probed = self.sequence_probe_cached(text, config)?;
         Some(TextMetrics {
             width: crate::text::round_to_1_64_px(probed.width),
             height: crate::text::round_to_1_64_px(probed.height),

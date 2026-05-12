@@ -15,6 +15,7 @@ mod debug;
 mod frames;
 mod geometry;
 mod interactions;
+mod math_label;
 mod messages;
 mod model;
 mod notes;
