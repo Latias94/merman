@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Split Sequence block directive cursor-step planning out of `sequence.rs` into
+  `sequence/block_steps.rs`, reducing `layout_sequence_diagram_typed` to orchestration for this
+  phase while preserving the `618` root override budget, `80` Sequence root pins, `484` text lookup
+  entries, and `186` Sequence SVG metric rows; revalidated render nextest, render clippy,
+  Sequence `parity-root`, and override no-growth.
 - Split Sequence layout config lookup, Mermaid geometry constants, and text/math measurement
   helpers plus their owner tests out of the large `sequence.rs` implementation into focused
   `sequence/` submodules, preserving the public crate-level helper paths used by SVG parity code

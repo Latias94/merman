@@ -66,6 +66,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout internals: split config lookup, Mermaid geometry constants, and text/math label
   measurement helpers and their owner tests into `sequence/` submodules without changing render
   output.
+- Sequence layout internals: split block directive cursor-step planning into
+  `sequence/block_steps.rs`, keeping `layout_sequence_diagram_typed` focused on orchestration
+  while preserving Sequence SVG parity and override budgets.
 - Sequence layout/SVG parity: move the participant `<br/>` line-width browser facts into the
   Sequence SVG metric table, deriving the `stress_long_participant_labels_br_031` root viewport
   while keeping the SVG metric table at `186` rows and tightening the root budget to `618` with

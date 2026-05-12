@@ -325,6 +325,10 @@ Progress:
   `clippy::too_many_arguments` allow.
 - Bundled sequence block frame width planning inputs into `BlockFrameWidthContext` and removed the
   `crates/merman-render/src/sequence.rs` module-level `clippy::too_many_arguments` allow.
+- Split Sequence layout block directive cursor-step planning into
+  `crates/merman-render/src/sequence/block_steps.rs`, leaving
+  `layout_sequence_diagram_typed` to pass an explicit planning context and consume directive
+  steps.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /
