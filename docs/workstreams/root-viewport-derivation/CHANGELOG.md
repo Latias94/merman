@@ -44,6 +44,9 @@
   `title_and_accdescr_multiline`, `upstream_accessibility_single_line_spec`, and
   `upstream_docs_accessibility_sequence_diagram_014`, and tightened the root budget to `731`
   without growing the SVG text metric table.
+- Removed the residual default-title Sequence pins `upstream_title_without_colon_spec` and
+  `upstream_pkgtests_sequencediagram_spec_020`, tightening the root budget to `729` and Sequence
+  root pins to `191` without growing the SVG text metric table.
 
 ## 2026-05-11
 

@@ -135,6 +135,9 @@ Progress:
   trailing-semicolon font-family message width facts for `Hello Bob, how are you?` and
   `Hello John, how are you?`. The three title/accessibility root pins are deleted while the SVG
   metric table row count stays flat.
+- Removed the residual default-title pair `upstream_title_without_colon_spec` and
+  `upstream_pkgtests_sequencediagram_spec_020`; both derive from the same corrected
+  `Hello Bob, how are you?` message-width fact and no additional SVG metric rows were added.
 
 Exit criteria:
 

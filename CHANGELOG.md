@@ -92,6 +92,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Sequence layout/SVG parity: correct default trailing-semicolon font-family message widths for
   common `Hello Bob`/`Hello John` labels, deleting three title/accessibility root viewport pins
   without growing the SVG text metric table.
+- Sequence layout/SVG parity: delete the residual default-title root viewport pair covered by the
+  corrected `Hello Bob` message width fact.
 - Core/render pipeline: centralize typed render-model dispatch and suppressed error-diagram
   construction so public parse/render entrypoints share one fallback path.
 - Core/render API: `parse_diagram_for_render_model_sync` is now the single render-optimized parse

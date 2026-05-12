@@ -301,7 +301,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_pkgtests_sequencediagram_spec_014" => Some(("-50 -10 490 259", "490")),
         "upstream_pkgtests_sequencediagram_spec_015" => Some(("-50 -10 493 259", "493")),
         "upstream_pkgtests_sequencediagram_spec_016" => Some(("-50 -10 471 303", "471")),
-        "upstream_pkgtests_sequencediagram_spec_020" => Some(("-50 -50 580 348", "580")),
         "upstream_pkgtests_sequencediagram_spec_021" => Some(("-50 -10 480 215", "480")),
         "upstream_pkgtests_sequencediagram_spec_022" => Some(("-50 -10 480 215", "480")),
         "upstream_pkgtests_sequencediagram_spec_023" => Some(("-50 -10 480 215", "480")),
@@ -356,7 +355,6 @@ pub fn lookup_sequence_root_viewport_override(
         }
         "upstream_pkgtests_sequencediagram_spec_122" => Some(("-50 -10 480 226", "480")),
         "upstream_rect_block_spec" => Some(("-50 -10 590 338", "590")),
-        "upstream_title_without_colon_spec" => Some(("-50 -50 580 348", "580")),
         _ => None,
     }
 }
