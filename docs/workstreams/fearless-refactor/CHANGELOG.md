@@ -5,6 +5,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-12
 
+- Removed four stale Sequence root viewport pins for the actor-popup pkgtest fixtures after the
+  derived popup panel bounds made the raw root viewports match upstream without overrides.
 - Accounted for Sequence actor popup menu panel bottoms in root bounds, which fixed the link-only
   `upstream_pkgtests_sequencediagram_spec_074/076/077/078` root heights, refreshed the matching
   layout goldens, kept `compare-sequence-svgs --dom-mode parity-root --dom-decimals 6` green,
