@@ -55,21 +55,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_breaks_043" => {
             Some(("-50 -10 681 478", "681"))
         }
-        "upstream_cypress_sequencediagram_spec_should_render_autonumber_when_configured_with_such_044" => {
-            Some(("-50 -10 684 555", "684"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_autonumber_when_autonumber_keyword_is_used_045" => {
-            Some(("-50 -10 684 555", "684"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_dark_theme_from_init_directive_and_configure_font_047" => {
-            Some(("-50 -10 484 347", "484"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048" => {
-            Some(("-50 -10 450 449", "450"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_with_an_init_directive_049" => {
-            Some(("-150 -10 550 359", "550"))
-        }
         "upstream_cypress_sequencediagram_spec_should_override_config_with_directive_settings_050" => {
             Some(("-235 -10 635 327", "635"))
         }
@@ -91,9 +76,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010" => {
             Some(("-50 -10 938 633", "938"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_notes_over_actor_and_boundary_024" => {
-            Some(("-50 -10 450 284", "450"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012" => {
             Some(("-50 -10 1040 580", "1040"))
         }
@@ -103,14 +85,8 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015" => {
             Some(("-50 -10 1471 793", "1471"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_handle_complex_interactions_between_different_participant_013" => {
-            Some(("-50 -10 1480 1030", "1480"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014" => {
             Some(("-50 -10 1450 706", "1450"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_with_different_font_settings_009" => {
-            Some(("-50 -10 1480 1030", "1480"))
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011" => {
             Some(("-50 -10 1655 626", "1655"))
@@ -118,16 +94,10 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030" => {
             Some(("-50 -10 790 957", "790"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_wrapping_text_017" => {
-            Some(("-50 -10 1650 660", "1650"))
-        }
         "upstream_docs_sequencediagram_collections_016" => Some(("-50 -10 453 259", "453")),
         "upstream_docs_sequencediagram_parallel_054" => Some(("-50 -10 1062 547", "1062")),
         "upstream_docs_directives_changing_sequence_diagram_config_via_directive_013" => {
             Some(("-50 -10 1013 347", "1013"))
-        }
-        "upstream_extended_participant_quote_styles_spec" => {
-            Some(("-50 -10 1250 251.49998474121094", "1250"))
         }
         "upstream_docs_diagrams_mermaid_api_sequence" => Some(("-50 -10 2869 10259", "2869")),
         "upstream_html_demos_sequence_sequence_diagram_demos_001" => {
@@ -148,9 +118,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_sequence_batch5_wrap_html_br_spans_042" => Some(("-50 -10 586 344", "586")),
         "stress_sequence_batch5_create_destroy_in_par_046" => Some(("-50 -10 734 556", "734")),
         "stress_sequence_batch5_reserved_words_in_labels_049" => Some(("-50 -10 580 408", "580")),
-        "stress_sequence_batch5_many_participants_spacing_050" => {
-            Some(("-50 -10 1650 714", "1650"))
-        }
         "stress_sequence_batch5_whitespace_semicolons_051" => Some(("-50 -10 450 506", "450")),
         "activation_explicit" => Some(("-50 -10 513 259", "513")),
         "activation_stacked" => Some(("-50 -10 806 347", "806")),
@@ -166,9 +133,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_a_simple_sequence_diagram_001" => {
             Some(("-50 -10 790 942", "790"))
         }
-        "upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_experimental_use_with_052" => {
-            Some(("-50 -10 484 308", "484"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030" => {
             Some(("-50 -10 715 435", "715"))
         }
@@ -177,9 +141,6 @@ pub fn lookup_sequence_root_viewport_override(
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_central_connections_with_bidirectional_arrows_and_045" => {
             Some(("-50 -10 1736 435", "1736"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_participants_with_inline_alias_in_config_object_060" => {
-            Some(("-50 -10 650 362", "650"))
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_bidirectional_arrows_with_auto_051" => {
             Some(("-79.5 -10 691.5 467", "691.5"))
@@ -197,33 +158,18 @@ pub fn lookup_sequence_root_viewport_override(
             Some(("-50 -10 751 364", "751"))
         }
         "upstream_docs_examples_basic_sequence_diagram_005" => Some(("-50 -10 790 541", "790")),
-        "upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015" => {
-            Some(("-50 -10 1112.5 909", "1112.5"))
-        }
         "upstream_docs_examples_sequencediagram_loops_alt_and_opt_011" => {
             Some(("-50 -10 481 557", "481"))
         }
         "upstream_docs_readme_how_does_a_langium_based_parser_work_002" => {
             Some(("-50 -10 1334 503", "1334"))
         }
-        "upstream_docs_readme_sequence_diagram_a_href_https_mermaid_js_org_syntax_sequencediag_003" => {
-            Some(("-50 -10 684 555", "684"))
-        }
         "upstream_docs_sequence_alt_and_opt_example" => Some(("-50 -10 481 502", "481")),
         "upstream_docs_sequence_box_groups_example" => Some(("-50 -10 967 384", "967")),
         "upstream_docs_sequence_create_destroy_example" => Some(("-50 -10 1040 565", "1040")),
         "upstream_docs_sequence_rect_nested_example" => Some(("-50 -10 579 544", "579")),
-        "upstream_docs_sequencediagram_advanced_menu_syntax_080" => {
-            Some(("-50 -10 484 303", "484"))
-        }
         "upstream_html_demos_sequence_sequence_diagram_demos_002" => {
             Some(("-50 -50 484 343", "484"))
-        }
-        "upstream_html_demos_sequence_sequence_diagram_demos_006" => {
-            Some(("-50 -10 484 259", "484"))
-        }
-        "upstream_html_demos_sequence_sequence_diagram_demos_011" => {
-            Some(("-50 -10 484 259", "484"))
         }
         "upstream_pkgtests_sequencediagram_spec_014" => Some(("-50 -10 490 259", "490")),
         "upstream_pkgtests_sequencediagram_spec_015" => Some(("-50 -10 493 259", "493")),
@@ -238,15 +184,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_pkgtests_sequencediagram_spec_078" => Some(("-50 -10 670 276", "670")),
         "upstream_pkgtests_sequencediagram_spec_095" => Some(("-50 -10 450 215", "450")),
         "upstream_pkgtests_sequencediagram_spec_102" => Some(("-50 -10 509 289", "509")),
-        "upstream_pkgtests_sequencediagram_spec_105" => {
-            Some(("-50 -10 251 237.49998474121094", "251"))
-        }
-        "upstream_pkgtests_sequencediagram_spec_107" => {
-            Some(("-50 -10 1250 251.49998474121094", "1250"))
-        }
-        "upstream_pkgtests_sequencediagram_spec_109" => {
-            Some(("-50 -10 251 237.49998474121094", "251"))
-        }
         _ => None,
     }
 }
