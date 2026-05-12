@@ -96,7 +96,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_html_demos_sequence_sequence_diagram_demos_010" => {
             Some(("-50 -10 551 303", "551"))
         }
-        "stress_br_in_messages_notes_011" => Some(("-50 -10 752 405", "752")),
         "stress_critical_break_007" => Some(("-50 -10 650 635", "650")),
         "stress_entities_and_escaping_005" => Some(("-50 -10 666 308", "666")),
         "stress_nested_frames_001" => Some(("-50 -10 850 1045", "850")),

@@ -1245,6 +1245,17 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         };
 
         let font_size = style.font_size.max(1.0);
+        let t = text.trim_end();
+        if !t.is_empty() {
+            if let Some((left_em, right_em)) =
+                overrides::lookup_sequence_svg_override_em(table.font_key, t)
+            {
+                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+                return (left + right).max(0.0);
+            }
+        }
+
         let mut width: f64 = 0.0;
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
             let (l, r) = Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang(

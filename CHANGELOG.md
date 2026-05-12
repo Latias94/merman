@@ -63,6 +63,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence layout/SVG parity: let simple SVG bbox measurement reuse Sequence metric facts for
+  `wrapLabel` width probes, deriving the `stress_br_in_messages_notes_011` no-wrap/wrap root
+  viewport without growing the SVG metric table.
 - Sequence layout/SVG parity: move the wrapped HTML `<br/>` message-width browser metric into the
   Sequence SVG metric table, deleting the `stress_sequence_batch5_wrap_html_br_spans_042` root
   viewport pin without growing the table budget.

@@ -459,6 +459,28 @@ fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
 }
 
 #[test]
+fn sequence_svg_overrides_drive_simple_bbox_width_for_wrap_label_probes() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let prefix = "This is a longer message that should be wrapped by Mermaid's default";
+    assert_eq!(
+        measurer.measure_svg_simple_text_bbox_width_px(prefix, &style),
+        464.0
+    );
+
+    let no_wrap = "This message should not wrap even if it is long long long long long";
+    assert_eq!(
+        measurer.measure_svg_simple_text_bbox_width_px(no_wrap, &style),
+        432.0
+    );
+}
+
+#[test]
 fn wrap_label_like_mermaid_does_not_split_escaped_br() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

@@ -28,7 +28,6 @@ fn lookup_in_trebuchetms_verdana_arial_sans_serif() -> Option<&'static [(&'stati
 }
 
 static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] = &[
-    ("", 0.0, 0.8125),
     (",<>:-", 0.0, 2.0),
     ("-:<>,", 0.0, 2.0),
     (":-)", 0.0, 0.9375),
@@ -161,6 +160,16 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("Start booking process", 0.0, 8.6875),
     ("Successfully posted", 0.0, 8.125),
     ("Thanks for asking", 0.0, 7.25),
+    (
+        "This is a longer message that should be wrapped by Mermaid's default",
+        0.0,
+        29.0,
+    ),
+    (
+        "This message should not wrap even if it is long long long long long",
+        0.0,
+        27.0,
+    ),
     ("We are too many", 0.0, 6.8125),
     ("What do you think about it?", 0.0, 11.1875),
     (
@@ -221,5 +230,4 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("userb", 0.0, 2.25),
     ("when the booking process fails", 0.0, 12.4375),
     ("yes", 0.0, 1.375),
-    ("\u{200b}", 0.0, 0.8125),
 ];
