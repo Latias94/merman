@@ -63,6 +63,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- GitGraph seeded auto ids: mirror upstream SVG fixture generation by running a seed-consuming
+  parse warm-up before the render-model parse, so generated commit ids match Mermaid's
+  parse-before-render pipeline; this also removes 26 net GitGraph root viewport pins and tightens
+  the root viewport no-growth budget to `497` with GitGraph at `130`.
 - Flowchart label measurement: model Mermaid's unregistered custom FontAwesome fallback for
   `fab:fa-truck-bold` as the empty `<i>` fallback plus the observed Chromium inline layout delta.
   This derives the `upstream_docs_flowchart_custom_icons_238` and
@@ -94,10 +98,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   no-growth budget to `602`.
 - GitGraph root derivation: include `gitTitleText` bounds in the emitted root bbox and remove 13
   now-derived title-dominated root pins, tightening the root viewport no-growth budget to `603`.
-- GitGraph root viewport overrides: remove two stale fixture-scoped pins
-  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
-  and `upstream_direction_bt`) after disabled-root diagnostics showed they now derive without the
-  lookup, and tighten the root viewport no-growth budget to `616`.
+- GitGraph root viewport overrides: remove stale fixture-scoped pins after disabled-root
+  diagnostics show they now derive without lookup coverage, while retaining
+  `upstream_direction_bt` as a real BT-direction branch/commit-label bbox guard after seeded
+  auto-id alignment.
 - Flowchart root derivation: preserve bare `<`/`>` text in HTML labels and apply a narrow
   default-stack CJK width cushion for single-line labels with literal comparison symbols, deleting
   the now-derived `stress_flowchart_subgraph_title_unicode_and_entities_043` root viewport pin and

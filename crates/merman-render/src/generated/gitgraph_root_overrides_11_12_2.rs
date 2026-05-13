@@ -10,33 +10,9 @@ pub fn lookup_gitgraph_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_docs_gitgraph_base_theme_046" => {
-            Some(("-123.515625 -19 1031.515625 537.0078125", "1031.515625"))
-        }
-        "upstream_docs_gitgraph_default_theme_050" => {
-            Some(("-123.515625 -19 1031.515625 537.0078125", "1031.515625"))
-        }
-        "upstream_docs_gitgraph_forest_theme_048" => {
-            Some(("-123.515625 -19 1031.515625 537.0078125", "1031.515625"))
-        }
-        "upstream_docs_gitgraph_neutral_theme_054" => {
-            Some(("-123.515625 -19 1031.515625 537.0078125", "1031.515625"))
-        }
-        "upstream_docs_gitgraph_hiding_branch_names_and_lines_022" => Some((
-            "-35.45661163330078 -18 912.4566040039062 536.0078125",
-            "912.4566040039062",
-        )),
         "stress_gitgraph_font_size_precedence_098" => {
             Some(("-324.03125 -28 482.03125 163.31558227539062", "482.03125"))
         }
-        "upstream_docs_accessibility_gitgraph_011" => Some((
-            "-117.421875 -19 475.421875 172.94400024414062",
-            "475.421875",
-        )),
-        "upstream_docs_gitgraph_gitgraph_diagrams_001" => Some((
-            "-117.421875 -50 475.421875 203.94400024414062",
-            "475.421875",
-        )),
         "upstream_docs_gitgraph_merging_two_branches_009" => Some((
             "-191.484375 -34.72539138793945 699.484375 250.8622283935547",
             "699.484375",
@@ -51,9 +27,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-140.75 -34.70000076293945 898.75 271.2749938964844",
             "898.75",
         )),
-        "upstream_docs_gitgraph_dark_theme_026" => {
-            Some(("-123.515625 -19 1031.515625 537.0078125", "1031.515625"))
-        }
         "upstream_docs_gitgraph_customize_using_theme_variables_028" => Some((
             "-123.515625 -19 531.515625 263.14988708496094",
             "531.515625",
@@ -99,29 +72,13 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_html_demos_git_cherry_pick_from_branch_graph_015" => {
             Some(("-124.17623901367188 -50 347.265625 361", "347.265625"))
         }
-        "upstream_html_demos_git_cherry_pick_from_main_graph_016" => Some((
-            "-117.421875 -50 375.421875 203.94400024414062",
-            "375.421875",
-        )),
         "upstream_html_demos_git_cherry_pick_from_main_graph_017" => Some((
             "-105.00030517578125 -50 331.5625 357.8128967285156",
             "331.5625",
         )),
-        "upstream_html_demos_git_cherry_pick_then_merge_graph_019" => Some((
-            "-139.328125 -50 447.328125 203.29379272460938",
-            "447.328125",
-        )),
-        "upstream_html_demos_git_continuous_development_graph_004" => Some((
-            "-117.421875 -50 375.421875 203.53219604492188",
-            "375.421875",
-        )),
         "upstream_html_demos_git_two_branches_from_same_commit_graph_028" => {
             Some(("-145.125 -50 453.125 293.9440002441406", "453.125"))
         }
-        "upstream_html_demos_git_two_way_merges_010" => Some((
-            "-117.421875 -50 475.421875 203.53219604492188",
-            "475.421875",
-        )),
         "upstream_merges_spec" => Some((
             "-146.375 -34.72539138793945 654.375 341.15484619140625",
             "654.375",
@@ -525,12 +482,9 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-64.29232788085938 -8 97.79232788085938 105.9283676147461",
             "97.79232788085938",
         )),
-        "upstream_docs_contributing_workflow_012" => {
-            Some(("-271.375 -19 629.375 172.94400024414062", "629.375"))
-        }
-        "upstream_docs_examples_a_commit_flow_diagram_017" => Some((
-            "-139.328125 -19 547.328125 261.87115478515625",
-            "547.328125",
+        "upstream_direction_bt" => Some((
+            "-64.29232788085938 22 97.79232788085938 89",
+            "97.79232788085938",
         )),
         "upstream_docs_gitgraph_adding_custom_commit_id_005" => {
             Some(("-96 -19 254 74.98981094360352", "254"))
@@ -542,18 +496,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-64.08240509033203 22 215.7933349609375 489",
             "215.7933349609375",
         )),
-        "upstream_docs_gitgraph_checking_out_an_existing_branch_013" => Some((
-            "-117.421875 -19 475.421875 172.94400024414062",
-            "475.421875",
-        )),
-        "upstream_docs_gitgraph_create_a_new_branch_011" => Some((
-            "-117.421875 -19 375.421875 172.53219604492188",
-            "375.421875",
-        )),
-        "upstream_docs_gitgraph_left_to_right_default_lr_035" => Some((
-            "-117.421875 -19 575.421875 171.37266540527344",
-            "575.421875",
-        )),
         "upstream_docs_gitgraph_merging_two_branches_015" => Some((
             "-117.421875 -19 625.421875 173.61587524414062",
             "625.421875",
@@ -561,32 +503,11 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_docs_gitgraph_modifying_commit_type_007" => {
             Some(("-96 -19 404 83.51834869384766", "404"))
         }
-        "upstream_docs_gitgraph_parallel_commits_parallelcommits_true_043" => {
-            Some(("-117.421875 -19 275.421875 172.3262939453125", "275.421875"))
-        }
         "upstream_docs_gitgraph_syntax_003" => Some(("-96 -19 254 83.51834869384766", "254")),
-        "upstream_docs_gitgraph_temporal_commits_default_parallelcommits_false_041" => {
-            Some(("-117.421875 -19 375.421875 172.3262939453125", "375.421875"))
-        }
         "upstream_docs_gitgraph_top_to_bottom_tb_037" => Some((
             "-64.08240509033203 -8 215.7933349609375 503.1993713378906",
             "215.7933349609375",
         )),
-        "upstream_docs_readme_git_graph_experimental_a_href_https_mermaid_live_edit_pako_enqnk_013" => {
-            Some((
-                "-117.421875 -19 475.421875 172.94400024414062",
-                "475.421875",
-            ))
-        }
-        "upstream_pkgtests_gitgraph_spec_004" => {
-            Some(("-96 -34.70000076293945 154 99.52178192138672", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_011" => {
-            Some(("-96 -34.72539138793945 154 99.54717254638672", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_012" => {
-            Some(("-96 -34.72539138793945 154 99.54717254638672", "154"))
-        }
         "upstream_pkgtests_gitgraph_spec_018" => Some(("-96 -19 254 83.51834869384766", "254")),
         "upstream_pkgtests_gitgraph_spec_020" => {
             Some(("-109.953125 -19 267.953125 173.290771484375", "267.953125"))
@@ -594,24 +515,12 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_pkgtests_gitgraph_spec_027" => {
             Some(("-137.984375 -19 245.984375 173.5183563232422", "245.984375"))
         }
-        "upstream_pkgtests_gitgraph_spec_028" => Some((
-            "-137.984375 -19 345.984375 172.94400024414062",
-            "345.984375",
-        )),
         "upstream_pkgtests_gitgraph_spec_030" => {
             Some(("-137.984375 -19 245.984375 173.5183563232422", "245.984375"))
         }
-        "upstream_pkgtests_gitgraph_spec_031" => Some((
-            "-137.984375 -19 345.984375 172.94400024414062",
-            "345.984375",
-        )),
         "upstream_pkgtests_gitgraph_spec_032" => Some((
             "-137.984375 -34.72539138793945 295.984375 189.0161590576172",
             "295.984375",
-        )),
-        "upstream_pkgtests_gitgraph_spec_033" => Some((
-            "-146.375 -34.72539138793945 504.375 368.0191955566406",
-            "504.375",
         )),
         "upstream_pkgtests_gitgraph_spec_034" => Some((
             "-117.421875 -34.72539138793945 275.421875 161.3173828125",
@@ -644,10 +553,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_pkgtests_gitgraph_test_025" => Some((
             "-42.04056167602539 -8 192.07962036132812 255.8954315185547",
             "192.07962036132812",
-        )),
-        "upstream_switch_commit_merge_spec" => Some((
-            "-137.984375 -19 345.984375 172.94400024414062",
-            "345.984375",
         )),
         "upstream_unsafe_id_branch_and_commit_spec" => Some((
             "-133.296875 -19 291.296875 173.30160522460938",

@@ -2,6 +2,13 @@
 
 ## 2026-05-13
 
+- Matched GitGraph seeded auto commit ids to upstream's committed SVG generation pipeline:
+  Mermaid consumes the seeded `Math.random()` stream once during `mermaid.parse(code)` before the
+  later render pass, so Rust now replays that warm-up parse before building the render model.
+  The corrected ids made a disabled-root cross-check expose 27 stale retained root pins; after
+  keeping `upstream_direction_bt` because it still guards BT-direction branch/commit-label bbox
+  drift, the pass removed 26 net GitGraph root pins. GitGraph root pins are now `130`, and the
+  root no-growth budget is `497`.
 - Modeled Mermaid's unregistered custom FontAwesome fallback for Flowchart HTML labels:
   `fab:fa-truck-bold` is emitted as an empty `<i class="fab fa-truck-bold">` fallback rather than
   a registered custom SVG icon. The Flowchart HTML label measurer now applies the upstream
@@ -78,12 +85,14 @@
   title anchor tied to the pre-title content bbox center like Mermaid `insertTitle(...)`; removed
   13 now-derived GitGraph root pins and tightened the root no-growth budget to `603` with GitGraph
   at `213`.
-- Removed two stale GitGraph root viewport pins
+- Earlier in the GitGraph cleanup, removed two then-stale GitGraph root viewport pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after disabled-root mismatch cross-checking showed both now pass
   focused `parity-root` without the lookup; full GitGraph `parity-root`,
   `report-overrides --check-no-growth`, render/xtask clippy, and xtask override budget tests
   stayed green, and the root no-growth budget was tightened to `616` with GitGraph at `226`.
+  The later seeded auto-id warm-up pass restored `upstream_direction_bt` because the corrected
+  dynamic commit id exposed a real BT-direction bbox guard.
 
 ## 2026-05-12
 

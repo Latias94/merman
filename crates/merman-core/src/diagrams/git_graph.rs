@@ -156,7 +156,7 @@ impl XorShift64Star {
 }
 
 impl GitGraphDb {
-    fn clear(&mut self, config: &MermaidConfig) {
+    fn clear(&mut self, config: &MermaidConfig, prng_override: Option<XorShift64Star>) {
         self.commits.clear();
         self.commit_order.clear();
         self.branches.clear();
@@ -174,17 +174,18 @@ impl GitGraphDb {
         // SVG baselines), we allow injecting a seed.
         //
         // When unset, we keep Mermaid's non-deterministic behavior (random per run).
-        let seed = config_i64(config, "gitGraph.seed")
-            .and_then(|v| u64::try_from(v).ok())
-            .filter(|v| *v != 0);
-        self.prng = seed.map(XorShift64Star::new);
-        if let Some(prng) = self.prng.as_mut() {
-            // Mermaid's gitGraph commit ids are generated from `Math.random()`, but the render
-            // pipeline consumes one random value before the first auto-id is minted (e.g. via
-            // internal `generateId()` helpers). Burn one step so our seeded ids line up with the
-            // seeded upstream SVG baselines.
-            let _ = prng.next_u64();
-        }
+        self.prng = match prng_override {
+            Some(prng) => Some(prng),
+            None => {
+                let mut prng = seeded_gitgraph_prng(config);
+                if let Some(prng) = prng.as_mut() {
+                    // The seeded upstream SVG renderer consumes one `Math.random()` value before
+                    // the first gitGraph auto-id is minted.
+                    let _ = prng.next_u64();
+                }
+                prng
+            }
+        };
 
         let main = config
             .get_str("gitGraph.mainBranchName")
@@ -587,6 +588,13 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     cur.as_i64()
 }
 
+fn seeded_gitgraph_prng(config: &MermaidConfig) -> Option<XorShift64Star> {
+    config_i64(config, "gitGraph.seed")
+        .and_then(|v| u64::try_from(v).ok())
+        .filter(|v| *v != 0)
+        .map(XorShift64Star::new)
+}
+
 fn commit_to_render_model(c: Commit) -> GitGraphCommitRenderModel {
     GitGraphCommitRenderModel {
         id: c.id,
@@ -835,7 +843,58 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
 
     let direction = parse_header_line(header)?;
 
-    let mut db = GitGraphDb {
+    let effective_config = &meta.effective_config;
+    let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
+        // Upstream committed SVG fixtures are generated after a successful `mermaid.parse(code)`
+        // followed by `mermaid.render(...)`. Seeded gitGraph auto ids consume the global
+        // `Math.random()` stream during that warm-up parse, so mirror that state before building
+        // the render model used for SVG parity.
+        let mut warmup = new_gitgraph_db();
+        warmup.clear(effective_config, None);
+        if let Some(d) = direction.as_deref() {
+            warmup.set_direction(d);
+        }
+        parse_git_graph_body(lines.clone(), &mut warmup, effective_config)?;
+        warmup.prng
+    } else {
+        None
+    };
+
+    let mut db = new_gitgraph_db();
+    db.clear(effective_config, prng_override);
+    if let Some(d) = direction {
+        db.set_direction(&d);
+    }
+    parse_git_graph_body(lines, &mut db, effective_config)?;
+
+    let commits = db
+        .commits_in_seq_order()
+        .into_iter()
+        .map(commit_to_render_model)
+        .collect::<Vec<_>>();
+
+    Ok(GitGraphRenderModel {
+        diagram_type: meta.diagram_type.clone(),
+        commits,
+        branches: db.branches_in_order(),
+        current_branch: db.curr_branch,
+        direction: db.direction,
+        acc_title: if db.acc_title.is_empty() {
+            None
+        } else {
+            Some(db.acc_title)
+        },
+        acc_descr: if db.acc_descr.is_empty() {
+            None
+        } else {
+            Some(db.acc_descr)
+        },
+        warnings: db.warnings,
+    })
+}
+
+fn new_gitgraph_db() -> GitGraphDb {
+    GitGraphDb {
         commits: HashMap::new(),
         commit_order: Vec::new(),
         branches: HashMap::new(),
@@ -849,12 +908,17 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         acc_title: String::new(),
         acc_descr: String::new(),
         prng: None,
-    };
-    db.clear(&meta.effective_config);
-    if let Some(d) = direction {
-        db.set_direction(&d);
     }
+}
 
+fn parse_git_graph_body<'a, I>(
+    lines: I,
+    db: &mut GitGraphDb,
+    effective_config: &MermaidConfig,
+) -> Result<()>
+where
+    I: IntoIterator<Item = &'a str>,
+{
     let mut pending_acc_descr_block = false;
     let mut acc_descr_lines: Vec<String> = Vec::new();
 
@@ -928,7 +992,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
                         }
                     }
                 }
-                db.commit(commit_db, &meta.effective_config);
+                db.commit(commit_db, effective_config);
             }
             "branch" => {
                 let name = lp.parse_name_token()?;
@@ -942,11 +1006,11 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
                         })?;
                     }
                 }
-                db.branch(BranchDb { name, order }, &meta.effective_config)?;
+                db.branch(BranchDb { name, order }, effective_config)?;
             }
             "checkout" | "switch" => {
                 let name = lp.parse_name_token()?;
-                db.checkout(&name, &meta.effective_config)?;
+                db.checkout(&name, effective_config)?;
             }
             "merge" => {
                 let branch = lp.parse_name_token()?;
@@ -965,7 +1029,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
                         _ => {}
                     }
                 }
-                db.merge(merge_db, &meta.effective_config)?;
+                db.merge(merge_db, effective_config)?;
             }
             "cherry-pick" | "cherryPick" => {
                 let kv = lp.parse_kv_pairs()?;
@@ -987,7 +1051,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
                         parent,
                         tags,
                     },
-                    &meta.effective_config,
+                    effective_config,
                 )?;
             }
             _ => {
@@ -999,30 +1063,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         }
     }
 
-    let commits = db
-        .commits_in_seq_order()
-        .into_iter()
-        .map(commit_to_render_model)
-        .collect::<Vec<_>>();
-
-    Ok(GitGraphRenderModel {
-        diagram_type: meta.diagram_type.clone(),
-        commits,
-        branches: db.branches_in_order(),
-        current_branch: db.curr_branch,
-        direction: db.direction,
-        acc_title: if db.acc_title.is_empty() {
-            None
-        } else {
-            Some(db.acc_title)
-        },
-        acc_descr: if db.acc_descr.is_empty() {
-            None
-        } else {
-            Some(db.acc_descr)
-        },
-        warnings: db.warnings,
-    })
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1131,10 +1172,10 @@ merge feature id:"M1"
     }
 
     #[test]
-    fn seeded_auto_commit_ids_match_upstream_seeded_baselines() {
+    fn seeded_auto_commit_ids_match_upstream_seeded_svg_pipeline() {
         let model = parse_with_seed("gitGraph:\ncommit\n", 1);
         let ids = commit_ids(&model);
-        assert_eq!(ids, vec!["0-ab40cda".to_string()]);
+        assert_eq!(ids, vec!["0-5b722bd".to_string()]);
     }
 
     #[test]
@@ -1144,7 +1185,7 @@ merge feature id:"M1"
         let bt = commit_ids(&parse_with_seed("gitGraph BT:\ncommit\n", 1));
         assert_eq!(base, tb);
         assert_eq!(base, bt);
-        assert_eq!(base, vec!["0-ab40cda".to_string()]);
+        assert_eq!(base, vec!["0-5b722bd".to_string()]);
     }
 
     #[test]

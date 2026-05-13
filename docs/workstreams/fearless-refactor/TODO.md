@@ -561,10 +561,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   disabled-root audit using `--report-root-all` produced 251 root rows, with 239 non-zero
   `max-width` deltas and 241 changed viewBox dimensions, so the GitGraph table remains a
   model/layout-derivation target rather than a blind-pruning target. A later 2026-05-13
-  disabled-root mismatch cross-check removed two stale GitGraph entries
+  disabled-root mismatch cross-check removed two then-stale GitGraph entries
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`), reducing the root total to `616` and GitGraph to `226` while full
-  GitGraph `parity-root` stayed green. A follow-up GitGraph title-bounds pass included
+  GitGraph `parity-root` stayed green. A later seeded auto-id warm-up pass restored
+  `upstream_direction_bt` because the corrected dynamic commit id exposed a real BT-direction bbox
+  guard. A follow-up GitGraph title-bounds pass included
   `gitTitleText` in emitted root bbox derivation, removed 13 title-dominated GitGraph root pins,
   and reduced the root total to `603` with `213` GitGraph entries; a disabled-root cross-check
   confirmed all retained GitGraph pins still map to DOM mismatches. A follow-up GitGraph font-size
@@ -575,7 +577,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_html_demos_sequence_sequence_diagram_demos_002`, and tightened the root total to `602`
   with `79` Sequence entries. A later GitGraph horizontal branch-label width pass switched LR/RL
   branch labels to computed-length widths, removed 57 now-derived GitGraph root pins, and
-  tightened the root total to `545` with `156` GitGraph entries. A later Flowchart imageSquare pass
+  tightened the root total to `545` with `156` GitGraph entries. A later GitGraph seeded auto-id
+  warm-up pass replayed upstream's parse-before-render random-stream consumption, removed 26 net
+  GitGraph root pins after retaining `upstream_direction_bt` as a real BT-direction guard, and
+  tightened the root total to `497` with `130` GitGraph entries. A later Flowchart imageSquare pass
   derived the docs parameters image-plus-label bounds, removed
   `upstream_docs_flowchart_parameters_136`, and tightened the root total to `544` with `124`
   Flowchart entries. A later Flowchart anchor pass modeled Mermaid's label-ignoring roughjs anchor

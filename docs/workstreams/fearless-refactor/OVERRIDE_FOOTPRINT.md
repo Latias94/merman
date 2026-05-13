@@ -73,10 +73,12 @@ viewport budget to `702`; the latest Sequence long-note/long-message and wrapped
 fixed leftOf note start/width/rewrap behavior, removed fifteen more root pins, and kept the SVG
 text metric table budget flat at `186` rows by replacing one stale `FRIENDS` row with the new
 long-message fact.
-A follow-up GitGraph disabled-root cross-check then found two stale fixture-scoped pins that no
+A follow-up GitGraph disabled-root cross-check then found two then-stale fixture-scoped pins that no
 longer appeared in the mismatch set. `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
-and `upstream_direction_bt` now pass focused `parity-root` without the lookup, so the GitGraph
-table dropped to `226` entries and the root viewport no-growth budget tightened to `616`.
+and `upstream_direction_bt` passed focused `parity-root` without the lookup at that point, so the
+GitGraph table dropped to `226` entries and the root viewport no-growth budget tightened to `616`.
+The later seeded auto-id warm-up pass restored `upstream_direction_bt` because the corrected
+dynamic commit id exposed a real BT-direction bbox guard.
 A GitGraph title-bounds pass then included `gitTitleText` in emitted root bbox derivation, removed
 13 title-dominated GitGraph root pins, and tightened the root viewport no-growth budget to `603`
 with GitGraph at `213` entries.
@@ -93,6 +95,11 @@ root bbox derivation, matching browser `getBBox()` for zero-length branch lines 
 shared emitted-bounds scanner unchanged. The empty-graph package bucket dropped from roughly
 `+34.750px` disabled-root width drift to residual branch-label bbox drift, but the GitGraph table
 remained at `213` entries because `override=213 mismatch=213 stale=0 missing=0`.
+A later GitGraph seeded auto-id warm-up pass replayed upstream's parse-before-render seeded random
+stream consumption before the render-model parse. This aligned dynamic commit ids with the
+committed upstream SVG baselines, removed 26 net GitGraph root pins after retaining
+`upstream_direction_bt` as a real BT-direction guard, and tightened the root viewport no-growth
+budget to `497` with `130` GitGraph entries.
 The follow-up horizontal GitGraph branch-label pass switched LR/RL branch labels to computed text
 lengths, kept TB/BT on the wider bbox path to avoid rotated dynamic commit-id root regressions,
 and removed 57 now-derived GitGraph root pins, tightening the root viewport no-growth budget to

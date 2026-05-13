@@ -164,12 +164,13 @@ Progress:
   note width probe and final rewrap behavior. Focused disabled-root checks, full Sequence
   `parity-root`, render clippy, render nextest, and `report-overrides --check-no-growth` passed;
   root viewport overrides were `702` total with `164` Sequence entries at that point.
-- Removed two stale GitGraph root pins after disabled-root mismatch cross-checking showed
+- Removed two then-stale GitGraph root pins after disabled-root mismatch cross-checking showed
   `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
-  and `upstream_direction_bt` no longer needed lookup coverage. Focused and full GitGraph
-  `parity-root`, render/xtask clippy, xtask override budget tests, and
+  and `upstream_direction_bt` absent from the mismatch set at that point. Focused and full
+  GitGraph `parity-root`, render/xtask clippy, xtask override budget tests, and
   `report-overrides --check-no-growth` passed; root viewport overrides are now `616` total with
-  `226` GitGraph entries.
+  `226` GitGraph entries. A later seeded auto-id warm-up pass restored `upstream_direction_bt`
+  because the corrected dynamic commit id exposed a real BT-direction bbox guard.
 - Derived GitGraph title-dominated roots by adding the 18px `gitTitleText` bbox to emitted root
   bbox calculation while keeping title placement anchored to the pre-title content center. Removed
   13 now-derived GitGraph title/root pins and tightened the root budget to `603`, leaving `213`
@@ -178,6 +179,12 @@ Progress:
   label rects proved to match text advance better than ASCII-overhang simple bbox width. The
   follow-up disabled-root cross-check exposed and removed 57 now-derived GitGraph root pins,
   tightening the root budget to `545` and leaving `156` GitGraph root entries.
+- Matched GitGraph seeded auto commit ids to upstream's parse-before-render SVG fixture pipeline by
+  replaying a seed-consuming parse warm-up before the render-model parse. The corrected dynamic ids
+  exposed 27 stale retained root pins; after restoring `upstream_direction_bt` as a real
+  BT-direction bbox guard, the pass removed 26 net GitGraph root pins. This tightens the root
+  budget to `497` and leaves `130` GitGraph root entries, with a disabled-root cross-check of
+  `override=130 mismatch=130 stale=0 missing=0`.
 - Derived Flowchart imageSquare layout bounds from rendered image plus label extents instead of
   only the image asset, removed the now-derived `upstream_docs_flowchart_parameters_136` root pin,
   and tightened the root budget to `544` with `124` Flowchart root entries.

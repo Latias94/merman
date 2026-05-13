@@ -658,11 +658,12 @@ Progress:
   GitGraph, Flowchart, Sequence, Mindmap, and State all still show broad `max-width` or viewBox
   drift without the lookup tables. These buckets remain typed bounds or measurement derivation
   targets, not blind-pruning targets.
-- A later GitGraph disabled-root mismatch cross-check removed two stale retained root pins
+- A later GitGraph disabled-root mismatch cross-check removed two then-stale retained root pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) while focused/full GitGraph `parity-root` stayed green. The current
   root viewport total is `616`, with `226` GitGraph entries, and the no-growth budget is tightened
-  to `616`.
+  to `616`. A subsequent seeded auto-id warm-up pass restored `upstream_direction_bt` because the
+  corrected dynamic commit id exposed a real BT-direction bbox guard.
 - A follow-up GitGraph title-bounds pass included `gitTitleText` in emitted root bbox derivation,
   removed 13 title-dominated GitGraph root pins, and tightened the current root viewport total to
   `603`, with `213` GitGraph entries. A disabled-root cross-check now shows all retained GitGraph
@@ -678,6 +679,11 @@ Progress:
   length while keeping TB/BT on the wider bbox path for dynamic commit-id root stability. This
   removed 57 now-derived GitGraph root pins, leaving `156` GitGraph entries and root viewport total
   `545`.
+- A follow-up GitGraph seeded auto-id warm-up pass replayed upstream's `mermaid.parse(code)`
+  random-stream consumption before the render-model parse. This aligned dynamic commit ids with
+  committed upstream SVG baselines, removed 26 net GitGraph root pins after restoring
+  `upstream_direction_bt` as a real BT-direction guard, and tightened the root viewport total to
+  `497` with `130` GitGraph entries.
 - A follow-up Flowchart imageSquare pass sized layout bounds from rendered image plus label extents,
   removed `upstream_docs_flowchart_parameters_136`, and tightened the root viewport total to `544`
   with `124` Flowchart entries.

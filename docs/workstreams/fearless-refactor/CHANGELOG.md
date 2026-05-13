@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Matched GitGraph seeded auto commit ids to the upstream SVG fixture pipeline by replaying the
+  seed-consuming `mermaid.parse(code)` warm-up before the render-model parse. The corrected commit
+  ids exposed 27 stale retained GitGraph root pins; after restoring `upstream_direction_bt` as a
+  real BT-direction bbox guard, the pass removed 26 net GitGraph root pins. GitGraph root pins are
+  now `130`, the root no-growth budget is `497`, and disabled-root cross-checking reports
+  `override=130 mismatch=130 stale=0 missing=0`.
 - Modeled Mermaid's unregistered custom FontAwesome fallback for Flowchart HTML labels:
   `fab:fa-truck-bold` remains an empty `<i>` in exported SVG and contributes the observed Chromium
   inline layout delta. `upstream_docs_flowchart_custom_icons_238` and
@@ -71,12 +77,14 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   root bbox calculation, removed 13 now-derived GitGraph root pins, and tightened the root
   no-growth budget to `603` while full GitGraph `parity-root`, override no-growth, and
   render/xtask clippy stayed green.
-- Removed two stale GitGraph root viewport pins
+- Earlier in the GitGraph cleanup, removed two then-stale GitGraph root viewport pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after a disabled-root mismatch cross-check showed both fixtures now
   pass focused `parity-root` without the lookup; full GitGraph `parity-root`,
   `report-overrides --check-no-growth`, render/xtask clippy, and xtask override budget tests
-  stayed green, and the root no-growth budget was tightened to `616`.
+  stayed green, and the root no-growth budget was tightened to `616`. The later seeded auto-id
+  warm-up pass restored `upstream_direction_bt` because the corrected dynamic commit id exposed a
+  real BT-direction bbox guard.
 - Replaced the remaining Sequence block-frame literal offsets in `block_bounds.rs` with named
   local constants, keeping the block geometry rules readable while preserving render nextest,
   render clippy, Sequence `parity-root`, and override no-growth.

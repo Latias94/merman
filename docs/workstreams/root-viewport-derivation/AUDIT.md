@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and twenty-two Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, ninety-eight net GitGraph root pins, and twenty-two Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -32,7 +32,8 @@ node-label/package style node-label passes, the Mindmap single-line shape, docs 
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
-title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
+title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label and seeded
+auto-id warm-up passes, and the
 Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
 HTML-label font-size precedence, iconSquare layout-bounds, and custom FontAwesome fallback passes:
@@ -40,9 +41,9 @@ HTML-label font-size precedence, iconSquare layout-bounds, and custom FontAwesom
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
-- GitGraph: `156` entries.
+- GitGraph: `130` entries.
 - Flowchart: `103` entries.
-- Root viewport total: `523` entries.
+- Root viewport total: `497` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -78,15 +79,15 @@ A second follow-up derived wrapped `leftOf` note width probing and final rewrap 
 the affected Sequence/ZenUML layout goldens, and removed nine more Sequence root pins while keeping
 the text lookup and SVG text metric budgets flat.
 
-The latest GitGraph title-bounds pass now includes the 18px `gitTitleText` bbox in the emitted
-root bbox calculation while preserving Mermaid's pre-title content-center anchoring. This removed
-13 title-dominated GitGraph root pins. Follow-up parallel-branch and font-size passes removed
-large structural raw-root drift without deleting pins. The branch-line endpoint pass now includes
-zero-length branch line endpoints in the GitGraph-owned root bbox, and the horizontal branch-label
-pass uses computed text length for LR/RL branch labels while keeping vertical directions on the
-wider bbox path to avoid dynamic commit-id regressions. The latest disabled-root cross-check
-finds `156` retained GitGraph entries and `156` matching DOM mismatches, so there are no known
-stale retained GitGraph root pins in the current table.
+The latest GitGraph pass mirrors upstream's seeded SVG fixture pipeline by replaying the
+seed-consuming `mermaid.parse(code)` warm-up before the render-model parse. That aligns dynamic
+auto commit ids with Mermaid's committed SVG baselines. The disabled-root cross-check then exposed
+27 stale retained root pins; `upstream_direction_bt` was restored because it still guards real
+BT-direction branch/commit-label bbox drift after seed alignment, leaving 26 net GitGraph root
+pins removed. Together with the earlier title-bounds, branch-line endpoint, and horizontal
+branch-label passes, the latest disabled-root cross-check finds `130` retained GitGraph entries
+and `130` matching DOM mismatches, so there are no known stale retained GitGraph root pins in the
+current table.
 
 The latest Flowchart imageSquare pass sizes layout from the rendered image plus label extents
 instead of treating the Dagre node as only the image asset. This derives
@@ -137,11 +138,25 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-13: GitGraph seeded auto commit ids now mirror upstream's committed SVG generation
+  sequence by running a seed-consuming parse warm-up before the render-model parse. The simple
+  seeded fixture now produces `0-5b722bd`, matching the upstream parse-before-render pipeline
+  rather than the earlier single-render `0-ab40cda` stream position.
+- 2026-05-13: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the post-seed GitGraph audit
+  found `override=130 mismatch=130 stale=0 missing=0` after deleting 26 net stale pins. The
+  `upstream_direction_bt` pin remains because the corrected dynamic commit id exposes a real
+  BT-direction branch/commit-label bbox root drift.
+- 2026-05-13: full normal GitGraph DOM and full GitGraph `parity-root` passed after the seeded
+  auto-id warm-up and root-table pruning. `report-overrides --check-no-growth` passed with root
+  total `497`, GitGraph root count `130`, text lookup total `484`, SVG text metric table total
+  `186`, and zero manual raw SVG/path bridges.
 - 2026-05-13: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, a GitGraph disabled-root audit
   produced 251 root rows. Crossing the disabled-root mismatch list with
-  `gitgraph_root_overrides_11_12_2.rs` found two stale retained pins:
+  `gitgraph_root_overrides_11_12_2.rs` found two then-stale retained pins:
   `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
-  and `upstream_direction_bt`.
+  and `upstream_direction_bt`. The later seeded auto-id warm-up pass restored
+  `upstream_direction_bt` because the corrected dynamic commit id exposed a real BT-direction bbox
+  guard.
 - 2026-05-13: focused `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode
   parity-root --dom-decimals 3 --filter <fixture> --report-root-all` passed for both removed
   GitGraph fixtures.

@@ -218,13 +218,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   remains `484` and the SVG text metric table remains `186`.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
-- [x] Remove the first stale GitGraph root pins found by disabled-root mismatch cross-checking.
+- [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch
+  cross-checking.
   Evidence: `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt` were present in the GitGraph root table but absent from the
   disabled-root mismatch set. Both passed focused `parity-root` without a lookup; full GitGraph
   `parity-root`, `report-overrides --check-no-growth`, render/xtask clippy, and xtask override
   budget tests stayed green. Root viewport overrides are now `616` total, with `226` GitGraph
-  entries, and the root no-growth budget is tightened to `616`.
+  entries, and the root no-growth budget is tightened to `616`. A later seeded auto-id warm-up
+  pass restored `upstream_direction_bt` because the corrected dynamic commit id exposed a real
+  BT-direction bbox guard.
 - [x] Derive GitGraph title-dominated roots from emitted title text bounds.
   Evidence: GitGraph now adds the 18px title bbox to the post-emission root bbox using the
   pre-title content center, matching Mermaid `insertTitle(...)` semantics. Disabled-root
@@ -266,6 +269,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   (`override=213 mismatch=156 stale=57 missing=0`); after deleting them, the cross-check is
   `override=156 mismatch=156 stale=0 missing=0`. This tightened root viewport overrides to `545`
   total with `156` GitGraph entries.
+- [x] Match GitGraph seeded auto commit ids to the upstream SVG fixture pipeline and prune the
+  newly stale root pins.
+  Evidence: upstream committed GitGraph SVG fixtures are produced after `mermaid.parse(code)`
+  consumes the seeded `Math.random()` stream before the later render pass. Rust now replays that
+  warm-up parse before constructing the render model, so the simple seeded fixture produces
+  `0-5b722bd` rather than the earlier single-render stream value `0-ab40cda`. Disabled-root
+  cross-checking then exposed 27 stale retained GitGraph root pins; `upstream_direction_bt` was
+  restored because it still guards real BT-direction branch/commit-label bbox drift, for 26 net
+  deletions. Root viewport overrides are now `497` total with `130` GitGraph entries, and the
+  disabled-root cross-check is `override=130 mismatch=130 stale=0 missing=0`.
 - [x] Derive the Flowchart imageSquare docs parameters root from layout-time image plus label
   bounds.
   Evidence: `upstream_docs_flowchart_parameters_136` now sizes the Dagre node from the rendered
