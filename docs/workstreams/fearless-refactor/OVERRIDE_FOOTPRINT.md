@@ -77,6 +77,9 @@ A follow-up GitGraph disabled-root cross-check then found two stale fixture-scop
 longer appeared in the mismatch set. `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
 and `upstream_direction_bt` now pass focused `parity-root` without the lookup, so the GitGraph
 table dropped to `226` entries and the root viewport no-growth budget tightened to `616`.
+A GitGraph title-bounds pass then included `gitTitleText` in emitted root bbox derivation, removed
+13 title-dominated GitGraph root pins, and tightened the root viewport no-growth budget to `603`
+with GitGraph at `213` entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -254,7 +257,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `616`.
+Total entries reported by `xtask`: `603`.
 
 | file | entries |
 | --- | ---: |
@@ -262,7 +265,7 @@ Total entries reported by `xtask`: `616`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
-| `gitgraph_root_overrides_11_12_2.rs` | 226 |
+| `gitgraph_root_overrides_11_12_2.rs` | 213 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
@@ -299,8 +302,10 @@ A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
 `-281.558px`. Crossing the disabled-root mismatches with the GitGraph root table exposed two stale
 retained pins, which were removed after focused and full GitGraph `parity-root` stayed green. The
-remaining `226` GitGraph entries still need model/layout derivation work before another broad
-deletion pass.
+GitGraph title-bounds follow-up removed 13 more title-dominated pins by deriving the title bbox in
+the emitted root bounds. The remaining `213` GitGraph entries were cross-checked against
+disabled-root mismatches and still need model/layout derivation work before another broad deletion
+pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
 skipped fixture. The largest width deltas came from icon-heavy Flowchart fixtures
@@ -361,7 +366,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `gitgraph`: 226
+- `gitgraph`: 213
 - `flowchart`: 125
 - `sequence`: 80
 - `mindmap`: 39

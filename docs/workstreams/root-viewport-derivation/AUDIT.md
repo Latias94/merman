@@ -14,8 +14,8 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, and thirty-four Sequence root pins removed |
-| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, and Sequence passes recorded |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, and fifteen GitGraph root pins removed |
+| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, and GitGraph passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
 | Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed |
@@ -31,13 +31,13 @@ Current counts after the State style/entity-placeholder/note-label/transition-la
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
-cleanup passes, and the first GitGraph stale-pin cross-check:
+cleanup passes, the first GitGraph stale-pin cross-check, and the GitGraph title-bounds pass:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `80` entries.
-- GitGraph: `226` entries.
-- Root viewport total: `616` entries.
+- GitGraph: `213` entries.
+- Root viewport total: `603` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -72,6 +72,12 @@ budget stayed at `186` without changing `report-overrides --check-no-growth`.
 A second follow-up derived wrapped `leftOf` note width probing and final rewrap behavior, refreshed
 the affected Sequence/ZenUML layout goldens, and removed nine more Sequence root pins while keeping
 the text lookup and SVG text metric budgets flat.
+
+The latest GitGraph title-bounds pass now includes the 18px `gitTitleText` bbox in the emitted
+root bbox calculation while preserving Mermaid's pre-title content-center anchoring. This removed
+13 title-dominated GitGraph root pins. A disabled-root cross-check now finds `213` retained
+GitGraph entries and `213` matching DOM mismatches, so there are no known stale retained GitGraph
+root pins in the current table.
 
 ## Focused Commands
 
@@ -115,6 +121,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 - 2026-05-13: `report-overrides --check-no-growth` passed with root total `616`, GitGraph root
   count `226`, text lookup total `484`, SVG text metric table total `186`, and zero manual raw
   SVG/path bridges.
+- 2026-05-13: GitGraph title-root derivation added `gitTitleText` bbox coverage to emitted root
+  bounds and removed 13 title-dominated GitGraph root pins. Full GitGraph `parity-root`,
+  `report-overrides --check-no-growth`, and render/xtask clippy passed. A disabled-root
+  cross-check found `213` retained GitGraph root entries and `213` matching DOM mismatches, so no
+  additional stale GitGraph root pins were deleted in this pass. `report-overrides
+  --check-no-growth` reported root total `603`, GitGraph root count `213`, text lookup total
+  `484`, SVG text metric table total `186`, and zero manual raw SVG/path bridges.
 - 2026-05-13: Flowchart disabled-root mismatch cross-check found `125` override entries and `125`
   matching disabled-root DOM mismatches, so no stale retained Flowchart root pin was deleted in
   this pass.

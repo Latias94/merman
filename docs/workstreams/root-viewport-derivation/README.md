@@ -24,9 +24,9 @@ strict release gates green.
   the stale retained pins exposed by the post-wrapping disabled-root sweep.
 - Current Sequence root viewport overrides: `80` entries after the follow-up Sequence metric,
   note/message/frame, actor/root-bounds, and SVG metric-table cleanup passes.
-- Current GitGraph root viewport overrides: `226` entries after the first disabled-root
-  cross-check removed two stale retained pins.
-- Current root viewport override budget: `616` entries.
+- Current GitGraph root viewport overrides: `213` entries after deriving GitGraph title text bounds
+  into emitted root bbox calculation and pruning the now-derived title-dominated pins.
+- Current root viewport override budget: `603` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.

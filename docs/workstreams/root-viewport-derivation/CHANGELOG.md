@@ -2,6 +2,10 @@
 
 ## 2026-05-13
 
+- Derived GitGraph title-dominated root viewports from emitted title text bounds, keeping the
+  title anchor tied to the pre-title content bbox center like Mermaid `insertTitle(...)`; removed
+  13 now-derived GitGraph root pins and tightened the root no-growth budget to `603` with GitGraph
+  at `213`.
 - Removed two stale GitGraph root viewport pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after disabled-root mismatch cross-checking showed both now pass

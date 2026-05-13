@@ -63,6 +63,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- GitGraph root derivation: include `gitTitleText` bounds in the emitted root bbox and remove 13
+  now-derived title-dominated root pins, tightening the root viewport no-growth budget to `603`.
 - GitGraph root viewport overrides: remove two stale fixture-scoped pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after disabled-root diagnostics showed they now derive without the

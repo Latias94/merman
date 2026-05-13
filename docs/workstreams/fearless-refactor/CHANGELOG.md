@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived GitGraph title-dominated root viewports by including `gitTitleText` bounds in emitted
+  root bbox calculation, removed 13 now-derived GitGraph root pins, and tightened the root
+  no-growth budget to `603` while full GitGraph `parity-root`, override no-growth, and
+  render/xtask clippy stayed green.
 - Removed two stale GitGraph root viewport pins
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after a disabled-root mismatch cross-check showed both fixtures now

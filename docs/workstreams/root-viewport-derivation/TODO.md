@@ -225,6 +225,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `parity-root`, `report-overrides --check-no-growth`, render/xtask clippy, and xtask override
   budget tests stayed green. Root viewport overrides are now `616` total, with `226` GitGraph
   entries, and the root no-growth budget is tightened to `616`.
+- [x] Derive GitGraph title-dominated roots from emitted title text bounds.
+  Evidence: GitGraph now adds the 18px title bbox to the post-emission root bbox using the
+  pre-title content center, matching Mermaid `insertTitle(...)` semantics. Disabled-root
+  cross-checking exposed 13 now-derived pins, which were removed from
+  `gitgraph_root_overrides_11_12_2.rs`. Root viewport overrides are now `603` total, with `213`
+  GitGraph entries, and the root no-growth budget is tightened to `603`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins.
 

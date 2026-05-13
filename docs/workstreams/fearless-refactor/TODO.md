@@ -564,7 +564,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   disabled-root mismatch cross-check removed two stale GitGraph entries
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`), reducing the root total to `616` and GitGraph to `226` while full
-  GitGraph `parity-root` stayed green. A follow-up Flowchart
+  GitGraph `parity-root` stayed green. A follow-up GitGraph title-bounds pass included
+  `gitTitleText` in emitted root bbox derivation, removed 13 title-dominated GitGraph root pins,
+  and reduced the root total to `603` with `213` GitGraph entries; a disabled-root cross-check
+  confirmed all retained GitGraph pins still map to DOM mismatches. A follow-up Flowchart
   disabled-root audit produced 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed
   viewBox dimensions, and one skipped fixture; the largest drift comes from icon-heavy Flowcharts
   and old-shape all-pairs fixtures, so Flowchart also remains a bounds/shape derivation target. A

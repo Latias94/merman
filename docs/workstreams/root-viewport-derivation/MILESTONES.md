@@ -170,6 +170,10 @@ Progress:
   `parity-root`, render/xtask clippy, xtask override budget tests, and
   `report-overrides --check-no-growth` passed; root viewport overrides are now `616` total with
   `226` GitGraph entries.
+- Derived GitGraph title-dominated roots by adding the 18px `gitTitleText` bbox to emitted root
+  bbox calculation while keeping title placement anchored to the pre-title content center. Removed
+  13 now-derived GitGraph title/root pins and tightened the root budget to `603`, leaving `213`
+  GitGraph root entries.
 
 Exit criteria:
 

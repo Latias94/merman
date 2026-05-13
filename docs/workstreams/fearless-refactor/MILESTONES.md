@@ -663,6 +663,10 @@ Progress:
   and `upstream_direction_bt`) while focused/full GitGraph `parity-root` stayed green. The current
   root viewport total is `616`, with `226` GitGraph entries, and the no-growth budget is tightened
   to `616`.
+- A follow-up GitGraph title-bounds pass included `gitTitleText` in emitted root bbox derivation,
+  removed 13 title-dominated GitGraph root pins, and tightened the current root viewport total to
+  `603`, with `213` GitGraph entries. A disabled-root cross-check now shows all retained GitGraph
+  pins still correspond to DOM mismatches.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

@@ -1,16 +1,25 @@
 use super::*;
 
-fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+struct GitGraphCss {
+    css: String,
+    font_family: String,
+}
+
+fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let font_family = parts.font_family.clone();
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}"#,
-        id, parts.line_color, id, id, id
+        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        id, parts.line_color, id, id, id, id, parts.text_color
     );
     out.push_str(&parts.root_rule);
-    out
+    GitGraphCss {
+        css: out,
+        font_family,
+    }
 }
 
 pub(super) fn render_gitgraph_diagram_svg(
@@ -89,6 +98,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
     const TITLE_X_PLACEHOLDER: &str = "__MERMAID_GITGRAPH_TITLE_X__";
     const VIEWBOX_PADDING_PX: f64 = 8.0;
+    const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
     fn gitgraph_simple_text_bbox_width_px(
         measurer: &dyn TextMeasurer,
@@ -151,7 +161,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     let css = gitgraph_css(diagram_id, effective_config);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    let title_style = crate::text::TextStyle {
+        font_family: Some(css.font_family.clone()),
+        font_size: TITLE_FONT_SIZE_PX,
+        font_weight: None,
+    };
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
 
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g class="commit-bullets"/>"#);
@@ -626,11 +641,18 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
     out.push_str("</g>");
 
-    if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
+    let title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+    let title_top_margin = config_f64(effective_config, &["gitGraph", "titleTopMargin"])
+        .unwrap_or(25.0)
+        .max(0.0);
+    let title_y = -title_top_margin;
+
+    if let Some(title) = title {
         let _ = write!(
             &mut out,
-            r#"<text text-anchor="middle" x="{x}" y="-25" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
+            r#"<text text-anchor="middle" x="{x}" y="{y}" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
             x = TITLE_X_PLACEHOLDER,
+            y = fmt(title_y),
             text = escape_xml(title),
         );
     }
@@ -652,12 +674,21 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         max_x: None,
         max_y: None,
     };
-    let b = svg_emitted_bounds_from_svg_inner(&out, Some(&mut bb_dbg)).unwrap_or(Bounds {
+    let mut b = svg_emitted_bounds_from_svg_inner(&out, Some(&mut bb_dbg)).unwrap_or(Bounds {
         min_x: vb_min_x,
         min_y: vb_min_y,
         max_x: vb_min_x + vb_w,
         max_y: vb_min_y + vb_h,
     });
+    let title_anchor_x = (b.min_x + b.max_x) / 2.0;
+    if let Some(title) = title {
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
+        b.min_x = b.min_x.min(title_anchor_x - title_left);
+        b.max_x = b.max_x.max(title_anchor_x + title_right);
+        b.min_y = b.min_y.min(title_y - ascent);
+        b.max_y = b.max_y.max(title_y + descent);
+    }
 
     // Mermaid computes the root viewBox from `svg.getBBox()` + padding.
     //
@@ -769,18 +800,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
     // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_width_attr, 1);
-    out = out.replacen(
-        TITLE_X_PLACEHOLDER,
-        &fmt_string(gitgraph_viewbox_center_x(&view_box_attr).unwrap_or(vb_min_x + vb_w / 2.0)),
-        1,
-    );
+    out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
     Ok(out)
-}
-
-fn gitgraph_viewbox_center_x(view_box: &str) -> Option<f64> {
-    let mut it = view_box.split_whitespace();
-    let min_x = it.next()?.parse::<f64>().ok()?;
-    let _min_y = it.next()?.parse::<f64>().ok()?;
-    let width = it.next()?.parse::<f64>().ok()?;
-    Some(min_x + width / 2.0)
 }
