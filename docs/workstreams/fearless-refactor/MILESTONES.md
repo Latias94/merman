@@ -711,6 +711,10 @@ Progress:
   (`iconSize + halfPadding * 2`, equivalent to `iconSize + node.padding`), refreshed the docs
   icon-shape layout golden, removed `upstream_docs_flowchart_icon_shape_132`, and tightened the
   root viewport total to `525` with `105` Flowchart entries.
+- A follow-up Flowchart custom FontAwesome fallback pass matched Mermaid's unregistered
+  `fab:fa-truck-bold` behavior from `createText.ts`, removed
+  `upstream_docs_flowchart_custom_icons_238` and `stress_flowchart_icons_prefixes_and_quotes_052`,
+  and tightened the root viewport total to `523` with `103` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

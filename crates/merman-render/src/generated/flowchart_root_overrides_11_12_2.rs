@@ -41,7 +41,6 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 628.5234375 703", "628.523"))
         }
         "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
-        "stress_flowchart_icons_prefixes_and_quotes_052" => Some(("0 0 566.5625 278", "566.562")),
         "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
         "stress_flowchart_icons_multiline_br_054" => Some(("0 0 145.5 374", "145.5")),
         "stress_flowchart_icons_unicode_and_wrap_056" => Some(("0 0 701.515625 94", "701.516")),
@@ -64,7 +63,6 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("-96.54400634765625 -50 610.109375 608", "610.109"))
         }
         "upstream_docs_mermaid_run_003" => Some(("0 0 529.953125 174", "529.953")),
-        "upstream_docs_flowchart_custom_icons_238" => Some(("0 0 180.03125 174", "180.031")),
         "upstream_docs_flowchart_unicode_text_005" => Some(("0 0 187.109375 70", "187.109")),
         "upstream_cypress_flowchart_handdrawn_spec_fdh21_render_cylindrical_shape_021" => Some((
             "0 0.000003814697265625 769.890625 341.0105285644531",

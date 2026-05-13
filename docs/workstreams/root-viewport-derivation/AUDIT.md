@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and twenty Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and twenty-two Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -35,14 +35,14 @@ cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, 
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
 Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
-HTML-label font-size precedence, and iconSquare layout-bounds passes:
+HTML-label font-size precedence, iconSquare layout-bounds, and custom FontAwesome fallback passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Flowchart: `105` entries.
-- Root viewport total: `525` entries.
+- Flowchart: `103` entries.
+- Root viewport total: `523` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -235,6 +235,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `upstream_docs_flowchart_icon_shape_132` passes focused disabled-root `parity-root`, so its root
   pin was deleted and its layout golden was refreshed. `report-overrides` now reports root total
   `525` and Flowchart root count `105`.
+- 2026-05-13: Flowchart FontAwesome HTML-label measurement now models Mermaid's unregistered
+  custom-pack fallback for `fab:fa-truck-bold` as the empty `<i>` emitted by upstream
+  `createText.ts`, including the Chromium 1/64px inline advance observed in the docs custom-icons
+  fixture. `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052` pass focused disabled-root `parity-root`, so
+  both root pins were deleted. `report-overrides` now reports root total `523` and Flowchart root
+  count `103`.
 - 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
   cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
   stale retained Flowchart root pin was deleted in that audit pass.

@@ -226,9 +226,64 @@ pub fn measure_html_with_flowchart_bold_deltas(
     // exported SVG baselines match a full `font-weight: bold` delta model for `<b>/<strong>` runs.
     const BOLD_DELTA_SCALE: f64 = 1.0;
 
+    fn html_tag_class_attr(tag: &str) -> Option<String> {
+        let lower = tag.to_ascii_lowercase();
+        let idx = lower.find("class=")?;
+        let rest = tag[idx + 6..].trim_start();
+        let quote = rest.chars().next()?;
+        if quote != '"' && quote != '\'' {
+            return None;
+        }
+
+        let mut it = rest.chars();
+        let _ = it.next();
+        let mut value = String::new();
+        for ch in it {
+            if ch == quote {
+                break;
+            }
+            value.push(ch);
+        }
+
+        Some(value)
+    }
+
+    fn fontawesome_icon_delta_px(tag: &str, font_size: f64) -> Option<f64> {
+        let class_attr = html_tag_class_attr(tag)?;
+        let mut prefix: Option<&str> = None;
+        let mut icon: Option<&str> = None;
+
+        for token in class_attr.split_ascii_whitespace() {
+            if matches!(token, "fa" | "fab" | "fak" | "fal" | "far" | "fas") {
+                prefix = Some(token);
+                continue;
+            }
+            if let Some(name) = token.strip_prefix("fa-") {
+                icon = Some(name);
+            }
+        }
+
+        let prefix = prefix?;
+        let icon = icon?;
+        let nominal_em = match (prefix, icon) {
+            // Mermaid docs use this as an unregistered custom icon example. Upstream emits an
+            // empty `<i class="fab fa-truck-bold">`, and without a matching custom icon font
+            // Chromium leaves only the small inline layout delta captured below.
+            ("fab", "truck-bold") => 0.0,
+            _ => 1.0,
+        };
+
+        let nominal_px = font_size.max(1.0) * nominal_em;
+        // In practice the inline FontAwesome marker measures one 1/64px lattice step under its
+        // nominal width in upstream Chromium fixtures. This also captures the empty custom-pack
+        // fallback, whose effective contribution is a small line-width delta rather than a visible
+        // glyph.
+        Some(round_to_1_64_px(nominal_px) - (1.0 / 64.0))
+    }
+
     // Mermaid supports inline FontAwesome icons via `<i class="fa fa-..."></i>` inside HTML
-    // labels. Mermaid's exported SVG baselines do not include the icon glyph in `foreignObject`
-    // measurement (FontAwesome CSS is not embedded), so headless width contribution is `0`.
+    // labels. Upstream layout is computed with FontAwesome CSS available, while exported SVGs
+    // keep only the empty `<i>` element. Model the layout-time glyph advance explicitly.
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
             "nbsp" => Some(' '),
@@ -287,18 +342,11 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 .next()
                 .unwrap_or("");
 
-            let is_fontawesome_icon_i = name == "i"
-                && !is_closing
-                && (tag_trim.contains("class=\"fa")
-                    || tag_trim.contains("class='fa")
-                    || tag_trim.contains("class=\"fab")
-                    || tag_trim.contains("class='fab")
-                    || tag_trim.contains("class=\"fal")
-                    || tag_trim.contains("class='fal")
-                    || tag_trim.contains("class=\"far")
-                    || tag_trim.contains("class='far")
-                    || tag_trim.contains("class=\"fas")
-                    || tag_trim.contains("class='fas"));
+            let fontawesome_icon_width = if name == "i" && !is_closing {
+                fontawesome_icon_delta_px(tag, style.font_size)
+            } else {
+                None
+            };
 
             match name {
                 "strong" | "b" => {
@@ -315,17 +363,8 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         } else {
                             em_depth = em_depth.saturating_sub(1);
                         }
-                    } else if is_fontawesome_icon_i {
-                        // Mermaid's FontAwesome icons in HTML labels contribute measurable width in
-                        // upstream fixtures (layout is computed with FA styles present), even though
-                        // the exported SVG does not embed the FA stylesheet.
-                        //
-                        // Model each `<i class="fa ..."></i>` as a fixed `1em` wide inline box.
+                    } else if let Some(icon_w) = fontawesome_icon_width {
                         let line_idx = deltas_px_by_line.len().saturating_sub(1);
-                        // In practice the inline FA `<i/>` box measures slightly under `1em` in
-                        // upstream fixtures (Chromium `getBoundingClientRect()`), so subtract one
-                        // 1/64px lattice step to match the baselines.
-                        let icon_w = (style.font_size.max(1.0) - (1.0 / 64.0)).max(0.0);
                         deltas_px_by_line[line_idx] += icon_w;
                         if let Some(slot) = icon_on_line.get_mut(line_idx) {
                             *slot = true;

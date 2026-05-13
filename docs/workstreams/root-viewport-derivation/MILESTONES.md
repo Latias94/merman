@@ -211,6 +211,11 @@ Progress:
   `iconSize + node.padding` for `iconSquare` before Dagre/root bounds. Refreshed the affected
   layout golden, removed `upstream_docs_flowchart_icon_shape_132`, and tightened the budget to
   `525` with `105` Flowchart root entries.
+- Derived two Flowchart custom FontAwesome fallback roots by matching Mermaid's unregistered
+  custom-pack behavior: `fab:fa-truck-bold` falls back to an empty `<i>` in `createText.ts`, and
+  Chromium still contributes the observed 1/64px inline advance during HTML-label layout. Removed
+  `upstream_docs_flowchart_custom_icons_238` and `stress_flowchart_icons_prefixes_and_quotes_052`,
+  tightening the budget to `523` with `103` Flowchart root entries.
 
 Exit criteria:
 

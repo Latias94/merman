@@ -321,6 +321,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_docs_flowchart_icon_shape_132` passes focused disabled-root `parity-root`, the root pin
   was deleted, the affected layout golden was refreshed, and the root no-growth budget is tightened
   to `525` with `105` Flowchart entries.
+- [x] Derive the Flowchart custom FontAwesome fallback roots from Mermaid's `createText.ts`
+  behavior.
+  Evidence: Mermaid emits an empty `<i class="fab fa-truck-bold">` for the unregistered custom
+  icon-pack example. Flowchart HTML-label measurement now applies the matching Chromium inline
+  advance, so `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052` pass focused disabled-root `parity-root`. Both
+  root pins were deleted, and the root no-growth budget is tightened to `523` with `103` Flowchart
+  entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

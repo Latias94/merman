@@ -606,7 +606,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Flowchart entries. A follow-up Flowchart iconSquare pass matched Mermaid's
   `iconSize + halfPadding * 2` outer layout bounds, refreshed
   `upstream_docs_flowchart_icon_shape_132.layout.golden.json`, removed that root pin, and tightened
-  the root total to `525` with `105` Flowchart entries.
+  the root total to `525` with `105` Flowchart entries. A follow-up Flowchart custom FontAwesome
+  fallback pass matched Mermaid's unregistered `fab:fa-truck-bold` fallback from `createText.ts`,
+  removed `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052`, and tightened the root total to `523` with
+  `103` Flowchart entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

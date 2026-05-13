@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Modeled Mermaid's unregistered custom FontAwesome fallback for Flowchart HTML labels:
+  `fab:fa-truck-bold` remains an empty `<i>` in exported SVG and contributes the observed Chromium
+  inline layout delta. `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052` now pass focused disabled-root
+  `parity-root`; Flowchart root pins are now `103`, and the root no-growth budget is `523`.
 - Derived the Flowchart `iconSquare` root by matching Mermaid's icon-shape outer layout bounds:
   `iconSquare.ts` sizes the icon box as `iconSize + halfPadding * 2`, so Flowchart layout now uses
   `iconSize + node.padding` before Dagre/root bounds. Refreshed

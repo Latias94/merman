@@ -63,6 +63,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart label measurement: model Mermaid's unregistered custom FontAwesome fallback for
+  `fab:fa-truck-bold` as the empty `<i>` fallback plus the observed Chromium inline layout delta.
+  This derives the `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052` roots without fixture pins and tightens the
+  root viewport no-growth budget to `523`.
 - Flowchart icon shapes: size `iconSquare` layout bounds from Mermaid's
   `iconSize + node.padding` outer box, refresh the affected icon-shape layout golden, and remove
   the now-derived `upstream_docs_flowchart_icon_shape_132` root viewport pin. This tightens the

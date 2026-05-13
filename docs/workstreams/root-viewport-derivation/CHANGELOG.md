@@ -2,6 +2,12 @@
 
 ## 2026-05-13
 
+- Modeled Mermaid's unregistered custom FontAwesome fallback for Flowchart HTML labels:
+  `fab:fa-truck-bold` is emitted as an empty `<i class="fab fa-truck-bold">` fallback rather than
+  a registered custom SVG icon. The Flowchart HTML label measurer now applies the upstream
+  Chromium inline advance for that fallback, so `upstream_docs_flowchart_custom_icons_238` and
+  `stress_flowchart_icons_prefixes_and_quotes_052` pass focused disabled-root `parity-root`.
+  Flowchart root pins are now `103`, and the root no-growth budget is `523`.
 - Derived the Flowchart `iconSquare` root by matching Mermaid's icon-shape outer layout bounds:
   `iconSquare.ts` sizes the icon box as `iconSize + halfPadding * 2`, so Flowchart layout now uses
   `iconSize + node.padding` before Dagre/root bounds. Refreshed

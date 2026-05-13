@@ -138,6 +138,29 @@ fn flowchart_html_fontawesome_icon_width_matches_upstream() {
 }
 
 #[test]
+fn flowchart_html_fontawesome_custom_pack_icon_width_matches_upstream() {
+    // Mermaid falls back to an empty `<i>` for unregistered custom packs.
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let html = "<p><i class=\"fab fa-truck-bold\"></i> a custom icon</p>";
+    let m = measure_html_with_flowchart_bold_deltas(
+        &measurer,
+        html,
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(m.width, 104.03125);
+    assert_eq!(m.height, 24.0);
+    assert_eq!(m.line_count, 1);
+}
+
+#[test]
 fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
     // Mermaid upstream fixture:
     // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
