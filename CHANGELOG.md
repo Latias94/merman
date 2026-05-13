@@ -79,6 +79,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
   and `upstream_direction_bt`) after disabled-root diagnostics showed they now derive without the
   lookup, and tighten the root viewport no-growth budget to `616`.
+- Flowchart root derivation: preserve bare `<`/`>` text in HTML labels and apply a narrow
+  default-stack CJK width cushion for single-line labels with literal comparison symbols, deleting
+  the now-derived `stress_flowchart_subgraph_title_unicode_and_entities_043` root viewport pin and
+  tightening the root viewport no-growth budget to `529`.
 - Sequence layout internals: split config lookup, Mermaid geometry constants, and text/math label
   measurement helpers and their owner tests into `sequence/` submodules without changing render
   output.

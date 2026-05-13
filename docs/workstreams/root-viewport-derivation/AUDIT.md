@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and fifteen Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and sixteen Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -33,15 +33,15 @@ docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, th
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
-Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph, and
-SVG-like subgraph-title/root-bounds passes:
+Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
+SVG-like subgraph-title/root-bounds, and Unicode/entities HTML title passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Flowchart: `110` entries.
-- Root viewport total: `530` entries.
+- Flowchart: `109` entries.
+- Root viewport total: `529` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -93,7 +93,10 @@ instead of treating the Dagre node as only the image asset. This derives
 models Mermaid's label-ignoring 2px anchor dot layout and deletes 12 old-shape set5 pins. The C1
 replacement-glyph pass derives the courier long-name/class-definition root. The SVG-like
 subgraph-title pass shares emitted SVG text wrapping with layout and sizes default process nodes
-from wrapped computed text length, deriving the stage2 long-word title root. The remaining
+from wrapped computed text length, deriving the stage2 long-word title root. The Unicode/entities
+title pass preserves bare comparison symbols in HTML text extraction and applies a narrow
+default-stack CJK width cushion for single-line labels with literal comparison symbols, deriving
+`stress_flowchart_subgraph_title_unicode_and_entities_043`. The remaining
 old-shape set5 `tb_md_html_false` pin still guards a real 0.06px root drift, and the broader
 disabled-root Flowchart audit still shows retained drift around icon-heavy labels, subgraph titles,
 title spacing, and other old-shape/all-pairs fixtures. The remaining Flowchart table is therefore a
@@ -201,6 +204,11 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   default process nodes size from wrapped computed text length. The stage2 long-word subgraph-title
   fixture passes focused disabled-root `parity-root`, so its root pin was deleted.
   `report-overrides` now reports root total `530` and Flowchart root count `110`.
+- 2026-05-13: Flowchart HTML label extraction now preserves bare `<` and `>` comparison text, and
+  single-line default-stack labels with literal comparison symbols get a narrow CJK width cushion.
+  The Unicode/entities subgraph-title fixture passes focused disabled-root `parity-root`, so its
+  root pin was deleted. `report-overrides` now reports root total `529` and Flowchart root count
+  `109`.
 - 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
   cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
   stale retained Flowchart root pin was deleted in that audit pass.

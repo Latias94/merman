@@ -38,9 +38,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_title_long_with_punct_038" => {
             Some(("0 0 567.546875 140", "567.547"))
         }
-        "stress_flowchart_subgraph_title_unicode_and_entities_043" => {
-            Some(("0 0 214.578125 274", "214.578"))
-        }
         "stress_flowchart_subgraph_deep_nesting_title_padding_044" => {
             Some(("0 0 628.5234375 703", "628.523"))
         }

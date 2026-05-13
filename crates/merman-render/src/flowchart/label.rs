@@ -391,6 +391,25 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     metrics.width = desired;
                 }
             }
+            if wrap_mode == WrapMode::HtmlLike
+                && label_type != "markdown"
+                && metrics.line_count == 1
+                && label_for_metrics.contains('<')
+                && label_for_metrics.contains('>')
+            {
+                const WIDE_GLYPH_ENTITY_CUSHION_EM: f64 = 0.051_513_671_875;
+                let wide_count = label_for_metrics
+                    .chars()
+                    .filter(|ch| unicode_width::UnicodeWidthChar::width(*ch).unwrap_or(1) >= 2)
+                    .count();
+                if wide_count > 0 {
+                    let desired = metrics.width
+                        + wide_count as f64 * WIDE_GLYPH_ENTITY_CUSHION_EM * style.font_size;
+                    if max_width_px.is_none_or(|w| desired <= w + (1.0 / 64.0)) {
+                        metrics.width = crate::text::round_to_1_64_px(desired);
+                    }
+                }
+            }
         }
 
         let label_for_metrics = flowchart_label_plain_text_for_layout(
@@ -519,8 +538,17 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
 
         let mut out = String::with_capacity(input.len());
         let mut it = input.chars().peekable();
+        fn is_html_tag_start(ch: Option<char>) -> bool {
+            ch.is_some_and(|ch| ch.is_ascii_alphabetic() || matches!(ch, '/' | '!' | '?'))
+        }
+
         while let Some(ch) = it.next() {
             if ch == '<' {
+                if !is_html_tag_start(it.peek().copied()) {
+                    out.push('<');
+                    continue;
+                }
+
                 let mut tag = String::new();
                 for c in it.by_ref() {
                     if c == '>' {

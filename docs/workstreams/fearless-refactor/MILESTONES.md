@@ -691,6 +691,11 @@ Progress:
   with layout and sized default process nodes from wrapped computed text length. This removed
   `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` and tightened the
   root viewport total to `530` with `110` Flowchart entries.
+- A follow-up Flowchart Unicode/entities subgraph-title pass preserved bare comparison symbols in
+  HTML label extraction and calibrated a narrow CJK width cushion for single-line labels with
+  literal comparison symbols. This removed
+  `stress_flowchart_subgraph_title_unicode_and_entities_043` and tightened the root viewport total
+  to `529` with `109` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

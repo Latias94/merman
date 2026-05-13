@@ -294,6 +294,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec`, so its root pin was
   deleted. Root viewport overrides are now `530` total, Flowchart has `110` entries, and the root
   no-growth budget is tightened to `530`.
+- [x] Derive the Flowchart Unicode/entities subgraph-title root from HTML text extraction and a
+  narrow CJK width cushion.
+  Evidence: `flowchart_label_plain_text_for_layout` now preserves bare `<` / `>` comparison text
+  instead of treating it as markup, and Flowchart HTML label metrics apply a default-stack CJK
+  cushion only for single-line labels with literal comparison symbols.
+  `stress_flowchart_subgraph_title_unicode_and_entities_043`
+  passes focused disabled-root `parity-root`, the root pin was deleted, and the root no-growth
+  budget is tightened to `529` with `109` Flowchart entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

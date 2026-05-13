@@ -23,7 +23,7 @@
           "id": "sg_unicode",
           "x": 77.8,
           "y": 137.0,
-          "width": 139.6,
+          "width": 168.25,
           "height": 258.0,
           "is_cluster": true
         }
@@ -64,15 +64,15 @@
           "id": "sg_unicode",
           "x": 77.8,
           "y": 137.0,
-          "width": 139.6,
+          "width": 168.25,
           "height": 258.0,
-          "diff": -4.0,
+          "diff": 6.325,
           "offset_y": 20.0,
           "title": "标题 Unicode — 測試 & < >",
           "title_label": {
             "x": 77.8,
             "y": 20.0,
-            "width": 127.2,
+            "width": 160.25,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -83,9 +83,9 @@
         }
       ],
       "bounds": {
-        "min_x": 8.0,
+        "min_x": -6.325,
         "min_y": 8.0,
-        "max_x": 147.6,
+        "max_x": 161.925,
         "max_y": 266.0
       }
     }

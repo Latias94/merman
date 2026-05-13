@@ -191,6 +191,11 @@ Progress:
   with layout and sizing default process nodes from wrapped computed text length. Removed
   `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` and tightened the root
   budget to `530` with `110` Flowchart root entries.
+- Derived the Flowchart Unicode/entities subgraph-title root by preserving bare comparison symbols
+  in HTML label text extraction and applying a narrow default-stack CJK width cushion for
+  single-line labels with literal comparison symbols, then deleted
+  `stress_flowchart_subgraph_title_unicode_and_entities_043`
+  and tightened the budget to `529` with `109` Flowchart root entries.
 
 Exit criteria:
 

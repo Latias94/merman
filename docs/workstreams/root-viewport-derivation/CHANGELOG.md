@@ -2,6 +2,11 @@
 
 ## 2026-05-13
 
+- Preserved bare `<`/`>` text while extracting Flowchart HTML labels and added a narrow
+  default-stack CJK width cushion for single-line Flowchart HTML labels that contain literal
+  comparison symbols. `stress_flowchart_subgraph_title_unicode_and_entities_043` now passes
+  focused disabled-root `parity-root`, so its Flowchart root pin was deleted; Flowchart root pins
+  are now `109`, and the root no-growth budget is `529`.
 - Derived the Flowchart SVG-like long-word subgraph-title root by sharing the emitted SVG text
   wrapping helper with layout and sizing default process nodes from wrapped computed text length.
   `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` now passes focused

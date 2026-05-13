@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived the Flowchart Unicode/entities subgraph-title root by preserving bare `<`/`>` text during
+  HTML label extraction and applying a narrow default-stack CJK width cushion for single-line labels
+  with literal comparison symbols. `stress_flowchart_subgraph_title_unicode_and_entities_043` now
+  derives its root viewport without a pin; Flowchart root pins are now `109`, and the root
+  no-growth budget is `529`.
 - Derived the Flowchart SVG-like long-word subgraph-title root by sharing the emitted SVG text
   wrapping helper with layout and sizing default process nodes from wrapped computed text length.
   `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` now passes focused

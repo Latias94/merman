@@ -20,6 +20,46 @@ fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
 }
 
 #[test]
+fn flowchart_html_text_extraction_preserves_bare_comparison_symbols() {
+    let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+        "标题 Unicode — 測試 &amp; &lt; &gt; and x < y > z",
+        "text",
+        true,
+    );
+    assert_eq!(plain, "标题 Unicode — 測試 & < > and x < y > z");
+}
+
+#[test]
+fn flowchart_html_unicode_entity_title_width_matches_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "标题 Unicode — 測試 & < >",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+        },
+    );
+    assert_eq!(metrics.width, 190.578125);
+    assert_eq!(metrics.height, 24.0);
+    assert_eq!(metrics.line_count, 1);
+
+    let plain_cjk = measurer.measure_wrapped("负责人审批", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(plain_cjk.width, 80.0);
+}
+
+#[test]
 fn markdown_strong_width_matches_flowchart_table() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
