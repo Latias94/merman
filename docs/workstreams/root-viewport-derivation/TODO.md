@@ -279,6 +279,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   restored because it still guards real BT-direction branch/commit-label bbox drift, for 26 net
   deletions. Root viewport overrides are now `497` total with `130` GitGraph entries, and the
   disabled-root cross-check is `override=130 mismatch=130 stale=0 missing=0`.
+- [x] Derive GitGraph commit/tag label root widths from computed text length.
+  Evidence: GitGraph commit id labels and tag labels now use GitGraph-owned
+  `<text>.getComputedTextLength()`-style widths with 1/64px quantization instead of the shared
+  simple SVG bbox width path. A disabled-root audit over the previous 130-entry GitGraph root table
+  found 65 retained DOM mismatches and 65 stale pins, so the stale pins were deleted. Root viewport
+  overrides are now `432` total with `65` GitGraph entries.
+- [ ] Revisit broader GitGraph vertical commit/tag and cherry-pick root drift after a typed
+  measurement rule can explain the remaining disabled-root mismatches. The 65 retained entries are
+  current guards, so the next GitGraph pass should start from root-delta families rather than
+  another blind table deletion.
 - [x] Derive the Flowchart imageSquare docs parameters root from layout-time image plus label
   bounds.
   Evidence: `upstream_docs_flowchart_parameters_136` now sizes the Dagre node from the rendered

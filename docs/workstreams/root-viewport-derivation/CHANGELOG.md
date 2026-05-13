@@ -1,5 +1,14 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-14
+
+- Derived GitGraph commit and tag label root bounds from GitGraph-owned computed text lengths with
+  the same 1/64px quantization used by the upstream SVG text advance path. This avoids routing
+  GitGraph short labels through the shared simple bbox path and its Sequence-specific browser facts.
+  A disabled-root audit of the pre-change 130-entry GitGraph table found 65 retained DOM
+  mismatches and 65 stale pins; deleting the stale half leaves GitGraph root pins at `65` and
+  tightens the root no-growth budget to `432`.
+
 ## 2026-05-13
 
 - Matched GitGraph seeded auto commit ids to upstream's committed SVG generation pipeline:

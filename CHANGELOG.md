@@ -63,6 +63,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- GitGraph root derivation: measure commit and tag labels with GitGraph-owned
+  `getComputedTextLength()`-style widths plus 1/64px quantization instead of the shared simple
+  SVG bbox path. The disabled-root audit showed only 65 of the previous 130 GitGraph root pins
+  still guarded real root drift, so 65 stale pins were deleted and the root viewport no-growth
+  budget tightened to `432` with GitGraph at `65`.
 - GitGraph seeded auto ids: mirror upstream SVG fixture generation by running a seed-consuming
   parse warm-up before the render-model parse, so generated commit ids match Mermaid's
   parse-before-render pipeline; this also removes 26 net GitGraph root viewport pins and tightens

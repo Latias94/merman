@@ -3,6 +3,14 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-14
+
+- Derived GitGraph commit and tag label root bounds from GitGraph-owned computed text lengths plus
+  1/64px quantization, avoiding the shared simple bbox width path for GitGraph short labels. A
+  disabled-root audit showed 65 of the previous 130 GitGraph root pins still guard real DOM drift;
+  the other 65 were stale and have been deleted. GitGraph root pins are now `65`, and the root
+  no-growth budget is `432`.
+
 ## 2026-05-13
 
 - Matched GitGraph seeded auto commit ids to the upstream SVG fixture pipeline by replaying the

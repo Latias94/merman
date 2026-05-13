@@ -684,6 +684,10 @@ Progress:
   committed upstream SVG baselines, removed 26 net GitGraph root pins after restoring
   `upstream_direction_bt` as a real BT-direction guard, and tightened the root viewport total to
   `497` with `130` GitGraph entries.
+- A follow-up GitGraph commit/tag label width pass measured commit ids and tag labels with
+  GitGraph-owned computed text lengths plus 1/64px quantization instead of the shared simple bbox
+  path. The disabled-root audit found 65 stale pins in the previous 130-entry GitGraph table; the
+  root viewport total is now `432` with `65` GitGraph entries.
 - A follow-up Flowchart imageSquare pass sized layout bounds from rendered image plus label extents,
   removed `upstream_docs_flowchart_parameters_136`, and tightened the root viewport total to `544`
   with `124` Flowchart entries.

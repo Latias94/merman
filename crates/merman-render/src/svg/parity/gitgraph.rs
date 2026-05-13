@@ -100,13 +100,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     const VIEWBOX_PADDING_PX: f64 = 8.0;
     const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
-    fn gitgraph_simple_text_bbox_width_px(
+    fn gitgraph_commit_tag_label_width_px(
         measurer: &dyn TextMeasurer,
         text: &str,
         style: &crate::text::TextStyle,
     ) -> f64 {
-        measurer
-            .measure_svg_simple_text_bbox_width_px(text, style)
+        crate::text::round_to_1_64_px(measurer.measure_svg_text_computed_length_px(text, style))
             .max(0.0)
     }
 
@@ -486,7 +485,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             && c.commit_type != 4
             && layout.show_commit_label;
         if show {
-            let bbox_w = gitgraph_simple_text_bbox_width_px(measurer, &c.id, &commit_label_style);
+            let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
             let bbox_h = measurer
                 .measure_svg_simple_text_bbox_height_px(&c.id, &commit_label_style)
                 .max(0.0);
@@ -574,7 +573,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             let mut elems: Vec<TagGeom> = Vec::new();
             for tag_value in &tag_values {
                 let bbox_w =
-                    gitgraph_simple_text_bbox_width_px(measurer, tag_value, &commit_label_style);
+                    gitgraph_commit_tag_label_width_px(measurer, tag_value, &commit_label_style);
                 let bbox_h = measurer
                     .measure_svg_simple_text_bbox_height_px(tag_value, &commit_label_style)
                     .max(0.0);

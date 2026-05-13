@@ -580,7 +580,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   tightened the root total to `545` with `156` GitGraph entries. A later GitGraph seeded auto-id
   warm-up pass replayed upstream's parse-before-render random-stream consumption, removed 26 net
   GitGraph root pins after retaining `upstream_direction_bt` as a real BT-direction guard, and
-  tightened the root total to `497` with `130` GitGraph entries. A later Flowchart imageSquare pass
+  tightened the root total to `497` with `130` GitGraph entries. The Flowchart imageSquare pass
   derived the docs parameters image-plus-label bounds, removed
   `upstream_docs_flowchart_parameters_136`, and tightened the root total to `544` with `124`
   Flowchart entries. A later Flowchart anchor pass modeled Mermaid's label-ignoring roughjs anchor
@@ -615,7 +615,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   fallback pass matched Mermaid's unregistered `fab:fa-truck-bold` fallback from `createText.ts`,
   removed `upstream_docs_flowchart_custom_icons_238` and
   `stress_flowchart_icons_prefixes_and_quotes_052`, and tightened the root total to `523` with
-  `103` Flowchart entries.
+  `103` Flowchart entries. A follow-up GitGraph commit/tag label computed-length pass removed 65
+  additional stale GitGraph root pins and tightened the root total to `432` with `65` GitGraph
+  entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

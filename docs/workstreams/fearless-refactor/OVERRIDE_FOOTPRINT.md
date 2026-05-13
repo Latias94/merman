@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-13
+## Snapshot: 2026-05-14
 
 Command:
 
@@ -95,11 +95,6 @@ root bbox derivation, matching browser `getBBox()` for zero-length branch lines 
 shared emitted-bounds scanner unchanged. The empty-graph package bucket dropped from roughly
 `+34.750px` disabled-root width drift to residual branch-label bbox drift, but the GitGraph table
 remained at `213` entries because `override=213 mismatch=213 stale=0 missing=0`.
-A later GitGraph seeded auto-id warm-up pass replayed upstream's parse-before-render seeded random
-stream consumption before the render-model parse. This aligned dynamic commit ids with the
-committed upstream SVG baselines, removed 26 net GitGraph root pins after retaining
-`upstream_direction_bt` as a real BT-direction guard, and tightened the root viewport no-growth
-budget to `497` with `130` GitGraph entries.
 The follow-up horizontal GitGraph branch-label pass switched LR/RL branch labels to computed text
 lengths, kept TB/BT on the wider bbox path to avoid rotated dynamic commit-id root regressions,
 and removed 57 now-derived GitGraph root pins, tightening the root viewport no-growth budget to
@@ -119,7 +114,18 @@ measurement and deleted the now-derived `stress_flowchart_font_size_precedence_0
 latest iconSquare pass matched Mermaid's icon-shape outer layout bounds and deleted the
 now-derived docs icon-shape root pin. A follow-up custom FontAwesome fallback pass modeled
 Mermaid's unregistered `fab:fa-truck-bold` HTML-label behavior and deleted two now-derived custom
-icon roots. The root viewport no-growth budget is now `523` with Flowchart at `103` entries.
+icon roots. At that point the root viewport no-growth budget was `523` with Flowchart at `103`
+entries.
+A later GitGraph seeded auto-id warm-up pass replayed upstream's parse-before-render seeded random
+stream consumption before the render-model parse. This aligned dynamic commit ids with the
+committed upstream SVG baselines, removed 26 net GitGraph root pins after retaining
+`upstream_direction_bt` as a real BT-direction guard, and tightened the root viewport no-growth
+budget to `497` with `130` GitGraph entries.
+A later GitGraph commit/tag label pass measured commit ids and tag labels with GitGraph-owned
+computed text lengths plus 1/64px quantization, avoiding the shared simple bbox path for these
+short labels. The disabled-root audit found 65 retained DOM mismatches and 65 stale pins in the
+previous 130-entry GitGraph table; deleting the stale pins tightened the root viewport no-growth
+budget to `432` with `65` GitGraph entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -297,7 +303,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `523`.
+Total entries reported by `xtask`: `432`.
 
 | file | entries |
 | --- | ---: |
@@ -305,7 +311,7 @@ Total entries reported by `xtask`: `523`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
 | `flowchart_root_overrides_11_12_2.rs` | 103 |
-| `gitgraph_root_overrides_11_12_2.rs` | 156 |
+| `gitgraph_root_overrides_11_12_2.rs` | 65 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
@@ -358,9 +364,11 @@ browser bbox drift. A later branch-line endpoint pass taught GitGraph root deriv
 zero-length branch line endpoints, dropping the empty-graph package bucket from roughly
 `+34.750px` to sub-pixel branch-label drift. A follow-up horizontal branch-label pass then used
 computed text length for LR/RL branch labels, removed 57 now-derived root pins, and left
-`override=156 mismatch=156 stale=0 missing=0`. The remaining GitGraph entries still need
-vertical root, dynamic commit-label, cherry-pick/tag, or other bounds derivation work before
-another broad deletion pass.
+`override=156 mismatch=156 stale=0 missing=0`. A later commit/tag label pass moved GitGraph
+commit ids and tags to computed text lengths with 1/64px quantization, exposing 65 stale retained
+pins in the previous 130-entry table. The remaining 65 GitGraph entries still need vertical root,
+dynamic commit-label, cherry-pick/tag, or other bounds derivation work before another broad
+deletion pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
 skipped fixture. After the anchor pass removed the old-shape set5 `+258px` cluster, the largest
@@ -423,10 +431,11 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `gitgraph`: 156
 - `flowchart`: 103
 - `sequence`: 79
+- `gitgraph`: 65
 - `mindmap`: 39
+- `c4`: 35
 - `state`: 34
 
 ### Text Metric Lookup Overrides

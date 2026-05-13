@@ -223,6 +223,11 @@ Progress:
   Chromium still contributes the observed 1/64px inline advance during HTML-label layout. Removed
   `upstream_docs_flowchart_custom_icons_238` and `stress_flowchart_icons_prefixes_and_quotes_052`,
   tightening the budget to `523` with `103` Flowchart root entries.
+- Derived GitGraph commit/tag label root bounds by measuring those labels with GitGraph-owned
+  computed text lengths and 1/64px quantization instead of the shared simple bbox width path. The
+  disabled-root GitGraph cross-check over the previous 130-entry table found `retained=65` and
+  `stale=65`; deleting the stale pins tightens the root budget to `432` and leaves `65` GitGraph
+  root entries.
 
 Exit criteria:
 
