@@ -221,44 +221,8 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_styles_063" => {
             Some(("0 2 304.88623046875 494", "304.886"))
         }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_allpairs_075" => {
-            Some(("0.000949859619140625 0 1360.0009765625 259.5", "1360"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_label_074" => {
-            Some(("0 0 451.140625 532.5", "451.141"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_longlabel_076" => {
-            Some(("0 0 475.140625 616.5", "475.141"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_md_html_false_078" => {
-            Some(("0 0 445.48126220703125 546.7000122070312", "445.481"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_lr_md_html_true_077" => {
-            Some(("0 0 447.1875 532.5", "447.188"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_allpairs_035" => {
-            Some(("0 0 697 485", "697"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_classdef_040" => {
-            Some(("0 0 993.3525390625 174", "993.353"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_label_034" => {
-            Some(("0 0 1397.5712890625 198", "1397.57"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_longlabel_036" => {
-            Some(("0 0 1493.5712890625 222", "1493.57"))
-        }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
             Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_true_037" => {
-            Some(("0 0 1384.0244140625 198", "1384.02"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_nolabel_033" => {
-            Some(("0 0 640.0703125 174", "640.07"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_styles_039" => {
-            Some(("0 0 993.3525390625 174", "993.353"))
         }
         "upstream_flow_vertice_chaining_amp_to_single_spec" => {
             Some(("-53.9921875 -50 312.484375 224", "312.484"))

@@ -992,6 +992,29 @@ O(-Label-)
 }
 
 #[test]
+fn flowchart_anchor_shape_ignores_label_for_layout() {
+    let text = "flowchart TB\nA@{ shape: anchor, label: 'Ignored by Mermaid' }\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let node = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "A")
+        .expect("anchor node");
+    assert!((node.width - 2.001_899_003_982_544).abs() <= 1e-9);
+    assert!((node.height - 2.0).abs() <= 1e-9);
+}
+
+#[test]
 fn flowchart_wrapping_width_increases_height_for_long_labels() {
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
 

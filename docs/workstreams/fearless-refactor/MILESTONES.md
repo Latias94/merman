@@ -681,6 +681,9 @@ Progress:
 - A follow-up Flowchart imageSquare pass sized layout bounds from rendered image plus label extents,
   removed `upstream_docs_flowchart_parameters_136`, and tightened the root viewport total to `544`
   with `124` Flowchart entries.
+- A follow-up Flowchart anchor pass modeled Mermaid's label-ignoring roughjs anchor dot, removed 12
+  now-derived old-shape set5 root pins, and tightened the root viewport total to `532` with `112`
+  Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

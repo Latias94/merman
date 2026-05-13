@@ -578,10 +578,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   tightened the root total to `545` with `156` GitGraph entries. A later Flowchart imageSquare pass
   derived the docs parameters image-plus-label bounds, removed
   `upstream_docs_flowchart_parameters_136`, and tightened the root total to `544` with `124`
+  Flowchart entries. A later Flowchart anchor pass modeled Mermaid's label-ignoring roughjs anchor
+  dot, removed 12 now-derived old-shape set5 pins, and tightened the root total to `532` with `112`
   Flowchart entries. A broader Flowchart disabled-root audit still produced 1068 root rows, with
   245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one skipped fixture; the
-  largest drift comes from icon-heavy Flowcharts and old-shape all-pairs fixtures, so Flowchart
-  remains a bounds/shape derivation target. A follow-up Sequence
+  largest drift comes from icon-heavy Flowcharts and remaining old-shape/all-pairs fixtures, so
+  Flowchart remains a bounds/shape derivation target. A follow-up Sequence
   disabled-root audit produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,
   long-message, and Mermaid API fixtures, so Sequence also needs typed bounds work before another

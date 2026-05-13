@@ -2,6 +2,11 @@
 
 ## 2026-05-13
 
+- Derived Flowchart anchor node layout bounds from the seeded 2px roughjs dot instead of the
+  ignored label text. The old-shape set5 cluster now derives 12 previously pinned roots; the
+  remaining `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038` pin still
+  guards a real 0.06px root drift. Flowchart root pins are now `112`, and the root no-growth
+  budget is `532`.
 - Derived Flowchart imageSquare root bounds from layout-time image plus label extents instead of
   sizing the Dagre node as only the image asset. `upstream_docs_flowchart_parameters_136` now
   passes focused `parity-root` with root overrides disabled, so its Flowchart root pin was deleted;

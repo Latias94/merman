@@ -273,6 +273,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `compare-flowchart-svgs --filter upstream_docs_flowchart_parameters_136 --dom-mode parity-root`
   check passed, so the fixture root pin was deleted. Root viewport overrides are now `544` total,
   Flowchart has `124` entries, and the root no-growth budget is tightened to `544`.
+- [x] Derive Flowchart anchor shape layout bounds from the tiny roughjs anchor dot.
+  Evidence: Flowchart anchor nodes now ignore labels for layout like Mermaid and use the seeded
+  roughjs 2px dot bbox for Dagre. Disabled-root checks passed for the old-shape set5 stale-pin
+  cluster except the retained `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038`
+  0.06px drift guard, so 12 root pins were deleted. Root viewport overrides are now `532` total,
+  Flowchart has `112` entries, and the root no-growth budget is tightened to `532`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

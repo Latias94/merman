@@ -181,6 +181,9 @@ Progress:
 - Derived Flowchart imageSquare layout bounds from rendered image plus label extents instead of
   only the image asset, removed the now-derived `upstream_docs_flowchart_parameters_136` root pin,
   and tightened the root budget to `544` with `124` Flowchart root entries.
+- Derived Flowchart anchor layout bounds from Mermaid's label-ignoring roughjs dot, removed 12
+  now-derived old-shape set5 root pins, and tightened the root budget to `532` with `112`
+  Flowchart root entries.
 
 Exit criteria:
 

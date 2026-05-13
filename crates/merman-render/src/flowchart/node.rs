@@ -166,6 +166,10 @@ fn node_render_dimensions(
     }
 
     match shape {
+        // Flowchart v2 anchor ignores any label and uses the roughjs 2px circle bbox for Dagre.
+        // Chromium's `getBBox()` for Mermaid's seeded anchor path is slightly wider than 2px.
+        "anchor" => (2.001_899_003_982_544, 2.0),
+
         // Default flowchart process node.
         "squareRect" => (text_w + 4.0 * p, text_h + 2.0 * p),
 

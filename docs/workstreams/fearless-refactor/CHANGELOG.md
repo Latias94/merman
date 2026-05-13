@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived Flowchart anchor layout bounds from Mermaid's tiny roughjs anchor dot instead of the
+  ignored label text, removed 12 now-derived old-shape set5 root pins, and tightened the root
+  no-growth budget to `532` with Flowchart at `112`.
 - Derived Flowchart imageSquare layout bounds from the rendered image plus label extent, so
   `upstream_docs_flowchart_parameters_136` no longer needs a fixture-scoped root viewport pin.
   Flowchart root pins dropped to `124`, and the root no-growth budget tightened to `544`.
