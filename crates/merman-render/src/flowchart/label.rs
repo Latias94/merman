@@ -440,6 +440,34 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     metrics
 }
 
+pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {
+    if !label.contains('\\') {
+        return label.to_string();
+    }
+
+    let mut out = String::with_capacity(label.len());
+    let mut chars = label.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+
+        match chars.peek().copied() {
+            Some('\\') => {
+                out.push('\\');
+                chars.next();
+            }
+            Some(':') => {
+                out.push(':');
+                chars.next();
+            }
+            _ => out.push('\\'),
+        }
+    }
+    out
+}
+
 pub(crate) fn flowchart_label_plain_text_for_layout(
     label: &str,
     label_type: &str,
@@ -630,12 +658,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 return String::new();
             }
 
-            let mut t = label.replace("\r\n", "\n");
-            // Mermaid flowchart labels treat `\\` as an escaped literal backslash. This matters
-            // for things like `\\n` in labels (which should render as `\n`).
-            if t.contains("\\\\") {
-                t = t.replace("\\\\", "\\");
-            }
+            let mut t = flowchart_decode_label_escapes(&label.replace("\r\n", "\n"));
             if html_labels || label_type == "html" {
                 // Keep the raw label text for layout, then strip HTML tags/entities.
                 //

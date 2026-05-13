@@ -127,6 +127,51 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
 }
 
 #[test]
+fn flowchart_label_metrics_for_layout_fontawesome_wraps_icon_start_like_upstream() {
+    // Mermaid upstream fixture:
+    // fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007.svg
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let database = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: r"fa:fa-database [DBServer\SharedDbInstance]",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+        },
+    );
+    assert_eq!(database.width, 208.96875);
+    assert_eq!(database.height, 48.0);
+    assert_eq!(database.line_count, 2);
+
+    let support_db = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: r"fa:fa-circle [DBServer\SharedDbInstance].[SupportDb]",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+        },
+    );
+    assert_eq!(support_db.width, 214.84375);
+    assert_eq!(support_db.height, 72.0);
+    assert_eq!(support_db.line_count, 3);
+}
+
+#[test]
 fn courier_html_flowchart_label_width_matches_upstream() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

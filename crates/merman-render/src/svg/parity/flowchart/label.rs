@@ -505,11 +505,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             } else {
                 label.to_string()
             };
-            let label = if label.contains("\\\\") {
-                label.replace("\\\\", "\\")
-            } else {
-                label
-            };
+            let label = crate::flowchart::flowchart_decode_label_escapes(&label);
             let label = if label_type == "string" {
                 label.trim().to_string()
             } else {

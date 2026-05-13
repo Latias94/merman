@@ -61,7 +61,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_diagrams_flowchart_code_flow" => {
             Some(("0 0 10468.515625 3129.234375", "10468.5"))
         }
-        "upstream_docs_flowchart_parameters_136" => Some(("0 0 192.984375 112", "192.984")),
         "upstream_docs_flowchart_icon_shape_132" => Some(("0 0 91 127", "91")),
         "upstream_docs_flowchart_special_characters_that_break_syntax_185" => {
             Some(("0 0 272.65625 70", "272.656"))

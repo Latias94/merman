@@ -178,6 +178,9 @@ Progress:
   label rects proved to match text advance better than ASCII-overhang simple bbox width. The
   follow-up disabled-root cross-check exposed and removed 57 now-derived GitGraph root pins,
   tightening the root budget to `545` and leaving `156` GitGraph root entries.
+- Derived Flowchart imageSquare layout bounds from rendered image plus label extents instead of
+  only the image asset, removed the now-derived `upstream_docs_flowchart_parameters_136` root pin,
+  and tightened the root budget to `544` with `124` Flowchart root entries.
 
 Exit criteria:
 

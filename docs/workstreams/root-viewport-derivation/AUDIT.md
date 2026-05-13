@@ -14,8 +14,8 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, and seventy-two GitGraph root pins removed |
-| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, and GitGraph passes recorded |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and one Flowchart root pin removed |
+| Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
 | Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed |
@@ -32,13 +32,15 @@ node-label/package style node-label passes, the Mindmap single-line shape, docs 
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
-title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes:
+title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
+Flowchart imageSquare image-plus-label layout-bounds pass:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Root viewport total: `545` entries.
+- Flowchart: `124` entries.
+- Root viewport total: `544` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -84,6 +86,13 @@ wider bbox path to avoid dynamic commit-id regressions. The latest disabled-root
 finds `156` retained GitGraph entries and `156` matching DOM mismatches, so there are no known
 stale retained GitGraph root pins in the current table.
 
+The latest Flowchart imageSquare pass sizes layout from the rendered image plus label extents
+instead of treating the Dagre node as only the image asset. This derives
+`upstream_docs_flowchart_parameters_136` without a fixture root pin. The broader disabled-root
+Flowchart audit still shows real retained drift around icon-heavy labels, subgraph titles, title
+spacing, and old-shape/all-pairs fixtures, so the remaining Flowchart table is a derivation target,
+not a blind deletion target.
+
 ## Focused Commands
 
 ```sh
@@ -91,6 +100,7 @@ cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --do
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- report-overrides --check-no-growth
 cargo clippy -p merman-render --all-targets --all-features -- -D warnings
 cargo run -p xtask -- verify --strict
@@ -103,6 +113,7 @@ $env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 ```
 
@@ -163,9 +174,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   pins. Full GitGraph `parity-root`, `report-overrides --check-no-growth`, and the xtask
   override budget regression test passed with root total `545`, GitGraph root count `156`, text
   lookup total `484`, and SVG text metric table total `186`.
-- 2026-05-13: Flowchart disabled-root mismatch cross-check found `125` override entries and `125`
-  matching disabled-root DOM mismatches, so no stale retained Flowchart root pin was deleted in
-  this pass.
+- 2026-05-13: Flowchart imageSquare layout now derives Dagre node bounds from the rendered image
+  plus label extent. Focused disabled-root and normal `parity-root` checks passed for
+  `upstream_docs_flowchart_parameters_136`, so its root pin was deleted. Full Flowchart
+  `parity-root`, `report-overrides --check-no-growth`, `cargo nextest run -p merman-render`, and
+  `cargo run -p xtask -- verify --strict` passed with root total `544` and Flowchart root count
+  `124`.
+- 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
+  cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
+  stale retained Flowchart root pin was deleted in that audit pass.
 - 2026-05-13: Sequence disabled-root mismatch cross-check found `80` override entries and `80`
   matching disabled-root DOM mismatches, so no stale retained Sequence root pin was deleted in
   this pass.

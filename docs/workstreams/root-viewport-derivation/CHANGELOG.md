@@ -2,6 +2,10 @@
 
 ## 2026-05-13
 
+- Derived Flowchart imageSquare root bounds from layout-time image plus label extents instead of
+  sizing the Dagre node as only the image asset. `upstream_docs_flowchart_parameters_136` now
+  passes focused `parity-root` with root overrides disabled, so its Flowchart root pin was deleted;
+  Flowchart root pins are now `124` and the root no-growth budget is `544`.
 - Switched horizontal GitGraph branch-label layout to computed-length widths while retaining the
   wider bbox path for TB/BT roots where rotated dynamic commit labels dominate. The full
   disabled-root GitGraph cross-check exposed 57 now-derived root pins

@@ -264,8 +264,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   horizontal bucket. TB/BT keep the wider bbox path because rotated dynamic commit IDs can dominate
   vertical roots. The full disabled-root GitGraph cross-check exposed 57 now-derived pins
   (`override=213 mismatch=156 stale=57 missing=0`); after deleting them, the cross-check is
-  `override=156 mismatch=156 stale=0 missing=0`. Root viewport overrides are now `545` total,
-  with `156` GitGraph entries, and the root no-growth budget is tightened to `545`.
+  `override=156 mismatch=156 stale=0 missing=0`. This tightened root viewport overrides to `545`
+  total with `156` GitGraph entries.
+- [x] Derive the Flowchart imageSquare docs parameters root from layout-time image plus label
+  bounds.
+  Evidence: `upstream_docs_flowchart_parameters_136` now sizes the Dagre node from the rendered
+  image and label extents instead of only the image asset. The focused disabled-root
+  `compare-flowchart-svgs --filter upstream_docs_flowchart_parameters_136 --dom-mode parity-root`
+  check passed, so the fixture root pin was deleted. Root viewport overrides are now `544` total,
+  Flowchart has `124` entries, and the root no-growth budget is tightened to `544`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

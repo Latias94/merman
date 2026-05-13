@@ -148,7 +148,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             } else {
                 let has_inline_style_tags =
                     ctx.node_html_labels && label.label_type != "markdown" && {
-                        let lower = label.text.to_ascii_lowercase();
+                        let lower = label_html.to_ascii_lowercase();
                         crate::text::flowchart_html_has_inline_style_tags(&lower)
                     };
 
@@ -164,7 +164,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 } else if has_inline_style_tags {
                     crate::text::measure_html_with_flowchart_bold_deltas(
                         ctx.measurer,
-                        label.text,
+                        &label_html,
                         &node_text_style,
                         None,
                         ctx.node_wrap_mode,

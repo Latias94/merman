@@ -455,6 +455,104 @@ pub fn measure_html_with_flowchart_bold_deltas(
     deltas_px_by_line.resize(lines.len(), 0.0);
     icon_on_line.resize(lines.len(), false);
 
+    fn flowchart_html_icon_wrapped_segments(line: &str) -> Vec<String> {
+        fn is_break_after(ch: char) -> bool {
+            matches!(ch, '/' | '-' | ':' | '?' | '&' | '#' | ')' | '}' | '.')
+        }
+
+        let mut out = Vec::new();
+        for tok in line.split(' ') {
+            let tok = tok.trim();
+            if tok.is_empty() {
+                continue;
+            }
+
+            let mut cur = String::new();
+            for ch in tok.chars() {
+                cur.push(ch);
+                if is_break_after(ch) && !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            if !cur.is_empty() {
+                out.push(cur);
+            }
+        }
+
+        if out.is_empty() {
+            vec![line.trim().to_string()]
+        } else {
+            out
+        }
+    }
+
+    let icon_start_wrap = if wrap_mode == WrapMode::HtmlLike {
+        max_width
+            .filter(|w| w.is_finite() && *w > 0.0)
+            .and_then(|w| {
+                let mut extra_lines = 0usize;
+                let mut wrapped_width: f64 = 0.0;
+                let mut has_width_override = false;
+
+                for (idx, line) in lines.iter().enumerate() {
+                    if !icon_on_line[idx] || !line.starts_with(char::is_whitespace) {
+                        continue;
+                    }
+                    let text = line.trim();
+                    if text.is_empty() {
+                        continue;
+                    }
+
+                    let segments = flowchart_html_icon_wrapped_segments(text);
+                    let text_width = measurer
+                        .measure_wrapped_raw(text, style, None, wrap_mode)
+                        .width;
+                    let first_segment = segments.first().map(String::as_str).unwrap_or(text);
+                    let first_segment_width = measurer
+                        .measure_wrapped_raw(first_segment, style, None, wrap_mode)
+                        .width;
+                    if first_segment_width + deltas_px_by_line[idx] > w {
+                        extra_lines += 1;
+                        has_width_override = true;
+                        for segment in segments {
+                            let segment = segment.trim();
+                            if segment.is_empty() {
+                                continue;
+                            }
+                            wrapped_width = wrapped_width.max(
+                                measurer
+                                    .measure_wrapped_raw(segment, style, None, wrap_mode)
+                                    .width,
+                            );
+                        }
+                    } else if text_width <= w && text_width + deltas_px_by_line[idx] > w {
+                        extra_lines += 1;
+                        has_width_override = true;
+                        wrapped_width = wrapped_width.max(w);
+                    } else if text_width > w {
+                        has_width_override = true;
+                        let mut segment_width: f64 = 0.0;
+                        for segment in segments {
+                            let segment = segment.trim();
+                            if segment.is_empty() {
+                                continue;
+                            }
+                            segment_width = segment_width.max(
+                                measurer
+                                    .measure_wrapped_raw(segment, style, None, wrap_mode)
+                                    .width,
+                            );
+                        }
+                        wrapped_width = wrapped_width.max(segment_width.max(w));
+                    }
+                }
+
+                (has_width_override || extra_lines > 0).then_some((wrapped_width, extra_lines))
+            })
+    } else {
+        None
+    };
+
     let mut max_line_width: f64 = 0.0;
     for (idx, line) in lines.iter().enumerate() {
         let line = if icon_on_line[idx] {
@@ -491,7 +589,10 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 //
                 // The underlying measurer is still responsible for modeling any min-content
                 // expansion beyond `max-width`.
-                width = base.width.max(w);
+                width = icon_start_wrap
+                    .map(|(icon_width, _)| icon_width)
+                    .unwrap_or(base.width)
+                    .max(w);
             } else {
                 width = width.min(w);
             }
@@ -514,10 +615,19 @@ pub fn measure_html_with_flowchart_bold_deltas(
         }
     }
 
+    let (height, line_count) = if let Some((_, extra_lines)) = icon_start_wrap {
+        (
+            base.height + extra_lines as f64 * style.font_size.max(1.0) * 1.5,
+            base.line_count + extra_lines,
+        )
+    } else {
+        (base.height, base.line_count)
+    };
+
     TextMetrics {
         width,
-        height: base.height,
-        line_count: base.line_count,
+        height,
+        line_count,
     }
 }
 

@@ -575,11 +575,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_html_demos_sequence_sequence_diagram_demos_002`, and tightened the root total to `602`
   with `79` Sequence entries. A later GitGraph horizontal branch-label width pass switched LR/RL
   branch labels to computed-length widths, removed 57 now-derived GitGraph root pins, and
-  tightened the root total to `545` with `156` GitGraph entries. A follow-up Flowchart
-  disabled-root audit produced 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed
-  viewBox dimensions, and one skipped fixture; the largest drift comes from icon-heavy Flowcharts
-  and old-shape all-pairs fixtures, so Flowchart also remains a bounds/shape derivation target. A
-  follow-up Sequence
+  tightened the root total to `545` with `156` GitGraph entries. A later Flowchart imageSquare pass
+  derived the docs parameters image-plus-label bounds, removed
+  `upstream_docs_flowchart_parameters_136`, and tightened the root total to `544` with `124`
+  Flowchart entries. A broader Flowchart disabled-root audit still produced 1068 root rows, with
+  245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one skipped fixture; the
+  largest drift comes from icon-heavy Flowcharts and old-shape all-pairs fixtures, so Flowchart
+  remains a bounds/shape derivation target. A follow-up Sequence
   disabled-root audit produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,
   long-message, and Mermaid API fixtures, so Sequence also needs typed bounds work before another

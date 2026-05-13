@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived Flowchart imageSquare layout bounds from the rendered image plus label extent, so
+  `upstream_docs_flowchart_parameters_136` no longer needs a fixture-scoped root viewport pin.
+  Flowchart root pins dropped to `124`, and the root no-growth budget tightened to `544`.
 - Switched horizontal GitGraph branch-label layout to computed-length widths, kept vertical
   GitGraph labels on the wider bbox path to avoid dynamic commit-id root regressions, deleted 57
   now-derived GitGraph root pins, and tightened the root no-growth budget to `545` with GitGraph at

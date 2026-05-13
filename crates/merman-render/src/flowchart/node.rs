@@ -997,9 +997,31 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
     {
         if shape == "imageSquare" {
             if node_img.is_some_and(|s| !s.trim().is_empty()) {
-                let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
-                let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
-                return (asset_w, asset_h);
+                let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
+                let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
+                let aspect_ratio = if asset_h > 0.0 {
+                    asset_w / asset_h
+                } else {
+                    1.0
+                };
+                let image_width = if node_asset_height.is_some() {
+                    asset_h * aspect_ratio
+                } else {
+                    asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
+                };
+                let image_height = if aspect_ratio != 0.0 {
+                    image_width / aspect_ratio
+                } else {
+                    asset_h
+                };
+                let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+                let label_padding = if has_label { 8.0 } else { 0.0 };
+                let label_bbox_w = if has_label { metrics.width } else { 0.0 };
+                let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+                return (
+                    image_width.max(label_bbox_w),
+                    image_height + label_padding + label_bbox_h,
+                );
             }
         } else if node_icon.is_some_and(|s| !s.trim().is_empty()) {
             let has_label = metrics.width > 0.0 && metrics.height > 0.0;
