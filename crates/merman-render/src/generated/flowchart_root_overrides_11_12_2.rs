@@ -157,9 +157,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016" => {
             Some(("0 0 154.921875 364", "154.922"))
         }
-        "upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062" => {
-            Some(("0 7.5 671.765625 628", "671.766"))
-        }
         "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_052" => {
             Some(("0 0 363.921875 430", "363.922"))
         }
@@ -265,9 +262,6 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_flowchart_v2_subgraph_numeric_id_spec" => {
             Some(("-96.1875 -50 408.453125 298", "408.453"))
-        }
-        "upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec" => {
-            Some(("0 -50 671.765625 685.5", "671.766"))
         }
         "upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec" => {
             Some(("-33.6171875 -35 152.671875 209", "152.672"))

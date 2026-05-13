@@ -63,6 +63,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart root viewport overrides: remove two stale subgraph title-margin pins
+  (`upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`) after focused
+  disabled-root `parity-root` checks showed both roots now derive without the lookup, tightening
+  the root viewport no-growth budget to `527`.
 - GitGraph layout: restart the commit axis for unconnected branch roots under `parallelCommits`,
   matching Mermaid's independent branch timelines without adding new root viewport pins.
 - GitGraph font sizing: align layout and emitted base CSS with Mermaid's GitGraph precedence by

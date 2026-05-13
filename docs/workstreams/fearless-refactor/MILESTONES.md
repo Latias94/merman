@@ -696,6 +696,11 @@ Progress:
   literal comparison symbols. This removed
   `stress_flowchart_subgraph_title_unicode_and_entities_043` and tightened the root viewport total
   to `529` with `109` Flowchart entries.
+- A follow-up disabled-root Flowchart audit removed two stale subgraph title-margin root pins,
+  `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`, after focused
+  disabled-root `parity-root` showed they now derive without the lookup. This tightened the root
+  viewport total to `527` with `107` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

@@ -2,6 +2,11 @@
 
 ## 2026-05-13
 
+- Removed two stale Flowchart subgraph title-margin root viewport pins
+  (`upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`) after focused
+  disabled-root `parity-root` checks showed both roots now derive without the lookup. Flowchart
+  root pins are now `107`, and the root no-growth budget is `527`.
 - Preserved bare `<`/`>` text while extracting Flowchart HTML labels and added a narrow
   default-stack CJK width cushion for single-line Flowchart HTML labels that contain literal
   comparison symbols. `stress_flowchart_subgraph_title_unicode_and_entities_043` now passes

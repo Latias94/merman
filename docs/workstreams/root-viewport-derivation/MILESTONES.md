@@ -196,6 +196,11 @@ Progress:
   single-line labels with literal comparison symbols, then deleted
   `stress_flowchart_subgraph_title_unicode_and_entities_043`
   and tightened the budget to `529` with `109` Flowchart root entries.
+- Removed two stale Flowchart subgraph title-margin root pins after focused disabled-root
+  `parity-root` checks showed
+  `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` now derive without
+  the lookup, tightening the budget to `527` with `107` Flowchart root entries.
 
 Exit criteria:
 

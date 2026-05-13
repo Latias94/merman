@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and sixteen Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and eighteen Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -34,14 +34,15 @@ font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf 
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
 Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
-SVG-like subgraph-title/root-bounds, and Unicode/entities HTML title passes:
+SVG-like subgraph-title/root-bounds, Unicode/entities HTML title passes, and stale title-margin
+pin cleanup:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Flowchart: `109` entries.
-- Root viewport total: `529` entries.
+- Flowchart: `107` entries.
+- Root viewport total: `527` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -209,6 +210,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   The Unicode/entities subgraph-title fixture passes focused disabled-root `parity-root`, so its
   root pin was deleted. `report-overrides` now reports root total `529` and Flowchart root count
   `109`.
+- 2026-05-13: Focused disabled-root `parity-root` checks showed the two Flowchart subgraph
+  title-margin fixtures
+  `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` now derive their
+  root viewport without fixture pins. Both pins were deleted, and `report-overrides` now reports
+  root total `527` and Flowchart root count `107`.
 - 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
   cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
   stale retained Flowchart root pin was deleted in that audit pass.

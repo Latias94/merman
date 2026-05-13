@@ -594,6 +594,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   HTML label extraction and calibrated a narrow default-stack CJK width cushion, removing
   `stress_flowchart_subgraph_title_unicode_and_entities_043` and tightening the root total to
   `529` with `109` Flowchart entries. Flowchart remains a bounds/shape derivation target.
+  A follow-up disabled-root cross-check exposed two stale Flowchart subgraph title-margin pins,
+  `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`; both pass focused
+  disabled-root `parity-root` without the lookup, so the root total is tightened to `527` with
+  `107` Flowchart entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

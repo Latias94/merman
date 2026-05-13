@@ -302,6 +302,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `stress_flowchart_subgraph_title_unicode_and_entities_043`
   passes focused disabled-root `parity-root`, the root pin was deleted, and the root no-growth
   budget is tightened to `529` with `109` Flowchart entries.
+- [x] Delete stale Flowchart subgraph title-margin root pins exposed by the disabled-root audit.
+  Evidence: focused disabled-root `parity-root` passes for
+  `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
+  and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` after bypassing the
+  lookup, so both root pins were deleted. The root no-growth budget is tightened to `527` with
+  `107` Flowchart entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.
