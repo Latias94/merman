@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) model: &'a SequenceDiagramRenderModel,
+    pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
     pub(super) block_bounds: Option<SequenceBlockBounds>,
@@ -45,7 +46,12 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
 
     // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
-    let extra_vert_for_title = if ctx.model.title.is_some() { 40.0 } else { 0.0 };
+    let extra_vert_for_title =
+        if super::sequence_render_title(ctx.model.title.as_deref(), ctx.diagram_title).is_some() {
+            40.0
+        } else {
+            0.0
+        };
 
     // Mermaid's sequence renderer sets the viewBox y origin to
     // `-(diagramMarginY + extraVertForTitle)` regardless of diagram contents.

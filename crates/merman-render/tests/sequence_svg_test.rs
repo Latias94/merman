@@ -233,6 +233,35 @@ fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
 }
 
 #[test]
+fn sequence_frontmatter_title_expands_layout_root_y() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join("upstream_html_demos_sequence_sequence_diagram_demos_002.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    assert_eq!(parsed.meta.title.as_deref(), Some("With forced menus"));
+    assert!(
+        parsed
+            .model
+            .get("title")
+            .is_none_or(|title| title.is_null()),
+        "frontmatter title should stay in parse metadata, not the sequence semantic title"
+    );
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+    let bounds = layout.bounds.as_ref().expect("sequence root bounds");
+    assert_eq!(bounds.min_y, -50.0);
+}
+
+#[test]
 fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
     // Mermaid CLI (mmdc) currently does not reflect `sequence.messageFontSize` overrides in the
     // emitted SVG; it sticks to the global `fontSize` defaults. Keep our Stage B output aligned

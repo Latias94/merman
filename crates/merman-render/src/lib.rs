@@ -178,14 +178,17 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?)),
         ),
-        (RenderSemanticModel::Sequence(model), "sequence" | "zenuml") => Ok(
-            LayoutDiagram::SequenceDiagram(Box::new(sequence::layout_sequence_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer.as_ref(),
-                options.math_renderer.as_deref(),
-            )?)),
-        ),
+        (RenderSemanticModel::Sequence(model), "sequence" | "zenuml") => {
+            Ok(LayoutDiagram::SequenceDiagram(Box::new(
+                sequence::layout_sequence_diagram_typed_with_title(
+                    model,
+                    title,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                    options.math_renderer.as_deref(),
+                )?,
+            )))
+        }
         (RenderSemanticModel::Class(model), "classDiagram" | "class") => {
             Ok(LayoutDiagram::ClassDiagramV2(Box::new(
                 class::layout_class_diagram_v2_typed_with_config(
@@ -411,8 +414,9 @@ fn layout_json_by_type(
             options.text_measurer.as_ref(),
         )?))),
         "sequence" | "zenuml" => Ok(LayoutDiagram::SequenceDiagram(Box::new(
-            sequence::layout_sequence_diagram(
+            sequence::layout_sequence_diagram_with_title(
                 semantic,
+                title,
                 effective_config_value,
                 options.text_measurer.as_ref(),
                 options.math_renderer.as_deref(),

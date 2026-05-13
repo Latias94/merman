@@ -41,12 +41,38 @@ pub fn layout_sequence_diagram(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<SequenceDiagramLayout> {
+    layout_sequence_diagram_with_title(semantic, None, effective_config, measurer, math_renderer)
+}
+
+pub fn layout_sequence_diagram_with_title(
+    semantic: &Value,
+    diagram_title: Option<&str>,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<SequenceDiagramLayout> {
     let model: SequenceDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_sequence_diagram_typed(&model, effective_config, measurer, math_renderer)
+    layout_sequence_diagram_typed_with_title(
+        &model,
+        diagram_title,
+        effective_config,
+        measurer,
+        math_renderer,
+    )
 }
 
 pub fn layout_sequence_diagram_typed(
     model: &SequenceDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<SequenceDiagramLayout> {
+    layout_sequence_diagram_typed_with_title(model, None, effective_config, measurer, math_renderer)
+}
+
+pub fn layout_sequence_diagram_typed_with_title(
+    model: &SequenceDiagramRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -228,6 +254,7 @@ pub fn layout_sequence_diagram_typed(
 
     let bounds = Some(sequence_root_bounds(SequenceRootBoundsContext {
         model,
+        diagram_title,
         nodes: &nodes,
         edges: &edges,
         block_bounds,
@@ -258,4 +285,16 @@ pub fn layout_sequence_diagram_typed(
         clusters,
         bounds,
     })
+}
+
+pub(crate) fn sequence_render_title<'a>(
+    model_title: Option<&'a str>,
+    diagram_title: Option<&'a str>,
+) -> Option<&'a str> {
+    if model_title.is_none_or(|t| t.trim().is_empty()) {
+        if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
+            return Some(title);
+        }
+    }
+    model_title
 }

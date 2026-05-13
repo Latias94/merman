@@ -370,8 +370,8 @@ Progress:
   `layout_sequence_diagram_typed` to consume an explicit actor plan instead of owning the spacing
   state machine.
 - Re-ran the Sequence disabled-root audit after the actor/root-bounds decomposition; the 80 DOM
-  mismatches matched the current Sequence root table size, so the remaining Sequence root pins stay
-  classified as active typed-bounds/text-measurement targets.
+  mismatches matched the then-current Sequence root table size, so the remaining Sequence root pins
+  stayed classified as active typed-bounds/text-measurement targets.
 - Replaced C4 SVG tspan text emission's positional geometry/font arguments with `C4TspanText` and
   removed the `svg/parity/c4.rs` module-level `clippy::too_many_arguments` allow.
 - Bundled C4 layout recursion inputs and output state into `C4LayoutContext` /
@@ -667,6 +667,9 @@ Progress:
   removed 13 title-dominated GitGraph root pins, and tightened the current root viewport total to
   `603`, with `213` GitGraph entries. A disabled-root cross-check now shows all retained GitGraph
   pins still correspond to DOM mismatches.
+- A follow-up Sequence frontmatter-title pass propagated metadata titles into layout root bounds,
+  removed `upstream_html_demos_sequence_sequence_diagram_demos_002`, and tightened the current root
+  viewport total to `602`, with `79` Sequence entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

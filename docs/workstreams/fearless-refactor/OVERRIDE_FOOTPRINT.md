@@ -80,6 +80,9 @@ table dropped to `226` entries and the root viewport no-growth budget tightened 
 A GitGraph title-bounds pass then included `gitTitleText` in emitted root bbox derivation, removed
 13 title-dominated GitGraph root pins, and tightened the root viewport no-growth budget to `603`
 with GitGraph at `213` entries.
+The next Sequence pass propagated metadata/frontmatter titles into root bounds, removed the
+now-derived `upstream_html_demos_sequence_sequence_diagram_demos_002` pin, and tightened the root
+viewport no-growth budget to `602`.
 The follow-up GitGraph `parallelCommits` layout audit fixed parentless LR branch roots continuing
 from the previous branch's commit axis instead of restarting at the origin. That reduced the
 focused unconnected-branches disabled-root drift from `+150.250px` to the remaining branch-label
@@ -262,7 +265,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `603`.
+Total entries reported by `xtask`: `602`.
 
 | file | entries |
 | --- | ---: |
@@ -275,7 +278,7 @@ Total entries reported by `xtask`: `603`.
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 80 |
+| `sequence_root_overrides_11_12_2.rs` | 79 |
 | `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -356,11 +359,12 @@ required Sequence guards for
 `upstream_par_multiple_ands_spec`, and `upstream_pkgtests_sequencediagram_spec_063`.
 A 2026-05-13 follow-up Sequence audit after the layout-owner decomposition used
 `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus `--report-root-all` and produced 320 root rows, 73
-non-zero `max-width` deltas, 80 changed viewBox dimensions, and 80 DOM mismatches. That mismatch
-count matches the current Sequence root table size, so no stale retained Sequence root pin was
-found in this pass. The largest remaining drift still came from long-message and dense wrapping
-fixtures, including `+171px` on the Mermaid API sequence fixture, so the remaining table should be
-reduced by typed bounds/text measurement work rather than by another blind deletion pass.
+non-zero `max-width` deltas, 80 changed viewBox dimensions, and 80 DOM mismatches. A later
+frontmatter-title pass made the rendered metadata title participate in Sequence root sizing and
+removed `upstream_html_demos_sequence_sequence_diagram_demos_002`; the remaining Sequence table is
+now `79`. The largest remaining drift still came from long-message and dense wrapping fixtures,
+including `+171px` on the Mermaid API sequence fixture, so the remaining table should be reduced by
+typed bounds/text measurement work rather than by another blind deletion pass.
 Journey note: the table was reintroduced with two tiny browser-float root guards after full
 `parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
 fixtures. The renderer still derives normal Journey root behavior; these two entries are
@@ -380,7 +384,7 @@ Largest root-viewport buckets:
 
 - `gitgraph`: 213
 - `flowchart`: 125
-- `sequence`: 80
+- `sequence`: 79
 - `mindmap`: 39
 - `state`: 34
 

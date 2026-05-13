@@ -69,6 +69,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   honoring `themeVariables.fontSize` but ignoring top-level `fontSize`; the top-level
   `fontFamily` fallback remains in place, and the remaining font-size stress root pins are retained
   for sub-pixel branch-label/browser bbox drift.
+- Sequence root bounds: propagate metadata/frontmatter titles into Sequence layout root sizing so
+  rendered fallback titles get Mermaid's 40px title viewport expansion; this removes the now-derived
+  `upstream_html_demos_sequence_sequence_diagram_demos_002` root pin and tightens the root viewport
+  no-growth budget to `602`.
 - GitGraph root derivation: include `gitTitleText` bounds in the emitted root bbox and remove 13
   now-derived title-dominated root pins, tightening the root viewport no-growth budget to `603`.
 - GitGraph root viewport overrides: remove two stale fixture-scoped pins

@@ -5,6 +5,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Propagated Sequence metadata/frontmatter titles into layout root bounds, removed the now-derived
+  `upstream_html_demos_sequence_sequence_diagram_demos_002` root viewport pin, and tightened the
+  root no-growth budget to `602` with Sequence at `79`.
 - Aligned GitGraph font-size precedence so the renderer ignores top-level `fontSize` for GitGraph
   root CSS/layout while still honoring `themeVariables.fontSize` and top-level `fontFamily`. This
   removed the large `stress_gitgraph_font_size_097` disabled-root drift without adding overrides;
@@ -52,8 +55,8 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `sequence.rs` to a focused orchestration layer while preserving render nextest, render clippy,
   Sequence `parity-root`, and override no-growth.
 - Re-ran the Sequence disabled-root audit after the actor/root-bounds decomposition; the audit found
-  80 DOM mismatches matching the current Sequence root table size, so no stale Sequence root pin was
-  removed in this pass.
+  80 DOM mismatches matching the then-current Sequence root table size, so no stale Sequence root
+  pin was removed in that pass.
 
 ## 2026-05-12
 

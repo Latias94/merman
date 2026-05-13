@@ -83,12 +83,8 @@ fn render_sequence_diagram_svg_inner(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let fallback_title = model
-        .title
-        .as_deref()
-        .is_none_or(|t| t.trim().is_empty())
-        .then(|| diagram_title.map(str::trim).filter(|t| !t.is_empty()))
-        .flatten();
+    let effective_title =
+        crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
     let seq_cfg = effective_config
         .get("sequence")
@@ -201,7 +197,7 @@ fn render_sequence_diagram_svg_inner(
         );
     }
 
-    if let Some(title) = fallback_title.or(model.title.as_deref()) {
+    if let Some(title) = effective_title {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
         // Mermaid positions the title using the inner (content) box width:
         // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.

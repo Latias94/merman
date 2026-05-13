@@ -152,9 +152,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_docs_sequence_box_groups_example" => Some(("-50 -10 967 384", "967")),
         "upstream_docs_sequence_create_destroy_example" => Some(("-50 -10 1040 565", "1040")),
         "upstream_docs_sequence_rect_nested_example" => Some(("-50 -10 579 544", "579")),
-        "upstream_html_demos_sequence_sequence_diagram_demos_002" => {
-            Some(("-50 -50 484 343", "484"))
-        }
         "upstream_pkgtests_sequencediagram_spec_014" => Some(("-50 -10 490 259", "490")),
         "upstream_pkgtests_sequencediagram_spec_015" => Some(("-50 -10 493 259", "493")),
         "upstream_pkgtests_sequencediagram_spec_016" => Some(("-50 -10 471 303", "471")),
