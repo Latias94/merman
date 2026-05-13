@@ -366,6 +366,10 @@ fn render_flowchart_v2_svg_with_config_inner(
         font_size,
         font_weight: None,
     };
+    let html_label_text_style = crate::flowchart::flowchart_html_label_measurement_base_style(
+        &text_style,
+        effective_config_value,
+    );
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
         FxHashMap::with_capacity_and_hasher(
@@ -512,6 +516,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_wrap_mode,
         edge_wrap_mode,
         text_style,
+        html_label_text_style,
     };
 
     let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =
@@ -732,9 +737,15 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_base_style =
+                                    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                        &ctx.html_label_text_style
+                                    } else {
+                                        &ctx.text_style
+                                    };
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                                        &ctx.text_style,
+                                        label_base_style,
                                         ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,
@@ -776,9 +787,15 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_base_style =
+                                    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                        &ctx.html_label_text_style
+                                    } else {
+                                        &ctx.text_style
+                                    };
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                                        &ctx.text_style,
+                                        label_base_style,
                                         ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,
@@ -844,9 +861,15 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_base_style =
+                                    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                        &ctx.html_label_text_style
+                                    } else {
+                                        &ctx.text_style
+                                    };
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                                        &ctx.text_style,
+                                        label_base_style,
                                         ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,
@@ -906,9 +929,15 @@ fn render_flowchart_v2_svg_with_config_inner(
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_base_style =
+                                    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                        &ctx.html_label_text_style
+                                    } else {
+                                        &ctx.text_style
+                                    };
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                                        &ctx.text_style,
+                                        label_base_style,
                                         ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,

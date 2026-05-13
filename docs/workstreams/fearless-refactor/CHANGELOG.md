@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived the Flowchart font-size precedence root by separating SVG root CSS font size from HTML
+  `foreignObject` label measurement: numeric `themeVariables.fontSize` stays a root CSS value, but
+  HTML labels measure at 16px unless the theme value is a valid `"NNpx"` CSS string or an explicit
+  class/inline font-size applies. `stress_flowchart_font_size_precedence_073` now passes focused
+  disabled-root `parity-root`; Flowchart root pins are now `106`, and the root no-growth budget is
+  `526`.
 - Removed two stale Flowchart subgraph title-margin root viewport pins
   (`upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`) after focused

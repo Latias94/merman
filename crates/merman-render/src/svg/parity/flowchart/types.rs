@@ -46,6 +46,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) text_style: TextStyle,
+    pub(in crate::svg::parity::flowchart) html_label_text_style: TextStyle,
 }
 
 #[derive(Debug, Default, Clone)]

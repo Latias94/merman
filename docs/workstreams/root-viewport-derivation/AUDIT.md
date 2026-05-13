@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and eighteen Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and nineteen Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -34,15 +34,15 @@ font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf 
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
 Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
-SVG-like subgraph-title/root-bounds, Unicode/entities HTML title passes, and stale title-margin
-pin cleanup:
+SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup, and
+HTML-label font-size precedence passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Flowchart: `107` entries.
-- Root viewport total: `527` entries.
+- Flowchart: `106` entries.
+- Root viewport total: `526` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -101,7 +101,11 @@ default-stack CJK width cushion for single-line labels with literal comparison s
 old-shape set5 `tb_md_html_false` pin still guards a real 0.06px root drift, and the broader
 disabled-root Flowchart audit still shows retained drift around icon-heavy labels, subgraph titles,
 title spacing, and other old-shape/all-pairs fixtures. The remaining Flowchart table is therefore a
-derivation target, not a blind deletion target.
+derivation target, not a blind deletion target. The latest Flowchart font-size precedence pass
+separates SVG root CSS font-size from HTML `foreignObject` label measurement: numeric
+`themeVariables.fontSize` affects the root CSS while HTML labels still measure at 16px, but a
+valid `"NNpx"` theme string and class/inline font-size rules still apply to HTML label
+measurement. That derives `stress_flowchart_font_size_precedence_073` without a root pin.
 
 ## Focused Commands
 
@@ -216,6 +220,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` now derive their
   root viewport without fixture pins. Both pins were deleted, and `report-overrides` now reports
   root total `527` and Flowchart root count `107`.
+- 2026-05-13: Flowchart HTML label measurement now uses a separate measurement base style from
+  SVG root CSS. Numeric `themeVariables.fontSize` remains a root CSS value but does not resize
+  `foreignObject` label measurement; valid `"NNpx"` theme strings and class/inline font-size
+  rules still do. `stress_flowchart_font_size_precedence_073` passes focused disabled-root
+  `parity-root`, so its root pin was deleted. `report-overrides` now reports root total `526` and
+  Flowchart root count `106`.
 - 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
   cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
   stale retained Flowchart root pin was deleted in that audit pass.

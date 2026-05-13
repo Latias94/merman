@@ -63,6 +63,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart label measurement: separate SVG root CSS font size from HTML `foreignObject` label
+  measurement so numeric `themeVariables.fontSize` does not inflate HTML labels, while `"NNpx"`
+  font-size strings still apply. This derives
+  `stress_flowchart_font_size_precedence_073` without a root viewport pin and tightens the root
+  viewport no-growth budget to `526`.
 - Flowchart root viewport overrides: remove two stale subgraph title-margin pins
   (`upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`) after focused

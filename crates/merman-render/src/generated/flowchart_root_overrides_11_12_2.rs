@@ -27,7 +27,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_title_margin_extremes_015" => {
             Some(("0 25 806.421875 796", "806.422"))
         }
-        "stress_flowchart_font_size_precedence_073" => Some(("0 0 276 198", "276")),
         "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.75 88", "521.75")),
         "stress_flowchart_subgraph_title_margins_extreme_nested_030" => {
             Some(("0 -50 487.671875 283", "487.672"))

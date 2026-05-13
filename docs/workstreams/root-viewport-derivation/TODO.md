@@ -308,6 +308,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` after bypassing the
   lookup, so both root pins were deleted. The root no-growth budget is tightened to `527` with
   `107` Flowchart entries.
+- [x] Derive the Flowchart font-size precedence root from HTML label measurement semantics.
+  Evidence: Flowchart now uses a separate HTML-label measurement base style. Numeric
+  `themeVariables.fontSize` still drives SVG root CSS but does not resize `foreignObject` HTML
+  label measurement; valid `"NNpx"` theme strings and class/inline font-size rules still apply.
+  `stress_flowchart_font_size_precedence_073` passes focused disabled-root `parity-root`, the root
+  pin was deleted, and the root no-growth budget is tightened to `526` with `106` Flowchart
+  entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

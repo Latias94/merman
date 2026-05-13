@@ -201,6 +201,11 @@ Progress:
   `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec` now derive without
   the lookup, tightening the budget to `527` with `107` Flowchart root entries.
+- Derived the Flowchart font-size precedence root by splitting SVG root CSS font-size from HTML
+  `foreignObject` label measurement. Numeric `themeVariables.fontSize` stays on the root CSS path,
+  while HTML label measurement uses 16px unless the theme value is a valid `"NNpx"` string or a
+  class/inline font-size applies. Removed `stress_flowchart_font_size_precedence_073` and
+  tightened the budget to `526` with `106` Flowchart root entries.
 
 Exit criteria:
 

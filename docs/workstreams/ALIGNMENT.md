@@ -123,10 +123,19 @@ HTML labels do **not** reliably inherit `font-size` from the surrounding SVG/CSS
 may still measure/render at the browser default (16px), which cascades into node sizing and root
 viewport bounds.
 
+Flowchart has an additional config-shape distinction from upstream: numeric
+`themeVariables.fontSize` can appear on the root SVG CSS while HTML label measurement remains at
+16px, but a valid `"NNpx"` string value is real CSS and does affect HTML label measurement.
+Class/inline `font-size` rules still override the HTML label measurement base.
+
 Evidence fixtures:
 
 - Class: `fixtures/class/stress_class_font_size_precedence_024.mmd` (+ upstream SVG baseline)
 - Mindmap: `fixtures/mindmap/stress_mindmap_font_size_precedence_037.mmd` (+ upstream SVG baseline)
+- Flowchart: `fixtures/flowchart/stress_flowchart_font_size_precedence_073.mmd`
+- Mermaid API px-string controls:
+  `fixtures/flowchart/upstream_pkgtests_mermaidapi_spec_022.mmd` and
+  `fixtures/flowchart/upstream_pkgtests_mermaidapi_spec_023.mmd`
 
 #### SVG `themeVariables.fontSize` px-string parsing
 

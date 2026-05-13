@@ -598,7 +598,12 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_set_lr_and_htmllabels_062`
   and `upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec`; both pass focused
   disabled-root `parity-root` without the lookup, so the root total is tightened to `527` with
-  `107` Flowchart entries.
+  `107` Flowchart entries. A later Flowchart font-size precedence pass split SVG root CSS
+  font-size from HTML `foreignObject` label measurement: numeric `themeVariables.fontSize` remains
+  root CSS only, while HTML labels measure at 16px unless the theme value is a valid `"NNpx"` CSS
+  string or a class/inline font-size applies. That removed
+  `stress_flowchart_font_size_precedence_073` and tightened the root total to `526` with `106`
+  Flowchart entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

@@ -732,8 +732,13 @@ fn compute_node_label_metrics_for_intersection(
         .clone()
         .unwrap_or_else(|| "text".to_string());
 
+    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+        &ctx.html_label_text_style
+    } else {
+        &ctx.text_style
+    };
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
+        label_base_style,
         ctx.class_defs,
         &flow_node.classes,
         &flow_node.styles,
@@ -911,8 +916,13 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             .clone()
             .unwrap_or_else(|| "text".to_string());
 
+        let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+            &ctx.html_label_text_style
+        } else {
+            &ctx.text_style
+        };
         let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            &ctx.text_style,
+            label_base_style,
             ctx.class_defs,
             &flow_node.classes,
             &flow_node.styles,
@@ -1012,8 +1022,13 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             .clone()
             .unwrap_or_else(|| "text".to_string());
 
+        let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+            &ctx.html_label_text_style
+        } else {
+            &ctx.text_style
+        };
         let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            &ctx.text_style,
+            label_base_style,
             ctx.class_defs,
             &flow_node.classes,
             &flow_node.styles,

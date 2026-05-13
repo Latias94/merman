@@ -107,8 +107,9 @@ viewport without a pin. A follow-up SVG-like subgraph-title pass shared the emit
 helper with layout and sized default process nodes from wrapped computed text length, deleting the
 stage2 long-word title root pin, and the Unicode/entities title root pin. A follow-up
 disabled-root cross-check removed two stale subgraph title-margin root pins that now derive
-without the lookup. The root viewport no-growth budget is now `527` with Flowchart at `107`
-entries.
+without the lookup. A later font-size precedence pass split SVG root CSS font-size from HTML label
+measurement and deleted the now-derived `stress_flowchart_font_size_precedence_073` root pin. The
+root viewport no-growth budget is now `526` with Flowchart at `106` entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -286,14 +287,14 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `527`.
+Total entries reported by `xtask`: `526`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
-| `flowchart_root_overrides_11_12_2.rs` | 107 |
+| `flowchart_root_overrides_11_12_2.rs` | 106 |
 | `gitgraph_root_overrides_11_12_2.rs` | 156 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -326,8 +327,9 @@ direct root lookup still leaves the broad Gitgraph root bucket failing. The full
 `upstream_examples_git_basic_git_flow_001` and `upstream_merges_spec`. The Flowchart empty-diagram
 pins are now deleted after empty bounds moved into renderer logic. The Flowchart imageSquare,
 anchor, C1 replacement-glyph, SVG-like/Unicode subgraph-title, and stale title-margin passes
-removed 18 more pins; the remaining 107 entries still need root-viewport derivation work before
-table pruning, not another blind deletion pass.
+removed 18 more pins, and the later HTML-label font-size precedence pass removed one more. The
+remaining 106 entries still need root-viewport derivation work before table pruning, not another
+blind deletion pass.
 A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 `--report-root-all` produced 251 root rows, with 239 non-zero `max-width` deltas and 241 changed
 viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
@@ -411,7 +413,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `gitgraph`: 156
-- `flowchart`: 107
+- `flowchart`: 106
 - `sequence`: 79
 - `mindmap`: 39
 - `state`: 34

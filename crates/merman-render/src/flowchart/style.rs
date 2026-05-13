@@ -162,6 +162,29 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     )
 }
 
+pub(crate) fn flowchart_html_label_measurement_base_style(
+    render_style: &TextStyle,
+    effective_config: &serde_json::Value,
+) -> TextStyle {
+    let mut style = render_style.clone();
+    // Mermaid serializes numeric themeVariables.fontSize into CSS without a unit
+    // (`font-size:24`), which does not affect foreignObject HTML labels in Chromium. A CSS px
+    // string (`"20px"`) is valid and does affect those labels.
+    style.font_size = effective_config
+        .get("themeVariables")
+        .and_then(|tv| tv.get("fontSize"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| {
+            let raw = raw.trim();
+            if !raw.to_ascii_lowercase().ends_with("px") {
+                return None;
+            }
+            parse_css_px_f64(raw)
+        })
+        .unwrap_or(16.0);
+    style
+}
+
 pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,

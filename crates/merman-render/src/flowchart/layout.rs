@@ -15,8 +15,8 @@ use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
 use super::{
     FlowchartLabelMetricsRequest, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_node_has_span_css_height_parity,
+    flowchart_effective_text_style_for_node_classes, flowchart_html_label_measurement_base_style,
+    flowchart_label_metrics_for_layout, flowchart_node_has_span_css_height_parity,
 };
 
 fn json_f64(v: &Value) -> Option<f64> {
@@ -882,6 +882,23 @@ fn layout_flowchart_v2_with_model(
         font_size,
         font_weight,
     };
+    let html_label_text_style =
+        flowchart_html_label_measurement_base_style(&text_style, effective_config_value);
+    let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
+        &html_label_text_style
+    } else {
+        &text_style
+    };
+    let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
+        &html_label_text_style
+    } else {
+        &text_style
+    };
+    let edge_label_base_style = if edge_wrap_mode == WrapMode::HtmlLike {
+        &html_label_text_style
+    } else {
+        &text_style
+    };
 
     let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
@@ -941,7 +958,7 @@ fn layout_flowchart_v2_with_model(
         let raw_label = n.label.as_deref().unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
         let node_text_style = flowchart_effective_text_style_for_node_classes(
-            &text_style,
+            node_label_base_style,
             &model.class_defs,
             &n.classes,
             &n.styles,
@@ -1011,7 +1028,7 @@ fn layout_flowchart_v2_with_model(
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let sg_text_style = flowchart_effective_text_style_for_classes(
-            &text_style,
+            cluster_label_base_style,
             &model.class_defs,
             &sg.classes,
             &[],
@@ -1180,7 +1197,7 @@ fn layout_flowchart_v2_with_model(
             let label_text = e.label.as_deref().unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
             let edge_text_style = flowchart_effective_text_style_for_classes(
-                &text_style,
+                edge_label_base_style,
                 &model.class_defs,
                 &e.classes,
                 &e.style,
@@ -1974,6 +1991,7 @@ fn layout_flowchart_v2_with_model(
         extra_children: &'a std::collections::HashMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
+        html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
         config: &'a MermaidConfig,
@@ -2050,7 +2068,11 @@ fn layout_flowchart_v2_with_model(
             measurer: ctx.measurer,
             raw_label: &sg.title,
             label_type,
-            style: ctx.text_style,
+            style: if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            },
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
@@ -2105,6 +2127,7 @@ fn layout_flowchart_v2_with_model(
     struct ClusterTitleAdjustContext<'a> {
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
+        html_label_text_style: &'a TextStyle,
         title_wrapping_width: f64,
         wrap_mode: WrapMode,
         config: &'a MermaidConfig,
@@ -2125,7 +2148,11 @@ fn layout_flowchart_v2_with_model(
             measurer: ctx.measurer,
             raw_label: title,
             label_type,
-            style: ctx.text_style,
+            style: if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            },
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
@@ -2164,6 +2191,7 @@ fn layout_flowchart_v2_with_model(
         extra_children: &extra_children,
         measurer,
         text_style: &text_style,
+        html_label_text_style: &html_label_text_style,
         title_wrapping_width: cluster_title_wrapping_width,
         wrap_mode: cluster_wrap_mode,
         config: effective_config,
@@ -2179,6 +2207,7 @@ fn layout_flowchart_v2_with_model(
     let title_adjust_ctx = ClusterTitleAdjustContext {
         measurer,
         text_style: &text_style,
+        html_label_text_style: &html_label_text_style,
         title_wrapping_width: cluster_title_wrapping_width,
         wrap_mode: cluster_wrap_mode,
         config: effective_config,
@@ -2234,7 +2263,11 @@ fn layout_flowchart_v2_with_model(
             measurer,
             raw_label: &sg.title,
             label_type,
-            style: &text_style,
+            style: if cluster_wrap_mode == WrapMode::HtmlLike {
+                &html_label_text_style
+            } else {
+                &text_style
+            },
             max_width_px: title_width_limit,
             wrap_mode: cluster_wrap_mode,
             config: effective_config,

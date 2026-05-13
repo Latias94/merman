@@ -36,7 +36,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
                 measurer: ctx.measurer,
                 raw_label: label.text,
                 label_type: label.label_type,
-                style: &ctx.text_style,
+                style: if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                    &ctx.html_label_text_style
+                } else {
+                    &ctx.text_style
+                },
                 max_width_px: Some(ctx.wrapping_width),
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,

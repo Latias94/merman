@@ -312,8 +312,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         label_type,
         ctx.node_html_labels,
     );
+    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+        &ctx.html_label_text_style
+    } else {
+        &ctx.text_style
+    };
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
+        label_base_style,
         ctx.class_defs,
         node_classes,
         node_styles,

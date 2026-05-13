@@ -22,8 +22,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
 ) {
     let label_text_plain =
         flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
+    let label_base_style = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+        &ctx.html_label_text_style
+    } else {
+        &ctx.text_style
+    };
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
+        label_base_style,
         ctx.class_defs,
         common.node_classes,
         common.node_styles,
