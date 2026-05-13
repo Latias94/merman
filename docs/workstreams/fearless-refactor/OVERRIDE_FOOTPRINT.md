@@ -93,6 +93,10 @@ root bbox derivation, matching browser `getBBox()` for zero-length branch lines 
 shared emitted-bounds scanner unchanged. The empty-graph package bucket dropped from roughly
 `+34.750px` disabled-root width drift to residual branch-label bbox drift, but the GitGraph table
 remained at `213` entries because `override=213 mismatch=213 stale=0 missing=0`.
+The follow-up horizontal GitGraph branch-label pass switched LR/RL branch labels to computed text
+lengths, kept TB/BT on the wider bbox path to avoid rotated dynamic commit-id root regressions,
+and removed 57 now-derived GitGraph root pins. The root viewport no-growth budget is now `545`
+with GitGraph at `156` entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -270,7 +274,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `602`.
+Total entries reported by `xtask`: `545`.
 
 | file | entries |
 | --- | ---: |
@@ -278,7 +282,7 @@ Total entries reported by `xtask`: `602`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
-| `gitgraph_root_overrides_11_12_2.rs` | 213 |
+| `gitgraph_root_overrides_11_12_2.rs` | 156 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
@@ -325,9 +329,11 @@ still honoring `themeVariables.fontSize` and top-level `fontFamily`, shrinking
 overrides; the font-size stress pins stay because the residual mismatch is still branch-label
 browser bbox drift. A later branch-line endpoint pass taught GitGraph root derivation to include
 zero-length branch line endpoints, dropping the empty-graph package bucket from roughly
-`+34.750px` to sub-pixel branch-label drift. The remaining `213` GitGraph entries were
-cross-checked against disabled-root mismatches and still need model/layout or text-measurement
-derivation work before another broad deletion pass.
+`+34.750px` to sub-pixel branch-label drift. A follow-up horizontal branch-label pass then used
+computed text length for LR/RL branch labels, removed 57 now-derived root pins, and left
+`override=156 mismatch=156 stale=0 missing=0`. The remaining GitGraph entries still need
+vertical root, dynamic commit-label, cherry-pick/tag, or other bounds derivation work before
+another broad deletion pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
 skipped fixture. The largest width deltas came from icon-heavy Flowchart fixtures
@@ -389,7 +395,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `gitgraph`: 213
+- `gitgraph`: 156
 - `flowchart`: 125
 - `sequence`: 79
 - `mindmap`: 39

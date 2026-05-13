@@ -616,13 +616,17 @@ pub fn layout_gitgraph_diagram_typed(
     let mut branch_index: HashMap<&str, usize> = HashMap::new();
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
-        // Upstream gitGraph uses `drawText(...).getBBox().width` for branch label widths.
         let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = crate::text::round_to_1_64_px(
-            measurer
-                .measure_svg_simple_text_bbox_width_px(&b.name, &label_style)
-                .max(0.0),
-        );
+        let branch_label_w = if direction == "TB" || direction == "BT" {
+            // Vertical GitGraph roots are frequently dominated by rotated dynamic commit IDs, and
+            // existing baselines depend on the wider browser bbox branch-label path.
+            measurer.measure_svg_simple_text_bbox_width_px(&b.name, &label_style)
+        } else {
+            // Horizontal branch labels line up with the text advance rather than ASCII-overhang
+            // bbox width; upstream rects match `<text>.getComputedTextLength()`.
+            measurer.measure_svg_text_computed_length_px(&b.name, &label_style)
+        };
+        let bbox_w = crate::text::round_to_1_64_px(branch_label_w.max(0.0));
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
 

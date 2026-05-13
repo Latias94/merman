@@ -674,6 +674,10 @@ Progress:
   root bbox derivation, collapsing the empty-graph package bucket from roughly `+34.750px`
   disabled-root width drift to sub-pixel branch-label drift. The GitGraph table remains at `213`
   entries because the disabled-root mismatch set still exactly matches the retained pins.
+- A follow-up horizontal GitGraph branch-label pass switched LR/RL label widths to computed text
+  length while keeping TB/BT on the wider bbox path for dynamic commit-id root stability. This
+  removed 57 now-derived GitGraph root pins, leaving `156` GitGraph entries and root viewport total
+  `545`.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

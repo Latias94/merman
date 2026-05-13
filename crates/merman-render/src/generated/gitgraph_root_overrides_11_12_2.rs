@@ -62,9 +62,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-123.515625 -19 531.515625 263.14988708496094",
             "531.515625",
         )),
-        "upstream_docs_gitgraph_customizing_branch_label_colors_030" => {
-            Some(("-118.34375 -19 176.34375 849", "176.34375"))
-        }
         "upstream_docs_gitgraph_customizing_commit_colors_031" => Some((
             "-123.515625 -19 531.515625 263.14988708496094",
             "531.515625",
@@ -85,7 +82,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-123.515625 -19 531.515625 263.14988708496094",
             "531.515625",
         )),
-        "upstream_branches_and_order" => Some(("-233.953125 -19 391.953125 1119", "391.953125")),
         "upstream_cherry_pick_merge_commits" => Some((
             "-114.078125 -19 572.078125 235.75454711914062",
             "572.078125",
@@ -119,9 +115,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-117.421875 -50 375.421875 203.53219604492188",
             "375.421875",
         )),
-        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_031" => {
-            Some(("-123.515625 -50 731.515625 278.1114807128906", "731.515625"))
-        }
         "upstream_html_demos_git_two_branches_from_same_commit_graph_028" => {
             Some(("-145.125 -50 453.125 293.9440002441406", "453.125"))
         }
@@ -165,15 +158,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         }
         "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_027" => {
             Some(("-194.78854370117188 -50 477.890625 361", "477.890625"))
-        }
-        "upstream_cypress_gitgraph_spec_11_should_render_a_simple_gitgraph_with_two_cherry_pick_commit_014" => {
-            Some((
-                "-123.515625 -34.72539138793945 731.515625 262.83685302734375",
-                "731.515625",
-            ))
-        }
-        "upstream_cypress_gitgraph_spec_12_should_render_commits_for_more_than_8_branches_015" => {
-            Some(("-118.34375 -19 1026.34375 895.9924926757812", "1026.34375"))
         }
         "upstream_cypress_gitgraph_spec_13_should_render_a_simple_gitgraph_with_three_branches_custom_me_016" => {
             Some((
@@ -226,17 +210,11 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "384.7900695800781",
             ))
         }
-        "upstream_cypress_gitgraph_spec_38_should_render_gitgraph_with_branch_and_sub_branch_neither_of_041" => {
-            Some(("-96 -19 454 262.35137939453125", "454"))
-        }
         "upstream_cypress_gitgraph_spec_39_should_render_gitgraph_with_branch_and_sub_branch_neither_of_042" => {
             Some((
                 "-62.7565803527832 -8 284.209716796875 396",
                 "284.209716796875",
             ))
-        }
-        "upstream_cypress_gitgraph_spec_44_should_render_gitgraph_with_unconnected_branches_and_no_paral_047" => {
-            Some(("-96 -19 404 352.35137939453125", "404"))
         }
         "upstream_cypress_gitgraph_spec_46_should_render_gitgraph_with_unconnected_branches_and_parallel_049" => {
             Some((
@@ -307,20 +285,11 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "699.484375",
             ))
         }
-        "upstream_cypress_gitgraph_spec_74_should_render_commits_for_more_than_8_branches_using_switch_i_078" => {
-            Some(("-118.34375 -19 1026.34375 895.9924926757812", "1026.34375"))
-        }
-        "upstream_cypress_gitgraph_spec_8_should_render_a_simple_gitgraph_with_more_than_8_branches_over_008" => {
-            Some(("-118.34375 -19 176.34375 849", "176.34375"))
-        }
         "stress_gitgraph_font_size_097" => Some((
             "-262.640625 -18 470.640625 177.95840454101562",
             "470.640625",
         )),
         "upstream_accessibility_and_warnings" => Some(("-96 -19 154 100.76305389404297", "154")),
-        "upstream_accessibility_single_line_accdescr_spec" => {
-            Some(("-96 -19 154 83.82177734375", "154"))
-        }
         "upstream_cherry_pick_custom_tag_spec" => Some((
             "-117.421875 -34.72539138793945 275.421875 161.3173828125",
             "275.421875",
@@ -333,12 +302,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             Some(("-117.421875 -19 275.421875 145.5919952392578", "275.421875"))
         }
         "upstream_commits_spec" => Some(("-96 -34.72539138793945 804 102.51644897460938", "804")),
-        "upstream_cypress_appli_spec_1_should_render_a_simple_gitgraph_with_commit_on_main_branch_001" => {
-            Some(("-96 -19 254 55.136844635009766", "254"))
-        }
-        "upstream_cypress_gitgraph_spec_10_should_render_a_simple_gitgraph_with_horizontal_labels_010" => {
-            Some(("-66 -19 274 55.55078125", "274"))
-        }
         "upstream_cypress_gitgraph_spec_11_should_render_a_gitgraph_with_cherry_pick_commit_with_custom_012" => {
             Some((
                 "-117.421875 -34.72539138793945 525.421875 161.37156677246094",
@@ -356,9 +319,6 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "-117.421875 -34.72539138793945 525.421875 161.37156677246094",
                 "525.421875",
             ))
-        }
-        "upstream_cypress_gitgraph_spec_1433_should_render_a_simple_gitgraph_with_a_title_017" => {
-            Some(("-96 -50 154 113.35137939453125", "154"))
         }
         "upstream_cypress_gitgraph_spec_15_should_render_a_simple_gitgraph_with_commit_on_main_branch_ve_018" => {
             Some(("-35.5 -8 69 196", "69"))
@@ -420,9 +380,6 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "360.381591796875",
             ))
         }
-        "upstream_cypress_gitgraph_spec_36_should_render_gitgraph_with_branch_that_is_not_used_immediate_039" => {
-            Some(("-96 -19 304 172.35137939453125", "304"))
-        }
         "upstream_cypress_gitgraph_spec_37_should_render_gitgraph_with_branch_that_is_not_used_immediate_040" => {
             Some((
                 "-62.7565803527832 -8 190.26438903808594 246",
@@ -432,34 +389,16 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_cypress_gitgraph_spec_3_should_render_a_simple_gitgraph_with_different_committypes_on_003" => {
             Some(("-96 -19 254 105.5637435913086", "254"))
         }
-        "upstream_cypress_gitgraph_spec_40_should_render_a_simple_gitgraph_with_cherry_pick_merge_commit_043" => {
-            Some(("-114.078125 -19 388.8828125 219", "388.8828125"))
-        }
         "upstream_cypress_gitgraph_spec_43_should_render_gitgraph_with_parallel_commits_vertical_branch_046" => {
             Some((
                 "-62.7565803527832 -8 331.006591796875 254.42852783203125",
                 "331.006591796875",
             ))
         }
-        "upstream_cypress_gitgraph_spec_45_should_render_gitgraph_with_unconnected_branches_and_parallel_048" => {
-            Some(("-96 -19 204 352.35137939453125", "204"))
-        }
-        "upstream_cypress_gitgraph_spec_46_should_render_gitgraph_with_merge_back_and_merge_forward_050" => {
-            Some((
-                "-125.265625 -19 333.265625 262.35137939453125",
-                "333.265625",
-            ))
-        }
         "upstream_cypress_gitgraph_spec_47_should_render_gitgraph_with_merge_back_and_merge_forward_vert_051" => {
             Some((
                 "-62.7565803527832 -8 340.326904296875 246",
                 "340.326904296875",
-            ))
-        }
-        "upstream_cypress_gitgraph_spec_48_should_render_gitgraph_with_merge_on_a_new_branch_vertical_br_052" => {
-            Some((
-                "-125.265625 -19 333.265625 262.35137939453125",
-                "333.265625",
             ))
         }
         "upstream_cypress_gitgraph_spec_49_should_render_gitgraph_with_merge_on_a_new_branch_vertical_br_053" => {
@@ -607,16 +546,10 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-117.421875 -19 475.421875 172.94400024414062",
             "475.421875",
         )),
-        "upstream_docs_gitgraph_commit_labels_layout_rotated_or_horizontal_013" => {
-            Some(("-66 -19 574 205.5", "574"))
-        }
         "upstream_docs_gitgraph_create_a_new_branch_011" => Some((
             "-117.421875 -19 375.421875 172.53219604492188",
             "375.421875",
         )),
-        "upstream_docs_gitgraph_customizing_branch_ordering_033" => {
-            Some(("-97.28125 -19 155.28125 399", "155.28125"))
-        }
         "upstream_docs_gitgraph_left_to_right_default_lr_035" => Some((
             "-117.421875 -19 575.421875 171.37266540527344",
             "575.421875",
@@ -645,21 +578,8 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "475.421875",
             ))
         }
-        "upstream_header_default" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_diagram_orchestration_spec_048" => Some(("-96 -19 104 39", "104")),
-        "upstream_pkgtests_gitgraph_spec_001" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_002" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_003" => Some(("-96 -19 154 66.04947280883789", "154")),
         "upstream_pkgtests_gitgraph_spec_004" => {
             Some(("-96 -34.70000076293945 154 99.52178192138672", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_005" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_006" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_007" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_008" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_009" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_010" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
         }
         "upstream_pkgtests_gitgraph_spec_011" => {
             Some(("-96 -34.72539138793945 154 99.54717254638672", "154"))
@@ -667,36 +587,9 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_pkgtests_gitgraph_spec_012" => {
             Some(("-96 -34.72539138793945 154 99.54717254638672", "154"))
         }
-        "upstream_pkgtests_gitgraph_spec_013" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_014" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_015" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_016" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
-        }
-        "upstream_pkgtests_gitgraph_spec_017" => {
-            Some(("-96 -34.72539138793945 154 81.77486419677734", "154"))
-        }
         "upstream_pkgtests_gitgraph_spec_018" => Some(("-96 -19 254 83.51834869384766", "254")),
-        "upstream_pkgtests_gitgraph_spec_019" => {
-            Some(("-137.984375 -19 195.984375 129", "195.984375"))
-        }
         "upstream_pkgtests_gitgraph_spec_020" => {
             Some(("-109.953125 -19 267.953125 173.290771484375", "267.953125"))
-        }
-        "upstream_pkgtests_gitgraph_spec_021" => {
-            Some(("-151.671875 -19 209.671875 129", "209.671875"))
-        }
-        "upstream_pkgtests_gitgraph_spec_023" => {
-            Some(("-233.953125 -19 291.953125 579", "291.953125"))
-        }
-        "upstream_pkgtests_gitgraph_spec_024" => {
-            Some(("-137.984375 -19 195.984375 129", "195.984375"))
         }
         "upstream_pkgtests_gitgraph_spec_027" => {
             Some(("-137.984375 -19 245.984375 173.5183563232422", "245.984375"))
@@ -705,9 +598,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-137.984375 -19 345.984375 172.94400024414062",
             "345.984375",
         )),
-        "upstream_pkgtests_gitgraph_spec_029" => {
-            Some(("-137.984375 -19 195.984375 129", "195.984375"))
-        }
         "upstream_pkgtests_gitgraph_spec_030" => {
             Some(("-137.984375 -19 245.984375 173.5183563232422", "245.984375"))
         }
@@ -734,12 +624,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_pkgtests_gitgraph_spec_036" => {
             Some(("-117.421875 -19 275.421875 145.5919952392578", "275.421875"))
         }
-        "upstream_pkgtests_gitgraph_spec_037" => {
-            Some(("-114.078125 -19 388.8828125 219", "388.8828125"))
-        }
-        "upstream_pkgtests_gitgraph_spec_038" => {
-            Some(("-114.078125 -19 372.078125 219", "372.078125"))
-        }
         "upstream_pkgtests_gitgraph_spec_039" => Some((
             "-114.078125 -19 472.078125 235.75454711914062",
             "472.078125",
@@ -748,8 +632,6 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-114.078125 -19 522.078125 235.75454711914062",
             "522.078125",
         )),
-        "upstream_pkgtests_gitgraph_spec_052" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_spec_053" => Some(("-96 -19 154 83.82177734375", "154")),
         "upstream_pkgtests_gitgraph_spec_054" => Some((
             "-171.421875 -19 829.421875 372.85455322265625",
             "829.421875",
@@ -757,30 +639,8 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_pkgtests_gitgraph_spec_055" => Some(("-96 -19 254 173.30160522460938", "254")),
         "upstream_pkgtests_gitgraph_spec_066" => Some(("-35.5 -8 69 46", "69")),
         "upstream_pkgtests_gitgraph_spec_071" => Some(("-35.5 -8 69 46", "69")),
-        "upstream_pkgtests_gitgraph_spec_076" => Some(("-96 -19 104 39", "104")),
-        "upstream_pkgtests_gitgraph_test_001" => Some(("-96 -19 154 83.82177734375", "154")),
         "upstream_pkgtests_gitgraph_test_002" => Some(("-96 -19 254 83.51834869384766", "254")),
-        "upstream_pkgtests_gitgraph_test_003" => {
-            Some(("-96 -34.70000076293945 154 70.83684539794922", "154"))
-        }
-        "upstream_pkgtests_gitgraph_test_004" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_test_005" => Some(("-96 -19 154 83.82177734375", "154")),
         "upstream_pkgtests_gitgraph_test_007" => Some(("-96 -19 204 83.51834869384766", "204")),
-        "upstream_pkgtests_gitgraph_test_008" => {
-            Some(("-110.453125 -19 218.453125 129", "218.453125"))
-        }
-        "upstream_pkgtests_gitgraph_test_010" => {
-            Some(("-114.078125 -19 172.078125 129", "172.078125"))
-        }
-        "upstream_pkgtests_gitgraph_test_011" => Some(("-205.1875 -19 213.1875 129", "213.1875")),
-        "upstream_pkgtests_gitgraph_test_012" => {
-            Some(("-198.46875 -19 206.46875 129", "206.46875"))
-        }
-        "upstream_pkgtests_gitgraph_test_013" => {
-            Some(("-114.078125 -19 122.078125 129", "122.078125"))
-        }
-        "upstream_pkgtests_gitgraph_test_023" => Some(("-96 -19 154 83.82177734375", "154")),
-        "upstream_pkgtests_gitgraph_test_024" => Some(("-96 -19 154 83.82177734375", "154")),
         "upstream_pkgtests_gitgraph_test_025" => Some((
             "-42.04056167602539 -8 192.07962036132812 255.8954315185547",
             "192.07962036132812",

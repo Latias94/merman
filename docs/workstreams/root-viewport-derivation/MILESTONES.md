@@ -174,6 +174,10 @@ Progress:
   bbox calculation while keeping title placement anchored to the pre-title content center. Removed
   13 now-derived GitGraph title/root pins and tightened the root budget to `603`, leaving `213`
   GitGraph root entries.
+- Switched LR/RL GitGraph branch-label layout to computed-length widths after upstream branch
+  label rects proved to match text advance better than ASCII-overhang simple bbox width. The
+  follow-up disabled-root cross-check exposed and removed 57 now-derived GitGraph root pins,
+  tightening the root budget to `545` and leaving `156` GitGraph root entries.
 
 Exit criteria:
 

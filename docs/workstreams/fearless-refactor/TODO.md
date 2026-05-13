@@ -573,7 +573,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   disabled-root drift to a sub-pixel branch-label bbox mismatch without adding overrides. A later
   Sequence frontmatter-title pass propagated metadata titles into root bounds, removed
   `upstream_html_demos_sequence_sequence_diagram_demos_002`, and tightened the root total to `602`
-  with `79` Sequence entries. A follow-up Flowchart
+  with `79` Sequence entries. A later GitGraph horizontal branch-label width pass switched LR/RL
+  branch labels to computed-length widths, removed 57 now-derived GitGraph root pins, and
+  tightened the root total to `545` with `156` GitGraph entries. A follow-up Flowchart
   disabled-root audit produced 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed
   viewBox dimensions, and one skipped fixture; the largest drift comes from icon-heavy Flowcharts
   and old-shape all-pairs fixtures, so Flowchart also remains a bounds/shape derivation target. A

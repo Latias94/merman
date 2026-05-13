@@ -2,6 +2,12 @@
 
 ## 2026-05-13
 
+- Switched horizontal GitGraph branch-label layout to computed-length widths while retaining the
+  wider bbox path for TB/BT roots where rotated dynamic commit labels dominate. The full
+  disabled-root GitGraph cross-check exposed 57 now-derived root pins
+  (`override=213 mismatch=156 stale=57 missing=0`); deleting them leaves
+  `override=156 mismatch=156 stale=0 missing=0`, GitGraph at `156` root pins, and the root
+  no-growth budget tightened to `545`.
 - Included GitGraph branch line endpoints in GitGraph-owned emitted root bbox derivation so
   zero-length branch lines affect raw root viewports like browser `getBBox()` does. The focused
   empty-graph package bucket (`upstream_pkgtests_diagram_orchestration_spec_048`,

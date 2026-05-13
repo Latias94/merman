@@ -257,9 +257,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `report-overrides --check-no-growth`, render/xtask clippy, and render nextest stayed green; no
   root pin was deleted because the retained GitGraph table still matches the disabled-root DOM
   mismatch set.
+- [x] Use computed-length branch-label widths for horizontal GitGraph roots and prune the derived
+  pins.
+  Evidence: LR/RL branch labels now use `<text>.getComputedTextLength()`-style widths instead of
+  ASCII-overhang simple bbox widths, matching upstream branch-label rect/root behavior for the
+  horizontal bucket. TB/BT keep the wider bbox path because rotated dynamic commit IDs can dominate
+  vertical roots. The full disabled-root GitGraph cross-check exposed 57 now-derived pins
+  (`override=213 mismatch=156 stale=57 missing=0`); after deleting them, the cross-check is
+  `override=156 mismatch=156 stale=0 missing=0`. Root viewport overrides are now `545` total,
+  with `156` GitGraph entries, and the root no-growth budget is tightened to `545`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
-  fixture pins. The next useful target is branch-label SVG bbox measurement parity, followed by
-  cherry-pick/tag vertical bbox drift.
+  fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
+  drift, not another blind GitGraph table-pruning pass.
 
 ## P3: Release Closeout
 

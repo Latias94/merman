@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Switched horizontal GitGraph branch-label layout to computed-length widths, kept vertical
+  GitGraph labels on the wider bbox path to avoid dynamic commit-id root regressions, deleted 57
+  now-derived GitGraph root pins, and tightened the root no-growth budget to `545` with GitGraph at
+  `156`.
 - Included GitGraph branch line endpoints in GitGraph-owned root bbox derivation, matching browser
   `getBBox()` behavior for zero-length branch lines without widening the shared emitted-bounds
   scanner. This collapses the empty-graph package bucket from roughly `+34.750px` raw root drift
