@@ -187,6 +187,10 @@ Progress:
 - Derived the courier Flowchart long-name/class-definition root by measuring C1 control bytes in
   mojibake HTML labels as Chromium replacement glyphs, removed one more Flowchart root pin, and
   tightened the root budget to `531` with `111` Flowchart root entries.
+- Derived the Flowchart SVG-like long-word subgraph-title root by sharing emitted SVG text wrapping
+  with layout and sizing default process nodes from wrapped computed text length. Removed
+  `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` and tightened the root
+  budget to `530` with `110` Flowchart root entries.
 
 Exit criteria:
 

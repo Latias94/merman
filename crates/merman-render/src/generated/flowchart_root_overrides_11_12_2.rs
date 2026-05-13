@@ -263,9 +263,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_flowchart_v2_lines_stroke_thick_spec" => {
             Some(("-57.71875 -50 200.875 224", "200.875"))
         }
-        "upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec" => {
-            Some(("0 0 361.1875 135", "361.188"))
-        }
         "upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_main_graph_spec" => {
             Some(("-66.3203125 -50 406.09375 196", "406.094"))
         }

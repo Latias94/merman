@@ -586,7 +586,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   follow-up Flowchart C1 replacement-glyph pass derived the courier long-name/class-definition
   Cypress root, removed one more Flowchart root pin, and tightened the root total to `531` with
   `111` Flowchart entries, while the handdrawn/default-font sibling remains pinned for real
-  residual drift. Flowchart remains a bounds/shape derivation target. A follow-up Sequence
+  residual drift. A follow-up Flowchart SVG-like subgraph-title pass shared emitted SVG text
+  wrapping with layout and sized default process nodes from wrapped computed text length, removing
+  `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` and tightening the
+  root total to `530` with `110` Flowchart entries. Flowchart remains a bounds/shape derivation
+  target. A follow-up Sequence
   disabled-root audit produced 320 root rows, with 176 non-zero `max-width` deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,
   long-message, and Mermaid API fixtures, so Sequence also needs typed bounds work before another

@@ -2,6 +2,11 @@
 
 ## 2026-05-13
 
+- Derived the Flowchart SVG-like long-word subgraph-title root by sharing the emitted SVG text
+  wrapping helper with layout and sizing default process nodes from wrapped computed text length.
+  `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` now passes focused
+  disabled-root `parity-root`, so its Flowchart root pin was deleted; Flowchart root pins are now
+  `110`, and the root no-growth budget is `530`.
 - Modeled C1 control bytes in mojibake Flowchart HTML labels as Chromium near-full-em replacement
   glyphs. The courier long-name/class-definition Cypress fixture now passes focused
   `parity-root` with root overrides disabled, so its root pin was deleted; Flowchart root pins are

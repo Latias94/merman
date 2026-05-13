@@ -248,6 +248,138 @@ pub fn wrap_text_lines_measurer(
     }
 }
 
+/// Wraps flowchart-style SVG text using the same width probe Mermaid uses for emitted `<text>`.
+///
+/// The helper is shared by layout and SVG emission so wrapped cluster titles, node labels, and edge
+/// labels agree on both line breaks and the width used for root-bounds derivation.
+pub(crate) fn wrap_svg_text_lines_by_measurement(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    break_long_words: bool,
+) -> Vec<String> {
+    const EPS_PX: f64 = 0.125;
+    let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
+
+    fn measure_w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
+        measurer.measure(s, style).width
+    }
+
+    fn split_token_to_width_px(
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        tok: &str,
+        max_width_px: f64,
+    ) -> (String, String) {
+        if max_width_px <= 0.0 {
+            return (tok.to_string(), String::new());
+        }
+        let chars = tok.chars().collect::<Vec<_>>();
+        if chars.is_empty() {
+            return (String::new(), String::new());
+        }
+
+        let mut split_at = 1usize;
+        for i in 1..=chars.len() {
+            let head = chars[..i].iter().collect::<String>();
+            let w = measure_w_px(measurer, style, &head);
+            if w.is_finite() && w <= max_width_px + EPS_PX {
+                split_at = i;
+            } else {
+                break;
+            }
+        }
+        let head = chars[..split_at].iter().collect::<String>();
+        let tail = chars[split_at..].iter().collect::<String>();
+        (head, tail)
+    }
+
+    fn wrap_line_to_width_px(
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        line: &str,
+        max_width_px: f64,
+        break_long_words: bool,
+    ) -> Vec<String> {
+        let mut tokens =
+            std::collections::VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
+        let mut out: Vec<String> = Vec::new();
+        let mut cur = String::new();
+
+        while let Some(tok) = tokens.pop_front() {
+            if cur.is_empty() && tok == " " {
+                continue;
+            }
+
+            let candidate = format!("{cur}{tok}");
+            let candidate_trimmed = candidate.trim_end();
+            if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
+                cur = candidate;
+                continue;
+            }
+
+            if !cur.trim().is_empty() {
+                out.push(cur.trim_end().to_string());
+                cur.clear();
+                tokens.push_front(tok);
+                continue;
+            }
+
+            if tok == " " {
+                continue;
+            }
+
+            if measure_w_px(measurer, style, tok.as_str()) <= max_width_px + EPS_PX {
+                cur = tok;
+                continue;
+            }
+
+            if !break_long_words {
+                out.push(tok);
+                continue;
+            }
+
+            let (head, tail) = split_token_to_width_px(measurer, style, &tok, max_width_px);
+            out.push(head);
+            if !tail.is_empty() {
+                tokens.push_front(tail);
+            }
+        }
+
+        if !cur.trim().is_empty() {
+            out.push(cur.trim_end().to_string());
+        }
+
+        if out.is_empty() {
+            vec!["".to_string()]
+        } else {
+            out
+        }
+    }
+
+    let mut lines = Vec::new();
+    for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+        if let Some(w) = max_width_px {
+            lines.extend(wrap_line_to_width_px(
+                measurer,
+                style,
+                &line,
+                w,
+                break_long_words,
+            ));
+        } else {
+            lines.push(line);
+        }
+    }
+
+    if lines.is_empty() {
+        vec!["".to_string()]
+    } else {
+        lines
+    }
+}
+
 /// Splits a Mermaid label into lines using Mermaid's `<br>`-style line breaks.
 ///
 /// Mirrors Mermaid's `lineBreakRegex = /<br\\s*\\/?>/gi` behavior:

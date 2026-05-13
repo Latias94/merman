@@ -7,7 +7,7 @@
           "id": "n0",
           "x": 109.835,
           "y": 31.8,
-          "width": 75.84,
+          "width": 75.844,
           "height": 47.6,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "n1",
           "x": 350.706,
           "y": 31.8,
-          "width": 75.84,
+          "width": 75.844,
           "height": 47.6,
           "is_cluster": false
         },
@@ -39,7 +39,7 @@
           "id": "n2",
           "x": 579.37,
           "y": 31.8,
-          "width": 75.84,
+          "width": 75.844,
           "height": 47.6,
           "is_cluster": false
         },
@@ -55,7 +55,7 @@
           "id": "n3",
           "x": 792.978,
           "y": 31.8,
-          "width": 75.84,
+          "width": 75.844,
           "height": 47.6,
           "is_cluster": false
         },
@@ -71,7 +71,7 @@
           "id": "n4",
           "x": 946.987,
           "y": 31.8,
-          "width": 75.84,
+          "width": 75.844,
           "height": 47.6,
           "is_cluster": false
         },
@@ -235,7 +235,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 984.907,
+        "max_x": 984.909,
         "max_y": 282.579
       }
     }

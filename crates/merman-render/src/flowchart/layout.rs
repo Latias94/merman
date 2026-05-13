@@ -41,6 +41,21 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn flowchart_svg_plain_computed_width_px(
+    measurer: &dyn TextMeasurer,
+    plain: &str,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+) -> f64 {
+    let wrapped_lines =
+        crate::text::wrap_svg_text_lines_by_measurement(measurer, plain, style, max_width_px, true);
+    let mut width: f64 = 0.0;
+    for line in wrapped_lines {
+        width = width.max(measurer.measure_svg_text_computed_length_px(line.trim_end(), style));
+    }
+    crate::text::round_to_1_64_px(width)
+}
+
 fn rank_dir_from_flow(direction: &str) -> RankDir {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => RankDir::TB,
@@ -947,6 +962,25 @@ fn layout_flowchart_v2_with_model(
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 node_text_style.as_ref(),
+            );
+        }
+        if node_wrap_mode == WrapMode::SvgLike
+            && label_type != "markdown"
+            && !raw_label.contains('<')
+            && !raw_label.contains('>')
+            && matches!(
+                n.layout_shape.as_deref().unwrap_or("squareRect"),
+                "squareRect"
+            )
+        {
+            let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+                raw_label, label_type, false,
+            );
+            metrics.width = flowchart_svg_plain_computed_width_px(
+                measurer,
+                &plain,
+                node_text_style.as_ref(),
+                Some(wrapping_width),
             );
         }
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
@@ -2208,18 +2242,18 @@ fn layout_flowchart_v2_with_model(
         });
         if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type != "markdown" {
             // Mermaid's flowchart cluster titles rendered as plain SVG `<text>` are measured via
-            // `getComputedTextLength()` rather than `getBBox().width` (the latter includes ASCII
-            // overhang and differs for short tokens like `One` in upstream docs fixtures).
+            // `getComputedTextLength()` on the emitted wrapped lines rather than the raw title.
+            // Using the raw unwrapped line makes long-word SVG-like subgraph titles pull root
+            // bounds far to the left even though Mermaid emits a wrapped `<tspan>` stack.
             let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
                 &sg.title, label_type, false,
             );
-            let mut w: f64 = 0.0;
-            for line in plain.lines() {
-                w = w.max(
-                    measurer.measure_svg_text_computed_length_px(line.trim_end(), &text_style),
-                );
-            }
-            title_metrics.width = crate::text::round_to_1_64_px(w);
+            title_metrics.width = flowchart_svg_plain_computed_width_px(
+                measurer,
+                &plain,
+                &text_style,
+                title_width_limit,
+            );
         } else if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type == "markdown" {
             // Cluster titles with markdown emphasis are rendered as SVG `<text>/<tspan>` runs and
             // measured via browser `getBBox()` in upstream Mermaid. For italic `<em>` titles, the

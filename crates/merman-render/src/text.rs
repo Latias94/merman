@@ -47,6 +47,7 @@ pub(crate) use svg_metrics::{
     svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
+pub(crate) use wrap::wrap_svg_text_lines_by_measurement;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, split_html_br_lines, wrap_label_like_mermaid_lines,
     wrap_label_like_mermaid_lines_floored_bbox, wrap_label_like_mermaid_lines_relaxed,

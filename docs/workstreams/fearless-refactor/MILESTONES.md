@@ -687,6 +687,10 @@ Progress:
 - A follow-up Flowchart C1 replacement-glyph pass derived the courier long-name/class-definition
   Cypress root, removed one more Flowchart root pin, and tightened the root viewport total to `531`
   with `111` Flowchart entries.
+- A follow-up Flowchart SVG-like subgraph-title pass shared the emitted SVG text wrapping helper
+  with layout and sized default process nodes from wrapped computed text length. This removed
+  `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec` and tightened the
+  root viewport total to `530` with `110` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

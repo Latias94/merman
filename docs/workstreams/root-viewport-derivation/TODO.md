@@ -287,6 +287,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   so its root pin was deleted. The handdrawn/default-font sibling still has real residual root
   drift and remains pinned. Root viewport overrides are now `531` total, Flowchart has `111`
   entries, and the root no-growth budget is tightened to `531`.
+- [x] Derive the Flowchart SVG-like long-word subgraph-title root from shared emitted wrapping.
+  Evidence: Flowchart layout now reuses the emitted SVG text wrapping helper for plain SVG cluster
+  titles and sizes default process nodes from wrapped computed text length. Focused disabled-root
+  `parity-root` passes for
+  `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec`, so its root pin was
+  deleted. Root viewport overrides are now `530` total, Flowchart has `110` entries, and the root
+  no-growth budget is tightened to `530`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.
