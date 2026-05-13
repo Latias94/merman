@@ -63,6 +63,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
+  `Hello Alice, please meet Carol?`, so the stacked-activation fixtures now derive their actor
+  spacing and root viewport without fixture-scoped pins. Sequence root pins drop to `76`, and the
+  root viewport no-growth budget tightens to `379`.
+- Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
+  `Hello Alice, I'm fine and you?`, so `activation_explicit` now derives its actor spacing and root
+  viewport without a fixture-scoped pin. Sequence root pins drop to `78`, and the root viewport
+  no-growth budget tightens to `381`.
+- GitGraph theme parity: honor Mermaid's commit/tag label theme variables for emitted CSS and root
+  measurement, including `commitLabelFontSize`, `tagLabelFontSize`, commit/tag label colors,
+  backgrounds, and tag borders. The focused disabled-root checks for the commit/tag font-size docs
+  fixtures stay green, `upstream_docs_gitgraph_customizing_commit_label_font_size_032` no longer
+  needs a root viewport pin, and the root viewport no-growth budget tightens to `382` with
+  GitGraph at `23`.
+- GitGraph root derivation: measure vertical branch-label backgrounds from the centered SVG bbox
+  path with 1/64px ties-to-even quantization, matching Mermaid's
+  `drawText(name).getBBox()` branch-label placement. A disabled-root audit showed 24 of the
+  previous 65 GitGraph root pins still guard real drift, so 41 stale pins were deleted and the root
+  viewport no-growth budget tightened to `383` with GitGraph at `24`.
 - Flowchart fork/join layout: match Mermaid's `forkJoin.ts` direction-sensitive sizing by using a
   vertical fork/join bar only in LR-rendered graphs while preserving the state-padding inflation.
   This removes the 60px LR old-shape layout drift, refreshes the affected layout goldens, deletes

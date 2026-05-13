@@ -5,6 +5,27 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Corrected the Sequence default message-width fact for `Hello Alice, please meet Carol?` to match
+  the upstream stacked-activation actor spacing. Both `activation_stacked` and
+  `upstream_pkgtests_sequencediagram_spec_040` now pass focused disabled-root `parity-root`, so
+  their root pins were deleted. Sequence root pins are now `76`, and the root no-growth budget is
+  `379`.
+- Corrected the Sequence default message-width fact for `Hello Alice, I'm fine and you?` to match
+  the upstream `activation_explicit` actor spacing. The fixture now passes focused
+  `parity-root` with root viewport overrides disabled, so its root pin was deleted. Sequence root
+  pins are now `78`, and the root no-growth budget is `381`.
+- Honored Mermaid's GitGraph commit/tag label theme variables in emitted CSS and root measurement:
+  commit labels now use `commitLabelFontSize`, `commitLabelColor`, and
+  `commitLabelBackground`, while tag labels use `tagLabelFontSize`, `tagLabelColor`,
+  `tagLabelBackground`, and `tagLabelBorder`. Focused disabled-root checks for the commit/tag
+  font-size docs fixtures pass without the commit-label font-size root pin, so
+  `upstream_docs_gitgraph_customizing_commit_label_font_size_032` was deleted. GitGraph root pins
+  are now `23`, and the root no-growth budget is `382`.
+- Derived vertical GitGraph branch-label root bounds from the centered SVG bbox path with
+  1/64px ties-to-even quantization, matching Mermaid's `drawText(name).getBBox()` branch-label
+  placement for TB/BT. A disabled-root audit showed 24 of the previous 65 GitGraph root pins still
+  guard real DOM drift; the other 41 were stale and have been deleted. GitGraph root pins are now
+  `24`, and the root no-growth budget is `383`.
 - Derived GitGraph commit and tag label root bounds from GitGraph-owned computed text lengths plus
   1/64px quantization, avoiding the shared simple bbox width path for GitGraph short labels. A
   disabled-root audit showed 65 of the previous 130 GitGraph root pins still guard real DOM drift;

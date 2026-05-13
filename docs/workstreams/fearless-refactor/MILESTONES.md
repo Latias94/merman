@@ -688,6 +688,19 @@ Progress:
   GitGraph-owned computed text lengths plus 1/64px quantization instead of the shared simple bbox
   path. The disabled-root audit found 65 stale pins in the previous 130-entry GitGraph table; the
   root viewport total is now `432` with `65` GitGraph entries.
+- A follow-up GitGraph vertical branch-label pass matched Mermaid's
+  `drawText(name).getBBox()` behavior for TB/BT branch labels by using centered SVG bbox widths
+  with ties-to-even 1/64px quantization. The disabled-root audit found 41 stale pins in the
+  previous 65-entry GitGraph table; the root viewport total is now `383` with `24` GitGraph
+  entries.
+- A follow-up GitGraph commit/tag label theme-variable pass honored Mermaid's label-specific CSS
+  variables and measured commit and tag labels with separate styles. This removed
+  `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, tightening the root viewport
+  total to `382` with `23` GitGraph entries.
+- A follow-up Sequence stacked-activation pass corrected the shared
+  `Hello Alice, please meet Carol?` message-width fact, removed `activation_stacked` and
+  `upstream_pkgtests_sequencediagram_spec_040`, and tightened the root viewport total to `379`
+  with `76` Sequence entries.
 - A follow-up Flowchart imageSquare pass sized layout bounds from rendered image plus label extents,
   removed `upstream_docs_flowchart_parameters_136`, and tightened the root viewport total to `544`
   with `124` Flowchart entries.

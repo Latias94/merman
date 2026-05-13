@@ -3,23 +3,75 @@ use super::*;
 struct GitGraphCss {
     css: String,
     font_family: String,
+    commit_label_font_size_px: f64,
+    tag_label_font_size_px: f64,
 }
 
 fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
+    let commit_label_font_size =
+        config_string(effective_config, &["themeVariables", "commitLabelFontSize"])
+            .unwrap_or_else(|| "10px".to_string());
+    let tag_label_font_size =
+        config_string(effective_config, &["themeVariables", "tagLabelFontSize"])
+            .unwrap_or_else(|| "10px".to_string());
+    let commit_label_font_size_px = parse_gitgraph_label_font_size_px(&commit_label_font_size);
+    let tag_label_font_size_px = parse_gitgraph_label_font_size_px(&tag_label_font_size);
+    let commit_label_color = theme_color(effective_config, "commitLabelColor", "#000021");
+    let commit_label_background = theme_color(effective_config, "commitLabelBackground", "#ffffde");
+    let tag_label_color = theme_color(effective_config, "tagLabelColor", "#131300");
+    let tag_label_background = theme_color(effective_config, "tagLabelBackground", "#ECECFF");
+    let tag_label_border = theme_color(
+        effective_config,
+        "tagLabelBorder",
+        "hsl(240, 60%, 86.2745098039%)",
+    );
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
-        id, parts.line_color, id, id, id, id, parts.text_color
+        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};}}#{} .commit-label-bkg{{font-size:{};fill:{};opacity:0.5;}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};}}#{} .tag-hole{{fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        id,
+        parts.line_color,
+        id,
+        id,
+        commit_label_font_size,
+        commit_label_color,
+        id,
+        commit_label_font_size,
+        commit_label_background,
+        id,
+        tag_label_font_size,
+        tag_label_color,
+        id,
+        tag_label_background,
+        tag_label_border,
+        id,
+        parts.text_color,
+        id,
+        parts.text_color
     );
     out.push_str(&parts.root_rule);
     GitGraphCss {
         css: out,
         font_family,
+        commit_label_font_size_px,
+        tag_label_font_size_px,
     }
+}
+
+fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
+    let raw = raw.trim().trim_end_matches(';').trim();
+    let raw = raw.trim_end_matches("!important").trim();
+    raw.strip_suffix("px")
+        .unwrap_or(raw)
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .unwrap_or(10.0)
+        .max(1.0)
 }
 
 pub(super) fn render_gitgraph_diagram_svg(
@@ -107,6 +159,22 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     ) -> f64 {
         crate::text::round_to_1_64_px(measurer.measure_svg_text_computed_length_px(text, style))
             .max(0.0)
+    }
+
+    fn gitgraph_commit_tag_label_height_px(
+        measurer: &dyn TextMeasurer,
+        text: &str,
+        style: &crate::text::TextStyle,
+    ) -> f64 {
+        if text.trim_end().is_empty() {
+            return 0.0;
+        }
+        if style.font_size <= 10.0 {
+            return measurer
+                .measure_svg_simple_text_bbox_height_px(text, style)
+                .max(0.0);
+        }
+        crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
     }
 
     fn include_gitgraph_branch_line_bounds(
@@ -475,7 +543,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
     let commit_label_style = crate::text::TextStyle {
         font_family: Some(commit_font_family),
-        font_size: 10.0,
+        font_size: css.commit_label_font_size_px,
+        font_weight: None,
+    };
+    let tag_label_style = crate::text::TextStyle {
+        font_family: commit_label_style.font_family.clone(),
+        font_size: css.tag_label_font_size_px,
         font_weight: None,
     };
 
@@ -486,9 +559,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             && layout.show_commit_label;
         if show {
             let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
-            let bbox_h = measurer
-                .measure_svg_simple_text_bbox_height_px(&c.id, &commit_label_style)
-                .max(0.0);
+            let bbox_h = gitgraph_commit_tag_label_height_px(measurer, &c.id, &commit_label_style);
 
             let mut wrapper_transform: Option<String> = None;
             let mut rect_transform: Option<String> = None;
@@ -573,10 +644,9 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             let mut elems: Vec<TagGeom> = Vec::new();
             for tag_value in &tag_values {
                 let bbox_w =
-                    gitgraph_commit_tag_label_width_px(measurer, tag_value, &commit_label_style);
-                let bbox_h = measurer
-                    .measure_svg_simple_text_bbox_height_px(tag_value, &commit_label_style)
-                    .max(0.0);
+                    gitgraph_commit_tag_label_width_px(measurer, tag_value, &tag_label_style);
+                let bbox_h =
+                    gitgraph_commit_tag_label_height_px(measurer, tag_value, &tag_label_style);
                 max_w = max_w.max(bbox_w.max(0.0));
                 max_h = max_h.max(bbox_h.max(0.0));
                 elems.push(TagGeom { y_offset });

@@ -103,6 +103,31 @@ fn commit_axis_start_pos(dir: &str) -> f64 {
     }
 }
 
+fn branch_label_bbox_width_px(
+    direction: &str,
+    text: &str,
+    style: &TextStyle,
+    measurer: &dyn TextMeasurer,
+) -> f64 {
+    if direction == "TB" || direction == "BT" {
+        // Mermaid measures GitGraph branch labels with `drawText(name).getBBox()` before placing
+        // the background rect and, for vertical layouts, before advancing the next branch lane.
+        // Chromium's bbox for these unrotated labels behaves like the centered SVG bbox path with
+        // 1/64px ties-to-even quantization; including ASCII glyph overhang makes vertical roots
+        // systematically too wide.
+        let (left, right) = measurer.measure_svg_text_bbox_x(text, style);
+        crate::text::round_to_1_64_px_ties_to_even((left + right).max(0.0))
+    } else {
+        // Horizontal branch labels line up with the text advance rather than ASCII-overhang bbox
+        // width; upstream rects match `<text>.getComputedTextLength()`.
+        crate::text::round_to_1_64_px(
+            measurer
+                .measure_svg_text_computed_length_px(text, style)
+                .max(0.0),
+        )
+    }
+}
+
 fn should_reroute_arrow(
     commit_a: &GitGraphCommit,
     commit_b: &GitGraphCommit,
@@ -617,16 +642,7 @@ pub fn layout_gitgraph_diagram_typed(
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
         let metrics = measurer.measure(&b.name, &label_style);
-        let branch_label_w = if direction == "TB" || direction == "BT" {
-            // Vertical GitGraph roots are frequently dominated by rotated dynamic commit IDs, and
-            // existing baselines depend on the wider browser bbox branch-label path.
-            measurer.measure_svg_simple_text_bbox_width_px(&b.name, &label_style)
-        } else {
-            // Horizontal branch labels line up with the text advance rather than ASCII-overhang
-            // bbox width; upstream rects match `<text>.getComputedTextLength()`.
-            measurer.measure_svg_text_computed_length_px(&b.name, &label_style)
-        };
-        let bbox_w = crate::text::round_to_1_64_px(branch_label_w.max(0.0));
+        let bbox_w = branch_label_bbox_width_px(&direction, &b.name, &label_style, measurer);
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
 
@@ -868,6 +884,33 @@ mod tests {
         });
 
         assert_eq!(cfg_font_size(&cfg), 24.0);
+    }
+
+    #[test]
+    fn vertical_branch_label_widths_use_centered_bbox_ties_to_even() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        assert_eq!(
+            branch_label_bbox_width_px("TB", "main", &style, &measurer),
+            35.0
+        );
+        assert_eq!(
+            branch_label_bbox_width_px("TB", "branch1", &style, &measurer),
+            57.34375
+        );
+        assert_eq!(
+            branch_label_bbox_width_px("TB", "branch4", &style, &measurer),
+            57.34375
+        );
+        assert_eq!(
+            branch_label_bbox_width_px("LR", "branch4", &style, &measurer),
+            57.359375
+        );
     }
 
     #[test]

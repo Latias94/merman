@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, one hundred sixty-three net GitGraph root pins, and twenty-two Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-seven Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -33,17 +33,18 @@ docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, th
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label, commit/tag
-label computed-length, and seeded auto-id warm-up passes, and the
-Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
+label computed-length, vertical branch-label centered bbox, commit/tag label theme-variable, and
+seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
-HTML-label font-size precedence, iconSquare layout-bounds, and custom FontAwesome fallback passes:
+HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback, and LR
+fork/join direction-sensitive sizing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `79` entries.
-- GitGraph: `65` entries.
-- Flowchart: `103` entries.
-- Root viewport total: `432` entries.
+- Sequence: `76` entries.
+- GitGraph: `23` entries.
+- Flowchart: `95` entries.
+- Root viewport total: `379` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -67,8 +68,11 @@ three title/accessibility root pins, two residual default-title root pins, twelv
 now derives actor spacing from the single-run text-dimension width path plus two Sequence
 message-width facts, replacing the previous 16px actor-column drift with typed measurement data.
 The title/default-title cluster now derives from default-message width facts that preserve
-Mermaid's trailing-semicolon default font family. The simple note-right clusters now derive from
-the existing Sequence note/message bounds without new SVG metric rows, including the
+Mermaid's trailing-semicolon default font family. The follow-up stacked-activation pass corrected
+`Hello Alice, please meet Carol?` from upstream actor spacing, deleting `activation_stacked` and
+`upstream_pkgtests_sequencediagram_spec_040` after focused disabled-root `parity-root` checks.
+The simple note-right clusters now derive from the existing Sequence note/message bounds without
+new SVG metric rows, including the
 whitespace/comment variants. The block note-right trio extends that coverage to loop, rect, and
 nested-rect wrappers while keeping larger frame-expansion debt out of scope. The alt-control trio
 extends the same coverage to simple `alt`/`else` control wrappers. The long-note / long-message
@@ -77,15 +81,21 @@ metric fact for the long message, and dropped the stale `FRIENDS` row so the SVG
 budget stayed at `186` without changing `report-overrides --check-no-growth`.
 A second follow-up derived wrapped `leftOf` note width probing and final rewrap behavior, refreshed
 the affected Sequence/ZenUML layout goldens, and removed nine more Sequence root pins while keeping
-the text lookup and SVG text metric budgets flat.
+the text lookup and SVG text metric budgets flat. The latest small Sequence pass corrected the
+default `Hello Alice, I'm fine and you?` message-width fact from `activation_explicit` actor
+spacing, so that fixture now passes focused `parity-root` with root overrides disabled and no
+longer needs a root viewport pin.
 
-The latest GitGraph pass measures commit id labels and tag labels with GitGraph-owned
-`getComputedTextLength()`-style widths plus 1/64px quantization instead of the shared simple bbox
-path. That removes a cross-diagram measurement leak into GitGraph short labels. A disabled-root
-audit over the previous 130-entry table found 65 retained DOM mismatches and 65 stale pins, so the
-stale half was deleted. Together with the earlier title-bounds, branch-line endpoint, horizontal
-branch-label, and seeded auto-id warm-up passes, the retained GitGraph table is now `65` entries
-and no known stale retained GitGraph root pins remain in the current table.
+The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
+ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.
+LR/RL branch labels keep the computed-length rule. A disabled-root audit over the previous
+65-entry table found 24 retained DOM mismatches and 41 stale pins, so the stale pins were deleted.
+Together with the earlier title-bounds, branch-line endpoint, horizontal branch-label, commit/tag
+computed-length, and seeded auto-id warm-up passes, this left 24 GitGraph entries. A later
+commit/tag label theme-variable pass honored Mermaid's label-specific CSS and measurement styles,
+deleted `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, and leaves `23`
+GitGraph entries. Those remaining entries still guard real dynamic commit-label, cherry-pick/tag,
+height, or horizontal demo root drift.
 
 The latest Flowchart imageSquare pass sizes layout from the rendered image plus label extents
 instead of treating the Dagre node as only the image asset. This derives
@@ -136,6 +146,18 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-14: GitGraph vertical branch-label root bounds now use Mermaid's
+  `drawText(name).getBBox()`-style centered SVG bbox for TB/BT branch labels with ties-to-even
+  1/64px quantization, while LR/RL keeps the computed-length branch-label rule. With
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the audit of the previous 65-entry GitGraph table
+  found 24 retained DOM mismatches and 41 stale pins. The stale pins were deleted, leaving
+  GitGraph at `24` root entries and root total `383`.
+- 2026-05-14: GitGraph commit/tag label theme-variable parity now honors Mermaid's
+  `commitLabelFontSize`, `tagLabelFontSize`, label colors, backgrounds, and tag border variables
+  in emitted CSS and root measurement. Focused disabled-root checks for
+  `upstream_docs_gitgraph_customizing_commit_label_font_size_032` and
+  `upstream_docs_gitgraph_customizing_tag_label_font_size_033` passed without the commit-label
+  root pin, leaving GitGraph at `23` root entries and root total `382`.
 - 2026-05-14: GitGraph commit and tag label root bounds now use GitGraph-owned
   `getComputedTextLength()`-style widths with 1/64px quantization. With
   `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the audit of the previous 130-entry GitGraph table

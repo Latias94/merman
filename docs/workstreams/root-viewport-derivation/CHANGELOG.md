@@ -2,6 +2,26 @@
 
 ## 2026-05-14
 
+- Corrected the Sequence default `Hello Alice, please meet Carol?` message-width fact from the
+  upstream stacked-activation actor spacing, then deleted the now-derived
+  `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040` root viewport pins.
+  Focused disabled-root `parity-root` checks pass for both fixtures, tightening the root
+  no-growth budget to `379` with Sequence at `76`.
+- Corrected the Sequence default `Hello Alice, I'm fine and you?` message-width fact from the
+  upstream `activation_explicit` actor spacing, then deleted the now-derived root viewport pin.
+  Focused normal and disabled-root `parity-root` checks pass for the fixture, tightening the root
+  no-growth budget to `381` with Sequence at `78`.
+- Honored Mermaid's GitGraph commit/tag label theme variables in emitted CSS and root measurement:
+  commit labels now use their own font-size/color/background variables, tag labels use their own
+  font-size/color/background/border variables, and root bounds measure commit and tag labels with
+  separate styles. Focused disabled-root checks for the commit/tag font-size docs fixtures pass,
+  deleting `upstream_docs_gitgraph_customizing_commit_label_font_size_032` and tightening the root
+  no-growth budget to `382` with GitGraph at `23`.
+- Derived vertical GitGraph branch-label roots from Mermaid's `drawText(name).getBBox()` behavior:
+  TB/BT branch labels now use the centered SVG bbox path with 1/64px ties-to-even quantization,
+  while LR/RL keeps the computed-length branch-label rule. A disabled-root audit over the
+  65-entry GitGraph table found 24 retained DOM mismatches and 41 stale pins; deleting the stale
+  pins tightens the root no-growth budget to `383` with GitGraph at `24`.
 - Matched Flowchart `fork/join` layout sizing to Mermaid's `forkJoin.ts` direction rule:
   LR-rendered graphs use the vertical `10x70` bar before the `state.padding / 2` Dagre inflation,
   while other directions keep the horizontal `70x10` bar. This removes the 60px LR old-shape

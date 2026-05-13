@@ -216,6 +216,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Sequence `parity-root`, render clippy, render nextest, and `report-overrides --check-no-growth`
   passed. Root viewport overrides are now `702` total, with `164` Sequence entries; text lookup
   remains `484` and the SVG text metric table remains `186`.
+- [x] Remove the stacked-activation Sequence pair covered by a shared message-width fact.
+  Evidence: the browser `calculateTextDimensions` width fact for
+  `Hello Alice, please meet Carol?` now matches upstream actor spacing. `activation_stacked` and
+  `upstream_pkgtests_sequencediagram_spec_040` pass focused disabled-root `parity-root`; full
+  Sequence `parity-root` passes, and `report-overrides --check-no-growth` reports `379` root
+  entries with `76` Sequence entries.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch
@@ -285,8 +291,21 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   simple SVG bbox width path. A disabled-root audit over the previous 130-entry GitGraph root table
   found 65 retained DOM mismatches and 65 stale pins, so the stale pins were deleted. Root viewport
   overrides are now `432` total with `65` GitGraph entries.
+- [x] Derive vertical GitGraph branch-label roots from centered SVG bbox widths.
+  Evidence: TB/BT branch labels now follow Mermaid's `drawText(name).getBBox()` behavior with the
+  centered SVG bbox path and ties-to-even 1/64px quantization, while LR/RL keep the
+  computed-length branch-label rule. A disabled-root audit over the previous 65-entry GitGraph
+  root table found 24 retained DOM mismatches and 41 stale pins, so the stale pins were deleted.
+  Root viewport overrides are now `383` total with `24` GitGraph entries.
+- [x] Honor GitGraph commit/tag label theme variables in emitted CSS and root measurement.
+  Evidence: commit labels now use `commitLabelFontSize`, `commitLabelColor`, and
+  `commitLabelBackground`; tag labels now use `tagLabelFontSize`, `tagLabelColor`,
+  `tagLabelBackground`, and `tagLabelBorder`; root bounds measure commit and tag labels with
+  separate styles. Focused disabled-root checks for the commit/tag font-size docs fixtures pass
+  without `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, so that root pin was
+  deleted. Root viewport overrides are now `382` total with `23` GitGraph entries.
 - [ ] Revisit broader GitGraph vertical commit/tag and cherry-pick root drift after a typed
-  measurement rule can explain the remaining disabled-root mismatches. The 65 retained entries are
+  measurement rule can explain the remaining disabled-root mismatches. The 23 retained entries are
   current guards, so the next GitGraph pass should start from root-delta families rather than
   another blind table deletion.
 - [x] Derive the Flowchart imageSquare docs parameters root from layout-time image plus label

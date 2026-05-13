@@ -228,6 +228,21 @@ Progress:
   disabled-root GitGraph cross-check over the previous 130-entry table found `retained=65` and
   `stale=65`; deleting the stale pins tightens the root budget to `432` and leaves `65` GitGraph
   root entries.
+- Derived vertical GitGraph branch-label root bounds by matching Mermaid's
+  `drawText(name).getBBox()` path for TB/BT branch labels with centered SVG bbox widths and
+  ties-to-even 1/64px quantization. The disabled-root GitGraph cross-check over the previous
+  65-entry table found `retained=24` and `stale=41`; deleting the stale pins tightens the root
+  budget to `383` and leaves `24` GitGraph root entries.
+- Honored GitGraph commit/tag label theme variables in emitted CSS and root measurement by using
+  separate commit/tag label styles for font-size, color, background, and tag border semantics.
+  Focused disabled-root checks for the commit/tag font-size docs fixtures pass without
+  `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, tightening the root budget to
+  `382` and leaving `23` GitGraph root entries.
+- Removed the stacked-activation Sequence pair after correcting the default message-width fact for
+  `Hello Alice, please meet Carol?` from upstream actor spacing. Focused disabled-root checks pass
+  for `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040`, full Sequence
+  `parity-root` stays green, and the root budget is tightened to `379` with `76` Sequence root
+  entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed

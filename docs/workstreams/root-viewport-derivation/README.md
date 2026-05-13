@@ -22,12 +22,15 @@ strict release gates green.
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
   the stale retained pins exposed by the post-wrapping disabled-root sweep.
-- Current Sequence root viewport overrides: `79` entries after the follow-up Sequence metric,
-  note/message/frame, actor/root-bounds, and SVG metric-table cleanup passes.
-- Current GitGraph root viewport overrides: `65` entries after deriving GitGraph title text
+- Current Sequence root viewport overrides: `76` entries after the follow-up Sequence
+  message-width metric, note/message/frame, actor/root-bounds, and SVG metric-table cleanup
+  passes.
+- Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
-  widths, and upstream seeded auto-id warm-up behavior, then pruning the now-derived pins while
-  retaining the remaining table as real root-drift guards.
+  widths, vertical branch-label centered SVG bbox widths, and upstream seeded auto-id warm-up
+  behavior, then honoring commit/tag label theme-variable styles and pruning the now-derived pins
+  while retaining the remaining table as real
+  root-drift guards.
 - Current Flowchart root viewport overrides: `95` entries after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
   measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
@@ -36,7 +39,7 @@ strict release gates green.
   parameters, old-shape set5, courier long-name/class-definition, stage2 long-word title,
   Unicode/entities title, stale subgraph title-margin pins, numeric-vs-px-string font-size root,
   docs icon-shape root, custom-icon fallback roots, and eight old-shape set3 LR fork roots.
-- Current root viewport override budget: `424` entries.
+- Current root viewport override budget: `379` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.

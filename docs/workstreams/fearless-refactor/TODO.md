@@ -617,7 +617,17 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `stress_flowchart_icons_prefixes_and_quotes_052`, and tightened the root total to `523` with
   `103` Flowchart entries. A follow-up GitGraph commit/tag label computed-length pass removed 65
   additional stale GitGraph root pins and tightened the root total to `432` with `65` GitGraph
-  entries.
+  entries. A follow-up GitGraph vertical branch-label pass matched Mermaid's
+  `drawText(name).getBBox()` behavior for TB/BT branch labels with centered SVG bbox widths and
+  ties-to-even 1/64px quantization, removed 41 stale GitGraph root pins, and tightened the root
+  total to `383` with `24` GitGraph entries.
+  A follow-up GitGraph commit/tag label theme-variable pass honored Mermaid's label-specific CSS
+  variables, deleted `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, and tightened
+  the root total to `382` with `23` GitGraph entries.
+  A follow-up Sequence stacked-activation pass corrected the shared
+  `Hello Alice, please meet Carol?` message-width fact, deleted `activation_stacked` and
+  `upstream_pkgtests_sequencediagram_spec_040`, and tightened the root total to `379` with `76`
+  Sequence entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

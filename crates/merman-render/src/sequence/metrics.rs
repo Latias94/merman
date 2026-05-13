@@ -154,6 +154,20 @@ mod tests {
             super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are you?", &style);
         assert_eq!(hello_bob_w, 160.0);
 
+        let (hello_alice_w, _) = super::measure_svg_like_with_html_br(
+            &measurer,
+            "Hello Alice, I'm fine and you?",
+            &style,
+        );
+        assert_eq!(hello_alice_w, 193.0);
+
+        let (hello_alice_carol_w, _) = super::measure_svg_like_with_html_br(
+            &measurer,
+            "Hello Alice, please meet Carol?",
+            &style,
+        );
+        assert_eq!(hello_alice_carol_w, 203.0);
+
         let (hello_john_w, _) =
             super::measure_svg_like_with_html_br(&measurer, "Hello John, how are you?", &style);
         assert_eq!(hello_john_w, 164.0);
