@@ -1003,6 +1003,7 @@ fn layout_flowchart_v2_with_model(
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
+            layout_direction: &diagram_direction,
             metrics,
             padding: node_padding,
             state_padding,
@@ -1046,6 +1047,7 @@ fn layout_flowchart_v2_with_model(
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: Some("squareRect"),
+            layout_direction: &diagram_direction,
             metrics,
             padding: cluster_padding,
             state_padding,

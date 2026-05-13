@@ -228,6 +228,11 @@ Progress:
   disabled-root GitGraph cross-check over the previous 130-entry table found `retained=65` and
   `stale=65`; deleting the stale pins tightens the root budget to `432` and leaves `65` GitGraph
   root entries.
+- Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
+  direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
+  `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
+  the affected layout goldens, deleted five now-derived Flowchart root pins, and tightened the root
+  budget to `427` with `98` Flowchart root entries.
 
 Exit criteria:
 

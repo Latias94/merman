@@ -63,6 +63,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart fork/join layout: match Mermaid's `forkJoin.ts` direction-sensitive sizing by using a
+  vertical fork/join bar only in LR-rendered graphs while preserving the state-padding inflation.
+  This removes the 60px LR old-shape layout drift, refreshes the affected layout goldens, deletes
+  5 now-derived Flowchart root viewport pins, and tightens the root viewport no-growth budget to
+  `427` with Flowchart at `98`.
 - GitGraph root derivation: measure commit and tag labels with GitGraph-owned
   `getComputedTextLength()`-style widths plus 1/64px quantization instead of the shared simple
   SVG bbox path. The disabled-root audit showed only 65 of the previous 130 GitGraph root pins

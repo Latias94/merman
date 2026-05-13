@@ -184,26 +184,11 @@ pub fn lookup_flowchart_root_viewport_override(
                 "535.15",
             ))
         }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_allpairs_059" => {
-            Some(("2 0 947.4676513671875 257", "947.468"))
-        }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_classdef_064" => {
             Some(("0 2 304.88623046875 494", "304.886"))
         }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_label_058" => {
-            Some(("0 2 373.890625 524", "373.891"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_longlabel_060" => {
-            Some(("0 2 379.890625 595", "379.891"))
-        }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_false_062" => {
             Some(("0 2 351.578125 556.199951171875", "351.578"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_true_061" => {
-            Some(("0 2 379.845947265625 548", "379.846"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_nolabel_057" => {
-            Some(("0 2 198.671875 494", "198.672"))
         }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_styles_063" => {
             Some(("0 2 304.88623046875 494", "304.886"))

@@ -2,6 +2,11 @@
 
 ## 2026-05-14
 
+- Matched Flowchart `fork/join` layout sizing to Mermaid's `forkJoin.ts` direction rule:
+  LR-rendered graphs use the vertical `10x70` bar before the `state.padding / 2` Dagre inflation,
+  while other directions keep the horizontal `70x10` bar. This removes the 60px LR old-shape
+  offset in the set3 fixtures, refreshes the affected layout goldens, deletes five now-derived
+  Flowchart root pins, and tightens the root no-growth budget to `427` with Flowchart at `98`.
 - Derived GitGraph commit and tag label root bounds from GitGraph-owned computed text lengths with
   the same 1/64px quantization used by the upstream SVG text advance path. This avoids routing
   GitGraph short labels through the shared simple bbox path and its Sequence-specific browser facts.

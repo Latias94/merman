@@ -953,6 +953,7 @@ pub(crate) fn flowchart_node_render_dimensions(
 
 pub(super) struct NodeLayoutDimensionsRequest<'a> {
     pub(super) layout_shape: Option<&'a str>,
+    pub(super) layout_direction: &'a str,
     pub(super) metrics: crate::text::TextMetrics,
     pub(super) padding: f64,
     pub(super) state_padding: f64,
@@ -967,6 +968,7 @@ pub(super) struct NodeLayoutDimensionsRequest<'a> {
 pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f64, f64) {
     let NodeLayoutDimensionsRequest {
         layout_shape,
+        layout_direction,
         metrics,
         padding,
         state_padding,
@@ -1052,15 +1054,21 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         }
     }
 
-    let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding);
-
     // Mermaid `forkJoin.ts` inflates the Dagre node dimensions by `state.padding / 2` after
-    // `updateNodeBounds(...)`, but does not re-render the rectangle with the inflated size. Keep
-    // our layout spacing consistent with upstream by applying the same inflation here.
+    // `updateNodeBounds(...)`, but does not re-render the rectangle with the inflated size.
+    // It also switches the bar orientation only when the current rendered graph has `dir === "LR"`.
+    // Keep our layout spacing consistent with upstream by applying both rules here.
     if matches!(shape, "fork" | "join") {
         let extra = (state_padding / 2.0).max(0.0);
+        let (render_w, render_h) = if layout_direction.eq_ignore_ascii_case("LR") {
+            (10.0, 70.0)
+        } else {
+            (70.0, 10.0)
+        };
         return (render_w + extra, render_h + extra);
     }
+
+    let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding);
 
     // Mermaid flowchart-v2 renders nodes using the "rendering-elements" layer:
     // 1) it generates SVG paths (roughjs-based even for non-handDrawn look),

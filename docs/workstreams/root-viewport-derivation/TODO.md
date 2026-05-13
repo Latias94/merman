@@ -352,6 +352,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `stress_flowchart_icons_prefixes_and_quotes_052` pass focused disabled-root `parity-root`. Both
   root pins were deleted, and the root no-growth budget is tightened to `523` with `103` Flowchart
   entries.
+- [x] Derive the Flowchart old-shape set3 LR fork roots from direction-sensitive fork/join layout.
+  Evidence: Mermaid `forkJoin.ts` uses a vertical `10x70` bar only when the rendered graph `dir`
+  is `LR`, then inflates Dagre dimensions by `state.padding / 2`. Flowchart layout now mirrors that
+  rule, removing the 60px LR old-shape offset. The focused old-shape set3 LR fixtures pass
+  disabled-root `parity-root`, five root pins were deleted, and the root no-growth budget is
+  tightened to `427` with `98` Flowchart entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.
