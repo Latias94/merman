@@ -311,7 +311,11 @@ GitGraph title-bounds follow-up removed 13 more title-dominated pins by deriving
 the emitted root bounds. A later `parallelCommits` audit fixed the structural LR unconnected-branch
 commit-axis restart bug, reducing the focused disabled-root width drift from `+150.250px` to
 `+0.250px`, but the root entry remains because the residual mismatch is branch-label browser bbox
-measurement. The remaining `213` GitGraph entries were cross-checked against disabled-root
+measurement. A later font-size precedence pass made GitGraph ignore top-level `fontSize` while
+still honoring `themeVariables.fontSize` and top-level `fontFamily`, shrinking
+`stress_gitgraph_font_size_097` from the large top-level-font drift to `+0.156px` without adding
+overrides; the font-size stress pins stay because the residual mismatch is still branch-label
+browser bbox drift. The remaining `213` GitGraph entries were cross-checked against disabled-root
 mismatches and still need model/layout or text-measurement derivation work before another broad
 deletion pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced

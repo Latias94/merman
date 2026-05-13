@@ -567,7 +567,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   GitGraph `parity-root` stayed green. A follow-up GitGraph title-bounds pass included
   `gitTitleText` in emitted root bbox derivation, removed 13 title-dominated GitGraph root pins,
   and reduced the root total to `603` with `213` GitGraph entries; a disabled-root cross-check
-  confirmed all retained GitGraph pins still map to DOM mismatches. A follow-up Flowchart
+  confirmed all retained GitGraph pins still map to DOM mismatches. A follow-up GitGraph font-size
+  precedence pass ignored top-level `fontSize` for GitGraph layout/CSS while keeping
+  `themeVariables.fontSize` authoritative, reducing `stress_gitgraph_font_size_097` from a large
+  disabled-root drift to a sub-pixel branch-label bbox mismatch without adding overrides. A
+  follow-up Flowchart
   disabled-root audit produced 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed
   viewBox dimensions, and one skipped fixture; the largest drift comes from icon-heavy Flowcharts
   and old-shape all-pairs fixtures, so Flowchart also remains a bounds/shape derivation target. A

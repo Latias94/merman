@@ -56,7 +56,6 @@ fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
     cfg.get("themeVariables")
         .and_then(|v| v.get("fontSize"))
         .and_then(json_f64_css_px)
-        .or_else(|| cfg.get("fontSize").and_then(json_f64_css_px))
         .unwrap_or(16.0)
         .max(1.0)
 }
@@ -841,6 +840,30 @@ mod tests {
             custom_type: None,
             custom_id: Some(true),
         }
+    }
+
+    #[test]
+    fn font_size_ignores_top_level_font_size() {
+        let cfg = json!({
+            "fontSize": 22,
+            "themeVariables": {
+                "fontFamily": "\"courier new\", courier, monospace;",
+            },
+        });
+
+        assert_eq!(cfg_font_size(&cfg), 16.0);
+    }
+
+    #[test]
+    fn font_size_honors_theme_variable_font_size() {
+        let cfg = json!({
+            "fontSize": 10,
+            "themeVariables": {
+                "fontSize": "24px",
+            },
+        });
+
+        assert_eq!(cfg_font_size(&cfg), 24.0);
     }
 
     #[test]

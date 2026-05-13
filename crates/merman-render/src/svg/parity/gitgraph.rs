@@ -7,7 +7,7 @@ struct GitGraphCss {
 
 fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
     let id = escape_xml(diagram_id);
-    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
     let mut out = parts.css_prefix;
     let _ = write!(

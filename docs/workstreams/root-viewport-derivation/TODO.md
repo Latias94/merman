@@ -239,6 +239,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   dropped from a `+150.250px` root-width drift to `+0.250px`, while full GitGraph normal DOM and
   `parity-root` stayed green. No root pin was deleted because the remaining drift is branch-label
   browser bbox measurement, not commit-axis layout.
+- [x] Align GitGraph font-size precedence before pruning the font-size stress pins.
+  Evidence: GitGraph now ignores top-level `fontSize` in layout and base SVG CSS, matching upstream
+  `stress_gitgraph_font_size_097`; `themeVariables.fontSize` still wins for
+  `stress_gitgraph_font_size_precedence_098`, and top-level `fontFamily` stays honored. Focused
+  disabled-root diagnostics reduced `stress_gitgraph_font_size_097` from a large top-level
+  `fontSize` drift to `+0.156px`; no root pin was removed because `097`/`098` still have sub-pixel
+  branch-label bbox drift.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins.
 

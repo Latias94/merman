@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Aligned GitGraph font-size precedence so the renderer ignores top-level `fontSize` for GitGraph
+  root CSS/layout while still honoring `themeVariables.fontSize` and top-level `fontFamily`. This
+  removed the large `stress_gitgraph_font_size_097` disabled-root drift without adding overrides;
+  the root pin remains because the residual mismatch is sub-pixel branch-label browser bbox drift.
 - Fixed GitGraph `parallelCommits` layout for unconnected LR branch roots by restarting parentless
   commits at the commit-axis origin. This removes a structural coordinate bug without adding new
   overrides; the remaining root drift in the focused fixture is branch-label browser bbox

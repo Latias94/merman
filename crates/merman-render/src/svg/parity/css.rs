@@ -56,9 +56,38 @@ pub(super) struct InfoCssParts {
     pub(super) line_color: String,
 }
 
+#[derive(Clone, Copy)]
+enum InfoCssFontSizeSource {
+    ThemeThenTopLevel,
+    ThemeOnly,
+}
+
 pub(super) fn info_css_parts_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
+) -> InfoCssParts {
+    info_css_parts_with_font_size_source(
+        diagram_id,
+        effective_config,
+        InfoCssFontSizeSource::ThemeThenTopLevel,
+    )
+}
+
+pub(super) fn info_css_parts_with_theme_font_size_only(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> InfoCssParts {
+    info_css_parts_with_font_size_source(
+        diagram_id,
+        effective_config,
+        InfoCssFontSizeSource::ThemeOnly,
+    )
+}
+
+fn info_css_parts_with_font_size_source(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    font_size_source: InfoCssFontSizeSource,
 ) -> InfoCssParts {
     let id = escape_xml(diagram_id);
 
@@ -74,10 +103,15 @@ pub(super) fn info_css_parts_with_config(
     } else {
         font_family
     };
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let theme_font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"]);
+    let font_size = match font_size_source {
+        InfoCssFontSizeSource::ThemeThenTopLevel => {
+            theme_font_size.or_else(|| config_f64(effective_config, &["fontSize"]))
+        }
+        InfoCssFontSizeSource::ThemeOnly => theme_font_size,
+    }
+    .unwrap_or(16.0)
+    .max(1.0);
 
     let text_color = theme_color(effective_config, "textColor", "#333");
     let line_color = theme_color(effective_config, "lineColor", "#333333");

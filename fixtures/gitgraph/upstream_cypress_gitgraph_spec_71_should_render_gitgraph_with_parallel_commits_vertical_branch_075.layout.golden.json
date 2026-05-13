@@ -6,7 +6,7 @@
         "min_x": -18.0,
         "min_y": 12.0,
         "max_x": 236.242,
-        "max_y": 358.0
+        "max_y": 318.0
       },
       "direction": "BT",
       "rotate_commit_label": true,
@@ -14,7 +14,7 @@
       "show_commit_label": true,
       "parallel_commits": true,
       "diagram_padding": 8.0,
-      "max_pos": 350.0,
+      "max_pos": 310.0,
       "branches": [
         {
           "name": "main",
@@ -168,10 +168,10 @@
           "tags": [],
           "parents": [],
           "branch": "main",
-          "pos": 310.0,
-          "pos_with_offset": 310.0,
+          "pos": 30.0,
+          "pos_with_offset": 30.0,
           "x": 0.0,
-          "y": 310.0
+          "y": 30.0
         }
       ],
       "arrows": [
@@ -179,7 +179,7 @@
           "from": "1-abcdefg",
           "to": "2-abcdefg",
           "class_index": 0.0,
-          "d": "M 0 310 L 0 270"
+          "d": "M 0 30 L 0 270"
         },
         {
           "from": "2-abcdefg",

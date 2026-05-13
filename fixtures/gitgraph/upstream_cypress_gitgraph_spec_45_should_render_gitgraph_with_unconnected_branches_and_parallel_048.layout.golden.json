@@ -5,7 +5,7 @@
       "bounds": {
         "min_x": -91.719,
         "min_y": -18.0,
-        "max_x": 258.0,
+        "max_x": 108.0,
         "max_y": 288.0
       },
       "direction": "LR",
@@ -14,7 +14,7 @@
       "show_commit_label": true,
       "parallel_commits": true,
       "diagram_padding": 8.0,
-      "max_pos": 250.0,
+      "max_pos": 100.0,
       "branches": [
         {
           "name": "main",
@@ -88,9 +88,9 @@
           "tags": [],
           "parents": [],
           "branch": "main",
-          "pos": 100.0,
-          "pos_with_offset": 110.0,
-          "x": 110.0,
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
           "y": 0.0
         },
         {
@@ -103,9 +103,9 @@
           "tags": [],
           "parents": [],
           "branch": "dev",
-          "pos": 150.0,
-          "pos_with_offset": 160.0,
-          "x": 160.0,
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
           "y": 90.0
         },
         {
@@ -118,9 +118,9 @@
           "tags": [],
           "parents": [],
           "branch": "v2",
-          "pos": 200.0,
-          "pos_with_offset": 210.0,
-          "x": 210.0,
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
           "y": 180.0
         },
         {
@@ -135,9 +135,9 @@
             "3-abcdefg"
           ],
           "branch": "main",
-          "pos": 150.0,
-          "pos_with_offset": 160.0,
-          "x": 160.0,
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
           "y": 0.0
         }
       ],
@@ -152,7 +152,7 @@
           "from": "3-abcdefg",
           "to": "6-abcdefg",
           "class_index": 0.0,
-          "d": "M 110 0 L 160 0"
+          "d": "M 10 0 L 60 0"
         }
       ]
     }

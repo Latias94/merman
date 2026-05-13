@@ -2,6 +2,12 @@
 
 ## 2026-05-13
 
+- Aligned GitGraph font-size precedence with upstream behavior: `themeVariables.fontSize` now drives
+  GitGraph layout measurement and base SVG CSS, while top-level `fontSize` is ignored for this
+  diagram and top-level `fontFamily` remains honored. The focused disabled-root
+  `stress_gitgraph_font_size_097` root-width drift shrank from roughly `+75.828px` to `+0.156px`;
+  `stress_gitgraph_font_size_precedence_098` still has a `+0.438px` branch-label bbox drift, so no
+  font-size stress root pin was deleted in this pass.
 - Fixed GitGraph `parallelCommits` layout for unconnected LR branch roots by restarting the commit
   axis for parentless commits, matching Mermaid's independent branch timelines. The focused
   disabled-root probe for
