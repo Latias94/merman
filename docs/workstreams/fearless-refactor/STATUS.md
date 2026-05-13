@@ -16,7 +16,7 @@ What is done:
 - M2 typed model expansion is complete for all in-tree Mermaid diagrams except the explicit error/custom-registry fallback path.
 - M3 text subsystem modularization is complete.
 - M4 large renderer decomposition is effectively complete.
-- Root viewport override no-growth is tightened to `427` after the GitGraph seeded auto-id
+- Root viewport override no-growth is tightened to `424` after the GitGraph seeded auto-id
   warm-up pass, the GitGraph horizontal
   branch-label width pass, the GitGraph commit/tag label computed-length pass, the Flowchart
   imageSquare layout-bounds pass, and the Flowchart anchor layout-bounds pass, the Flowchart C1
@@ -24,7 +24,7 @@ What is done:
   subgraph-title/root-bounds passes, followed by two stale Flowchart title-margin root-pin
   deletions, the Flowchart HTML-label font-size precedence derivation, and the Flowchart
   iconSquare layout-bounds, custom FontAwesome fallback, and LR fork/join direction-sensitive
-  layout passes.
+  layout passes plus the follow-up stale-pin sweep.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes.
@@ -54,7 +54,7 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `flowchart` 98, `sequence` 79, `gitgraph` 65, `mindmap` 39, `c4` 35,
+- root viewport: `flowchart` 95, `sequence` 79, `gitgraph` 65, `mindmap` 39, `c4` 35,
   `state` 34
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 

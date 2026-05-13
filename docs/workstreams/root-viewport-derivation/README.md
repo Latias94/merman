@@ -28,15 +28,15 @@ strict release gates green.
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, and upstream seeded auto-id warm-up behavior, then pruning the now-derived pins while
   retaining the remaining table as real root-drift guards.
-- Current Flowchart root viewport overrides: `98` entries after deriving imageSquare
+- Current Flowchart root viewport overrides: `95` entries after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
   measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
   font-size precedence, iconSquare outer layout bounds, the unregistered custom FontAwesome
   fallback advance, and LR fork/join direction-sensitive layout bounds, then pruning the now-derived docs
   parameters, old-shape set5, courier long-name/class-definition, stage2 long-word title,
   Unicode/entities title, stale subgraph title-margin pins, numeric-vs-px-string font-size root,
-  docs icon-shape root, custom-icon fallback roots, and five old-shape set3 LR fork roots.
-- Current root viewport override budget: `427` entries.
+  docs icon-shape root, custom-icon fallback roots, and eight old-shape set3 LR fork roots.
+- Current root viewport override budget: `424` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.

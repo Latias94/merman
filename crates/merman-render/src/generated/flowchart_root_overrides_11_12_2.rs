@@ -184,15 +184,6 @@ pub fn lookup_flowchart_root_viewport_override(
                 "535.15",
             ))
         }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_classdef_064" => {
-            Some(("0 2 304.88623046875 494", "304.886"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_false_062" => {
-            Some(("0 2 351.578125 556.199951171875", "351.578"))
-        }
-        "upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_styles_063" => {
-            Some(("0 2 304.88623046875 494", "304.886"))
-        }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
             Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
         }

@@ -231,8 +231,8 @@ Progress:
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
-  the affected layout goldens, deleted five now-derived Flowchart root pins, and tightened the root
-  budget to `427` with `98` Flowchart root entries.
+  the affected layout goldens, deleted eight now-derived Flowchart root pins after the follow-up
+  stale-pin sweep, and tightened the root budget to `424` with `95` Flowchart root entries.
 
 Exit criteria:
 

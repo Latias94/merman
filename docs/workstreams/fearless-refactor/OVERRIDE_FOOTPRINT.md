@@ -128,7 +128,10 @@ previous 130-entry GitGraph table; deleting the stale pins tightened the root vi
 budget to `432` with `65` GitGraph entries.
 A later Flowchart fork/join pass matched Mermaid `forkJoin.ts` direction-sensitive layout sizing
 for LR-rendered graphs, deleting five now-derived old-shape set3 LR root pins and tightening the
-root viewport no-growth budget to `427` with Flowchart at `98` entries.
+root viewport no-growth budget to `427` with Flowchart at `98` entries. A follow-up disabled-root
+cross-check found the set3 LR classdef, `md_html_false`, and styles siblings were also stale under
+the same typed rule, tightening the current root viewport no-growth budget to `424` with Flowchart
+at `95` entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -306,7 +309,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `427`.
+Total entries reported by `xtask`: `424`.
 
 | file | entries |
 | --- | ---: |
