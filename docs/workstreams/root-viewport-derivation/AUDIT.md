@@ -115,6 +115,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 - 2026-05-13: `report-overrides --check-no-growth` passed with root total `616`, GitGraph root
   count `226`, text lookup total `484`, SVG text metric table total `186`, and zero manual raw
   SVG/path bridges.
+- 2026-05-13: Flowchart disabled-root mismatch cross-check found `125` override entries and `125`
+  matching disabled-root DOM mismatches, so no stale retained Flowchart root pin was deleted in
+  this pass.
+- 2026-05-13: Sequence disabled-root mismatch cross-check found `80` override entries and `80`
+  matching disabled-root DOM mismatches, so no stale retained Sequence root pin was deleted in
+  this pass.
 - 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused
   `compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter ...` passed
   for the nine removed Sequence root pins. `cargo clippy -p merman-render --all-targets
