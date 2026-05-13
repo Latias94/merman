@@ -1,3 +1,4 @@
+use super::constants::{SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX};
 use crate::model::{LayoutEdge, LayoutNode};
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use merman_core::geom::Box2;
@@ -34,19 +35,19 @@ impl SequenceRectOpen {
                 .iter()
                 .copied()
                 .fold(f64::INFINITY, f64::min)
-                - 11.0
+                - SEQUENCE_FRAME_SIDE_PAD_PX
         });
         let rect_right = self.bounds.map(|b| b.max_x()).unwrap_or_else(|| {
             actor_centers_x
                 .iter()
                 .copied()
                 .fold(f64::NEG_INFINITY, f64::max)
-                + 11.0
+                + SEQUENCE_FRAME_SIDE_PAD_PX
         });
         let rect_bottom = self
             .bounds
-            .map(|b| b.max_y() + 10.0)
-            .unwrap_or(self.top_y + 10.0);
+            .map(|b| b.max_y() + SEQUENCE_FRAME_GEOM_PAD_PX)
+            .unwrap_or(self.top_y + SEQUENCE_FRAME_GEOM_PAD_PX);
         let rect_w = (rect_right - rect_left).max(1.0);
         let rect_h = (rect_bottom - self.top_y).max(1.0);
 

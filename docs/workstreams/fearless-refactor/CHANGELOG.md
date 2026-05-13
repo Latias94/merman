@@ -5,6 +5,16 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Replaced the remaining Sequence block-frame literal offsets in `block_bounds.rs` with named
+  local constants, keeping the block geometry rules readable while preserving render nextest,
+  render clippy, Sequence `parity-root`, and override no-growth.
+- Centralized several Sequence geometry literals by routing rect, note, and block spacing through
+  shared owner constants, trimming another layer of duplicated magic numbers while preserving
+  render nextest, render clippy, Sequence `parity-root`, and override no-growth.
+- Split the remaining Sequence layout orchestration out of `sequence.rs` into
+  `sequence/orchestration.rs`, moving the message loop state machine, directive dispatch, rect
+  handling, note handling, and message handling behind a smaller helper layer while preserving
+  render nextest, render clippy, Sequence `parity-root`, and override no-growth.
 - Split created/destroyed Sequence actor vertical lifecycle state out of `sequence.rs` into
   `sequence/actors.rs`, keeping Mermaid `starty`/`stopy` anchors, actor visual-height lookup, and
   cursor bump handling behind one state object while preserving render nextest, render clippy,

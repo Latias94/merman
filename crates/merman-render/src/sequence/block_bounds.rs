@@ -5,6 +5,10 @@ use crate::model::{LayoutEdge, LayoutNode};
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use std::collections::HashMap;
 
+const BLOCK_FRAME_TOP_OFFSET_PX: f64 = 79.0;
+const BLOCK_CRITICAL_TOP_OFFSET_PX: f64 = 93.0;
+const BLOCK_CRITICAL_LEFT_PAD_PX: f64 = 9.0;
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct SequenceBlockBounds {
     pub(super) min_x: f64,
@@ -26,19 +30,19 @@ pub(super) fn sequence_block_bounds(
             10 => stack.push(BlockStackEntry::Loop { items: Vec::new() }),
             11 => {
                 if let Some(BlockStackEntry::Loop { items }) = stack.pop() {
-                    bounds.include_items(&refs, &items, 79.0);
+                    bounds.include_items(&refs, &items, BLOCK_FRAME_TOP_OFFSET_PX);
                 }
             }
             15 => stack.push(BlockStackEntry::Opt { items: Vec::new() }),
             16 => {
                 if let Some(BlockStackEntry::Opt { items }) = stack.pop() {
-                    bounds.include_items(&refs, &items, 79.0);
+                    bounds.include_items(&refs, &items, BLOCK_FRAME_TOP_OFFSET_PX);
                 }
             }
             30 => stack.push(BlockStackEntry::Break { items: Vec::new() }),
             31 => {
                 if let Some(BlockStackEntry::Break { items }) = stack.pop() {
-                    bounds.include_items(&refs, &items, 93.0);
+                    bounds.include_items(&refs, &items, BLOCK_CRITICAL_TOP_OFFSET_PX);
                 }
             }
             12 => stack.push(BlockStackEntry::Alt {
@@ -52,7 +56,7 @@ pub(super) fn sequence_block_bounds(
             14 => {
                 if let Some(BlockStackEntry::Alt { sections }) = stack.pop() {
                     let items = flatten_sections(sections);
-                    bounds.include_items(&refs, &items, 79.0);
+                    bounds.include_items(&refs, &items, BLOCK_FRAME_TOP_OFFSET_PX);
                 }
             }
             19 | 32 => stack.push(BlockStackEntry::Par {
@@ -66,7 +70,7 @@ pub(super) fn sequence_block_bounds(
             21 => {
                 if let Some(BlockStackEntry::Par { sections }) = stack.pop() {
                     let items = flatten_sections(sections);
-                    bounds.include_items(&refs, &items, 79.0);
+                    bounds.include_items(&refs, &items, BLOCK_FRAME_TOP_OFFSET_PX);
                 }
             }
             27 => stack.push(BlockStackEntry::Critical {
@@ -253,7 +257,12 @@ impl BlockBoundsAccumulator {
         let Some((y0, y1)) = refs.item_ids_y_range(items) else {
             return;
         };
-        self.include_frame(frame_x.left, frame_x.right, y0 - top_offset, y1 + 10.0);
+        self.include_frame(
+            frame_x.left,
+            frame_x.right,
+            y0 - top_offset,
+            y1 + SEQUENCE_FRAME_GEOM_PAD_PX,
+        );
     }
 
     fn include_critical_items(
@@ -269,9 +278,16 @@ impl BlockBoundsAccumulator {
             return;
         };
         if frame_x.min_left.is_finite() && !items.is_empty() && section_count > 1 {
-            frame_x.left = frame_x.left.min(frame_x.min_left - 9.0);
+            frame_x.left = frame_x
+                .left
+                .min(frame_x.min_left - BLOCK_CRITICAL_LEFT_PAD_PX);
         }
-        self.include_frame(frame_x.left, frame_x.right, y0 - 79.0, y1 + 10.0);
+        self.include_frame(
+            frame_x.left,
+            frame_x.right,
+            y0 - BLOCK_FRAME_TOP_OFFSET_PX,
+            y1 + SEQUENCE_FRAME_GEOM_PAD_PX,
+        );
     }
 
     fn include_frame(&mut self, min_x: f64, max_x: f64, min_y: f64, max_y: f64) {

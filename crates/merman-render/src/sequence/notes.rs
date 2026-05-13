@@ -1,6 +1,6 @@
 use super::constants::{
-    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX,
-    SEQUENCE_NOTE_WRAP_SLACK_PX,
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX,
+    SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, SEQUENCE_NOTE_WRAP_SLACK_PX,
 };
 use super::metrics::{
     SequenceMathHeightMode, measure_sequence_label_for_layout, measure_svg_like_with_html_br,
@@ -11,6 +11,8 @@ use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines_floored
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceMessage;
 use std::collections::HashMap;
+
+const NOTE_SIDE_OFFSET_PX: f64 = 25.0;
 
 pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
@@ -76,7 +78,7 @@ pub(super) fn layout_sequence_note(
             0 | 1 => {
                 note_w = note_w.max(padded_w);
                 if placement == 0 {
-                    note_x = fx - 25.0 - note_w;
+                    note_x = fx - NOTE_SIDE_OFFSET_PX - note_w;
                 }
             }
             // over: only clamp when the note is over a single actor (`from == to`).
@@ -103,8 +105,8 @@ pub(super) fn layout_sequence_note(
             label_width: None,
             label_height: None,
         },
-        rect_min_x: note_x - 10.0,
-        rect_max_x: note_x + note_w + 10.0,
+        rect_min_x: note_x - SEQUENCE_FRAME_GEOM_PAD_PX,
+        rect_max_x: note_x + note_w + SEQUENCE_FRAME_GEOM_PAD_PX,
         rect_max_y: note_y + note_h,
         cursor_step: note_h + ctx.note_gap,
     })
@@ -120,9 +122,12 @@ fn initial_note_x_and_width(
 ) -> (f64, f64) {
     match placement {
         // leftOf
-        0 => (fx - 25.0 - ctx.note_width_single, ctx.note_width_single),
+        0 => (
+            fx - NOTE_SIDE_OFFSET_PX - ctx.note_width_single,
+            ctx.note_width_single,
+        ),
         // rightOf
-        1 => (fx + 25.0, ctx.note_width_single),
+        1 => (fx + NOTE_SIDE_OFFSET_PX, ctx.note_width_single),
         // over
         _ => {
             if (fx - tx).abs() < 0.0001 {
@@ -143,8 +148,8 @@ fn initial_note_x_and_width(
                 }
                 (fx - (w / 2.0), w)
             } else {
-                let left = fx.min(tx) - 25.0;
-                let right = fx.max(tx) + 25.0;
+                let left = fx.min(tx) - NOTE_SIDE_OFFSET_PX;
+                let right = fx.max(tx) + NOTE_SIDE_OFFSET_PX;
                 let w = (right - left).max(ctx.note_width_single);
                 (left, w)
             }
@@ -207,7 +212,7 @@ fn measure_note_text(req: NoteTextMeasureRequest<'_, '_>) -> (f64, f64) {
             *req.note_w = req
                 .note_w
                 .max((w0 + req.ctx.note_text_pad_total).round().max(1.0));
-            *req.note_x = req.fx - 25.0 - *req.note_w;
+            *req.note_x = req.fx - NOTE_SIDE_OFFSET_PX - *req.note_w;
         }
 
         let wrap_w = (*req.note_w - req.ctx.note_text_pad_total).max(1.0);

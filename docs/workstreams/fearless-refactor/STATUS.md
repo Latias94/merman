@@ -1,6 +1,6 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-05-11
+Snapshot: 2026-05-13
 
 This page is the short-form dashboard for the fearless-refactor workstream.
 The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
@@ -16,6 +16,8 @@ What is done:
 - M2 typed model expansion is complete for all in-tree Mermaid diagrams except the explicit error/custom-registry fallback path.
 - M3 text subsystem modularization is complete.
 - M4 large renderer decomposition is effectively complete.
+- Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
+  note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes.
 - `cargo run -p xtask -- verify --strict` now includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.

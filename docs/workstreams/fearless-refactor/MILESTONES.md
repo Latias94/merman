@@ -329,6 +329,15 @@ Progress:
   `crates/merman-render/src/sequence/block_steps.rs`, leaving
   `layout_sequence_diagram_typed` to pass an explicit planning context and consume directive
   steps.
+- Split the remaining Sequence layout orchestration and directive/rect/note/message handling out
+  of `crates/merman-render/src/sequence.rs` into
+  `crates/merman-render/src/sequence/orchestration.rs`, leaving
+  `layout_sequence_diagram_typed` as the top-level coordinator for actor planning, graph
+  assembly, and bounds finalization.
+- Centralized the remaining Sequence geometry literals into named owner constants across
+  `sequence/block_bounds.rs`, `sequence/block_steps.rs`, `sequence/notes.rs`, and
+  `sequence/rect.rs`, so the frame and padding offsets read as policy instead of scattered magic
+  numbers.
 - Split Sequence layout block frame bounds accumulation into
   `crates/merman-render/src/sequence/block_bounds.rs`, so the final root-bounds expansion pass has
   its own block-stack owner instead of a large inline local state machine.

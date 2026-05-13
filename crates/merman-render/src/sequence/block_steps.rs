@@ -1,4 +1,6 @@
-use super::constants::{SEQUENCE_FRAME_SIDE_PAD_PX, sequence_text_line_step_px};
+use super::constants::{
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, sequence_text_line_step_px,
+};
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
@@ -43,7 +45,7 @@ pub(super) fn plan_sequence_directive_steps(ctx: BlockStepPlanContext<'_>) -> Ha
     let block_base_step_empty = (block_base_step - ctx.label_box_height).max(0.0);
     let line_step = sequence_text_line_step_px(ctx.message_font_size);
     let block_extra_per_line = (line_step - ctx.box_text_margin).max(0.0);
-    let block_end_step = 10.0;
+    let block_end_step = SEQUENCE_FRAME_GEOM_PAD_PX;
 
     let mut msg_by_id: HashMap<&str, &SequenceMessage> = HashMap::new();
     for msg in &ctx.model.messages {
