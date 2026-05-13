@@ -63,6 +63,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart icon shapes: size `iconSquare` layout bounds from Mermaid's
+  `iconSize + node.padding` outer box, refresh the affected icon-shape layout golden, and remove
+  the now-derived `upstream_docs_flowchart_icon_shape_132` root viewport pin. This tightens the
+  root viewport no-growth budget to `525`.
 - Flowchart label measurement: separate SVG root CSS font size from HTML `foreignObject` label
   measurement so numeric `themeVariables.fontSize` does not inflate HTML labels, while `"NNpx"`
   font-size strings still apply. This derives

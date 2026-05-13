@@ -603,7 +603,10 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   root CSS only, while HTML labels measure at 16px unless the theme value is a valid `"NNpx"` CSS
   string or a class/inline font-size applies. That removed
   `stress_flowchart_font_size_precedence_073` and tightened the root total to `526` with `106`
-  Flowchart entries.
+  Flowchart entries. A follow-up Flowchart iconSquare pass matched Mermaid's
+  `iconSize + halfPadding * 2` outer layout bounds, refreshed
+  `upstream_docs_flowchart_icon_shape_132.layout.golden.json`, removed that root pin, and tightened
+  the root total to `525` with `105` Flowchart entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

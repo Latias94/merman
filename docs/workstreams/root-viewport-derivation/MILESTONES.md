@@ -206,6 +206,11 @@ Progress:
   while HTML label measurement uses 16px unless the theme value is a valid `"NNpx"` string or a
   class/inline font-size applies. Removed `stress_flowchart_font_size_precedence_073` and
   tightened the budget to `526` with `106` Flowchart root entries.
+- Derived the Flowchart docs icon-shape root by mirroring Mermaid `iconSquare.ts` layout bounds:
+  the icon box is `iconSize + halfPadding * 2`, so Rust layout now uses
+  `iconSize + node.padding` for `iconSquare` before Dagre/root bounds. Refreshed the affected
+  layout golden, removed `upstream_docs_flowchart_icon_shape_132`, and tightened the budget to
+  `525` with `105` Flowchart root entries.
 
 Exit criteria:
 

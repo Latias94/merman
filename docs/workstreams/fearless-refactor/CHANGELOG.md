@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Derived the Flowchart `iconSquare` root by matching Mermaid's icon-shape outer layout bounds:
+  `iconSquare.ts` sizes the icon box as `iconSize + halfPadding * 2`, so Flowchart layout now uses
+  `iconSize + node.padding` before Dagre/root bounds. Refreshed
+  `upstream_docs_flowchart_icon_shape_132.layout.golden.json`, deleted its root pin, and tightened
+  Flowchart root pins to `105` with root no-growth budget `525`.
 - Derived the Flowchart font-size precedence root by separating SVG root CSS font size from HTML
   `foreignObject` label measurement: numeric `themeVariables.fontSize` stays a root CSS value, but
   HTML labels measure at 16px unless the theme value is a valid `"NNpx"` CSS string or an explicit

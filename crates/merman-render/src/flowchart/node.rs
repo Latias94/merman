@@ -1036,9 +1036,14 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
             let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
             let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
             let icon_size = asset_h.max(asset_w);
+            let icon_outer_size = if shape == "iconSquare" {
+                icon_size + padding
+            } else {
+                icon_size
+            };
 
-            let outer_w = icon_size.max(label_bbox_w);
-            let outer_h = icon_size + label_padding + label_bbox_h;
+            let outer_w = icon_outer_size.max(label_bbox_w);
+            let outer_h = icon_outer_size + label_padding + label_bbox_h;
 
             // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
             // change the node's outer bbox.

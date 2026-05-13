@@ -315,6 +315,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `stress_flowchart_font_size_precedence_073` passes focused disabled-root `parity-root`, the root
   pin was deleted, and the root no-growth budget is tightened to `526` with `106` Flowchart
   entries.
+- [x] Derive the Flowchart docs icon-shape root from iconSquare outer layout bounds.
+  Evidence: Mermaid `iconSquare.ts` sizes the icon box as `iconSize + halfPadding * 2`; Flowchart
+  layout now mirrors that as `iconSize + node.padding` for `iconSquare` before Dagre/root bounds.
+  `upstream_docs_flowchart_icon_shape_132` passes focused disabled-root `parity-root`, the root pin
+  was deleted, the affected layout golden was refreshed, and the root no-growth budget is tightened
+  to `525` with `105` Flowchart entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

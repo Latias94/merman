@@ -27,13 +27,14 @@ strict release gates green.
 - Current GitGraph root viewport overrides: `156` entries after deriving GitGraph title text
   bounds, branch line endpoints, and horizontal branch-label widths, then pruning the now-derived
   pins.
-- Current Flowchart root viewport overrides: `106` entries after deriving imageSquare
+- Current Flowchart root viewport overrides: `105` entries after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
-  measurement, SVG-like subgraph-title/root bounds, and Unicode/entities HTML title bounds, then
-  pruning the now-derived docs parameters, old-shape set5, courier long-name/class-definition,
-  stage2 long-word title, Unicode/entities title, stale subgraph title-margin pins, and the
-  numeric-vs-px-string Flowchart font-size precedence root.
-- Current root viewport override budget: `526` entries.
+  measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
+  font-size precedence, and iconSquare outer layout bounds, then pruning the now-derived docs
+  parameters, old-shape set5, courier long-name/class-definition, stage2 long-word title,
+  Unicode/entities title, stale subgraph title-margin pins, numeric-vs-px-string font-size root,
+  and docs icon-shape root.
+- Current root viewport override budget: `525` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.

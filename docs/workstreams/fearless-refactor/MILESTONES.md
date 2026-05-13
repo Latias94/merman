@@ -707,6 +707,10 @@ Progress:
   explicit class/inline font-size applies. This removed
   `stress_flowchart_font_size_precedence_073` and tightened the root viewport total to `526` with
   `106` Flowchart entries.
+- A follow-up Flowchart iconSquare pass mirrored Mermaid's icon-shape outer layout bounds
+  (`iconSize + halfPadding * 2`, equivalent to `iconSize + node.padding`), refreshed the docs
+  icon-shape layout golden, removed `upstream_docs_flowchart_icon_shape_132`, and tightened the
+  root viewport total to `525` with `105` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without
