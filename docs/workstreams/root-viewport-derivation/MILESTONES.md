@@ -184,6 +184,9 @@ Progress:
 - Derived Flowchart anchor layout bounds from Mermaid's label-ignoring roughjs dot, removed 12
   now-derived old-shape set5 root pins, and tightened the root budget to `532` with `112`
   Flowchart root entries.
+- Derived the courier Flowchart long-name/class-definition root by measuring C1 control bytes in
+  mojibake HTML labels as Chromium replacement glyphs, removed one more Flowchart root pin, and
+  tightened the root budget to `531` with `111` Flowchart root entries.
 
 Exit criteria:
 

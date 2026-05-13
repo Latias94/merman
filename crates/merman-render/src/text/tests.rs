@@ -263,6 +263,46 @@ fn default_font_flowchart_html_width_overrides_match_upstream() {
 }
 
 #[test]
+fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let default_style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let courier_style = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let owner_review = "è´\u{9f}è´£äººå®¡æ\u{89}¹";
+    let owner_default = measurer.measure_wrapped(
+        owner_review,
+        &default_style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(owner_default.width, 141.71875);
+    assert_eq!(owner_default.height, 24.0);
+
+    let owner_courier = measurer.measure_wrapped(
+        owner_review,
+        &courier_style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(owner_courier.width, 156.84375);
+    assert_eq!(owner_courier.height, 24.0);
+
+    let submit = "æ\u{8f}\u{90}äº¤ç\u{94}³è¯·";
+    let submit_courier =
+        measurer.measure_wrapped(submit, &courier_style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(submit_courier.width, 134.375);
+    assert_eq!(submit_courier.height, 24.0);
+}
+
+#[test]
 fn flowchart_html_wrapped_measurement_does_not_leak_other_diagram_overrides() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

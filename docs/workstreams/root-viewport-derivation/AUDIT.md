@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and thirteen Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-four Sequence root pins, seventy-two GitGraph root pins, and fourteen Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -33,14 +33,14 @@ docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, th
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
 cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label passes, and the
-Flowchart imageSquare image-plus-label and anchor-dot layout-bounds passes:
+Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, and C1 replacement-glyph passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `79` entries.
 - GitGraph: `156` entries.
-- Flowchart: `112` entries.
-- Root viewport total: `532` entries.
+- Flowchart: `111` entries.
+- Root viewport total: `531` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -186,8 +186,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   roughjs dot bbox, matching Mermaid's no-label anchor renderer. Disabled-root `parity-root`
   checks passed for the old-shape set5 stale-pin cluster except
   `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038`, which still has a
-  real 0.06px root drift and remains pinned. `report-overrides` now reports root total `532` and
+  real 0.06px root drift and remains pinned. `report-overrides` then reported root total `532` and
   Flowchart root count `112`.
+- 2026-05-13: Flowchart C1 control bytes in mojibake HTML labels now measure as Chromium
+  near-full-em replacement glyphs. The courier long-name/class-definition Cypress fixture passes
+  focused disabled-root `parity-root`, while the handdrawn/default-font sibling still has real
+  residual drift and remains pinned. `report-overrides` now reports root total `531` and
+  Flowchart root count `111`.
 - 2026-05-13: Before the imageSquare layout-bounds pass, a Flowchart disabled-root mismatch
   cross-check found `125` override entries and `125` matching disabled-root DOM mismatches, so no
   stale retained Flowchart root pin was deleted in that audit pass.

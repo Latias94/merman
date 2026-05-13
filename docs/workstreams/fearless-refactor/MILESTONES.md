@@ -684,6 +684,9 @@ Progress:
 - A follow-up Flowchart anchor pass modeled Mermaid's label-ignoring roughjs anchor dot, removed 12
   now-derived old-shape set5 root pins, and tightened the root viewport total to `532` with `112`
   Flowchart entries.
+- A follow-up Flowchart C1 replacement-glyph pass derived the courier long-name/class-definition
+  Cypress root, removed one more Flowchart root pin, and tightened the root viewport total to `531`
+  with `111` Flowchart entries.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

@@ -101,8 +101,10 @@ The Flowchart imageSquare layout pass then sized Dagre nodes from rendered image
 instead of only the image asset, deleting the now-derived
 `upstream_docs_flowchart_parameters_136` root pin. A follow-up Flowchart anchor pass modeled
 Mermaid's label-ignoring roughjs anchor dot, deleting 12 old-shape set5 root pins while retaining
-the one set5 `tb_md_html_false` entry that still has a real 0.06px root drift. The root viewport
-no-growth budget is now `532` with Flowchart at `112` entries.
+the one set5 `tb_md_html_false` entry that still has a real 0.06px root drift. A later C1
+replacement-glyph measurement pass derived the courier long-name/class-definition Cypress root
+viewport without a pin. The root viewport no-growth budget is now `531` with Flowchart at `111`
+entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -280,14 +282,14 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `532`.
+Total entries reported by `xtask`: `531`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
-| `flowchart_root_overrides_11_12_2.rs` | 112 |
+| `flowchart_root_overrides_11_12_2.rs` | 111 |
 | `gitgraph_root_overrides_11_12_2.rs` | 156 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -318,8 +320,8 @@ Gitgraph and Flowchart audit note: a 2026-05-09 recheck confirmed that disabling
 direct root lookup still leaves the broad Gitgraph root bucket failing. The full 2026-05-11
 `parity-root` sweep restored two additional GitGraph viewBox-height guards for
 `upstream_examples_git_basic_git_flow_001` and `upstream_merges_spec`. The Flowchart empty-diagram
-pins are now deleted after empty bounds moved into renderer logic. The Flowchart imageSquare and
-anchor passes removed 13 more pins; the remaining 112 entries still
+pins are now deleted after empty bounds moved into renderer logic. The Flowchart imageSquare,
+anchor, and C1 replacement-glyph passes removed 14 more pins; the remaining 111 entries still
 need root-viewport derivation work before table pruning, not another blind deletion pass.
 A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 `--report-root-all` produced 251 root rows, with 239 non-zero `max-width` deltas and 241 changed
@@ -404,7 +406,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `gitgraph`: 156
-- `flowchart`: 112
+- `flowchart`: 111
 - `sequence`: 79
 - `mindmap`: 39
 - `state`: 34

@@ -135,6 +135,14 @@ impl VendoredFontMetricsTextMeasurer {
             return default_em;
         }
 
+        if ('\u{80}'..='\u{9f}').contains(&ch) {
+            // Mermaid/Chromium preserves C1 control bytes that appear in mojibake labels from
+            // upstream fixtures and measures the rendered replacement glyph, not a narrow Latin
+            // fallback. Treat them as a near-full-em glyph so multiline HTML label widths line up
+            // with browser `getBoundingClientRect()`.
+            return 0.997_8;
+        }
+
         // Mermaid's default font stack is `"trebuchet ms", verdana, arial, sans-serif`.
         // In browser rendering, non-Latin glyphs (CJK/emoji) frequently fall back to a
         // different font with much wider advances than Trebuchet's ASCII average.

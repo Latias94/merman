@@ -279,6 +279,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   cluster except the retained `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038`
   0.06px drift guard, so 12 root pins were deleted. Root viewport overrides are now `532` total,
   Flowchart has `112` entries, and the root no-growth budget is tightened to `532`.
+- [x] Derive the courier Flowchart long-name/class-definition root from C1 replacement-glyph
+  measurement.
+  Evidence: C1 control bytes in mojibake Flowchart HTML labels now measure as Chromium-style
+  near-full-em replacement glyphs. Focused disabled-root `parity-root` passes for
+  `upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012`,
+  so its root pin was deleted. The handdrawn/default-font sibling still has real residual root
+  drift and remains pinned. Root viewport overrides are now `531` total, Flowchart has `111`
+  entries, and the root no-growth budget is tightened to `531`.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

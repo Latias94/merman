@@ -2,6 +2,10 @@
 
 ## 2026-05-13
 
+- Modeled C1 control bytes in mojibake Flowchart HTML labels as Chromium near-full-em replacement
+  glyphs. The courier long-name/class-definition Cypress fixture now passes focused
+  `parity-root` with root overrides disabled, so its root pin was deleted; Flowchart root pins are
+  now `111`, and the root no-growth budget is `531`.
 - Derived Flowchart anchor node layout bounds from the seeded 2px roughjs dot instead of the
   ignored label text. The old-shape set5 cluster now derives 12 previously pinned roots; the
   remaining `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038` pin still

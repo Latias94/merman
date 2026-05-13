@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Modeled C1 control bytes in mojibake Flowchart HTML labels as Chromium-style near-full-em
+  replacement glyphs, allowing the courier long-name/class-definition Cypress fixture to derive
+  its root viewport without a pin. Flowchart root pins are now `111`, and the root no-growth
+  budget is `531`.
 - Derived Flowchart anchor layout bounds from Mermaid's tiny roughjs anchor dot instead of the
   ignored label text, removed 12 now-derived old-shape set5 root pins, and tightened the root
   no-growth budget to `532` with Flowchart at `112`.

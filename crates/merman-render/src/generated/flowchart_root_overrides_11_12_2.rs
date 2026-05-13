@@ -118,9 +118,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037" => {
             Some(("0.0284881591796875 0 296.1708984375 76", "296.171"))
         }
-        "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
-            Some(("0 0 1992.96875 452", "1992.97"))
-        }
         "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
             Some(("0 0 304.046875 734", "304.047"))
         }
