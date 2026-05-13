@@ -88,6 +88,11 @@ from the previous branch's commit axis instead of restarting at the origin. That
 focused unconnected-branches disabled-root drift from `+150.250px` to the remaining branch-label
 bbox measurement drift, but did not remove a root pin because the final mismatch is still a real
 browser text-measurement gap.
+A later GitGraph branch-line endpoint pass included renderer-owned branch line endpoints in the
+root bbox derivation, matching browser `getBBox()` for zero-length branch lines while leaving the
+shared emitted-bounds scanner unchanged. The empty-graph package bucket dropped from roughly
+`+34.750px` disabled-root width drift to residual branch-label bbox drift, but the GitGraph table
+remained at `213` entries because `override=213 mismatch=213 stale=0 missing=0`.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -318,9 +323,11 @@ measurement. A later font-size precedence pass made GitGraph ignore top-level `f
 still honoring `themeVariables.fontSize` and top-level `fontFamily`, shrinking
 `stress_gitgraph_font_size_097` from the large top-level-font drift to `+0.156px` without adding
 overrides; the font-size stress pins stay because the residual mismatch is still branch-label
-browser bbox drift. The remaining `213` GitGraph entries were cross-checked against disabled-root
-mismatches and still need model/layout or text-measurement derivation work before another broad
-deletion pass.
+browser bbox drift. A later branch-line endpoint pass taught GitGraph root derivation to include
+zero-length branch line endpoints, dropping the empty-graph package bucket from roughly
+`+34.750px` to sub-pixel branch-label drift. The remaining `213` GitGraph entries were
+cross-checked against disabled-root mismatches and still need model/layout or text-measurement
+derivation work before another broad deletion pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
 skipped fixture. The largest width deltas came from icon-heavy Flowchart fixtures

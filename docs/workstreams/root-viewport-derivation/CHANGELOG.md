@@ -2,6 +2,15 @@
 
 ## 2026-05-13
 
+- Included GitGraph branch line endpoints in GitGraph-owned emitted root bbox derivation so
+  zero-length branch lines affect raw root viewports like browser `getBBox()` does. The focused
+  empty-graph package bucket (`upstream_pkgtests_diagram_orchestration_spec_048`,
+  `upstream_pkgtests_gitgraph_spec_076`, and `upstream_pkgtests_gitgraph_test_011` through `_013`)
+  dropped from roughly `+34.750px` disabled-root width drift to residual
+  `+0.250px`/`+0.266px` branch-label bbox drift. No root pin was deleted because the full
+  disabled-root cross-check still found `override=213 mismatch=213 stale=0 missing=0`; full
+  GitGraph `parity-root`, override no-growth, render/xtask clippy, render nextest, and
+  `verify --strict` passed.
 - Aligned GitGraph font-size precedence with upstream behavior: `themeVariables.fontSize` now drives
   GitGraph layout measurement and base SVG CSS, while top-level `fontSize` is ignored for this
   diagram and top-level `fontFamily` remains honored. The focused disabled-root

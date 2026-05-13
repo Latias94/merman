@@ -110,6 +110,39 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             .max(0.0)
     }
 
+    fn include_gitgraph_branch_line_bounds(
+        bounds: &mut Bounds,
+        layout: &crate::model::GitGraphDiagramLayout,
+    ) {
+        if !layout.show_branches {
+            return;
+        }
+
+        fn include_point(bounds: &mut Bounds, x: f64, y: f64) {
+            bounds.min_x = bounds.min_x.min(x);
+            bounds.min_y = bounds.min_y.min(y);
+            bounds.max_x = bounds.max_x.max(x);
+            bounds.max_y = bounds.max_y.max(y);
+        }
+
+        for branch in &layout.branches {
+            match layout.direction.as_str() {
+                "TB" => {
+                    include_point(bounds, branch.pos, 30.0);
+                    include_point(bounds, branch.pos, layout.max_pos);
+                }
+                "BT" => {
+                    include_point(bounds, branch.pos, layout.max_pos);
+                    include_point(bounds, branch.pos, 30.0);
+                }
+                _ => {
+                    include_point(bounds, 0.0, branch.pos);
+                    include_point(bounds, layout.max_pos, branch.pos);
+                }
+            }
+        }
+    }
+
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -680,6 +713,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         max_x: vb_min_x + vb_w,
         max_y: vb_min_y + vb_h,
     });
+    include_gitgraph_branch_line_bounds(&mut b, layout);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
     if let Some(title) = title {
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);

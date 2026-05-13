@@ -670,6 +670,10 @@ Progress:
 - A follow-up Sequence frontmatter-title pass propagated metadata titles into layout root bounds,
   removed `upstream_html_demos_sequence_sequence_diagram_demos_002`, and tightened the current root
   viewport total to `602`, with `79` Sequence entries.
+- A follow-up GitGraph branch-line endpoint pass included renderer-owned branch line endpoints in
+  root bbox derivation, collapsing the empty-graph package bucket from roughly `+34.750px`
+  disabled-root width drift to sub-pixel branch-label drift. The GitGraph table remains at `213`
+  entries because the disabled-root mismatch set still exactly matches the retained pins.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

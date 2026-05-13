@@ -31,13 +31,14 @@ Current counts after the State style/entity-placeholder/note-label/transition-la
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
-cleanup passes, the first GitGraph stale-pin cross-check, and the GitGraph title-bounds pass:
+cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
+title-bounds/parallel-branch/font-size/branch-line endpoint passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `80` entries.
+- Sequence: `79` entries.
 - GitGraph: `213` entries.
-- Root viewport total: `603` entries.
+- Root viewport total: `602` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -75,9 +76,12 @@ the text lookup and SVG text metric budgets flat.
 
 The latest GitGraph title-bounds pass now includes the 18px `gitTitleText` bbox in the emitted
 root bbox calculation while preserving Mermaid's pre-title content-center anchoring. This removed
-13 title-dominated GitGraph root pins. A disabled-root cross-check now finds `213` retained
-GitGraph entries and `213` matching DOM mismatches, so there are no known stale retained GitGraph
-root pins in the current table.
+13 title-dominated GitGraph root pins. Follow-up parallel-branch and font-size passes removed
+large structural raw-root drift without deleting pins. The branch-line endpoint pass now includes
+zero-length branch line endpoints in the GitGraph-owned root bbox, collapsing the empty-graph
+package bucket from roughly `+34.750px` to sub-pixel branch-label drift. A disabled-root
+cross-check still finds `213` retained GitGraph entries and `213` matching DOM mismatches, so
+there are no known stale retained GitGraph root pins in the current table.
 
 ## Focused Commands
 
@@ -137,6 +141,18 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `cargo nextest run -p merman-render parallel_lr_unconnected_branches_restart_commit_axis`,
   full GitGraph normal DOM, full GitGraph `parity-root`, and `report-overrides
   --check-no-growth` passed for this pass.
+- 2026-05-13: GitGraph root bbox derivation now includes the branch line endpoints emitted by the
+  GitGraph renderer, covering browser `getBBox()` behavior for zero-length branch lines without
+  changing the shared emitted-bounds scanner. Focused disabled-root checks for
+  `upstream_pkgtests_diagram_orchestration_spec_048`, `upstream_pkgtests_gitgraph_spec_076`, and
+  `upstream_pkgtests_gitgraph_test_011` through `_013` reduced the former roughly `+34.750px`
+  width gap to `+0.250px`/`+0.266px` branch-label bbox drift. Full disabled-root GitGraph
+  cross-check still found `override=213 mismatch=213 stale=0 missing=0`; full GitGraph
+  `parity-root`, `report-overrides --check-no-growth`, render/xtask clippy, and
+  `cargo nextest run -p merman-render` passed, so no root pin was deleted. The follow-up
+  `cargo run -p xtask -- verify --strict` gate also passed with root total `602`, GitGraph root
+  count `213`, Sequence root count `79`, text lookup total `484`, and SVG text metric table total
+  `186`.
 - 2026-05-13: Flowchart disabled-root mismatch cross-check found `125` override entries and `125`
   matching disabled-root DOM mismatches, so no stale retained Flowchart root pin was deleted in
   this pass.

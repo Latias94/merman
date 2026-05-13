@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Included GitGraph branch line endpoints in GitGraph-owned root bbox derivation, matching browser
+  `getBBox()` behavior for zero-length branch lines without widening the shared emitted-bounds
+  scanner. This collapses the empty-graph package bucket from roughly `+34.750px` raw root drift
+  to sub-pixel branch-label bbox drift; no root pin was deleted because the full disabled-root
+  mismatch set still exactly matches the 213 retained GitGraph pins, and `verify --strict` stayed
+  green.
 - Propagated Sequence metadata/frontmatter titles into layout root bounds, removed the now-derived
   `upstream_html_demos_sequence_sequence_diagram_demos_002` root viewport pin, and tightened the
   root no-growth budget to `602` with Sequence at `79`.

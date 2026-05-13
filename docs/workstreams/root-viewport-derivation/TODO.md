@@ -246,8 +246,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   disabled-root diagnostics reduced `stress_gitgraph_font_size_097` from a large top-level
   `fontSize` drift to `+0.156px`; no root pin was removed because `097`/`098` still have sub-pixel
   branch-label bbox drift.
+- [x] Include GitGraph branch line endpoints in emitted root bbox derivation.
+  Evidence: GitGraph now adds its own branch line endpoints to the post-emission bbox before title
+  anchoring, matching browser `getBBox()` behavior for zero-length branch lines without changing
+  the shared emitted-bounds scanner. The empty-graph and related package fixtures
+  (`upstream_pkgtests_diagram_orchestration_spec_048`,
+  `upstream_pkgtests_gitgraph_spec_076`, and `upstream_pkgtests_gitgraph_test_011` through
+  `_013`) dropped from a roughly `+34.750px` disabled-root width gap to the remaining
+  `+0.250px`/`+0.266px` branch-label bbox drift. Full GitGraph `parity-root`,
+  `report-overrides --check-no-growth`, render/xtask clippy, and render nextest stayed green; no
+  root pin was deleted because the retained GitGraph table still matches the disabled-root DOM
+  mismatch set.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
-  fixture pins.
+  fixture pins. The next useful target is branch-label SVG bbox measurement parity, followed by
+  cherry-pick/tag vertical bbox drift.
 
 ## P3: Release Closeout
 
