@@ -218,7 +218,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   remains `484` and the SVG text metric table remains `186`.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
-- [ ] Revisit GitGraph after branch/merge/tag root bounds can be derived without fixture pins.
+- [x] Remove the first stale GitGraph root pins found by disabled-root mismatch cross-checking.
+  Evidence: `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt` were present in the GitGraph root table but absent from the
+  disabled-root mismatch set. Both passed focused `parity-root` without a lookup; full GitGraph
+  `parity-root`, `report-overrides --check-no-growth`, render/xtask clippy, and xtask override
+  budget tests stayed green. Root viewport overrides are now `616` total, with `226` GitGraph
+  entries, and the root no-growth budget is tightened to `616`.
+- [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
+  fixture pins.
 
 ## P3: Release Closeout
 

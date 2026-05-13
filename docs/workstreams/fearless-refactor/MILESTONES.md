@@ -658,6 +658,11 @@ Progress:
   GitGraph, Flowchart, Sequence, Mindmap, and State all still show broad `max-width` or viewBox
   drift without the lookup tables. These buckets remain typed bounds or measurement derivation
   targets, not blind-pruning targets.
+- A later GitGraph disabled-root mismatch cross-check removed two stale retained root pins
+  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`) while focused/full GitGraph `parity-root` stayed green. The current
+  root viewport total is `616`, with `226` GitGraph entries, and the no-growth budget is tightened
+  to `616`.
 - The obsolete flowchart degenerate path helper remains in place after strict-gate rechecks without
   it produced DOM mismatches on subgraph-descendant flowchart fixtures.
 - The redundant flowchart cluster-run helper remains in place after strict-gate rechecks without

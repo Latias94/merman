@@ -5,6 +5,12 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Removed two stale GitGraph root viewport pins
+  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`) after a disabled-root mismatch cross-check showed both fixtures now
+  pass focused `parity-root` without the lookup; full GitGraph `parity-root`,
+  `report-overrides --check-no-growth`, render/xtask clippy, and xtask override budget tests
+  stayed green, and the root no-growth budget was tightened to `616`.
 - Replaced the remaining Sequence block-frame literal offsets in `block_bounds.rs` with named
   local constants, keeping the block geometry rules readable while preserving render nextest,
   render clippy, Sequence `parity-root`, and override no-growth.

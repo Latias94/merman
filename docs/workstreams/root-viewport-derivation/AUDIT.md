@@ -29,15 +29,15 @@ The fearless-refactor closeout recorded these root viewport counts:
 
 Current counts after the State style/entity-placeholder/note-label/transition-label/alias
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
-docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, and the first
-Sequence font-size precedence, boundary message-width, title/accessibility message-width,
-residual default-title, simple note-right, long-note/long-message, and wrapped-leftOf follow-up
-passes:
+docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
+font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
+cleanup passes, and the first GitGraph stale-pin cross-check:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `164` entries.
-- Root viewport total: `702` entries.
+- Sequence: `80` entries.
+- GitGraph: `226` entries.
+- Root viewport total: `616` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -79,6 +79,7 @@ the text lookup and SVG text metric budgets flat.
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- report-overrides --check-no-growth
 cargo clippy -p merman-render --all-targets --all-features -- -D warnings
 cargo run -p xtask -- verify --strict
@@ -90,11 +91,30 @@ PowerShell disabled-root diagnostic sweep:
 $env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 ```
 
 ## Verification Log
 
+- 2026-05-13: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, a GitGraph disabled-root audit
+  produced 251 root rows. Crossing the disabled-root mismatch list with
+  `gitgraph_root_overrides_11_12_2.rs` found two stale retained pins:
+  `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`.
+- 2026-05-13: focused `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode
+  parity-root --dom-decimals 3 --filter <fixture> --report-root-all` passed for both removed
+  GitGraph fixtures.
+- 2026-05-13: full `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode
+  parity-root --dom-decimals 3`, `cargo run -p xtask -- report-overrides --check-no-growth`,
+  `cargo clippy -p merman-render -p xtask --all-targets --all-features -- -D warnings`, and
+  `cargo nextest run -p xtask -p merman-render gitgraph override_growth_check` passed after the
+  GitGraph cleanup. The targeted nextest expression matched the xtask override budget tests; a
+  separate `cargo nextest run -p merman-render gitgraph` found no render-side GitGraph tests, so
+  GitGraph SVG parity is covered by the compare command.
+- 2026-05-13: `report-overrides --check-no-growth` passed with root total `616`, GitGraph root
+  count `226`, text lookup total `484`, SVG text metric table total `186`, and zero manual raw
+  SVG/path bridges.
 - 2026-05-12: with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, focused
   `compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter ...` passed
   for the nine removed Sequence root pins. `cargo clippy -p merman-render --all-targets

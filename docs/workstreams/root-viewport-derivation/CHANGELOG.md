@@ -1,5 +1,14 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-13
+
+- Removed two stale GitGraph root viewport pins
+  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`) after disabled-root mismatch cross-checking showed both now pass
+  focused `parity-root` without the lookup; full GitGraph `parity-root`,
+  `report-overrides --check-no-growth`, render/xtask clippy, and xtask override budget tests
+  stayed green, and the root no-growth budget was tightened to `616` with GitGraph at `226`.
+
 ## 2026-05-12
 
 - Moved the Sequence participant `<br/>` label line-width browser facts into the Sequence SVG

@@ -63,6 +63,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- GitGraph root viewport overrides: remove two stale fixture-scoped pins
+  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`) after disabled-root diagnostics showed they now derive without the
+  lookup, and tighten the root viewport no-growth budget to `616`.
 - Sequence layout internals: split config lookup, Mermaid geometry constants, and text/math label
   measurement helpers and their owner tests into `sequence/` submodules without changing render
   output.

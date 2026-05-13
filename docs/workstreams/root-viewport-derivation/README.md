@@ -22,11 +22,11 @@ strict release gates green.
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
   the stale retained pins exposed by the post-wrapping disabled-root sweep.
-- Current Sequence root viewport overrides: `164` entries after deriving the small-font Sequence
-  note/message height path, the docs boundary actor-spacing path, and the title/accessibility
-  default-message width path, including the residual default-title pair and simple note-right
-  clusters, the long-note/long-message pass, and the follow-up wrapped-leftOf note pass.
-- Current root viewport override budget: `702` entries.
+- Current Sequence root viewport overrides: `80` entries after the follow-up Sequence metric,
+  note/message/frame, actor/root-bounds, and SVG metric-table cleanup passes.
+- Current GitGraph root viewport overrides: `226` entries after the first disabled-root
+  cross-check removed two stale retained pins.
+- Current root viewport override budget: `616` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting two existing default-message facts for the
   title/accessibility cluster.
@@ -44,6 +44,7 @@ Use focused parity-root audits before and after each candidate deletion:
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 ```
 
 Use disabled-root sweeps only as diagnostic input. They are expected to fail until each bucket has
@@ -53,6 +54,7 @@ typed bounds coverage:
 $env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 ```
 
@@ -73,7 +75,6 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Strategy
 
-Start with smaller, better-bounded buckets before revisiting GitGraph, Sequence, or Flowchart.
-State is first because the remaining drift clusters around scale/direction, edge-label bounds,
-notes, and small text/shape float differences. Mindmap follows because the remaining drift clusters
-around wrapping text, icons, shapes, and long-label bounds.
+Start with smaller, better-bounded buckets before broad table pruning in GitGraph, Sequence, or
+Flowchart. Disabled-root cross-checks can still remove stale retained pins, but broader reductions
+should come from typed bounds or shared measurement rules rather than blind deletion.

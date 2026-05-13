@@ -603,9 +603,6 @@ pub fn lookup_gitgraph_root_viewport_override(
         "upstream_cypress_gitgraph_spec_87_should_show_branches_with_tb_orientation_when_showbranches_is_091" => {
             Some(("-35.5 -8 147.2109375 296", "147.2109375"))
         }
-        "upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092" => {
-            Some(("-34.25 20 119.75 238", "119.75"))
-        }
         "upstream_cypress_gitgraph_spec_89_should_show_commit_labels_with_bt_orientation_when_showcommit_093" => {
             Some(("-35.5 20 147.2109375 291", "147.2109375"))
         }
@@ -624,10 +621,6 @@ pub fn lookup_gitgraph_root_viewport_override(
                 "363.46136474609375",
             ))
         }
-        "upstream_direction_bt" => Some((
-            "-64.29232788085938 22 97.79232788085938 89",
-            "97.79232788085938",
-        )),
         "upstream_direction_tb" => Some((
             "-64.29232788085938 -8 97.79232788085938 105.9283676147461",
             "97.79232788085938",

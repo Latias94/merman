@@ -560,7 +560,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   to `1937.25px` locally, so the two Journey root guards remain required. A follow-up GitGraph
   disabled-root audit using `--report-root-all` produced 251 root rows, with 239 non-zero
   `max-width` deltas and 241 changed viewBox dimensions, so the GitGraph table remains a
-  model/layout-derivation target rather than a blind-pruning target. A follow-up Flowchart
+  model/layout-derivation target rather than a blind-pruning target. A later 2026-05-13
+  disabled-root mismatch cross-check removed two stale GitGraph entries
+  (`upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt`), reducing the root total to `616` and GitGraph to `226` while full
+  GitGraph `parity-root` stayed green. A follow-up Flowchart
   disabled-root audit produced 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed
   viewBox dimensions, and one skipped fixture; the largest drift comes from icon-heavy Flowcharts
   and old-shape all-pairs fixtures, so Flowchart also remains a bounds/shape derivation target. A

@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-12
+## Snapshot: 2026-05-13
 
 Command:
 
@@ -73,6 +73,10 @@ viewport budget to `702`; the latest Sequence long-note/long-message and wrapped
 fixed leftOf note start/width/rewrap behavior, removed fifteen more root pins, and kept the SVG
 text metric table budget flat at `186` rows by replacing one stale `FRIENDS` row with the new
 long-message fact.
+A follow-up GitGraph disabled-root cross-check then found two stale fixture-scoped pins that no
+longer appeared in the mismatch set. `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+and `upstream_direction_bt` now pass focused `parity-root` without the lookup, so the GitGraph
+table dropped to `226` entries and the root viewport no-growth budget tightened to `616`.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -250,7 +254,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `618`.
+Total entries reported by `xtask`: `616`.
 
 | file | entries |
 | --- | ---: |
@@ -258,7 +262,7 @@ Total entries reported by `xtask`: `618`.
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
 | `flowchart_root_overrides_11_12_2.rs` | 125 |
-| `gitgraph_root_overrides_11_12_2.rs` | 228 |
+| `gitgraph_root_overrides_11_12_2.rs` | 226 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
@@ -293,7 +297,9 @@ need root-viewport derivation work before table pruning, not another blind delet
 A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 `--report-root-all` produced 251 root rows, with 239 non-zero `max-width` deltas and 241 changed
 viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
-`-281.558px`. This confirms the GitGraph bucket needs model/layout derivation work before another
+`-281.558px`. Crossing the disabled-root mismatches with the GitGraph root table exposed two stale
+retained pins, which were removed after focused and full GitGraph `parity-root` stayed green. The
+remaining `226` GitGraph entries still need model/layout derivation work before another broad
 deletion pass.
 A follow-up Flowchart audit using the same disabled-root path and `--report-root-all` produced
 1068 root rows, with 245 non-zero `max-width` deltas, 286 changed viewBox dimensions, and one
@@ -355,7 +361,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `gitgraph`: 228
+- `gitgraph`: 226
 - `flowchart`: 125
 - `sequence`: 80
 - `mindmap`: 39

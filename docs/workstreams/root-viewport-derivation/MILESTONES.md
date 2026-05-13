@@ -163,7 +163,13 @@ Progress:
 - Removed the follow-up wrapped-leftOf / long-note Sequence nine-pack after deriving the leftOf
   note width probe and final rewrap behavior. Focused disabled-root checks, full Sequence
   `parity-root`, render clippy, render nextest, and `report-overrides --check-no-growth` passed;
-  root viewport overrides are now `702` total with `164` Sequence entries.
+  root viewport overrides were `702` total with `164` Sequence entries at that point.
+- Removed two stale GitGraph root pins after disabled-root mismatch cross-checking showed
+  `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
+  and `upstream_direction_bt` no longer needed lookup coverage. Focused and full GitGraph
+  `parity-root`, render/xtask clippy, xtask override budget tests, and
+  `report-overrides --check-no-growth` passed; root viewport overrides are now `616` total with
+  `226` GitGraph entries.
 
 Exit criteria:
 

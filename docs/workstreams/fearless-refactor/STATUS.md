@@ -16,6 +16,8 @@ What is done:
 - M2 typed model expansion is complete for all in-tree Mermaid diagrams except the explicit error/custom-registry fallback path.
 - M3 text subsystem modularization is complete.
 - M4 large renderer decomposition is effectively complete.
+- Root viewport override no-growth is tightened to `616` after the first GitGraph stale-pin
+  follow-up.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes.
@@ -45,8 +47,9 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `gitgraph` 228, `sequence` 198, `flowchart` 125, `mindmap` 48, `state` 42
-- text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 26
+- root viewport: `gitgraph` 226, `flowchart` 125, `sequence` 80, `mindmap` 39, `c4` 35,
+  `state` 34
+- text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 
 ## Next Practical Slices
 
