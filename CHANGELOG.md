@@ -63,6 +63,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- GitGraph layout: restart the commit axis for unconnected branch roots under `parallelCommits`,
+  matching Mermaid's independent branch timelines without adding new root viewport pins.
 - GitGraph root derivation: include `gitTitleText` bounds in the emitted root bbox and remove 13
   now-derived title-dominated root pins, tightening the root viewport no-growth budget to `603`.
 - GitGraph root viewport overrides: remove two stale fixture-scoped pins

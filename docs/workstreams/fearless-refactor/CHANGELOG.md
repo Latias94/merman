@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-13
 
+- Fixed GitGraph `parallelCommits` layout for unconnected LR branch roots by restarting parentless
+  commits at the commit-axis origin. This removes a structural coordinate bug without adding new
+  overrides; the remaining root drift in the focused fixture is branch-label browser bbox
+  measurement.
 - Derived GitGraph title-dominated root viewports by including `gitTitleText` bounds in emitted
   root bbox calculation, removed 13 now-derived GitGraph root pins, and tightened the root
   no-growth budget to `603` while full GitGraph `parity-root`, override no-growth, and

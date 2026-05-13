@@ -2,6 +2,12 @@
 
 ## 2026-05-13
 
+- Fixed GitGraph `parallelCommits` layout for unconnected LR branch roots by restarting the commit
+  axis for parentless commits, matching Mermaid's independent branch timelines. The focused
+  disabled-root probe for
+  `upstream_cypress_gitgraph_spec_45_should_render_gitgraph_with_unconnected_branches_and_parallel_048`
+  shrank from a `+150.250px` root-width drift to the existing `+0.250px` branch-label bbox
+  measurement drift; no root pin was deleted in this pass.
 - Derived GitGraph title-dominated root viewports from emitted title text bounds, keeping the
   title anchor tied to the pre-title content bbox center like Mermaid `insertTitle(...)`; removed
   13 now-derived GitGraph root pins and tightened the root no-growth budget to `603` with GitGraph

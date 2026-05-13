@@ -231,6 +231,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   cross-checking exposed 13 now-derived pins, which were removed from
   `gitgraph_root_overrides_11_12_2.rs`. Root viewport overrides are now `603` total, with `213`
   GitGraph entries, and the root no-growth budget is tightened to `603`.
+- [x] Fix the GitGraph `parallelCommits` unconnected-branch axis rule before pruning the broader
+  branch bucket.
+  Evidence: parentless commits now restart the commit axis in LR/RL as well as TB/BT, matching
+  Mermaid's independent branch timelines. The focused disabled-root probe for
+  `upstream_cypress_gitgraph_spec_45_should_render_gitgraph_with_unconnected_branches_and_parallel_048`
+  dropped from a `+150.250px` root-width drift to `+0.250px`, while full GitGraph normal DOM and
+  `parity-root` stayed green. No root pin was deleted because the remaining drift is branch-label
+  browser bbox measurement, not commit-axis layout.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins.
 

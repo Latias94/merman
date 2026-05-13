@@ -96,6 +96,14 @@ fn find_closest_parent<'a>(
     closest
 }
 
+fn commit_axis_start_pos(dir: &str) -> f64 {
+    if dir == "TB" || dir == "BT" {
+        DEFAULT_POS
+    } else {
+        0.0
+    }
+}
+
 fn should_reroute_arrow(
     commit_a: &GitGraphCommit,
     commit_b: &GitGraphCommit,
@@ -650,11 +658,7 @@ pub fn layout_gitgraph_diagram_typed(
     let mut commit_pos: HashMap<&str, CommitPosition> = HashMap::new();
     let mut commits: Vec<GitGraphCommitLayout> = Vec::new();
     let mut max_pos: f64 = 0.0;
-    let mut cur_pos = if direction == "TB" || direction == "BT" {
-        DEFAULT_POS
-    } else {
-        0.0
-    };
+    let mut cur_pos = commit_axis_start_pos(&direction);
 
     for &id in &sorted_keys {
         let Some(commit) = commits_by_id.get(id).copied() else {
@@ -680,8 +684,8 @@ pub fn layout_gitgraph_diagram_typed(
                         }
                     }
                 }
-            } else if direction == "TB" {
-                cur_pos = DEFAULT_POS;
+            } else {
+                cur_pos = commit_axis_start_pos(&direction);
             }
         }
 
@@ -814,4 +818,71 @@ pub fn layout_gitgraph_diagram_typed(
         commits,
         arrows,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::VendoredFontMetricsTextMeasurer;
+    use merman_core::diagrams::git_graph::{
+        GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
+    };
+    use serde_json::json;
+
+    fn commit(id: &str, seq: i64, parents: &[&str], branch: &str) -> GitGraphCommitRenderModel {
+        GitGraphCommitRenderModel {
+            id: id.to_string(),
+            message: id.to_string(),
+            seq,
+            commit_type: 0,
+            tags: Vec::new(),
+            parents: parents.iter().map(|p| (*p).to_string()).collect(),
+            branch: branch.to_string(),
+            custom_type: None,
+            custom_id: Some(true),
+        }
+    }
+
+    #[test]
+    fn parallel_lr_unconnected_branches_restart_commit_axis() {
+        let model = GitGraphRenderModel {
+            diagram_type: "gitGraph".to_string(),
+            branches: ["main", "dev", "v2", "feat"]
+                .into_iter()
+                .map(|name| GitGraphBranchRenderModel {
+                    name: name.to_string(),
+                })
+                .collect(),
+            commits: vec![
+                commit("1-abcdefg", 0, &[], "feat"),
+                commit("2-abcdefg", 1, &["1-abcdefg"], "feat"),
+                commit("3-abcdefg", 2, &[], "main"),
+                commit("4-abcdefg", 3, &[], "dev"),
+                commit("5-abcdefg", 4, &[], "v2"),
+                commit("6-abcdefg", 5, &["3-abcdefg"], "main"),
+            ],
+            current_branch: "main".to_string(),
+            direction: "LR".to_string(),
+            acc_title: None,
+            acc_descr: None,
+            warnings: Vec::new(),
+        };
+        let cfg = json!({ "gitGraph": { "parallelCommits": true } });
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+
+        let x_by_id = layout
+            .commits
+            .iter()
+            .map(|c| (c.id.as_str(), c.x))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(x_by_id["1-abcdefg"], 10.0);
+        assert_eq!(x_by_id["2-abcdefg"], 60.0);
+        assert_eq!(x_by_id["3-abcdefg"], 10.0);
+        assert_eq!(x_by_id["4-abcdefg"], 10.0);
+        assert_eq!(x_by_id["5-abcdefg"], 10.0);
+        assert_eq!(x_by_id["6-abcdefg"], 60.0);
+        assert_eq!(layout.max_pos, 100.0);
+    }
 }

@@ -128,6 +128,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   additional stale GitGraph root pins were deleted in this pass. `report-overrides
   --check-no-growth` reported root total `603`, GitGraph root count `213`, text lookup total
   `484`, SVG text metric table total `186`, and zero manual raw SVG/path bridges.
+- 2026-05-13: GitGraph `parallelCommits` parentless LR commits now restart from the commit-axis
+  start, matching Mermaid's independent branch timelines for unconnected branches. Focused
+  disabled-root checks on
+  `upstream_cypress_gitgraph_spec_45_should_render_gitgraph_with_unconnected_branches_and_parallel_048`
+  reduced the root-width drift from `+150.250px` to `+0.250px`; the remaining drift comes from
+  branch-label browser bbox measurement, so no root pin was removed. `cargo fmt --check`,
+  `cargo nextest run -p merman-render parallel_lr_unconnected_branches_restart_commit_axis`,
+  full GitGraph normal DOM, full GitGraph `parity-root`, and `report-overrides
+  --check-no-growth` passed for this pass.
 - 2026-05-13: Flowchart disabled-root mismatch cross-check found `125` override entries and `125`
   matching disabled-root DOM mismatches, so no stale retained Flowchart root pin was deleted in
   this pass.
