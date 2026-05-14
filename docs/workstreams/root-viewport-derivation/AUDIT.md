@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-seven Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, thirty-eight Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -31,7 +31,8 @@ Current counts after the State style/entity-placeholder/note-label/transition-la
 node-label/package style node-label passes, the Mindmap single-line shape, docs circle plain-label,
 docs cloud path-bounds, plain wrapping-label, and post-wrapping sweep passes, the Sequence
 font-size/message-width/title/default-title/note-right/long-note/wrapped-leftOf plus later metric
-cleanup and frontmatter-title passes, the first GitGraph stale-pin cross-check, and the GitGraph
+cleanup, frontmatter-title, and `arrows_variants` passes, the first GitGraph stale-pin
+cross-check, and the GitGraph
 title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-label, commit/tag
 label computed-length, vertical branch-label centered bbox, commit/tag label theme-variable, and
 seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
@@ -41,10 +42,10 @@ fork/join direction-sensitive sizing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `76` entries.
+- Sequence: `75` entries.
 - GitGraph: `23` entries.
 - Flowchart: `95` entries.
-- Root viewport total: `379` entries.
+- Root viewport total: `378` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -84,7 +85,9 @@ the affected Sequence/ZenUML layout goldens, and removed nine more Sequence root
 the text lookup and SVG text metric budgets flat. The latest small Sequence pass corrected the
 default `Hello Alice, I'm fine and you?` message-width fact from `activation_explicit` actor
 spacing, so that fixture now passes focused `parity-root` with root overrides disabled and no
-longer needs a root viewport pin.
+longer needs a root viewport pin. The follow-up `arrows_variants` pass corrected the
+`bidirectional_dotted` width fact from `131px` to upstream `130px`, preserving Mermaid's default
+50px actor margin and deriving the 450px root viewport without the fixture pin.
 
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.

@@ -64,6 +64,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
+  `bidirectional_dotted`, so `arrows_variants` keeps the upstream 50px actor margin and derives
+  its 450px root viewport without a fixture-scoped pin. Sequence root pins drop to `75`, and the
+  root viewport no-growth budget tightens to `378`.
+- Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
   `Hello Alice, please meet Carol?`, so the stacked-activation fixtures now derive their actor
   spacing and root viewport without fixture-scoped pins. Sequence root pins drop to `76`, and the
   root viewport no-growth budget tightens to `379`.

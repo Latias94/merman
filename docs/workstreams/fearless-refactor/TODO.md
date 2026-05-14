@@ -628,6 +628,9 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   `Hello Alice, please meet Carol?` message-width fact, deleted `activation_stacked` and
   `upstream_pkgtests_sequencediagram_spec_040`, and tightened the root total to `379` with `76`
   Sequence entries.
+  A follow-up `arrows_variants` pass corrected the shared `bidirectional_dotted` message-width
+  fact from `131px` to upstream `130px`, deleted that root pin, and tightened the root total to
+  `378` with `75` Sequence entries.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

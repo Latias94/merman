@@ -319,7 +319,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `379`.
+Total entries reported by `xtask`: `378`.
 
 | file | entries |
 | --- | ---: |
@@ -332,7 +332,7 @@ Total entries reported by `xtask`: `379`.
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 76 |
+| `sequence_root_overrides_11_12_2.rs` | 75 |
 | `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 

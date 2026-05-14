@@ -222,6 +222,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_pkgtests_sequencediagram_spec_040` pass focused disabled-root `parity-root`; full
   Sequence `parity-root` passes, and `report-overrides --check-no-growth` reports `379` root
   entries with `76` Sequence entries.
+- [x] Remove the `arrows_variants` Sequence root pin covered by a shared message-width fact.
+  Evidence: the browser `calculateTextDimensions` width fact for `bidirectional_dotted` now
+  matches the upstream 130px width, so the actor columns keep Mermaid's default 50px margin.
+  `arrows_variants` passes focused disabled-root `parity-root`, and
+  `report-overrides --check-no-growth` reports `378` root entries with `75` Sequence entries.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch

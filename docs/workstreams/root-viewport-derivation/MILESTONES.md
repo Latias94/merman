@@ -243,6 +243,10 @@ Progress:
   for `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040`, full Sequence
   `parity-root` stays green, and the root budget is tightened to `379` with `76` Sequence root
   entries.
+- Removed the `arrows_variants` Sequence root pin after correcting the default message-width fact
+  for `bidirectional_dotted` from upstream actor spacing. Focused disabled-root `parity-root`
+  passes for the fixture, and the root budget is tightened to `378` with `75` Sequence root
+  entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed

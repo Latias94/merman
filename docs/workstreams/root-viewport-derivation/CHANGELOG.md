@@ -2,6 +2,10 @@
 
 ## 2026-05-14
 
+- Corrected the Sequence default `bidirectional_dotted` message-width fact from the upstream
+  `arrows_variants` actor spacing, then deleted the now-derived root viewport pin. Focused
+  disabled-root `parity-root` passes for the fixture, tightening the root no-growth budget to
+  `378` with Sequence at `75`.
 - Corrected the Sequence default `Hello Alice, please meet Carol?` message-width fact from the
   upstream stacked-activation actor spacing, then deleted the now-derived
   `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040` root viewport pins.

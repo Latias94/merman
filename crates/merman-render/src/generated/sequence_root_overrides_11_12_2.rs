@@ -104,7 +104,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_sequence_batch5_reserved_words_in_labels_049" => Some(("-50 -10 580 408", "580")),
         "stress_sequence_batch5_whitespace_semicolons_051" => Some(("-50 -10 450 506", "450")),
         "actor_ids_dashes_and_equals" => Some(("-50 -10 696 347", "696")),
-        "arrows_variants" => Some(("-50 -10 450 611", "450")),
         "upstream_cypress_sequencediagram_spec_example_001" => Some(("-50 -10 810 979", "810")),
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059" => {
             Some(("-50 -10 790 942", "790"))

@@ -182,7 +182,7 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("a", 0.0, 0.8125),
     ("another-long-participant-label", 0.0, 12.0),
     ("b", 0.0, 0.8125),
-    ("bidirectional_dotted", 0.0, 8.1875),
+    ("bidirectional_dotted", 0.0, 8.125),
     ("bidirectional_solid", 0.0, 7.625),
     ("boundary", 0.0, 3.875),
     ("c", 0.0, 0.8125),
