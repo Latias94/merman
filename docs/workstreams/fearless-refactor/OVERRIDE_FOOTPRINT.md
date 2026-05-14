@@ -142,6 +142,11 @@ variables and measured commit and tag labels with separate font-size styles. Foc
 checks for the commit/tag font-size docs fixtures stayed green, deleting
 `upstream_docs_gitgraph_customizing_commit_label_font_size_032` and tightening the current root
 viewport no-growth budget to `382` with `23` GitGraph entries.
+A later Sequence stale-pin sweep removed five simple-root pins, tightening the current root
+viewport no-growth budget to `362` with `59` Sequence entries. The latest Flowchart table-only
+cleanup then collapsed exact-duplicate generated root override match arms into Rust or-patterns.
+It does not delete fixture-key coverage, but it removes redundant inventory rows and tightens the
+current root viewport no-growth budget to `354` with `87` Flowchart entries.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in

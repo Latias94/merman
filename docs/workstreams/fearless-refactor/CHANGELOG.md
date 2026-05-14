@@ -5,6 +5,14 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This keeps
+  the same fixture-key coverage and root tuples, but trims generated-table inventory to `354`
+  total root entries with Flowchart at `87`.
+- Revalidated the current-release closeout with `cargo run -p xtask -- verify --strict` and
+  `cargo bench -p merman --features render`; the strict gate passed with `354` root entries,
+  `484` text lookup entries, `1035` nextest tests passed, and full root parity green, while the
+  full bench gate is recorded in
+  `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
 - Removed five stale Sequence simple-root pins after a disabled-root mismatch cross-check found
   `root=64 mismatch=59 stale=5 missing=0`. Focused disabled-root `parity-root` passes for all
   five removed fixtures, so Sequence root pins are now `59`, and the root no-growth budget is

@@ -2,6 +2,9 @@
 
 ## 2026-05-14
 
+- Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This is a
+  table-only cleanup: the same fixture stems still map to the same `(viewBox, max-width)` tuples,
+  but `report-overrides` inventory drops from `362` to `354` root entries, with Flowchart at `87`.
 - Removed five stale Sequence root pins after a disabled-root mismatch cross-check found
   `root=64 mismatch=59 stale=5 missing=0`. Focused disabled-root `parity-root` passes for the
   five removed simple-root fixtures, tightening the root no-growth budget to `362` with Sequence

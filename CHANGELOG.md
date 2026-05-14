@@ -36,6 +36,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a public render API and CLI cleanup decision note for the fearless-refactor workstream.
 - Docs: add a lint-allow audit for remaining source-level allowances and removal criteria.
 - Docs: add a post-Class-cleanup full bench gate record for the release readiness pass.
+- Docs: add a post-Flowchart-override-inventory full bench gate record for the release readiness
+  pass.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.
@@ -63,6 +65,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart root override inventory: collapse exact-duplicate generated match arms into Rust
+  or-patterns, preserving fixture-key coverage while tightening the root viewport no-growth budget
+  to `354` with Flowchart at `87`.
 - Sequence root derivation: remove five stale simple-root pins after a disabled-root mismatch
   cross-check showed they are now covered by existing root derivation. Sequence root pins drop to
   `59`, and the root viewport no-growth budget tightens to `362`.
@@ -470,7 +475,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Data method guards, and keep the no-growth budget at `480` global text lookup entries after
   restoring three Class rendered-width guards needed for `parity-root`.
 - Release readiness: revalidate `cargo run -p xtask -- verify --strict` and
-  `cargo bench -p merman --features render` after the latest Class text lookup cleanup.
+  `cargo bench -p merman --features render` after the Flowchart root override inventory cleanup.
 
 ### Removed
 

@@ -83,19 +83,15 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
         }
-        "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_051" => {
-            Some(("0 0 363.921875 430", "363.922"))
-        }
-        "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_056" => {
+        "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_051"
+        | "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_056" => {
             Some(("0 0 363.921875 430", "363.922"))
         }
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
             Some(("0 0 154.921875 364", "154.922"))
         }
-        "upstream_html_demos_flowchart_flowchart_010" => {
-            Some(("0 0 2004.41015625 1046", "2004.41"))
-        }
-        "upstream_html_demos_flowchart_flowchart_049" => {
+        "upstream_html_demos_flowchart_flowchart_010"
+        | "upstream_html_demos_flowchart_flowchart_049" => {
             Some(("0 0 2004.41015625 1046", "2004.41"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fdh49_should_add_edge_animation_049" => {
@@ -238,19 +234,19 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec" => {
             Some(("-33.6171875 -35 152.671875 209", "152.672"))
         }
-        "upstream_html_demos_flowchart_flowchart_004" => Some(("0 0 417 646", "417")),
-        "upstream_html_demos_flowchart_flowchart_008" => Some(("0 -45 2400.640625 645", "2400.64")),
-        "upstream_html_demos_flowchart_flowchart_016" => Some(("0 0 622.921875 70", "622.922")),
-        "upstream_html_demos_flowchart_flowchart_022" => Some(("0 0 953.6875 257", "953.688")),
-        "upstream_html_demos_flowchart_flowchart_024" => Some((
-            "0 0.000003814697265625 769.890625 341.0105285644531",
-            "769.891",
-        )),
-        "upstream_html_demos_flowchart_flowchart_046" => Some(("0 0 417 646", "417")),
-        "upstream_html_demos_flowchart_flowchart_048" => Some(("0 -45 2400.640625 645", "2400.64")),
-        "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 622.921875 70", "622.922")),
-        "upstream_html_demos_flowchart_flowchart_055" => Some(("0 0 953.6875 257", "953.688")),
-        "upstream_html_demos_flowchart_flowchart_056" => Some((
+        "upstream_html_demos_flowchart_flowchart_004"
+        | "upstream_html_demos_flowchart_flowchart_046" => Some(("0 0 417 646", "417")),
+        "upstream_html_demos_flowchart_flowchart_008"
+        | "upstream_html_demos_flowchart_flowchart_048" => {
+            Some(("0 -45 2400.640625 645", "2400.64"))
+        }
+        "upstream_html_demos_flowchart_flowchart_016"
+        | "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 622.921875 70", "622.922")),
+        "upstream_html_demos_flowchart_flowchart_022"
+        | "upstream_html_demos_flowchart_flowchart_055" => Some(("0 0 953.6875 257", "953.688")),
+        "upstream_html_demos_flowchart_flowchart_024"
+        | "upstream_html_demos_flowchart_flowchart_056"
+        | "upstream_html_demos_flowchart_graph_023" => Some((
             "0 0.000003814697265625 769.890625 341.0105285644531",
             "769.891",
         )),
@@ -259,10 +255,6 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_html_demos_flowchart_graph_003" => Some(("0 -50 417 696", "417")),
         "upstream_html_demos_flowchart_graph_021" => Some(("0 0 953.6875 257", "953.688")),
-        "upstream_html_demos_flowchart_graph_023" => Some((
-            "0 0.000003814697265625 769.890625 341.0105285644531",
-            "769.891",
-        )),
         "upstream_pkgtests_flow_singlenode_spec_010" => Some(("0 0 438.859375 70", "438.859")),
         _ => None,
     }

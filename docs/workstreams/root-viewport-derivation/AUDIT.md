@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion or table compression | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed; the latest Flowchart table cleanup also collapses eight exact-duplicate inventory arms without changing fixture-key coverage |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -45,8 +45,8 @@ fork/join direction-sensitive sizing passes:
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `95` entries.
-- Root viewport total: `362` entries.
+- Flowchart: `87` inventory entries.
+- Root viewport total: `354` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -146,6 +146,11 @@ The latest iconSquare pass aligns Flowchart layout bounds with Mermaid's `iconSq
 the icon box is `iconSize + halfPadding * 2`; the Rust layout now feeds Dagre/root bounds with
 `iconSize + node.padding` for `iconSquare`, deriving `upstream_docs_flowchart_icon_shape_132`
 without a root pin.
+The latest table-only Flowchart cleanup collapses exact-duplicate root override match arms for
+fixtures that share the same `(viewBox, max-width)` tuple. This lowers the inventory count from
+`95` to `87` Flowchart entries and the root viewport budget from `362` to `354`, while preserving
+the same fixture-key coverage. It is therefore counted as generated-table debt reduction rather
+than a new typed derivation pass.
 
 ## Focused Commands
 
@@ -178,6 +183,14 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   five stale simple-root fixtures, and `report-overrides` now reports root total `362`, Sequence
   root count `59`, text lookup total `484`, SVG text metric table total `186`, font metric table
   total `3774`, and zero manual raw SVG/path bridges.
+- 2026-05-14: Flowchart root override table compression collapsed exact-duplicate generated match
+  arms into or-patterns for fixture stems that already shared identical `(viewBox, max-width)`
+  tuples. This preserves behavior and fixture-key coverage while reducing `report-overrides`
+  inventory from `362` to `354` root entries, with Flowchart at `87`.
+- 2026-05-14: `cargo run -p xtask -- verify --strict` passed after the Flowchart table compression
+  and no-growth budget tightening. The strict gate covered fmt, all-features check, workspace
+  all-target/all-features clippy, override no-growth, feature matrix checks, workspace nextest
+  (`1035` passed, `3` skipped), normal SVG DOM parity, and full SVG root parity.
 - 2026-05-14: Sequence docs/control width facts now match upstream SVG actor/frame spacing for
   `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
   `Did you want to go to the game tonight?`. Six docs/control Sequence root pins were deleted

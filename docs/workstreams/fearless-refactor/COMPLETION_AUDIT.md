@@ -17,8 +17,8 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` document the feature matrix, override no-growth, workspace clippy, nextest, normal DOM parity, and full root parity coverage now included in `cargo run -p xtask -- verify --strict`. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring ten required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The Class `parity-root` recheck also restored three rendered-width guards and brought the global text lookup budget to `480`. | Met |
-| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Class text lookup cleanup. | Met |
+| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The current no-growth budgets are `354` root viewport inventory entries and `484` text lookup entries. | Met |
+| Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Flowchart override inventory cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
 ## Prompt-to-Artifact Map
@@ -29,13 +29,24 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Parity-safe release | `cargo run -p xtask -- verify --strict`; `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` | Covered |
 | Public feature gates | `cargo run -p xtask -- verify --feature-matrix` and `cargo run -p xtask -- verify --strict` | Covered |
 | Clippy in success criteria | `GATES.md`, `README.md`, `MILESTONES.md` | Covered |
-| Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-11_full_bench_gate_after_class_cleanup.md`, `docs/performance/COMPARISON.md` | Covered |
+| Performance evidence | `docs/workstreams/fearless-refactor/TYPED_MIGRATION_TIMING.md`, `docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md`, `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`, `docs/performance/COMPARISON.md` | Covered |
 | Override debt governance | `OVERRIDE_FOOTPRINT.md`, `OVERRIDE_POLICY.md`, `cargo run -p xtask -- report-overrides --check-no-growth` | Covered |
+| Remaining root/text override retention | `docs/workstreams/root-viewport-derivation/AUDIT.md`, `docs/workstreams/root-viewport-derivation/TODO.md`, `docs/workstreams/fearless-refactor/OVERRIDE_FOOTPRINT.md`, and `docs/workstreams/fearless-refactor/STATUS.md` classify remaining root viewport and text lookup buckets as typed-derivation or browser/font-measurement targets rather than known-obsolete blind-deletion candidates. | Covered |
 | Delete obsolete code | flowchart helper rechecks in `TODO.md` and `CHANGELOG.md`, the basis helper cleanup in `crates/merman-render/src/svg/parity/flowchart/edge_geom/basis.rs`, deletion of stale override generators, and the completed M5 override audit in `OVERRIDE_FOOTPRINT.md` | Covered; obsolete helpers/generators were removed after strict-gate parity stayed green, and remaining override buckets are documented as derivation or measurement targets rather than known-obsolete cleanup candidates |
 | Keep docs current | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, `GATES.md`, and `OVERRIDE_POLICY.md` | Covered |
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- verify --strict` passed after the Flowchart root override inventory
+  cleanup and no-growth budget tightening. The run covered fmt, all-features check, workspace
+  all-target/all-features clippy, override no-growth at `354` root viewport entries and `484`
+  text lookup entries, feature matrix checks, workspace nextest (`1035` tests passed, `3`
+  skipped), normal SVG DOM parity, and full SVG root parity.
+- `cargo bench -p merman --features render` passed after the Flowchart root override inventory
+  cleanup and is recorded in
+  `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`. The
+  command completed in about `51m 13s`; `gnuplot` was unavailable, so Criterion used the plotters
+  backend.
 - `cargo run -p xtask -- verify --strict` passed after the M5 closeout and root-report parser
   hardening. The run covered fmt, all-features check, workspace all-target/all-features clippy,
   override no-growth at `760` root viewport entries and `480` text lookup entries, feature matrix

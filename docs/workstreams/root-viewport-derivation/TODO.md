@@ -419,6 +419,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   disabled-root stale-pin cross-check also found the classdef, `md_html_false`, and styles siblings
   absent from the mismatch set, so those three pins were deleted too. The root no-growth budget is
   tightened to `424` with `95` Flowchart entries.
+- [x] Collapse exact-duplicate Flowchart root override match arms.
+  Evidence: several retained Flowchart fixture stems share byte-for-byte identical `(viewBox,
+  max-width)` tuples. The generated table now groups those stems with Rust or-patterns, preserving
+  fixture-key coverage while reducing `report-overrides` inventory from `362` to `354` root
+  entries and Flowchart from `95` to `87` entries.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

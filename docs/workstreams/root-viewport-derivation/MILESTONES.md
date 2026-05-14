@@ -267,6 +267,10 @@ Progress:
   they no longer produce DOM mismatches when root overrides are disabled. Focused disabled-root
   `parity-root` passes for the five removed fixtures, tightening the root budget to `362` with
   `59` Sequence root entries.
+- Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This does
+  not delete fixture-key coverage or claim a new derivation rule; it removes generated-table
+  redundancy for stems that already shared identical root tuples, tightening the inventory budget
+  to `354` with `87` Flowchart entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
