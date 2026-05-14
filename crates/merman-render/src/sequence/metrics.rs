@@ -172,9 +172,28 @@ mod tests {
         );
         assert_eq!(hello_alice_carol_w, 203.0);
 
+        let (feeling_fresh_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Feeling fresh like a daisy", &style);
+        assert_eq!(feeling_fresh_w, 161.0);
+
+        let (fine_thank_you_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Fine, thank you. And you?", &style);
+        assert_eq!(fine_thank_you_w, 170.0);
+
+        let (hello_charley_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Hello Charley, how are you?", &style);
+        assert_eq!(hello_charley_w, 183.0);
+
         let (hello_john_w, _) =
             super::measure_svg_like_with_html_br(&measurer, "Hello John, how are you?", &style);
         assert_eq!(hello_john_w, 164.0);
+
+        let (game_tonight_w, _) = super::measure_svg_like_with_html_br(
+            &measurer,
+            "Did you want to go to the game tonight?",
+            &style,
+        );
+        assert_eq!(game_tonight_w, 259.0);
 
         let (how_about_john_w, _) =
             super::measure_svg_like_with_html_br(&measurer, "How about you John?", &style);

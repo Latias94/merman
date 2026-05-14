@@ -108,9 +108,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059" => {
             Some(("-50 -10 790 942", "790"))
         }
-        "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009" => {
-            Some(("-50 -10 1315 806", "1315"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030" => {
             Some(("-50 -10 715 435", "715"))
         }
@@ -136,16 +133,9 @@ pub fn lookup_sequence_root_viewport_override(
             Some(("-50 -10 751 364", "751"))
         }
         "upstream_docs_examples_basic_sequence_diagram_005" => Some(("-50 -10 790 541", "790")),
-        "upstream_docs_examples_sequencediagram_loops_alt_and_opt_011" => {
-            Some(("-50 -10 481 557", "481"))
-        }
         "upstream_docs_readme_how_does_a_langium_based_parser_work_002" => {
             Some(("-50 -10 1334 503", "1334"))
         }
-        "upstream_docs_sequence_alt_and_opt_example" => Some(("-50 -10 481 502", "481")),
-        "upstream_docs_sequence_box_groups_example" => Some(("-50 -10 967 384", "967")),
-        "upstream_docs_sequence_create_destroy_example" => Some(("-50 -10 1040 565", "1040")),
-        "upstream_docs_sequence_rect_nested_example" => Some(("-50 -10 579 544", "579")),
         "upstream_pkgtests_sequencediagram_spec_016" => Some(("-50 -10 471 303", "471")),
         "upstream_pkgtests_sequencediagram_spec_038" => Some(("-50 -10 513 259", "513")),
         "upstream_pkgtests_sequencediagram_spec_095" => Some(("-50 -10 450 215", "450")),

@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, forty-three Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, forty-nine Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -43,10 +43,10 @@ fork/join direction-sensitive sizing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `70` entries.
+- Sequence: `64` entries.
 - GitGraph: `23` entries.
 - Flowchart: `95` entries.
-- Root viewport total: `373` entries.
+- Root viewport total: `367` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -94,6 +94,17 @@ message-width fact and `Alice-in-Wonderland` to the upstream 136px actor-label w
 removes the residual 1-2px actor-column drift in
 `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027`, and all four fixtures pass
 focused `parity-root` with root viewport overrides disabled.
+The docs/control sequence follow-up corrected `Feeling fresh like a daisy`, `Fine, thank you. And
+you?`, `Hello Charley, how are you?`, and `Did you want to go to the game tonight?` from upstream
+SVG actor/frame spacing. That removed six more root pins:
+`upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009`,
+`upstream_docs_examples_sequencediagram_loops_alt_and_opt_011`,
+`upstream_docs_sequence_alt_and_opt_example`, `upstream_docs_sequence_box_groups_example`,
+`upstream_docs_sequence_create_destroy_example`, and
+`upstream_docs_sequence_rect_nested_example`. The participant-creation v2 sibling remains pinned:
+with root overrides disabled its width matches, but the root height still drifts from upstream
+`1040x580` to local `1040x591`, so the next fix belongs in participant type/lifecycle vertical
+geometry rather than another text-width fact.
 
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.
@@ -155,6 +166,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-14: Sequence docs/control width facts now match upstream SVG actor/frame spacing for
+  `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?`. Six docs/control Sequence root pins were deleted
+  after focused disabled-root `parity-root` checks passed. `report-overrides` now reports root
+  total `367`, Sequence root count `64`, text lookup total `484`, SVG text metric table total
+  `186`, font metric table total `3774`, and zero manual raw SVG/path bridges.
 - 2026-05-14: GitGraph vertical branch-label root bounds now use Mermaid's
   `drawText(name).getBBox()`-style centered SVG bbox for TB/BT branch labels with ties-to-even
   1/64px quantization, while LR/RL keeps the computed-length branch-label rule. With

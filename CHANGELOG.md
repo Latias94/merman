@@ -64,6 +64,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - Sequence root derivation: correct Mermaid `calculateTextDimensions` width facts for
+  `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?`, so the docs/control Sequence fixtures derive actor,
+  frame, and root bounds without fixture-scoped pins. Six more Sequence root pins are deleted;
+  Sequence root pins drop to `64`, and the root viewport no-growth budget tightens to `367`.
+- Sequence root derivation: correct Mermaid `calculateTextDimensions` width facts for
   `Hello Bob, how are - you?` and `Alice-in-Wonderland`, so package sequence fixtures `014`,
   `015`, `026`, and `027` derive actor spacing and root viewport without fixture-scoped pins.
   Sequence root pins drop to `70`, and the root viewport no-growth budget tightens to `373`.

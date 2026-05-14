@@ -631,6 +631,16 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   A follow-up `arrows_variants` pass corrected the shared `bidirectional_dotted` message-width
   fact from `131px` to upstream `130px`, deleted that root pin, and tightened the root total to
   `378` with `75` Sequence entries.
+  A follow-up simple Cypress Sequence pass corrected the shared `How about you John?` message-width
+  fact, deleted that root pin, and tightened the root total to `377` with `74` Sequence entries.
+  A follow-up package sequence pass corrected the shared `Hello Bob, how are - you?`
+  message-width fact and `Alice-in-Wonderland` actor-width fact, deleted four package root pins,
+  and tightened the root total to `373` with `70` Sequence entries. A follow-up docs/control
+  Sequence pass corrected the shared width facts for `Feeling fresh like a daisy`,
+  `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?`, deleted six docs/control root pins, and tightened
+  the root total to `367` with `64` Sequence entries. The participant-creation v2 sibling remains
+  pinned because its disabled-root drift is still an 11px root-height delta, not a text-width fact.
   A follow-up Sequence disabled-root audit produced 320 root rows, with 176 non-zero `max-width`
   deltas, 188 changed
   viewBox dimensions, and one KaTeX-related DOM skip; the largest drift comes from long-note,

@@ -238,6 +238,22 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027` pass focused
   disabled-root `parity-root`, and `report-overrides --check-no-growth` reports `373` root
   entries with `70` Sequence entries.
+- [x] Remove six docs/control Sequence root pins covered by shared text-width facts.
+  Evidence: the browser `calculateTextDimensions` width facts for `Feeling fresh like a daisy`,
+  `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?` now match upstream SVG actor and frame spacing.
+  `upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009`,
+  `upstream_docs_examples_sequencediagram_loops_alt_and_opt_011`,
+  `upstream_docs_sequence_alt_and_opt_example`, `upstream_docs_sequence_box_groups_example`,
+  `upstream_docs_sequence_create_destroy_example`, and
+  `upstream_docs_sequence_rect_nested_example` pass focused disabled-root `parity-root`, and
+  `report-overrides --check-no-growth` reports `367` root entries with `64` Sequence entries.
+- [x] Keep the Sequence participant-creation v2 root pin until vertical geometry is modeled.
+  Evidence:
+  `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+  still drifts from upstream `1040x580` to local `1040x591` when root viewport overrides are
+  disabled, even after the relevant width facts match. This is participant type/lifecycle vertical
+  geometry debt, not another text-width cleanup.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch

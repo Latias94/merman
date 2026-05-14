@@ -2,6 +2,14 @@
 
 ## 2026-05-14
 
+- Corrected Sequence default text-width facts for `Feeling fresh like a daisy`,
+  `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?` from upstream SVG actor/frame spacing, then deleted
+  six now-derived docs/control root viewport pins. Focused disabled-root `parity-root` passes for
+  the removed fixtures, tightening the root no-growth budget to `367` with Sequence at `64`.
+  The participant-creation v2 sibling remains pinned because its disabled-root drift is root
+  height (`1040x580` upstream versus `1040x591` local), pointing to participant type/lifecycle
+  vertical geometry rather than text width.
 - Corrected Sequence default text-width facts for `Hello Bob, how are - you?` and
   `Alice-in-Wonderland` from upstream package sequence actor spacing, then deleted the now-derived
   `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027` root viewport pins.

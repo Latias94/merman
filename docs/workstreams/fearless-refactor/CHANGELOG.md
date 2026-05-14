@@ -5,6 +5,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Corrected the Sequence default text-width facts for `Feeling fresh like a daisy`,
+  `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?` to match upstream SVG actor/frame spacing. Focused
+  disabled-root `parity-root` now passes for six docs/control fixtures, so those root pins were
+  deleted. Sequence root pins are now `64`, and the root no-growth budget is `367`. The
+  participant-creation v2 sibling remains pinned because it still has an 11px root-height drift
+  from participant type/lifecycle vertical geometry.
 - Corrected the Sequence default text-width facts for `Hello Bob, how are - you?` and
   `Alice-in-Wonderland` to match upstream package sequence actor spacing. The focused
   disabled-root `parity-root` checks now pass for

@@ -256,6 +256,13 @@ Progress:
   Focused disabled-root `parity-root` passes for `upstream_pkgtests_sequencediagram_spec_014`,
   `015`, `026`, and `027`, and the root budget is tightened to `373` with `70` Sequence root
   entries.
+- Removed six docs/control Sequence root pins after correcting shared width facts for
+  `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
+  `Did you want to go to the game tonight?` from upstream SVG actor/frame spacing. Focused
+  disabled-root `parity-root` passes for the six removed fixtures, and the root budget is
+  tightened to `367` with `64` Sequence root entries. The participant-creation v2 sibling remains
+  pinned because it still has an 11px root-height drift from participant type/lifecycle vertical
+  geometry.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
