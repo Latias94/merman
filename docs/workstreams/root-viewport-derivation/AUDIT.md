@@ -38,15 +38,16 @@ title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-la
 label computed-length, vertical branch-label centered bbox, commit/tag label theme-variable, and
 seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
-HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback, LR
-fork/join direction-sensitive sizing, and quoted-numeric rankSpacing passes:
+HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback,
+FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing, and
+quoted-numeric rankSpacing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `85` inventory entries.
-- Root viewport total: `352` entries.
+- Flowchart: `84` inventory entries.
+- Root viewport total: `351` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -165,9 +166,10 @@ disabled-root audit counts all fixture keys covered by those arms. The retained 
   at `-150px` and
   `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` at
   `+48px`; these need layout/routing derivation, not table pruning.
-- icon and FontAwesome labels: the bucket includes the `stress_flowchart_icons_multiline_br_054`
-  `-72px` height gap plus icon/wrap/subgraph width gaps up to roughly `10px`; these need icon
-  line-break/glyph/cluster measurement work before pins can be deleted.
+- icon and FontAwesome labels: after the icon-only multiline pass, this bucket no longer includes
+  the `stress_flowchart_icons_multiline_br_054` `-72px` height gap. The remaining icon/wrap/
+  subgraph roots still show real max-width drift up to roughly `10px`, so they need icon glyph,
+  wrapping, or cluster measurement work before more pins can be deleted.
 - subgraph titles and title spacing: retained title-padding and title-margin fixtures still show
   real width or height drift, led by `stress_flowchart_subgraph_deep_nesting_title_padding_044`
   at `-58.75px` and
@@ -225,6 +227,23 @@ The adjacent retained chaining pin
 with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` it still drifts from upstream
 `max-width: 312.5px` to local `312.75px`. That is a real retained browser-float/edge-spacing guard,
 not stale table debt.
+
+The latest Flowchart icon multiline pass derives `stress_flowchart_icons_multiline_br_054` by
+counting FontAwesome icon-only HTML lines as measured DOM line boxes. Upstream renders labels like
+`<i class="fa fa-twitter"></i><br />for peace` with a 48px `foreignObject` height even though the
+first text line is empty; local measurement previously trimmed that line and derived a 302px root
+instead of the upstream 374px root. The typed metrics fix keeps the icon-only line as a `1.5em`
+line box, focused disabled-root and normal `parity-root` pass for the removed pin, the layout
+golden was refreshed, full Flowchart `parity-root` passes, and `report-overrides --check-no-growth`
+now reports `351` root entries with Flowchart at `84`.
+
+The remaining icon retained pins were rechecked before deletion and remain pinned. With
+`MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, examples still drift from upstream to local max-widths:
+`stress_flowchart_icons_basic_051` `438.75px` versus `439.5px`,
+`stress_flowchart_icons_in_edge_labels_053` `130.75px` versus `127.75px`,
+`upstream_cypress_flowchart_icon_spec_example_002` `92px` versus `94px`, and
+`upstream_cypress_flowchart_spec_7_should_render_a_flowchart_full_of_icons_007` `2241.25px`
+versus `2241.75px`. These are real retained max-width guards, not stale table debt.
 
 ## Focused Commands
 

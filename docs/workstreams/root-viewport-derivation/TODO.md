@@ -458,12 +458,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Flowchart entries. The sibling `upstream_flow_vertice_chaining_amp_to_single_spec` remains
   pinned because disabled-root parity still reports upstream `312.5px` versus local `312.75px`
   max-width drift.
-- [ ] Derive the next Flowchart disabled-root family after chained-statement htmlLabels.
-  Recommended starting points are icon multiline height and icon-label measurement (`-72px`
-  example), subgraph title padding/margin width drift (`-58.75px` and `-24.75px` examples),
-  wrapping-long-text height drift (`-24px` examples), or the retained amp-to-single chaining
-  sub-pixel width guard. A stale-pin sweep alone is not expected to delete entries until one of
-  these typed derivation rules lands.
+- [x] Derive the Flowchart FontAwesome icon-only multiline label height root.
+  Evidence: HTML label measurement now counts inline FontAwesome icon-only lines such as
+  `<i class="fa ..."></i><br/>...` as normal `1.5em` DOM line boxes. The target fixture
+  `stress_flowchart_icons_multiline_br_054` passes focused disabled-root and normal
+  `parity-root` without a root viewport pin, its layout golden was refreshed, and
+  `report-overrides --check-no-growth` reports `351` root entries with `84` Flowchart entries.
+  The remaining icon retained pins were rechecked and still show real disabled-root max-width
+  drift, so they are not stale table debt.
+- [ ] Derive the next Flowchart disabled-root family after icon-only multiline labels.
+  Recommended starting points are the remaining icon-label max-width drift, subgraph title
+  padding/margin width drift (`-58.75px` and `-24.75px` examples), wrapping-long-text height drift
+  (`-24px` examples), or the retained amp-to-single chaining sub-pixel width guard. A stale-pin
+  sweep alone is not expected to delete entries until one of these typed derivation rules lands.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

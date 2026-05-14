@@ -67,6 +67,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart parity: keep FontAwesome HTML icon-only lines as normal `1.5em` line boxes during
+  label measurement. This derives
+  `stress_flowchart_icons_multiline_br_054` without a root viewport pin, tightening Flowchart root
+  overrides to 84 entries and total root overrides to 351 while leaving the remaining icon pins as
+  real max-width drift guards.
 - Flowchart parity: split node-label `htmlLabels` semantics from `flowchart.htmlLabels` semantics
   for edge labels, subgraph titles, generated CSS, and styled/quoted-string height parity. This
   derives the chained-statement fixture

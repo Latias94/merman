@@ -192,6 +192,51 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
 }
 
 #[test]
+fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_match_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let twitter = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "fa:fa-twitter<br/>for peace",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+        },
+    );
+    assert_eq!(twitter.width, 68.234375);
+    assert_eq!(twitter.height, 48.0);
+    assert_eq!(twitter.line_count, 2);
+
+    let camera = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "fa:fa-camera-retro<br/>capture<br/>moments",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+        },
+    );
+    assert_eq!(camera.width, 65.421875);
+    assert_eq!(camera.height, 72.0);
+    assert_eq!(camera.line_count, 3);
+}
+
+#[test]
 fn flowchart_label_metrics_for_layout_fontawesome_wraps_icon_start_like_upstream() {
     // Mermaid upstream fixture:
     // fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007.svg

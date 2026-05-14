@@ -5,6 +5,13 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Derived the Flowchart FontAwesome icon-only multiline label height family by preserving empty
+  text lines that contain an inline FontAwesome `<i>` as normal `1.5em` DOM line boxes during
+  HTML label measurement. `stress_flowchart_icons_multiline_br_054` now passes focused
+  disabled-root and normal `parity-root` without a root pin, its layout golden was refreshed, and
+  full Flowchart `parity-root`, render nextest, render clippy, and override no-growth stayed
+  green. The root budget is tightened to `351` with Flowchart at `84`; the remaining icon retained
+  pins still show real disabled-root max-width drift.
 - Matched Mermaid's split Flowchart htmlLabels semantics for the chained-statement height family:
   node labels follow root `htmlLabels`, while edge labels, subgraph titles, generated CSS, and
   styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.

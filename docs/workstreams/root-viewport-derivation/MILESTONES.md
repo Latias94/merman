@@ -275,6 +275,12 @@ Progress:
   tightened the root budget to `352` with `85` Flowchart root entries. The sibling
   `upstream_flow_vertice_chaining_amp_to_single_spec` remains pinned for a real `312.5px` versus
   `312.75px` disabled-root max-width drift.
+- Derived the Flowchart FontAwesome icon-only multiline label height root by counting inline
+  FontAwesome icon-only lines as measured `1.5em` HTML line boxes. Removed
+  `stress_flowchart_icons_multiline_br_054` after focused disabled-root and normal `parity-root`
+  passed, refreshed its layout golden, and tightened the root budget to `351` with `84`
+  Flowchart root entries. The remaining icon retained pins stay pinned because disabled-root
+  parity still reports real max-width drift.
 - Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This does
   not delete fixture-key coverage or claim a new derivation rule; it removes generated-table
   redundancy for stems that already shared identical root tuples, tightening the inventory budget

@@ -654,7 +654,27 @@ pub fn measure_html_with_flowchart_bold_deltas(
         }
     }
 
-    let (height, line_count) = if let Some((_, extra_lines)) = icon_start_wrap {
+    let icon_only_extra_lines = if plain.trim().is_empty() {
+        0
+    } else {
+        lines
+            .iter()
+            .enumerate()
+            .filter(|(idx, line)| {
+                line.trim().is_empty()
+                    && icon_on_line.get(*idx).copied().unwrap_or(false)
+                    && deltas_px_by_line.get(*idx).copied().unwrap_or(0.0) > 0.0
+            })
+            .count()
+    };
+
+    if icon_only_extra_lines > 0 {
+        // DOM measurement keeps an inline icon-only line as a normal 1.5em line box and rounds the
+        // resulting max line width upward on the 1/64px lattice.
+        width = ceil_to_1_64_px(width);
+    }
+
+    let (mut height, mut line_count) = if let Some((_, extra_lines)) = icon_start_wrap {
         (
             base.height + extra_lines as f64 * style.font_size.max(1.0) * 1.5,
             base.line_count + extra_lines,
@@ -662,6 +682,10 @@ pub fn measure_html_with_flowchart_bold_deltas(
     } else {
         (base.height, base.line_count)
     };
+    if icon_only_extra_lines > 0 {
+        height += icon_only_extra_lines as f64 * style.font_size.max(1.0) * 1.5;
+        line_count += icon_only_extra_lines;
+    }
 
     TextMetrics {
         width,
