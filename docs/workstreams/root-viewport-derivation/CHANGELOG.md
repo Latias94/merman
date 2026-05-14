@@ -2,6 +2,11 @@
 
 ## 2026-05-14
 
+- Corrected Sequence default text-width facts for `Hello Bob, how are - you?` and
+  `Alice-in-Wonderland` from upstream package sequence actor spacing, then deleted the now-derived
+  `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027` root viewport pins.
+  Focused disabled-root `parity-root` passes for all four fixtures, tightening the root no-growth
+  budget to `373` with Sequence at `70`.
 - Corrected the Sequence default `How about you John?` message-width fact from the upstream
   simple sequence actor spacing, then deleted the now-derived Cypress simple sequence root
   viewport pin. Focused disabled-root `parity-root` passes for the fixture, tightening the root

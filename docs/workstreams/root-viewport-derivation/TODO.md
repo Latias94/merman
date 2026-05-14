@@ -232,6 +232,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   matches the upstream 140px actor-spacing width, so John stays at x=440 and the fixture derives
   the 790px root viewport. The focused disabled-root `parity-root` check passes, and the root
   no-growth budget is tightened to `377` with `74` Sequence root entries.
+- [x] Remove four package Sequence root pins covered by shared message/actor width facts.
+  Evidence: the browser `calculateTextDimensions` width facts for
+  `Hello Bob, how are - you?` and `Alice-in-Wonderland` now match upstream actor spacing.
+  `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027` pass focused
+  disabled-root `parity-root`, and `report-overrides --check-no-growth` reports `373` root
+  entries with `70` Sequence entries.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch

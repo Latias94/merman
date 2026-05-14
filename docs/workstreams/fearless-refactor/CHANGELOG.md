@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Corrected the Sequence default text-width facts for `Hello Bob, how are - you?` and
+  `Alice-in-Wonderland` to match upstream package sequence actor spacing. The focused
+  disabled-root `parity-root` checks now pass for
+  `upstream_pkgtests_sequencediagram_spec_014`, `015`, `026`, and `027`, so those four root pins
+  were deleted. Sequence root pins are now `70`, and the root no-growth budget is `373`.
 - Corrected the Sequence default message-width fact for `How about you John?` to match the
   upstream simple sequence actor spacing. The focused disabled-root `parity-root` check now
   passes without the simple sequence fixture root pin, so Sequence root pins are now `74`, and

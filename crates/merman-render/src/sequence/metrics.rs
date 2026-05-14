@@ -154,6 +154,10 @@ mod tests {
             super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are you?", &style);
         assert_eq!(hello_bob_w, 160.0);
 
+        let (hello_bob_hyphen_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are - you?", &style);
+        assert_eq!(hello_bob_hyphen_w, 170.0);
+
         let (hello_alice_w, _) = super::measure_svg_like_with_html_br(
             &measurer,
             "Hello Alice, I'm fine and you?",
@@ -179,5 +183,9 @@ mod tests {
         let (bidirectional_dotted_w, _) =
             super::measure_svg_like_with_html_br(&measurer, "bidirectional_dotted", &style);
         assert_eq!(bidirectional_dotted_w, 130.0);
+
+        let (alice_in_wonderland_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "Alice-in-Wonderland", &style);
+        assert_eq!(alice_in_wonderland_w, 136.0);
     }
 }

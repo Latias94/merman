@@ -251,6 +251,11 @@ Progress:
   `How about you John?` from upstream actor spacing. Focused normal and disabled-root
   `parity-root` pass for the fixture, and the root budget is tightened to `377` with `74`
   Sequence root entries.
+- Removed four package Sequence root pins after correcting the shared `Hello Bob, how are - you?`
+  message-width fact and `Alice-in-Wonderland` actor-width fact from upstream actor spacing.
+  Focused disabled-root `parity-root` passes for `upstream_pkgtests_sequencediagram_spec_014`,
+  `015`, `026`, and `027`, and the root budget is tightened to `373` with `70` Sequence root
+  entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
