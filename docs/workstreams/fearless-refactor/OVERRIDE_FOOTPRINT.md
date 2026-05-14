@@ -147,6 +147,13 @@ viewport no-growth budget to `362` with `59` Sequence entries. The latest Flowch
 cleanup then collapsed exact-duplicate generated root override match arms into Rust or-patterns.
 It does not delete fixture-key coverage, but it removes redundant inventory rows and tightens the
 current root viewport no-growth budget to `354` with `87` Flowchart entries.
+A follow-up Flowchart disabled-root audit then crossed the retained table with the real
+`parity-root` mismatch set. The compressed table still covers `95` fixture keys, and all `95`
+still fail with root viewport overrides disabled (`stale=0`, `missing=0`). The retained families
+are rank-spacing/chained-statement and edge-geometry height drift, icon/FontAwesome label and
+line-break drift, subgraph title/title-margin spacing, shape profile/all-pairs geometry,
+wrapping/Unicode/style/long-label measurement, and small browser-float guards. No budget changed in
+that audit because there was no evidence-backed derivable Flowchart bucket to delete yet.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in

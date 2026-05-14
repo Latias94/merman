@@ -38,6 +38,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Docs: add a post-Class-cleanup full bench gate record for the release readiness pass.
 - Docs: add a post-Flowchart-override-inventory full bench gate record for the release readiness
   pass.
+- Docs: record the Flowchart disabled-root audit that classifies the remaining root viewport
+  guards and confirms no retained Flowchart root pin is currently stale.
 - `xtask verify --strict`: add a strict refactor/release gate that includes `cargo fmt`,
   `cargo check --workspace --all-features`, workspace all-target/all-features Clippy with
   `-D warnings`, `cargo nextest run`, and SVG DOM parity checks.

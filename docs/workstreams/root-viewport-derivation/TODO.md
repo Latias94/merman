@@ -162,7 +162,17 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 
 ## P2: Larger Buckets
 
-- [ ] Revisit Flowchart after State/Mindmap patterns are proven.
+- [x] Revisit Flowchart after State/Mindmap patterns are proven.
+  Evidence: the 2026-05-14 Flowchart disabled-root audit crossed
+  `target/flowchart_disabled_root_2026-05-14.txt` with
+  `flowchart_root_overrides_11_12_2.rs`. The table still covers `95` fixture keys even though
+  `report-overrides` now counts `87` inventory entries after or-pattern compression. All `95`
+  retained keys still appear in the disabled-root mismatch set, with `0` stale retained pins and
+  `0` missing pins. The top retained families are rank-spacing/chained-statement and edge-geometry
+  height drift, icon/FontAwesome line-break and glyph bounds, subgraph title/title-margin spacing,
+  shape profile and all-pairs geometry, wrapping/Unicode/style/long-label measurement, plus small
+  browser-float guards. No Flowchart root pin was deleted because the audit proves the top
+  candidates remain real `parity-root` mismatches.
 - [x] Revisit the first low-risk Sequence root candidate after State/Mindmap patterns are proven.
   Evidence: Sequence small-font text height now rounds Mermaid-like
   `calculateTextDimensions(...).height`, the SVG root CSS follows the configured actor label font
@@ -424,6 +434,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   max-width)` tuples. The generated table now groups those stems with Rust or-patterns, preserving
   fixture-key coverage while reducing `report-overrides` inventory from `362` to `354` root
   entries and Flowchart from `95` to `87` entries.
+- [ ] Derive one large Flowchart disabled-root family before pruning again.
+  Recommended starting points from the 2026-05-14 audit are:
+  rank spacing/chained-statement height drift (`-150px` and `+48px` examples), icon multiline
+  height and icon-label measurement (`-72px` example), subgraph title padding/margin width drift
+  (`-58.75px` and `-24.75px` examples), or wrapping-long-text height drift (`-24px` examples).
+  A stale-pin sweep alone is not expected to delete entries until one of these typed derivation
+  rules lands.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

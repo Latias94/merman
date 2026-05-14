@@ -152,6 +152,40 @@ fixtures that share the same `(viewBox, max-width)` tuple. This lowers the inven
 the same fixture-key coverage. It is therefore counted as generated-table debt reduction rather
 than a new typed derivation pass.
 
+The follow-up disabled-root Flowchart audit on 2026-05-14 confirms that the table compression did
+not hide stale pins. With `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the Flowchart `parity-root`
+comparison still reports one DOM root mismatch for every retained fixture key: `95` fixture-key
+mismatches, `95` retained keys, `0` stale retained pins, and `0` missing pins. The inventory count
+remains `87` because `report-overrides` counts `Some((viewBox, max-width))` match arms, while the
+disabled-root audit counts all fixture keys covered by those arms. The retained drift splits into
+`79` `max-width` style mismatches and `16` `viewBox` mismatches. The largest families are:
+
+- rank spacing, chained statements, and edge geometry: the biggest retained height gaps are
+  `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+  at `-150px` and
+  `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` at
+  `+48px`; these need layout/routing derivation, not table pruning.
+- icon and FontAwesome labels: the bucket includes the `stress_flowchart_icons_multiline_br_054`
+  `-72px` height gap plus icon/wrap/subgraph width gaps up to roughly `10px`; these need icon
+  line-break/glyph/cluster measurement work before pins can be deleted.
+- subgraph titles and title spacing: retained title-padding and title-margin fixtures still show
+  real width or height drift, led by `stress_flowchart_subgraph_deep_nesting_title_padding_044`
+  at `-58.75px` and
+  `stress_flowchart_subgraph_title_margins_extreme_nested_030` at `-24.75px`.
+- shape profiles and all-pairs fixtures: new-shape/old-shape/stadium/alias roots still include
+  both multi-pixel geometry drift and small browser-float guards, so the set3 LR fork/join cleanup
+  did not generalize to the remaining shape families.
+- wrapping, Unicode, style, and long-label measurement: wrapping-long-text fixtures retain
+  `-24px` height gaps, while style/long-name cases still show large width drift such as
+  `stress_flowchart_text_style_overrides_076` at `+21.75px`.
+- small browser float and repeated demo aliases: many remaining HTML demo and simple upstream
+  fixtures are sub-pixel to `0.25px` root guards. They are low value individually, but the
+  disabled-root cross-check shows they are still real `parity-root` mismatches today.
+
+No Flowchart root pin was deleted in this pass because the top candidates all still appear in the
+disabled-root mismatch set. The next Flowchart derivation pass should therefore start from one
+large drift family above, not from another stale-pin sweep.
+
 ## Focused Commands
 
 ```sh
@@ -187,6 +221,14 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   arms into or-patterns for fixture stems that already shared identical `(viewBox, max-width)`
   tuples. This preserves behavior and fixture-key coverage while reducing `report-overrides`
   inventory from `362` to `354` root entries, with Flowchart at `87`.
+- 2026-05-14: Flowchart disabled-root audit command:
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`.
+  It exited `1` as expected for a retained-drift audit and wrote the diagnostic output to
+  `target/flowchart_disabled_root_2026-05-14.txt`. Parsing that report and crossing it with
+  `flowchart_root_overrides_11_12_2.rs` found `95` fixture-key mismatches, `95` retained keys,
+  `0` stale retained pins, and `0` missing pins. The `87` Flowchart inventory entries reported by
+  `xtask report-overrides` are match-arm rows after or-pattern compression, not fixture-key
+  coverage. No Flowchart root pin was removed in this pass.
 - 2026-05-14: `cargo run -p xtask -- verify --strict` passed after the Flowchart table compression
   and no-growth budget tightening. The strict gate covered fmt, all-features check, workspace
   all-target/all-features clippy, override no-growth, feature matrix checks, workspace nextest
