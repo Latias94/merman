@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-14
+## Snapshot: 2026-05-15
 
 Command:
 
@@ -156,9 +156,15 @@ wrapping/Unicode/style/long-label measurement, and small browser-float guards. N
 that audit because there was no evidence-backed derivable Flowchart bucket to delete yet.
 The next Flowchart pass parsed plain numeric string spacing config as numeric layout input, so the
 quoted `flowchart.rankSpacing: '100'` Cypress fixture now derives its 100px Dagre rank separation
-without a root viewport pin. The Flowchart root table is now `86` entries, and the current root
-viewport no-growth budget is `353`; the follow-up disabled-root audit found `94` retained
+without a root viewport pin. At that point the Flowchart root table was `86` entries, and the root
+viewport no-growth budget was `353`; the follow-up disabled-root audit found `94` retained
 fixture-key mismatches, `0` stale pins, and `0` missing pins.
+The subsequent Flowchart chained-statement, icon-only multiline, and FontAwesome label-boundary
+passes removed three more root pins without growing text lookup debt. The current Flowchart root
+table is `83` inventory entries, and the root viewport no-growth budget is `350`. The
+FontAwesome boundary deliberately keeps standard icons as nominal inline boxes and the
+unregistered custom-pack example as an empty inline element; it does not add a per-icon glyph
+advance table derived from root deltas.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -334,16 +340,47 @@ bringing the text lookup total back to 480.
 | Hand-curated helper overrides | diagram renderer owner | Replace with repeatable generated data or typed model/layout computations as soon as a reliable source exists. |
 | Manual raw SVG/path bridges | diagram-specific `svg/parity` module owner | Delete once typed layout/path emission reproduces the upstream literal behavior; keep local owner/removal notes beside each bridge. |
 
+### 2026-05-15 Parity Boundary Classification
+
+This pass applies `docs/workstreams/PARITY_BOUNDARY.md` to the retained override inventory. It is
+a classification and evidence pass, not a new exact-parity push.
+
+- Root viewport guards are retained export-root facts. The full all-diagram disabled-root audit
+  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` produced one DOM mismatch for every retained
+  generated root key after expanding or-patterns: Architecture `31/31`, C4 `35/35`, ER `22/22`,
+  Flowchart `91/91`, GitGraph `23/23`, Journey `2/2`, Mindmap `39/39`, Requirement `10/10`,
+  Sankey `3/3`, Sequence `59/59`, State `34/34`, and Timeline `9/9`.
+  Global result: `358` retained fixture keys, `358` mismatches, `0` stale pins, and `0` missing
+  guards. No root pin was deleted because the audit found no evidence-backed stale entry.
+- Text lookup overrides remain suspicious by default because many are exact strings. Under the
+  parity boundary they are retained only as diagram-owned browser/font measurement facts:
+  Block HTML width/height, Class calc/rendered/namespace widths, ER's 3-entry floor, Flowchart
+  Markdown/HTML/SVG text facts, Requirement label widths, State title/node/note/edge facts, and
+  Timeline's single SVG bbox overhang guard. They are not allowed to migrate back into a shared
+  generic measurer or hide parser/layout/DOM bugs.
+- SVG text metric rows in `svg_overrides_sequence_11_12_2.rs` are retained as Sequence browser
+  `getBBox()`/overhang facts until a shared font or browser-probe import can replace them.
+- `font_metrics_flowchart_11_12_2.rs` is retained as generated shared font data: glyph widths,
+  kerning/trigram facts, HTML/SVG corrections, and bbox overhangs. It is acceptable as generated
+  browser/font fact data, but it should be regenerated or trimmed from repeatable sources rather
+  than expanded by hand.
+- FontAwesome icon parity is now explicitly outside the hand-curated-glyph path. There is no
+  per-icon FontAwesome advance table; exact FontAwesome widths should only return if a future
+  generator reads pinned Mermaid CLI FontAwesome CSS/font assets and emits reviewed generated font
+  data.
+- Hand-curated helper overrides and manual raw SVG/path bridges are both `0`, so there is no
+  current renderer-local escape hatch to classify.
+
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `353`.
+Total entries reported by `xtask`: `350`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
-| `flowchart_root_overrides_11_12_2.rs` | 86 |
+| `flowchart_root_overrides_11_12_2.rs` | 83 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -376,11 +413,11 @@ direct root lookup still leaves the broad Gitgraph root bucket failing. The full
 `upstream_examples_git_basic_git_flow_001` and `upstream_merges_spec`. The Flowchart empty-diagram
 pins are now deleted after empty bounds moved into renderer logic. The Flowchart imageSquare,
 anchor, C1 replacement-glyph, SVG-like/Unicode subgraph-title, stale title-margin,
-HTML-label font-size precedence, iconSquare, custom FontAwesome fallback, and LR fork/join
-direction-sensitive layout passes removed 30
-more pins. The remaining 95
-entries still need root-viewport derivation work before table pruning, not another blind deletion
-pass.
+HTML-label font-size precedence, iconSquare, custom FontAwesome fallback, LR fork/join
+direction-sensitive layout, quoted-numeric rankSpacing, chained-statement split `htmlLabels`,
+icon-only multiline line boxes, and FontAwesome label-boundary passes removed the latest Flowchart
+root pins. The remaining Flowchart entries still need root-viewport derivation work before table
+pruning, not another blind deletion pass.
 A follow-up GitGraph audit using `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` plus
 `--report-root-all` produced 251 root rows, with 239 non-zero `max-width` deltas and 241 changed
 viewBox dimensions; the largest width deltas came from HTML demo merge graphs at roughly
@@ -473,7 +510,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `flowchart`: 86
+- `flowchart`: 83
 - `sequence`: 59
 - `mindmap`: 39
 - `c4`: 35

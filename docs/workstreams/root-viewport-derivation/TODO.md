@@ -171,10 +171,10 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `0` missing pins. The top retained families are rank-spacing/chained-statement and edge-geometry
   height drift, icon/FontAwesome line-break and glyph bounds, subgraph title/title-margin spacing,
   shape profile and all-pairs geometry, wrapping/Unicode/style/long-label measurement, plus small
-  browser-float guards. The follow-up rankSpacing config pass removed one real derivable root pin,
-  so current `report-overrides` counts `86` Flowchart inventory entries, and the latest
-  disabled-root audit now reports `94` retained fixture keys, `0` stale pins, and `0` missing
-  pins.
+  browser-float guards. The follow-up rankSpacing, chained-statement, icon-only multiline, and
+  FontAwesome label-boundary passes removed the next derivable Flowchart root pins, so current
+  `report-overrides` counts `83` Flowchart inventory entries, and the latest disabled-root audit
+  now reports `91` retained fixture keys, `0` stale pins, and `0` missing pins.
 - [x] Revisit the first low-risk Sequence root candidate after State/Mindmap patterns are proven.
   Evidence: Sequence small-font text height now rounds Mermaid-like
   `calculateTextDimensions(...).height`, the SVG root CSS follows the configured actor label font
@@ -466,7 +466,23 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `report-overrides --check-no-growth` reports `351` root entries with `84` Flowchart entries.
   The remaining icon retained pins were rechecked and still show real disabled-root max-width
   drift, so they are not stale table debt.
-- [ ] Derive the next Flowchart disabled-root family after icon-only multiline labels.
+- [x] Tighten the Flowchart FontAwesome label boundary without adding a per-icon glyph table.
+  Evidence: standard FontAwesome icons now use a clean nominal inline box, while the unregistered
+  `fab:fa-truck-bold` custom-pack example remains an empty inline element. This matches the
+  upstream DOM boundary without deriving icon advances from root deltas. The
+  `stress_flowchart_icons_unicode_and_wrap_056` root pin was deleted after focused disabled-root
+  and normal `parity-root` checks passed; `report-overrides --check-no-growth` now reports `350`
+  root entries with `83` Flowchart entries.
+- [x] Reclassify all retained root pins under the new parity boundary.
+  Evidence: the 2026-05-15 full disabled-root audit crossed the generated root tables with
+  `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all` under
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`. The generated tables cover `358` fixture keys after
+  expanding or-patterns, and the disabled-root mismatch set also contains `358` keys:
+  Architecture `31/31`, C4 `35/35`, ER `22/22`, Flowchart `91/91`, GitGraph `23/23`, Journey
+  `2/2`, Mindmap `39/39`, Requirement `10/10`, Sankey `3/3`, Sequence `59/59`, State `34/34`,
+  and Timeline `9/9`, with `stale=0` and `missing=0` for every table. No root pin was deleted in
+  this audit because all retained keys still guard visible `parity-root` drift.
+- [ ] Derive the next Flowchart disabled-root family after the FontAwesome boundary pass.
   Recommended starting points are the remaining icon-label max-width drift, subgraph title
   padding/margin width drift (`-58.75px` and `-24.75px` examples), wrapping-long-text height drift
   (`-24px` examples), or the retained amp-to-single chaining sub-pixel width guard. A stale-pin

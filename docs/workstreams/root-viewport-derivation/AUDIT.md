@@ -39,20 +39,23 @@ label computed-length, vertical branch-label centered bbox, commit/tag label the
 seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
 HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback,
-FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing, and
-quoted-numeric rankSpacing passes:
+FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing,
+quoted-numeric rankSpacing, chained-statement split `htmlLabels`, and FontAwesome label-boundary
+passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `84` inventory entries.
-- Root viewport total: `351` entries.
+- Flowchart: `83` inventory entries.
+- Root viewport total: `350` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
 - SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
   the stale row cleanup.
+- Font metric table total: `3774` rows.
+- Hand-curated helper overrides and manual raw SVG/path bridges: `0`.
 
 The latest Mindmap focused disabled-root checks show the plain wrapping prose/icon trio and five
 additional stale retained pins are covered by the current layout/bounds derivation. The remaining
@@ -245,6 +248,46 @@ The remaining icon retained pins were rechecked before deletion and remain pinne
 `upstream_cypress_flowchart_spec_7_should_render_a_flowchart_full_of_icons_007` `2241.25px`
 versus `2241.75px`. These are real retained max-width guards, not stale table debt.
 
+The latest Flowchart FontAwesome label-boundary pass keeps standard FontAwesome icons as clean
+nominal inline boxes and keeps the unregistered `fab:fa-truck-bold` custom-pack example as an
+empty inline element, matching the upstream DOM behavior without adding a per-icon advance table.
+That derives `stress_flowchart_icons_unicode_and_wrap_056`, deletes its root pin, and leaves the
+remaining icon-root drift as visible root guards rather than fixture-derived glyph answers.
+`report-overrides --check-no-growth` now reports `350` root entries with Flowchart at `83`.
+
+The 2026-05-15 all-diagram retained-root audit applied the parity-boundary rule to every generated
+root table. The disabled-root command was expected to fail:
+
+```pwsh
+$env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
+```
+
+The output was captured in `target/disabled_root_audit_2026-05-15_current.txt` and crossed with
+the generated root override tables after expanding Rust or-pattern arms. Result:
+
+| table | retained fixture keys | disabled-root mismatches | stale | missing |
+| --- | ---: | ---: | ---: | ---: |
+| Architecture | 31 | 31 | 0 | 0 |
+| C4 | 35 | 35 | 0 | 0 |
+| ER | 22 | 22 | 0 | 0 |
+| Flowchart | 91 | 91 | 0 | 0 |
+| GitGraph | 23 | 23 | 0 | 0 |
+| Journey | 2 | 2 | 0 | 0 |
+| Mindmap | 39 | 39 | 0 | 0 |
+| Requirement | 10 | 10 | 0 | 0 |
+| Sankey | 3 | 3 | 0 | 0 |
+| Sequence | 59 | 59 | 0 | 0 |
+| State | 34 | 34 | 0 | 0 |
+| Timeline | 9 | 9 | 0 | 0 |
+| Total | 358 | 358 | 0 | 0 |
+
+No root pin was deleted in this audit because no retained root key disappeared from the
+disabled-root mismatch set. The difference between `350` inventory entries and `358` retained
+fixture keys comes from generated or-pattern compression; `report-overrides` counts `Some(...)`
+match arms, while the audit expands every fixture stem covered by those arms.
+
 ## Focused Commands
 
 ```sh
@@ -271,6 +314,16 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-15: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
+  `350`, Flowchart root count `83`, text lookup total `484`, SVG text metric table total `186`,
+  font metric table total `3774`, and zero hand-curated helper overrides or manual raw SVG/path
+  bridges.
+- 2026-05-15: full disabled-root retained-root audit:
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`
+  exited `1` as expected and wrote output to
+  `target/disabled_root_audit_2026-05-15_current.txt`. Crossing the disabled-root DOM mismatches
+  with generated root tables found `358` retained fixture keys, `358` mismatches, `0` stale pins,
+  and `0` missing pins. No root viewport entry was deleted in this audit.
 - 2026-05-14: Sequence stale-pin cross-check with root overrides disabled found
   `root=64 mismatch=59 stale=5 missing=0`. Focused disabled-root `parity-root` passed for the
   five stale simple-root fixtures, and `report-overrides` now reports root total `362`, Sequence

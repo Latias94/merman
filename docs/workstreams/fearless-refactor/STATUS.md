@@ -1,6 +1,6 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-05-14
+Snapshot: 2026-05-15
 
 This page is the short-form dashboard for the fearless-refactor workstream.
 The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
@@ -20,7 +20,7 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is tightened to `353` after the GitGraph seeded auto-id
+- Root viewport override no-growth is tightened to `350` after the GitGraph seeded auto-id
   warm-up pass, the GitGraph horizontal
   branch-label width pass, the GitGraph commit/tag label computed-length pass, the Flowchart
   imageSquare layout-bounds pass, and the Flowchart anchor layout-bounds pass, the Flowchart C1
@@ -32,8 +32,10 @@ What is done:
   centered-bbox pass, the GitGraph commit/tag label theme-variable pass, and the Sequence
   `activation_explicit`, stacked-activation, `arrows_variants`, simple Cypress, package sequence,
   and docs/control message-width and actor/frame-width fact corrections, plus the latest Sequence
-  stale-pin cross-check, the Flowchart exact-duplicate root override arm compression, and the
-  Flowchart quoted-numeric rankSpacing derivation.
+  stale-pin cross-check, the Flowchart exact-duplicate root override arm compression, the
+  Flowchart quoted-numeric rankSpacing derivation, the Flowchart chained-statement split
+  `htmlLabels` derivation, the Flowchart icon-only multiline line-box derivation, and the
+  Flowchart FontAwesome label-boundary pass.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes.
@@ -63,11 +65,12 @@ It is mostly evidence-driven debt reduction:
 
 - root viewport buckets that still reflect real `parity-root` drift
 - text lookup buckets that still guard real browser/font behavior
+- explicit browser/font buckets whose exactness cost would exceed the value of a cleaner model
 - a few retained guards that must stay until the upstream geometry or text model changes
 
 Largest remaining buckets:
 
-- root viewport: `flowchart` 86, `sequence` 59, `mindmap` 39, `c4` 35,
+- root viewport: `flowchart` 83, `sequence` 59, `mindmap` 39, `c4` 35,
   `state` 34
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 
