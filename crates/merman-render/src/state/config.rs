@@ -1,26 +1,14 @@
 //! Shared helpers for state diagram layout.
 
 use super::StateNode;
+pub(super) use crate::config::config_f64;
+use crate::config::config_f64_css_px;
 use crate::text::TextStyle;
 use dugong::RankDir;
 use serde_json::Value;
 
 pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
-}
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-pub(super) fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
 }
 
 pub(super) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
@@ -40,19 +28,6 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
         cur.as_array()
             .and_then(|a| a.first()?.as_str())
             .map(|s| s.to_string())
-    })
-}
-
-fn parse_css_px_to_f64(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let raw = s.strip_suffix("px").unwrap_or(s).trim();
-    raw.parse::<f64>().ok().filter(|v| v.is_finite())
-}
-
-fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
-    config_f64(cfg, path).or_else(|| {
-        let s = config_string(cfg, path)?;
-        parse_css_px_to_f64(&s)
     })
 }
 

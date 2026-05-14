@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::config::{config_f64_or as config_f64, json_f64};
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
@@ -6,26 +7,6 @@ use crate::model::{
 use crate::text::TextMeasurer;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
-
-fn config_f64(cfg: &serde_json::Value, path: &[&str], default: f64) -> f64 {
-    let mut cur = cfg;
-    for key in path {
-        cur = match cur.get(*key) {
-            Some(v) => v,
-            None => return default,
-        };
-    }
-    cur.as_f64()
-        .or_else(|| cur.as_i64().map(|n| n as f64))
-        .or_else(|| cur.as_u64().map(|n| n as f64))
-        .unwrap_or(default)
-}
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
 
 fn json_i64(v: &Value) -> Option<i64> {
     v.as_i64().or_else(|| v.as_u64().map(|n| n as i64))

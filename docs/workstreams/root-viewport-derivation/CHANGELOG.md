@@ -2,6 +2,10 @@
 
 ## 2026-05-14
 
+- Centralized render numeric config parsing so quoted YAML numbers and CSS `px` config values are
+  handled by shared helpers rather than per-diagram copies. A full disabled-root cross-check after
+  the migration found all generated root viewport pins still map to DOM mismatches (`stale=0`), so
+  no root budget change was made in this pass.
 - Parsed plain numeric string Flowchart spacing config as numbers for layout and SVG parity config.
   `flowchart.rankSpacing: '100'` now feeds Dagre as `100.0`, so
   `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`

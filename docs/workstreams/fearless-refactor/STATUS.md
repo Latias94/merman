@@ -18,6 +18,8 @@ What is done:
 - M2 typed model expansion is complete for all in-tree Mermaid diagrams except the explicit error/custom-registry fallback path.
 - M3 text subsystem modularization is complete.
 - M4 large renderer decomposition is effectively complete.
+- Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
+  modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
 - Root viewport override no-growth is tightened to `353` after the GitGraph seeded auto-id
   warm-up pass, the GitGraph horizontal
   branch-label width pass, the GitGraph commit/tag label computed-length pass, the Flowchart
@@ -37,6 +39,9 @@ What is done:
 - `cargo run -p xtask -- verify --strict` passes.
 - `cargo run -p xtask -- verify --strict` now includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
+- A disabled-root cross-check after numeric config parser centralization found no newly stale root
+  viewport pins across generated root tables, so current root debt remains retained evidence rather
+  than cleanup-by-count work.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in
   `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
 - Root `CHANGELOG.md` now calls out the refactor release-readiness work.

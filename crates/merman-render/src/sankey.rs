@@ -1,3 +1,4 @@
+use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
@@ -44,14 +45,6 @@ enum NodeAlign {
     Right,
     Justify,
     Center,
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_f64()
 }
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {

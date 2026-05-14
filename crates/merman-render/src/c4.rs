@@ -1,3 +1,4 @@
+use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
@@ -10,20 +11,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 type C4Model = C4DiagramRenderModel;
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
-}
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;

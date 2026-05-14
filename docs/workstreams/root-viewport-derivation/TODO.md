@@ -443,6 +443,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   passes focused disabled-root and normal `parity-root` checks without a root viewport pin. The
   affected layout golden was refreshed, and the root no-growth budget is tightened to `353` with
   `86` Flowchart entries.
+- [x] Centralize numeric config parsing before the next root pruning pass.
+  Evidence: `crates/merman-render/src/config.rs` now owns finite JSON number, quoted YAML number,
+  and CSS `px` numeric parsing for render modules. Full `merman-render` nextest and full
+  `compare-all-svgs --dom-mode parity-root` passed. A disabled-root cross-check across generated
+  root tables found no newly stale pins, so the root budget correctly stays at `353`.
 - [ ] Derive the next Flowchart disabled-root family after rankSpacing.
   Recommended starting points from the post-rankSpacing audit are:
   chained-statement/edge-spacing height drift (`+48px` example), icon multiline height and

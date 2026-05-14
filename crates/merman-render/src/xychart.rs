@@ -1,3 +1,4 @@
+use crate::config::config_f64_css_px as config_f64;
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
@@ -85,25 +86,6 @@ struct BoundingRect {
     y: f64,
     width: f64,
     height: f64,
-}
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-        .or_else(|| {
-            let s = v.as_str()?.trim();
-            let s = s.strip_suffix("px").unwrap_or(s).trim();
-            s.parse::<f64>().ok()
-        })
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
 }
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {

@@ -1,19 +1,10 @@
+use crate::config::config_f64_css_px;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use serde_json::Value;
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut v = cfg;
-    for p in path {
-        v = v.get(*p)?;
-    }
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
 
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     let mut v = cfg;
@@ -23,18 +14,8 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     v.as_str().map(|s| s.to_string())
 }
 
-fn parse_css_px_to_f64(text: &str) -> Option<f64> {
-    let trimmed = text.trim();
-    let raw = trimmed.strip_suffix("px").unwrap_or(trimmed).trim();
-    raw.parse::<f64>().ok().filter(|value| value.is_finite())
-}
-
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
-    config_f64(effective_config, &["mindmap", "maxNodeWidth"])
-        .or_else(|| {
-            config_string(effective_config, &["mindmap", "maxNodeWidth"])
-                .and_then(|value| parse_css_px_to_f64(&value))
-        })
+    config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
         .max(1.0)
 }

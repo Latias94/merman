@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Centralized render numeric config parsing in `crates/merman-render/src/config.rs`, removing
+  diagram-local `json_f64` / `config_f64` / CSS `px` parser copies across layout and SVG parity
+  modules. Full render nextest and full `parity-root` stayed green; a disabled-root cross-check
+  across generated root tables found `stale=0`, so no additional root pins were deleted and the
+  budget remains `353`.
 - Parsed plain numeric string Flowchart spacing config values as numeric layout inputs. The
   quoted `flowchart.rankSpacing: '100'` Cypress fixture now derives its 100px rank separation
   without a root viewport pin, its layout golden was refreshed, and the root no-growth budget is

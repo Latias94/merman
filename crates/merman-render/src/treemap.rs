@@ -1,3 +1,4 @@
+use crate::config::{config_f64, json_f64};
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
 use merman_core::diagrams::treemap::{
@@ -22,20 +23,6 @@ struct HierNode {
     y0: f64,
     x1: f64,
     y1: f64,
-}
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
 }
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {

@@ -1,3 +1,4 @@
+use crate::config::{config_f64, config_f64_css_px};
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
@@ -9,18 +10,6 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 use serde_json::Value;
 
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64().or_else(|| v.as_i64().map(|n| n as f64))
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
-}
-
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
     for key in path {
@@ -30,20 +19,6 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
         cur.as_array()
             .and_then(|values| values.first()?.as_str())
             .map(|s| s.to_string())
-    })
-}
-
-fn parse_css_px_to_f64(s: &str) -> Option<f64> {
-    let raw = s.trim().trim_end_matches(';').trim();
-    let raw = raw.trim_end_matches("!important").trim();
-    let raw = raw.strip_suffix("px").unwrap_or(raw).trim();
-    raw.parse::<f64>().ok().filter(|value| value.is_finite())
-}
-
-fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
-    config_f64(cfg, path).or_else(|| {
-        let raw = config_string(cfg, path)?;
-        parse_css_px_to_f64(&raw)
     })
 }
 

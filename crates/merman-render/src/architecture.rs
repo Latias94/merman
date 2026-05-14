@@ -1,3 +1,4 @@
+use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::TextMeasurer;
@@ -29,14 +30,6 @@ pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
 
 pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
     font_size_px.max(1.0) * (17.0 / 16.0)
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64().or_else(|| cur.as_i64().map(|v| v as f64))
 }
 
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {

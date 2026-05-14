@@ -1,3 +1,4 @@
+use crate::config::config_f64 as cfg_f64;
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
@@ -20,14 +21,6 @@ fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateT
     merman_core::time::datetime_to_local_fixed(
         dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()),
     )
-}
-
-fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64()
 }
 
 fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {

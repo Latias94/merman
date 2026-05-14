@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::config::config_f64 as cfg_f64;
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
     JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
@@ -14,14 +15,6 @@ pub(crate) const JOURNEY_TITLE_EXTRA_HEIGHT_PX: f64 = 70.0;
 pub(crate) const JOURNEY_FACE_RADIUS_PX: f64 = 15.0;
 const JOURNEY_FACE_BASE_Y_PX: f64 = 300.0;
 const JOURNEY_FACE_SCORE_STEP_Y_PX: f64 = 30.0;
-
-fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64()
-}
 
 fn cfg_str(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;

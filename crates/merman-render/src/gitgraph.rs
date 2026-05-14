@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::config::{config_f64 as cfg_f64, json_f64_css_px};
 use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
@@ -15,14 +16,6 @@ const THEME_COLOR_LIMIT: usize = 8;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
 
-fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64()
-}
-
 fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
     for k in path {
@@ -37,19 +30,6 @@ fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
         cur = cur.get(*k)?;
     }
     cur.as_str().map(|s| s.to_string())
-}
-
-fn parse_css_px_to_f64(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let raw = s.strip_suffix("px").unwrap_or(s).trim();
-    raw.parse::<f64>().ok().filter(|value| value.is_finite())
-}
-
-fn json_f64_css_px(v: &serde_json::Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-        .or_else(|| v.as_str().and_then(parse_css_px_to_f64))
 }
 
 fn cfg_font_size(cfg: &serde_json::Value) -> f64 {

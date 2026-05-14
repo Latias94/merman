@@ -198,6 +198,16 @@ fixture-key mismatches, `94` retained keys, `0` stale retained pins, and `0` mis
 pinned and is now clearly a separate SVG-label/edge-spacing issue rather than rankSpacing config
 parsing.
 
+The numeric config parser centralization pass moves finite JSON number, quoted YAML number, and
+CSS `px` numeric parsing into `crates/merman-render/src/config.rs` and removes diagram-local
+copies from layout and SVG parity modules. Full `merman-render` nextest and full
+`compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` passed after the migration.
+A disabled-root `compare-all-svgs --report-root-all` audit was then crossed with every generated
+root override table. Result: Architecture `31/31`, C4 `35/35`, ER `22/22`, Flowchart `94/94`,
+GitGraph `23/23`, Journey `2/2`, Mindmap `39/39`, Requirement `10/10`, Sankey `3/3`, Sequence
+`59/59`, State `34/34`, and Timeline `9/9` retained pins still map to disabled-root DOM
+mismatches (`stale=0` for all tables). No root viewport pin was deleted in this pass.
+
 ## Focused Commands
 
 ```sh
@@ -250,6 +260,10 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `target/flowchart_disabled_root_2026-05-14_after_rankspacing.txt` found `94` fixture-key
   mismatches, `94` retained keys, `0` stale retained pins, and `0` missing pins. `report-overrides`
   now reports root total `353` and Flowchart at `86`.
+- 2026-05-14: Render numeric config parsing is centralized in
+  `crates/merman-render/src/config.rs`. Full render nextest and full `parity-root` passed, and a
+  disabled-root cross-check across generated root tables found `stale=0`, so the root budget stays
+  at `353`.
 - 2026-05-14: `cargo run -p xtask -- verify --strict` passed after the Flowchart table compression
   and no-growth budget tightening. The strict gate covered fmt, all-features check, workspace
   all-target/all-features clippy, override no-growth, feature matrix checks, workspace nextest

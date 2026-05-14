@@ -1,3 +1,4 @@
+use crate::config::{config_f64, config_f64_css_px};
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -10,33 +11,6 @@ pub(crate) type ErModel = merman_core::diagrams::er::ErDiagramRenderModel;
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
-
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
-}
-
-fn parse_css_px_to_f64(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let raw = s.strip_suffix("px").unwrap_or(s).trim();
-    raw.parse::<f64>().ok().filter(|v| v.is_finite())
-}
-
-fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
-    config_f64(cfg, path).or_else(|| {
-        let s = config_string(cfg, path)?;
-        parse_css_px_to_f64(&s)
-    })
-}
 
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;

@@ -67,6 +67,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Render config parsing: centralize numeric and CSS `px` config parsing in `merman-render` so
+  layout and SVG parity paths share finite-number, quoted YAML number, and CSS pixel semantics
+  instead of carrying diagram-local `json_f64` copies. A disabled-root cross-check found no newly
+  stale root viewport pins; the root viewport no-growth budget remains `353`.
 - Flowchart root derivation: parse plain numeric string config values such as
   `flowchart.rankSpacing: '100'` as numbers for layout and SVG parity config. This derives
   `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`

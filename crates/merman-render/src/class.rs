@@ -1,3 +1,4 @@
+use crate::config::{config_f64, config_f64_css_px};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -16,20 +17,6 @@ use std::sync::Arc;
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 
-fn json_f64(v: &Value) -> Option<f64> {
-    v.as_f64()
-        .or_else(|| v.as_i64().map(|n| n as f64))
-        .or_else(|| v.as_u64().map(|n| n as f64))
-}
-
-fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_f64(cur)
-}
-
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
     for key in path {
@@ -44,19 +31,6 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
         cur = cur.get(*key)?;
     }
     cur.as_str().map(|s| s.to_string())
-}
-
-fn parse_css_px_to_f64(s: &str) -> Option<f64> {
-    let s = s.trim();
-    let raw = s.strip_suffix("px").unwrap_or(s).trim();
-    raw.parse::<f64>().ok().filter(|v| v.is_finite())
-}
-
-fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
-    config_f64(cfg, path).or_else(|| {
-        let s = config_string(cfg, path)?;
-        parse_css_px_to_f64(&s)
-    })
 }
 
 fn normalize_dir(direction: &str) -> String {

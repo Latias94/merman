@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::config::{config_f64 as cfg_f64, config_f64_css_px as cfg_f64_css_px};
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
@@ -19,14 +20,6 @@ const EVENT_GAP_Y: f64 = 10.0;
 const TITLE_Y: f64 = 20.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 
-fn cfg_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64()
-}
-
 fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
     for k in path {
@@ -41,23 +34,6 @@ fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
         cur = cur.get(*k)?;
     }
     cur.as_str().map(|s| s.to_string())
-}
-
-fn cfg_f64_css_px(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_f64()
-        .or_else(|| cur.as_i64().map(|n| n as f64))
-        .or_else(|| cur.as_u64().map(|n| n as f64))
-        .or_else(|| {
-            let raw = cur.as_str()?;
-            let t = raw.trim().trim_end_matches(';').trim();
-            let t = t.trim_end_matches("!important").trim();
-            let t = t.trim_end_matches("px").trim();
-            t.parse::<f64>().ok()
-        })
 }
 
 fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
