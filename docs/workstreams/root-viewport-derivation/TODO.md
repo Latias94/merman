@@ -227,6 +227,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   matches the upstream 130px width, so the actor columns keep Mermaid's default 50px margin.
   `arrows_variants` passes focused disabled-root `parity-root`, and
   `report-overrides --check-no-growth` reports `378` root entries with `75` Sequence entries.
+- [x] Remove the simple Cypress Sequence root pin covered by a shared message-width fact.
+  Evidence: the browser `calculateTextDimensions` width fact for `How about you John?` now
+  matches the upstream 140px actor-spacing width, so John stays at x=440 and the fixture derives
+  the 790px root viewport. The focused disabled-root `parity-root` check passes, and the root
+  no-growth budget is tightened to `377` with `74` Sequence root entries.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch

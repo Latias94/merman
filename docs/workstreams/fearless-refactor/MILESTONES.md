@@ -704,6 +704,9 @@ Progress:
 - A follow-up `arrows_variants` pass corrected the shared `bidirectional_dotted` message-width
   fact, removed that root pin, and tightened the root viewport total to `378` with `75` Sequence
   entries.
+- A follow-up simple Cypress Sequence pass corrected the shared `How about you John?`
+  message-width fact, removed that root pin, and tightened the root viewport total to `377` with
+  `74` Sequence entries.
 - A follow-up Flowchart imageSquare pass sized layout bounds from rendered image plus label extents,
   removed `upstream_docs_flowchart_parameters_136`, and tightened the root viewport total to `544`
   with `124` Flowchart entries.

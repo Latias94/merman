@@ -172,6 +172,10 @@ mod tests {
             super::measure_svg_like_with_html_br(&measurer, "Hello John, how are you?", &style);
         assert_eq!(hello_john_w, 164.0);
 
+        let (how_about_john_w, _) =
+            super::measure_svg_like_with_html_br(&measurer, "How about you John?", &style);
+        assert_eq!(how_about_john_w, 140.0);
+
         let (bidirectional_dotted_w, _) =
             super::measure_svg_like_with_html_br(&measurer, "bidirectional_dotted", &style);
         assert_eq!(bidirectional_dotted_w, 130.0);

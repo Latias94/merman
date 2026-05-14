@@ -64,6 +64,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Changed
 
 - Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
+  `How about you John?`, so the simple upstream Cypress sequence fixture derives John actor
+  spacing and its 790px root viewport without a fixture-scoped pin. Sequence root pins drop to
+  `74`, and the root viewport no-growth budget tightens to `377`.
+- Sequence root derivation: correct the Mermaid `calculateTextDimensions` width fact for
   `bidirectional_dotted`, so `arrows_variants` keeps the upstream 50px actor margin and derives
   its 450px root viewport without a fixture-scoped pin. Sequence root pins drop to `75`, and the
   root viewport no-growth budget tightens to `378`.

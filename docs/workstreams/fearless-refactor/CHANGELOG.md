@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Corrected the Sequence default message-width fact for `How about you John?` to match the
+  upstream simple sequence actor spacing. The focused disabled-root `parity-root` check now
+  passes without the simple sequence fixture root pin, so Sequence root pins are now `74`, and
+  the root no-growth budget is `377`.
 - Corrected the Sequence default message-width fact for `bidirectional_dotted` to match the
   upstream `arrows_variants` actor spacing. The focused disabled-root `parity-root` check now
   passes without the fixture root pin, so Sequence root pins are now `75`, and the root no-growth

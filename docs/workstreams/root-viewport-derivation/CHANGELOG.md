@@ -2,6 +2,10 @@
 
 ## 2026-05-14
 
+- Corrected the Sequence default `How about you John?` message-width fact from the upstream
+  simple sequence actor spacing, then deleted the now-derived Cypress simple sequence root
+  viewport pin. Focused disabled-root `parity-root` passes for the fixture, tightening the root
+  no-growth budget to `377` with Sequence at `74`.
 - Corrected the Sequence default `bidirectional_dotted` message-width fact from the upstream
   `arrows_variants` actor spacing, then deleted the now-derived root viewport pin. Focused
   disabled-root `parity-root` passes for the fixture, tightening the root no-growth budget to

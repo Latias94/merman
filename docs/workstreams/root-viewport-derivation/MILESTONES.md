@@ -247,6 +247,10 @@ Progress:
   for `bidirectional_dotted` from upstream actor spacing. Focused disabled-root `parity-root`
   passes for the fixture, and the root budget is tightened to `378` with `75` Sequence root
   entries.
+- Removed the simple Cypress Sequence root pin after correcting the default message-width fact for
+  `How about you John?` from upstream actor spacing. Focused normal and disabled-root
+  `parity-root` pass for the fixture, and the root budget is tightened to `377` with `74`
+  Sequence root entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed

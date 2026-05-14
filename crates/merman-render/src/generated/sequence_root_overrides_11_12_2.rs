@@ -111,9 +111,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009" => {
             Some(("-50 -10 1315 806", "1315"))
         }
-        "upstream_cypress_sequencediagram_spec_should_render_a_simple_sequence_diagram_001" => {
-            Some(("-50 -10 790 942", "790"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030" => {
             Some(("-50 -10 715 435", "715"))
         }

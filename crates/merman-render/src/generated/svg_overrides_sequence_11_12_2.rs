@@ -117,7 +117,7 @@ static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] =
     ("Hi John", 0.0, 3.25),
     ("Hi Mandy", 0.0, 4.1875),
     ("Hi!", 0.0, 1.375),
-    ("How about you John?", 0.0, 8.8125),
+    ("How about you John?", 0.0, 8.75),
     ("How about you?", 0.0, 6.6875),
     ("I agree", 0.0, 2.75),
     ("I am good thanks", 0.0, 6.9375),
