@@ -4,6 +4,10 @@ Overrides are compatibility data, not a substitute for fixing the renderer model
 when upstream Mermaid behavior depends on browser/font measurement or on intentionally pinned
 export quirks that cannot be derived reliably from the semantic model.
 
+This policy implements the broader parity boundary in `docs/workstreams/PARITY_BOUNDARY.md`.
+Use that document first to decide whether a mismatch must be derived, can be represented as
+generated data, or should be accepted as visible drift.
+
 ## Mermaid Parity for Generated Overrides
 
 For generated override data, Mermaid parity means matching a reproducible upstream

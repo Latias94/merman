@@ -5,6 +5,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-15
 
+- Added `docs/workstreams/PARITY_BOUNDARY.md` as the Mermaid parity boundary: semantic/layout
+  behavior must be derived, browser/font/export facts may live only in generated data with a
+  repeatable source, and low-value browser pixel drift may be accepted only when visible through
+  retained guards or documented notes. `ALIGNMENT.md` and `OVERRIDE_POLICY.md` now point to this
+  boundary so future parity work does not regress into fixture-answer tables.
 - Tightened the Flowchart FontAwesome HTML-label width boundary without adding a per-icon glyph
   table: standard `<i class="fa ...">` runs keep a clean nominal `1em` inline width, the
   documented unregistered custom-pack example stays an empty inline element, non-markdown icon

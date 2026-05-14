@@ -31,7 +31,7 @@ strict release gates green.
   behavior, then honoring commit/tag label theme-variable styles and pruning the now-derived pins
   while retaining the remaining table as real
   root-drift guards.
-- Current Flowchart root viewport overrides: `84` inventory entries after deriving imageSquare
+- Current Flowchart root viewport overrides: `83` inventory entries after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
   measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
   font-size precedence, iconSquare outer layout bounds, the unregistered custom FontAwesome
@@ -44,10 +44,13 @@ strict release gates green.
   matching Mermaid's split htmlLabels semantics for node labels versus edge/subgraph/CSS label
   behavior. The latest icon multiline pass derives `stress_flowchart_icons_multiline_br_054` by
   preserving FontAwesome icon-only HTML lines as measured DOM line boxes.
+  The latest FontAwesome boundary pass derives `stress_flowchart_icons_unicode_and_wrap_056`
+  without adding per-icon glyph-width data; the remaining icon root guards stay retained because
+  exact parity would require real FontAwesome per-icon advance widths.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `351` entries.
+- Current root viewport override budget: `350` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

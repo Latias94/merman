@@ -7,6 +7,7 @@ Baseline target (pinned upstream): Mermaid `@11.12.3`.
 
 Related documentation:
 
+- Parity boundary and drift policy: `docs/workstreams/PARITY_BOUNDARY.md`
 - Diagram-specific coverage and gap notes: `docs/alignment/`
 - SVG compare tooling: `docs/rendering/COMPARE_ALL_SVGS.md`, `docs/rendering/SVG_CANONICAL_XML.md`
 - Current status / long-term plan: `docs/alignment/STATUS.md`, `docs/alignment/PARITY_HARDENING_PLAN.md`
@@ -49,6 +50,8 @@ Before “fixing”, validate the gap exists and is in-scope:
    Reduce to the smallest `.mmd` that reproduces the mismatch. Prefer one diagram + 1–2 nodes.
 
 ## Decision guide: model change vs override
+
+Use `docs/workstreams/PARITY_BOUNDARY.md` as the authoritative rule set. The short version:
 
 Prefer **model changes** when:
 
