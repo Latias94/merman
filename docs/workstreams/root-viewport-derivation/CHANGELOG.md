@@ -1,5 +1,18 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-15
+
+- Tightened the Flowchart FontAwesome HTML-label width root family without using a fixture-derived
+  glyph table. The model intentionally keeps a clean nominal `1em` inline width for standard
+  FontAwesome `<i>` runs, treats the documented unregistered custom-pack example as an empty
+  inline element, measures non-markdown icon labels through the same HTML fragment path used for
+  emitted `<foreignObject>` content, and preserves whitespace adjacent to inline icon runs.
+  Focused normal `parity-root` and `report-overrides --check-no-growth` pass after deleting the
+  now-derived `stress_flowchart_icons_unicode_and_wrap_056` root pin. Root entries are now `350`,
+  with Flowchart at `83`. The remaining icon pins stay retained because deriving them would
+  require real FontAwesome per-icon advance widths, which is outside the clean parity boundary for
+  now.
+
 ## 2026-05-14
 
 - Derived the Flowchart FontAwesome icon-only multiline label height root: HTML labels that render

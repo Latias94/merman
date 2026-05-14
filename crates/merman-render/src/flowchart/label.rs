@@ -295,7 +295,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
 
             if lower.contains("<img") {
                 measure_flowchart_html_images(measurer, &html, style, max_width_px)
-            } else if has_inline_style {
+            } else if has_inline_style || html.contains("<i ") {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     measurer,
                     &html,
@@ -425,11 +425,10 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             && !raw_label.contains("fa:")
             && !raw_label.contains("<i")
         {
-            // The generated default-font HTML override for `Car` comes from FontAwesome fixtures
-            // (`<i class="fa ..."></i> Car`). Plain flowchart node labels should keep the raw DOM
-            // width instead.
+            // Icon labels may share the same normalized text as plain labels. Plain flowchart
+            // node labels should keep the raw DOM text width instead of the icon-label width.
             let desired = 24.203125 * (style.font_size / 16.0);
-            let icon_probe = 45.015625 * (style.font_size / 16.0);
+            let icon_probe = 45.03125 * (style.font_size / 16.0);
             if (metrics.width - icon_probe).abs() < 1.0 {
                 metrics.width = crate::text::round_to_1_64_px(desired);
             }

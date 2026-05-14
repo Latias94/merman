@@ -42,7 +42,6 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
         "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
-        "stress_flowchart_icons_unicode_and_wrap_056" => Some(("0 0 701.515625 94", "701.516")),
         "stress_flowchart_icons_click_security_strict_057" => {
             Some(("0 0 139.890625 174", "139.891"))
         }

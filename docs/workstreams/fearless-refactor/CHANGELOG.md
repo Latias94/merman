@@ -3,6 +3,19 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-15
+
+- Tightened the Flowchart FontAwesome HTML-label width boundary without adding a per-icon glyph
+  table: standard `<i class="fa ...">` runs keep a clean nominal `1em` inline width, the
+  documented unregistered custom-pack example stays an empty inline element, non-markdown icon
+  labels use the same HTML measurement path as rendered `<foreignObject>` content, and whitespace
+  adjacent to icon runs is preserved. This derives `stress_flowchart_icons_unicode_and_wrap_056`
+  without a root pin while retaining the icon roots that would require real FontAwesome advance
+  widths (`stress_flowchart_icons_in_edge_labels_053`,
+  `stress_flowchart_icons_classdef_and_style_058`, `stress_flowchart_icons_subgraph_mixed_061`,
+  `stress_flowchart_icons_edge_to_cluster_062`). Normal icon `parity-root` and override no-growth
+  stay green with root budget `350` and Flowchart at `83`.
+
 ## 2026-05-14
 
 - Derived the Flowchart FontAwesome icon-only multiline label height family by preserving empty

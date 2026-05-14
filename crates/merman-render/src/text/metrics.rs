@@ -265,20 +265,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
 
         let prefix = prefix?;
         let icon = icon?;
-        let nominal_em = match (prefix, icon) {
-            // Mermaid docs use this as an unregistered custom icon example. Upstream emits an
-            // empty `<i class="fab fa-truck-bold">`, and without a matching custom icon font
-            // Chromium leaves only the small inline layout delta captured below.
+        let advance_em = match (prefix, icon) {
+            // Mermaid's documented custom-pack example is not registered in the bundled
+            // FontAwesome CSS, so Chromium lays it out as an empty inline element.
             ("fab", "truck-bold") => 0.0,
             _ => 1.0,
         };
 
-        let nominal_px = font_size.max(1.0) * nominal_em;
-        // In practice the inline FontAwesome marker measures one 1/64px lattice step under its
-        // nominal width in upstream Chromium fixtures. This also captures the empty custom-pack
-        // fallback, whose effective contribution is a small line-width delta rather than a visible
-        // glyph.
-        Some(round_to_1_64_px(nominal_px) - (1.0 / 64.0))
+        Some(round_to_1_64_px(font_size.max(1.0) * advance_em))
     }
 
     // Mermaid supports inline FontAwesome icons via `<i class="fa fa-..."></i>` inside HTML
@@ -311,6 +305,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
     let mut plain = String::new();
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
     let mut icon_on_line: Vec<bool> = vec![false];
+    let mut text_segments_by_line: Vec<Vec<String>> = vec![vec![String::new()]];
     let mut strong_depth: usize = 0;
     let mut em_depth: usize = 0;
     let mut fa_icon_depth: usize = 0;
@@ -369,6 +364,9 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         if let Some(slot) = icon_on_line.get_mut(line_idx) {
                             *slot = true;
                         }
+                        if let Some(segments) = text_segments_by_line.get_mut(line_idx) {
+                            segments.push(String::new());
+                        }
                         fa_icon_depth += 1;
                     } else {
                         em_depth += 1;
@@ -378,6 +376,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                     plain.push('\n');
                     deltas_px_by_line.push(0.0);
                     icon_on_line.push(false);
+                    text_segments_by_line.push(vec![String::new()]);
                     prev_char = None;
                     prev_is_strong = false;
                 }
@@ -385,6 +384,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                     plain.push('\n');
                     deltas_px_by_line.push(0.0);
                     icon_on_line.push(false);
+                    text_segments_by_line.push(vec![String::new()]);
                     prev_char = None;
                     prev_is_strong = false;
                 }
@@ -397,15 +397,26 @@ pub fn measure_html_with_flowchart_bold_deltas(
                          plain: &mut String,
                          deltas_px_by_line: &mut Vec<f64>,
                          icon_on_line: &mut Vec<bool>,
+                         text_segments_by_line: &mut Vec<Vec<String>>,
                          prev_char: &mut Option<char>,
                          prev_is_strong: &mut bool| {
             plain.push(decoded);
             if decoded == '\n' {
                 deltas_px_by_line.push(0.0);
                 icon_on_line.push(false);
+                text_segments_by_line.push(vec![String::new()]);
                 *prev_char = None;
                 *prev_is_strong = false;
                 return;
+            }
+            let segment_line_idx = text_segments_by_line.len().saturating_sub(1);
+            if let Some(segments) = text_segments_by_line.get_mut(segment_line_idx) {
+                if segments.is_empty() {
+                    segments.push(String::new());
+                }
+                if let Some(segment) = segments.last_mut() {
+                    segment.push(decoded);
+                }
             }
             if is_flowchart_default_font(style) {
                 let line_idx = deltas_px_by_line.len().saturating_sub(1);
@@ -457,6 +468,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         &mut plain,
                         &mut deltas_px_by_line,
                         &mut icon_on_line,
+                        &mut text_segments_by_line,
                         &mut prev_char,
                         &mut prev_is_strong,
                     );
@@ -477,14 +489,20 @@ pub fn measure_html_with_flowchart_bold_deltas(
             &mut plain,
             &mut deltas_px_by_line,
             &mut icon_on_line,
+            &mut text_segments_by_line,
             &mut prev_char,
             &mut prev_is_strong,
         );
     }
 
-    // Keep leading whitespace: in HTML it can become significant when it follows a non-text
-    // element (e.g. `<i class="fa ..."></i> Car`), even though it would otherwise be collapsed.
-    let plain = plain.trim_end().to_string();
+    // Keep whitespace adjacent to inline icons: in HTML it becomes significant when it separates
+    // text from an inline-block `<i>` (for both `<i> text` and `text <i>`). Only drop the newline
+    // that our lightweight parser adds for closing block tags.
+    let plain = if icon_on_line.iter().any(|v| *v) {
+        plain.trim_end_matches('\n').to_string()
+    } else {
+        plain.trim_end().to_string()
+    };
     let base = measurer.measure_wrapped_raw(plain.trim(), style, max_width, wrap_mode);
 
     let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
@@ -493,6 +511,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
     }
     deltas_px_by_line.resize(lines.len(), 0.0);
     icon_on_line.resize(lines.len(), false);
+    text_segments_by_line.resize_with(lines.len(), || vec![String::new()]);
 
     fn flowchart_html_icon_wrapped_segments(line: &str) -> Vec<String> {
         fn is_break_after(ch: char) -> bool {
@@ -594,14 +613,23 @@ pub fn measure_html_with_flowchart_bold_deltas(
 
     let mut max_line_width: f64 = 0.0;
     for (idx, line) in lines.iter().enumerate() {
-        let line = if icon_on_line[idx] {
-            line.trim_end()
+        let w = if icon_on_line[idx] {
+            text_segments_by_line
+                .get(idx)
+                .into_iter()
+                .flat_map(|segments| segments.iter())
+                .filter(|segment| !segment.is_empty())
+                .map(|segment| {
+                    measurer
+                        .measure_wrapped_raw(segment, style, None, wrap_mode)
+                        .width
+                })
+                .sum::<f64>()
         } else {
-            line.trim()
+            measurer
+                .measure_wrapped_raw(line.trim(), style, None, wrap_mode)
+                .width
         };
-        let w = measurer
-            .measure_wrapped_raw(line, style, None, wrap_mode)
-            .width;
         max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
     }
 

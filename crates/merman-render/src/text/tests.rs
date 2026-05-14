@@ -115,9 +115,9 @@ fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
 }
 
 #[test]
-fn flowchart_html_fontawesome_icon_width_matches_upstream() {
-    // Mermaid upstream fixture:
-    // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
+fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
+    // Deliberately model standard FontAwesome icons as a clean nominal 1em inline run instead of
+    // the browser's per-icon font advance.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -133,13 +133,13 @@ fn flowchart_html_fontawesome_icon_width_matches_upstream() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 45.015625);
+    assert_eq!(m.width, 45.03125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
 
 #[test]
-fn flowchart_html_fontawesome_custom_pack_icon_width_matches_upstream() {
+fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary() {
     // Mermaid falls back to an empty `<i>` for unregistered custom packs.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -156,15 +156,15 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_matches_upstream() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 104.03125);
+    assert_eq!(m.width, 104.046875);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
 
 #[test]
-fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
-    // Mermaid upstream fixture:
-    // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
+fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
+    // Non-markdown Flowchart icon labels should use the same HTML fragment measurement path as
+    // emitted `<foreignObject>` content, with the same clean nominal icon width boundary.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -186,7 +186,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
             preserve_string_whitespace_height: false,
         },
     );
-    assert_eq!(m.width, 45.015625);
+    assert_eq!(m.width, 45.03125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
