@@ -31,18 +31,19 @@ strict release gates green.
   behavior, then honoring commit/tag label theme-variable styles and pruning the now-derived pins
   while retaining the remaining table as real
   root-drift guards.
-- Current Flowchart root viewport overrides: `87` inventory entries after deriving imageSquare
+- Current Flowchart root viewport overrides: `86` inventory entries after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
   measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
   font-size precedence, iconSquare outer layout bounds, the unregistered custom FontAwesome
   fallback advance, and LR fork/join direction-sensitive layout bounds, then pruning the now-derived docs
   parameters, old-shape set5, courier long-name/class-definition, stage2 long-word title,
   Unicode/entities title, stale subgraph title-margin pins, numeric-vs-px-string font-size root,
-  docs icon-shape root, custom-icon fallback roots, and eight old-shape set3 LR fork roots.
+  docs icon-shape root, custom-icon fallback roots, eight old-shape set3 LR fork roots, and the
+  quoted-numeric `rankSpacing: '100'` root.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `354` entries.
+- Current root viewport override budget: `353` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

@@ -67,6 +67,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart root derivation: parse plain numeric string config values such as
+  `flowchart.rankSpacing: '100'` as numbers for layout and SVG parity config. This derives
+  `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+  without a root viewport pin, refreshes its layout golden, and tightens the root viewport
+  no-growth budget to `353` with Flowchart at `86`.
 - Flowchart root override inventory: collapse exact-duplicate generated match arms into Rust
   or-patterns, preserving fixture-key coverage while tightening the root viewport no-growth budget
   to `354` with Flowchart at `87`.

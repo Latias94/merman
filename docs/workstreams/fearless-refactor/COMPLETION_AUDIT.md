@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` document the feature matrix, override no-growth, workspace clippy, nextest, normal DOM parity, and full root parity coverage now included in `cargo run -p xtask -- verify --strict`. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The current no-growth budgets are `354` root viewport inventory entries and `484` text lookup entries. | Met |
+| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes after restoring required root viewport guards; `xtask verify --strict` includes root parity after normal DOM parity. The current no-growth budgets are `353` root viewport inventory entries and `484` text lookup entries. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Flowchart override inventory cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -37,6 +37,10 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
+- `cargo run -p xtask -- report-overrides --check-no-growth` passed after the Flowchart
+  quoted-numeric rankSpacing derivation with `353` root viewport entries and `484` text lookup
+  entries. Focused nextest/config checks and Flowchart `parity-root` checks cover the changed
+  fixture.
 - `cargo run -p xtask -- verify --strict` passed after the Flowchart root override inventory
   cleanup and no-growth budget tightening. The run covered fmt, all-features check, workspace
   all-target/all-features clippy, override no-growth at `354` root viewport entries and `484`

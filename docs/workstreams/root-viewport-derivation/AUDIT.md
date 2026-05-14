@@ -38,15 +38,15 @@ title-bounds/parallel-branch/font-size/branch-line endpoint/horizontal branch-la
 label computed-length, vertical branch-label centered bbox, commit/tag label theme-variable, and
 seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, anchor-dot layout-bounds, C1 replacement-glyph,
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
-HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback, and LR
-fork/join direction-sensitive sizing passes:
+HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback, LR
+fork/join direction-sensitive sizing, and quoted-numeric rankSpacing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `87` inventory entries.
-- Root viewport total: `354` entries.
+- Flowchart: `86` inventory entries.
+- Root viewport total: `353` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -186,6 +186,18 @@ No Flowchart root pin was deleted in this pass because the top candidates all st
 disabled-root mismatch set. The next Flowchart derivation pass should therefore start from one
 large drift family above, not from another stale-pin sweep.
 
+The latest Flowchart rankSpacing pass parses plain numeric string config values as numbers for
+Flowchart layout and SVG parity config. This matches Mermaid's treatment of YAML/frontmatter
+values such as `flowchart.rankSpacing: '100'`, so
+`upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+now derives the 100px Dagre rank separation instead of falling back to 50px. Focused disabled-root
+and normal `parity-root` checks pass for that fixture, the layout golden was refreshed, and the
+root pin was deleted. The follow-up full disabled-root Flowchart audit now reports `94`
+fixture-key mismatches, `94` retained keys, `0` stale retained pins, and `0` missing pins, with
+`79` `max-width` mismatches and `15` `viewBox` mismatches. The chained-statement sibling remains
+pinned and is now clearly a separate SVG-label/edge-spacing issue rather than rankSpacing config
+parsing.
+
 ## Focused Commands
 
 ```sh
@@ -229,6 +241,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `0` stale retained pins, and `0` missing pins. The `87` Flowchart inventory entries reported by
   `xtask report-overrides` are match-arm rows after or-pattern compression, not fixture-key
   coverage. No Flowchart root pin was removed in this pass.
+- 2026-05-14: Flowchart quoted-numeric rankSpacing now derives
+  `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+  without a root viewport pin. Focused disabled-root and normal `parity-root` checks pass for the
+  fixture after parsing `flowchart.rankSpacing: '100'` as `100.0`, and
+  `fixtures/flowchart/upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023.layout.golden.json`
+  was refreshed. A full disabled-root Flowchart audit written to
+  `target/flowchart_disabled_root_2026-05-14_after_rankspacing.txt` found `94` fixture-key
+  mismatches, `94` retained keys, `0` stale retained pins, and `0` missing pins. `report-overrides`
+  now reports root total `353` and Flowchart at `86`.
 - 2026-05-14: `cargo run -p xtask -- verify --strict` passed after the Flowchart table compression
   and no-growth budget tightening. The strict gate covered fmt, all-features check, workspace
   all-target/all-features clippy, override no-growth, feature matrix checks, workspace nextest

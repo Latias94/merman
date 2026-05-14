@@ -16,6 +16,10 @@ pub(super) fn json_f64(v: &serde_json::Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
         .or_else(|| v.as_u64().map(|n| n as f64))
+        .or_else(|| {
+            let n = v.as_str()?.trim().parse::<f64>().ok()?;
+            n.is_finite().then_some(n)
+        })
 }
 
 pub(super) fn json_f64_css_px(v: &serde_json::Value) -> Option<f64> {
@@ -615,6 +619,14 @@ mod tests {
         assert_eq!(fmt_into_string(1.0), "1");
         assert_eq!(fmt_into_string(1.0000004), "1");
         assert_eq!(fmt_into_string(-1.0000004), "-1");
+    }
+
+    #[test]
+    fn json_f64_accepts_plain_numeric_strings() {
+        assert_eq!(json_f64(&serde_json::json!("100")), Some(100.0));
+        assert_eq!(json_f64(&serde_json::json!(" 70.5 ")), Some(70.5));
+        assert_eq!(json_f64(&serde_json::json!("100px")), None);
+        assert_eq!(json_f64(&serde_json::json!("NaN")), None);
     }
 
     #[test]

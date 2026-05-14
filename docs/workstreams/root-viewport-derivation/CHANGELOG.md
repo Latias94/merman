@@ -2,6 +2,12 @@
 
 ## 2026-05-14
 
+- Parsed plain numeric string Flowchart spacing config as numbers for layout and SVG parity config.
+  `flowchart.rankSpacing: '100'` now feeds Dagre as `100.0`, so
+  `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+  derives without a root viewport pin. The layout golden was refreshed, focused disabled-root and
+  normal `parity-root` checks pass for the fixture, and `report-overrides` now reports `353` root
+  entries with Flowchart at `86`.
 - Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This is a
   table-only cleanup: the same fixture stems still map to the same `(viewBox, max-width)` tuples,
   but `report-overrides` inventory drops from `362` to `354` root entries, with Flowchart at `87`.

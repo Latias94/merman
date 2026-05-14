@@ -166,13 +166,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Evidence: the 2026-05-14 Flowchart disabled-root audit crossed
   `target/flowchart_disabled_root_2026-05-14.txt` with
   `flowchart_root_overrides_11_12_2.rs`. The table still covers `95` fixture keys even though
-  `report-overrides` now counts `87` inventory entries after or-pattern compression. All `95`
+  `report-overrides` counted `87` inventory entries after or-pattern compression. All `95`
   retained keys still appear in the disabled-root mismatch set, with `0` stale retained pins and
   `0` missing pins. The top retained families are rank-spacing/chained-statement and edge-geometry
   height drift, icon/FontAwesome line-break and glyph bounds, subgraph title/title-margin spacing,
   shape profile and all-pairs geometry, wrapping/Unicode/style/long-label measurement, plus small
-  browser-float guards. No Flowchart root pin was deleted because the audit proves the top
-  candidates remain real `parity-root` mismatches.
+  browser-float guards. The follow-up rankSpacing config pass removed one real derivable root pin,
+  so current `report-overrides` counts `86` Flowchart inventory entries, and the latest
+  disabled-root audit now reports `94` retained fixture keys, `0` stale pins, and `0` missing
+  pins.
 - [x] Revisit the first low-risk Sequence root candidate after State/Mindmap patterns are proven.
   Evidence: Sequence small-font text height now rounds Mermaid-like
   `calculateTextDimensions(...).height`, the SVG root CSS follows the configured actor label font
@@ -434,13 +436,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   max-width)` tuples. The generated table now groups those stems with Rust or-patterns, preserving
   fixture-key coverage while reducing `report-overrides` inventory from `362` to `354` root
   entries and Flowchart from `95` to `87` entries.
-- [ ] Derive one large Flowchart disabled-root family before pruning again.
-  Recommended starting points from the 2026-05-14 audit are:
-  rank spacing/chained-statement height drift (`-150px` and `+48px` examples), icon multiline
-  height and icon-label measurement (`-72px` example), subgraph title padding/margin width drift
-  (`-58.75px` and `-24.75px` examples), or wrapping-long-text height drift (`-24px` examples).
-  A stale-pin sweep alone is not expected to delete entries until one of these typed derivation
-  rules lands.
+- [x] Derive the quoted-numeric Flowchart rankSpacing root.
+  Evidence: Flowchart layout and SVG parity config now parse plain numeric strings such as
+  `flowchart.rankSpacing: '100'` as finite numbers, so
+  `upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023`
+  passes focused disabled-root and normal `parity-root` checks without a root viewport pin. The
+  affected layout golden was refreshed, and the root no-growth budget is tightened to `353` with
+  `86` Flowchart entries.
+- [ ] Derive the next Flowchart disabled-root family after rankSpacing.
+  Recommended starting points from the post-rankSpacing audit are:
+  chained-statement/edge-spacing height drift (`+48px` example), icon multiline height and
+  icon-label measurement (`-72px` example), subgraph title padding/margin width drift (`-58.75px`
+  and `-24.75px` examples), or wrapping-long-text height drift (`-24px` examples). A stale-pin
+  sweep alone is not expected to delete entries until one of these typed derivation rules lands.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

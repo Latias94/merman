@@ -113,9 +113,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020" => {
             Some(("0 0 234.015625 300", "234.016"))
         }
-        "upstream_cypress_flowchart_spec_23_render_a_simple_flowchart_with_rankspacing_set_to_100_023" => {
-            Some(("0 0 465.625 695.21875", "465.625"))
-        }
         "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024" => {
             Some(("0 0 410.828125 38", "410.828"))
         }

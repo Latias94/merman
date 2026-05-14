@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Parsed plain numeric string Flowchart spacing config values as numeric layout inputs. The
+  quoted `flowchart.rankSpacing: '100'` Cypress fixture now derives its 100px rank separation
+  without a root viewport pin, its layout golden was refreshed, and the root no-growth budget is
+  tightened to `353` total entries with Flowchart at `86`.
 - Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This keeps
   the same fixture-key coverage and root tuples, but trims generated-table inventory to `354`
   total root entries with Flowchart at `87`.

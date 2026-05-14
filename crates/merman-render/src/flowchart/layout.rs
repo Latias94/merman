@@ -23,6 +23,10 @@ fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
         .or_else(|| v.as_i64().map(|n| n as f64))
         .or_else(|| v.as_u64().map(|n| n as f64))
+        .or_else(|| {
+            let n = v.as_str()?.trim().parse::<f64>().ok()?;
+            n.is_finite().then_some(n)
+        })
 }
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -54,6 +58,33 @@ fn flowchart_svg_plain_computed_width_px(
         width = width.max(measurer.measure_svg_text_computed_length_px(line.trim_end(), style));
     }
     crate::text::round_to_1_64_px(width)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn flowchart_numeric_config_accepts_yaml_string_numbers() {
+        let cfg = json!({
+            "flowchart": {
+                "rankSpacing": "100",
+                "nodeSpacing": "70.5"
+            }
+        });
+
+        assert_eq!(config_f64(&cfg, &["flowchart", "rankSpacing"]), Some(100.0));
+        assert_eq!(config_f64(&cfg, &["flowchart", "nodeSpacing"]), Some(70.5));
+    }
+
+    #[test]
+    fn flowchart_numeric_config_rejects_non_numeric_strings() {
+        let cfg = json!({ "flowchart": { "rankSpacing": "100px", "nodeSpacing": "NaN" } });
+
+        assert_eq!(config_f64(&cfg, &["flowchart", "rankSpacing"]), None);
+        assert_eq!(config_f64(&cfg, &["flowchart", "nodeSpacing"]), None);
+    }
 }
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {

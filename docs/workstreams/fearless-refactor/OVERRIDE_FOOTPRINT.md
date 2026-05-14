@@ -143,7 +143,7 @@ checks for the commit/tag font-size docs fixtures stayed green, deleting
 `upstream_docs_gitgraph_customizing_commit_label_font_size_032` and tightening the current root
 viewport no-growth budget to `382` with `23` GitGraph entries.
 A later Sequence stale-pin sweep removed five simple-root pins, tightening the current root
-viewport no-growth budget to `362` with `59` Sequence entries. The latest Flowchart table-only
+viewport no-growth budget to `362` with `59` Sequence entries. A later Flowchart table-only
 cleanup then collapsed exact-duplicate generated root override match arms into Rust or-patterns.
 It does not delete fixture-key coverage, but it removes redundant inventory rows and tightens the
 current root viewport no-growth budget to `354` with `87` Flowchart entries.
@@ -154,6 +154,11 @@ are rank-spacing/chained-statement and edge-geometry height drift, icon/FontAwes
 line-break drift, subgraph title/title-margin spacing, shape profile/all-pairs geometry,
 wrapping/Unicode/style/long-label measurement, and small browser-float guards. No budget changed in
 that audit because there was no evidence-backed derivable Flowchart bucket to delete yet.
+The next Flowchart pass parsed plain numeric string spacing config as numeric layout input, so the
+quoted `flowchart.rankSpacing: '100'` Cypress fixture now derives its 100px Dagre rank separation
+without a root viewport pin. The Flowchart root table is now `86` entries, and the current root
+viewport no-growth budget is `353`; the follow-up disabled-root audit found `94` retained
+fixture-key mismatches, `0` stale pins, and `0` missing pins.
 It also reflects the final
 manual raw SVG/path bridge removal, so manual bridge scanning now reports zero bridge files. It
 also reflects corrected text-lookup accounting: generated `*_OVERRIDES_*` binary-search tables in
@@ -331,14 +336,14 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `362`.
+Total entries reported by `xtask`: `353`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 22 |
-| `flowchart_root_overrides_11_12_2.rs` | 95 |
+| `flowchart_root_overrides_11_12_2.rs` | 86 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -468,7 +473,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `flowchart`: 95
+- `flowchart`: 86
 - `sequence`: 59
 - `mindmap`: 39
 - `c4`: 35
