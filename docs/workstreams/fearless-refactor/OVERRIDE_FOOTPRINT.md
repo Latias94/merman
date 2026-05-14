@@ -319,7 +319,7 @@ bringing the text lookup total back to 480.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `367`.
+Total entries reported by `xtask`: `362`.
 
 | file | entries |
 | --- | ---: |
@@ -332,7 +332,7 @@ Total entries reported by `xtask`: `367`.
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 64 |
+| `sequence_root_overrides_11_12_2.rs` | 59 |
 | `state_root_overrides_11_12_2.rs` | 34 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
@@ -432,7 +432,9 @@ non-zero `max-width` deltas, 80 changed viewBox dimensions, and 80 DOM mismatche
 frontmatter-title pass made the rendered metadata title participate in Sequence root sizing and
 removed `upstream_html_demos_sequence_sequence_diagram_demos_002`. Later message and actor-width
 fact corrections removed the stacked-activation, arrows-variant, simple Cypress, package sequence,
-and six docs/control root pins. The remaining Sequence table is now `64`. The
+and six docs/control root pins. A follow-up disabled-root mismatch cross-check found five stale
+retained simple-root pins and no missing pins, so those were deleted. The remaining Sequence table
+is now `59`. The
 participant-creation v2 sibling still drifts from upstream `1040x580` to local `1040x591` with
 root overrides disabled, so it remains a typed participant vertical-geometry target rather than a
 text-width cleanup. The remaining Sequence table should be reduced by typed bounds/text
@@ -455,7 +457,7 @@ State root pins need scale/direction and edge-label bounds work before another p
 Largest root-viewport buckets:
 
 - `flowchart`: 95
-- `sequence`: 64
+- `sequence`: 59
 - `mindmap`: 39
 - `c4`: 35
 - `state`: 34

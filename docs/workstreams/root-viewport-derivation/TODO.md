@@ -254,6 +254,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   still drifts from upstream `1040x580` to local `1040x591` when root viewport overrides are
   disabled, even after the relevant width facts match. This is participant type/lifecycle vertical
   geometry debt, not another text-width cleanup.
+- [x] Sweep Sequence for stale retained root pins after the docs/control width-fact cleanup.
+  Evidence: a disabled-root mismatch cross-check found 5 stale retained pins and no missing pins.
+  Focused disabled-root `parity-root` passed for
+  `upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030`,
+  `actor_ids_dashes_and_equals`, `upstream_cypress_sequencediagram_spec_example_001`,
+  `upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059`,
+  and `upstream_docs_examples_basic_sequence_diagram_005`. `report-overrides --check-no-growth`
+  reports `362` root entries with `59` Sequence entries.
 - [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch

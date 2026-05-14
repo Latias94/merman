@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, forty-nine Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -43,10 +43,10 @@ fork/join direction-sensitive sizing passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
-- Sequence: `64` entries.
+- Sequence: `59` entries.
 - GitGraph: `23` entries.
 - Flowchart: `95` entries.
-- Root viewport total: `367` entries.
+- Root viewport total: `362` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -105,6 +105,13 @@ SVG actor/frame spacing. That removed six more root pins:
 with root overrides disabled its width matches, but the root height still drifts from upstream
 `1040x580` to local `1040x591`, so the next fix belongs in participant type/lifecycle vertical
 geometry rather than another text-width fact.
+A follow-up disabled-root mismatch cross-check over the then-current Sequence table found
+`root=64 mismatch=59 stale=5 missing=0`. The stale simple-root pins were
+`upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030`,
+`actor_ids_dashes_and_equals`, `upstream_cypress_sequencediagram_spec_example_001`,
+`upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059`,
+and `upstream_docs_examples_basic_sequence_diagram_005`; all five pass focused disabled-root
+`parity-root` and were deleted.
 
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.
@@ -166,6 +173,11 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-14: Sequence stale-pin cross-check with root overrides disabled found
+  `root=64 mismatch=59 stale=5 missing=0`. Focused disabled-root `parity-root` passed for the
+  five stale simple-root fixtures, and `report-overrides` now reports root total `362`, Sequence
+  root count `59`, text lookup total `484`, SVG text metric table total `186`, font metric table
+  total `3774`, and zero manual raw SVG/path bridges.
 - 2026-05-14: Sequence docs/control width facts now match upstream SVG actor/frame spacing for
   `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
   `Did you want to go to the game tonight?`. Six docs/control Sequence root pins were deleted

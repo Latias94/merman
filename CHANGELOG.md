@@ -63,6 +63,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Sequence root derivation: remove five stale simple-root pins after a disabled-root mismatch
+  cross-check showed they are now covered by existing root derivation. Sequence root pins drop to
+  `59`, and the root viewport no-growth budget tightens to `362`.
 - Sequence root derivation: correct Mermaid `calculateTextDimensions` width facts for
   `Feeling fresh like a daisy`, `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
   `Did you want to go to the game tonight?`, so the docs/control Sequence fixtures derive actor,

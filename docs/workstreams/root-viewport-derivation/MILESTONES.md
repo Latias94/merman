@@ -263,6 +263,10 @@ Progress:
   tightened to `367` with `64` Sequence root entries. The participant-creation v2 sibling remains
   pinned because it still has an 11px root-height drift from participant type/lifecycle vertical
   geometry.
+- Removed five stale Sequence simple-root pins after a disabled-root mismatch cross-check showed
+  they no longer produce DOM mismatches when root overrides are disabled. Focused disabled-root
+  `parity-root` passes for the five removed fixtures, tightening the root budget to `362` with
+  `59` Sequence root entries.
 - Derived Flowchart old-shape set3 LR fork roots by matching Mermaid `forkJoin.ts`
   direction-sensitive sizing: LR-rendered graphs use a vertical `10x70` bar before
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed

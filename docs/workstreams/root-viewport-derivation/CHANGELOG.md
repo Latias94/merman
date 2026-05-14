@@ -2,6 +2,10 @@
 
 ## 2026-05-14
 
+- Removed five stale Sequence root pins after a disabled-root mismatch cross-check found
+  `root=64 mismatch=59 stale=5 missing=0`. Focused disabled-root `parity-root` passes for the
+  five removed simple-root fixtures, tightening the root no-growth budget to `362` with Sequence
+  at `59`.
 - Corrected Sequence default text-width facts for `Feeling fresh like a daisy`,
   `Fine, thank you. And you?`, `Hello Charley, how are you?`, and
   `Did you want to go to the game tonight?` from upstream SVG actor/frame spacing, then deleted

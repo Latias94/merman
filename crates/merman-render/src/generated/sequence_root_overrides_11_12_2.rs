@@ -77,9 +77,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011" => {
             Some(("-50 -10 1655 626", "1655"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030" => {
-            Some(("-50 -10 790 957", "790"))
-        }
         "upstream_docs_sequencediagram_collections_016" => Some(("-50 -10 453 259", "453")),
         "upstream_docs_sequencediagram_parallel_054" => Some(("-50 -10 1062 547", "1062")),
         "upstream_docs_directives_changing_sequence_diagram_config_via_directive_013" => {
@@ -103,11 +100,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_sequence_batch5_create_destroy_in_par_046" => Some(("-50 -10 734 556", "734")),
         "stress_sequence_batch5_reserved_words_in_labels_049" => Some(("-50 -10 580 408", "580")),
         "stress_sequence_batch5_whitespace_semicolons_051" => Some(("-50 -10 450 506", "450")),
-        "actor_ids_dashes_and_equals" => Some(("-50 -10 696 347", "696")),
-        "upstream_cypress_sequencediagram_spec_example_001" => Some(("-50 -10 810 979", "810")),
-        "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059" => {
-            Some(("-50 -10 790 942", "790"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030" => {
             Some(("-50 -10 715 435", "715"))
         }
@@ -132,7 +124,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_docs_directives_changing_sequence_diagram_config_via_directive_016" => {
             Some(("-50 -10 751 364", "751"))
         }
-        "upstream_docs_examples_basic_sequence_diagram_005" => Some(("-50 -10 790 541", "790")),
         "upstream_docs_readme_how_does_a_langium_based_parser_work_002" => {
             Some(("-50 -10 1334 503", "1334"))
         }

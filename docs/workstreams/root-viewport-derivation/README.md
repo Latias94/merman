@@ -22,9 +22,9 @@ strict release gates green.
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
   the stale retained pins exposed by the post-wrapping disabled-root sweep.
-- Current Sequence root viewport overrides: `64` entries after the follow-up Sequence
+- Current Sequence root viewport overrides: `59` entries after the follow-up Sequence
   message-width metric, note/message/frame, actor/root-bounds, and SVG metric-table cleanup
-  passes.
+  passes plus the latest stale-pin cross-check.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, and upstream seeded auto-id warm-up
@@ -39,7 +39,7 @@ strict release gates green.
   parameters, old-shape set5, courier long-name/class-definition, stage2 long-word title,
   Unicode/entities title, stale subgraph title-margin pins, numeric-vs-px-string font-size root,
   docs icon-shape root, custom-icon fallback roots, and eight old-shape set3 LR fork roots.
-- Current root viewport override budget: `367` entries.
+- Current root viewport override budget: `362` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence
