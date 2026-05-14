@@ -288,16 +288,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
     // - HTML labels: `.classDef > *` + `.classDef span`
     // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
-    let html_labels = effective_config
-        .get("htmlLabels")
-        .and_then(|v| v.as_bool())
-        .or_else(|| {
-            effective_config
-                .get("flowchart")
-                .and_then(|v| v.get("htmlLabels"))
-                .and_then(|v| v.as_bool())
-        })
-        .unwrap_or(false);
+    let html_labels = crate::flowchart::flowchart_effective_html_labels(effective_config);
     let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
 
     for (class, decls) in class_defs {

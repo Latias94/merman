@@ -45,8 +45,8 @@ fork/join direction-sensitive sizing, and quoted-numeric rankSpacing passes:
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `86` inventory entries.
-- Root viewport total: `353` entries.
+- Flowchart: `85` inventory entries.
+- Root viewport total: `352` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -207,6 +207,24 @@ root override table. Result: Architecture `31/31`, C4 `35/35`, ER `22/22`, Flowc
 GitGraph `23/23`, Journey `2/2`, Mindmap `39/39`, Requirement `10/10`, Sankey `3/3`, Sequence
 `59/59`, State `34/34`, and Timeline `9/9` retained pins still map to disabled-root DOM
 mismatches (`stale=0` for all tables). No root viewport pin was deleted in this pass.
+
+The latest Flowchart chained-statement pass derives
+`upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` by matching
+Mermaid's split htmlLabels behavior. Node labels follow the root `htmlLabels` toggle and therefore
+still render/measure as HTML labels when only `flowchart.htmlLabels: false` is set; edge labels,
+subgraph titles, generated Flowchart CSS, and the browser-style styled/whitespace node-height
+quirks follow `flowchart.htmlLabels` with root fallback. The target fixture changed from the old
+local disabled-root `234x348` root to an intermediate over-correction of `234x282`; after the
+split-rule fix it matches the upstream `234.015625 x 300` root without the fixture pin. Focused
+disabled-root and normal `parity-root` checks pass for the removed pin, the layout golden was
+refreshed, full Flowchart `parity-root` passes, and `report-overrides --check-no-growth` now
+reports `352` root entries with Flowchart at `85`.
+
+The adjacent retained chaining pin
+`upstream_flow_vertice_chaining_amp_to_single_spec` was checked before deletion and remains pinned:
+with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` it still drifts from upstream
+`max-width: 312.5px` to local `312.75px`. That is a real retained browser-float/edge-spacing guard,
+not stale table debt.
 
 ## Focused Commands
 

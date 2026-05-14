@@ -95,13 +95,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
             },
         );
         let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
             ctx.class_defs,
             common.node_classes,
         );
-        if span_css_height_parity {
+        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 &node_text_style,

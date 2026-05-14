@@ -448,12 +448,22 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   and CSS `px` numeric parsing for render modules. Full `merman-render` nextest and full
   `compare-all-svgs --dom-mode parity-root` passed. A disabled-root cross-check across generated
   root tables found no newly stale pins, so the root budget correctly stays at `353`.
-- [ ] Derive the next Flowchart disabled-root family after rankSpacing.
-  Recommended starting points from the post-rankSpacing audit are:
-  chained-statement/edge-spacing height drift (`+48px` example), icon multiline height and
-  icon-label measurement (`-72px` example), subgraph title padding/margin width drift (`-58.75px`
-  and `-24.75px` examples), or wrapping-long-text height drift (`-24px` examples). A stale-pin
-  sweep alone is not expected to delete entries until one of these typed derivation rules lands.
+- [x] Derive the Flowchart chained-statement / edge-spacing height root.
+  Evidence: Flowchart now separates root `htmlLabels` semantics for node labels from
+  `flowchart.htmlLabels` semantics for edge labels, subgraph titles, CSS selectors, and the
+  styled/quoted-string node-height parity helpers. The target fixture
+  `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` passes
+  focused disabled-root and normal `parity-root` without a root viewport pin, its layout golden was
+  refreshed, and `report-overrides --check-no-growth` reports `352` root entries with `85`
+  Flowchart entries. The sibling `upstream_flow_vertice_chaining_amp_to_single_spec` remains
+  pinned because disabled-root parity still reports upstream `312.5px` versus local `312.75px`
+  max-width drift.
+- [ ] Derive the next Flowchart disabled-root family after chained-statement htmlLabels.
+  Recommended starting points are icon multiline height and icon-label measurement (`-72px`
+  example), subgraph title padding/margin width drift (`-58.75px` and `-24.75px` examples),
+  wrapping-long-text height drift (`-24px` examples), or the retained amp-to-single chaining
+  sub-pixel width guard. A stale-pin sweep alone is not expected to delete entries until one of
+  these typed derivation rules lands.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

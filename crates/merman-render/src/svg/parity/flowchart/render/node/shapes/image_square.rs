@@ -65,6 +65,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
             },
         );
         if !has_label {

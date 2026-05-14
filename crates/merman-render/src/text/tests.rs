@@ -49,6 +49,7 @@ fn flowchart_html_unicode_entity_title_width_matches_upstream() {
             wrap_mode: WrapMode::HtmlLike,
             config: &cfg,
             math_renderer: None,
+            preserve_string_whitespace_height: false,
         },
     );
     assert_eq!(metrics.width, 190.578125);
@@ -182,6 +183,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
             wrap_mode: WrapMode::HtmlLike,
             config: &cfg,
             math_renderer: None,
+            preserve_string_whitespace_height: false,
         },
     );
     assert_eq!(m.width, 45.015625);
@@ -211,6 +213,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_wraps_icon_start_like_upstream
             wrap_mode: WrapMode::HtmlLike,
             config: &cfg,
             math_renderer: None,
+            preserve_string_whitespace_height: false,
         },
     );
     assert_eq!(database.width, 208.96875);
@@ -227,6 +230,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_wraps_icon_start_like_upstream
             wrap_mode: WrapMode::HtmlLike,
             config: &cfg,
             math_renderer: None,
+            preserve_string_whitespace_height: false,
         },
     );
     assert_eq!(support_db.width, 214.84375);
@@ -470,6 +474,7 @@ fn flowchart_svg_node_label_width_overrides_match_repeat_offenders() {
         wrap_mode: WrapMode::SvgLike,
         config: &cfg,
         math_renderer: None,
+        preserve_string_whitespace_height: false,
     });
     assert_eq!(b.width, 8.921875);
 }
@@ -689,6 +694,7 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
             wrap_mode: WrapMode::HtmlLike,
             config: &cfg,
             math_renderer: None,
+            preserve_string_whitespace_height: false,
         },
     );
     assert_eq!(metrics.width, 82.125);

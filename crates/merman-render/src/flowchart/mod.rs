@@ -18,7 +18,8 @@ pub(crate) use label::{
 pub(crate) use node::flowchart_node_render_dimensions;
 pub(crate) use self_loop::{FlowchartSelfLoopEdgeOptions, flowchart_self_loop_helper_edges};
 pub(crate) use style::{
-    flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
+    flowchart_effective_html_labels, flowchart_effective_node_class_names,
+    flowchart_effective_node_html_labels, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_html_label_measurement_base_style,
     flowchart_node_has_span_css_height_parity,
 };

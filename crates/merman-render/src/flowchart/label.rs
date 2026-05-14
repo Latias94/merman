@@ -12,6 +12,7 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) wrap_mode: WrapMode,
     pub(crate) config: &'a MermaidConfig,
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(crate) preserve_string_whitespace_height: bool,
 }
 
 pub(crate) fn flowchart_label_metrics_for_layout(
@@ -26,6 +27,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         wrap_mode,
         config,
         math_renderer,
+        preserve_string_whitespace_height,
     } = req;
 
     let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
@@ -313,7 +315,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         }
     };
 
-    if label_type == "string" {
+    if label_type == "string" && preserve_string_whitespace_height {
         crate::text::flowchart_apply_mermaid_string_whitespace_height_parity(
             &mut metrics,
             raw_label,

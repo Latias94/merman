@@ -341,6 +341,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     wrap_mode: ctx.node_wrap_mode,
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
+                    preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
                 },
             );
 
@@ -349,7 +350,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     ctx.class_defs,
                     node_classes,
                 );
-            if span_css_height_parity {
+            if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
                 crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                     &mut metrics,
                     &node_text_style,
@@ -368,6 +369,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
             },
         );
 
@@ -375,7 +377,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
             ctx.class_defs,
             node_classes,
         );
-        if span_css_height_parity {
+        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 &node_text_style,

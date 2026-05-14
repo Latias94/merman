@@ -67,6 +67,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart parity: split node-label `htmlLabels` semantics from `flowchart.htmlLabels` semantics
+  for edge labels, subgraph titles, generated CSS, and styled/quoted-string height parity. This
+  derives the chained-statement fixture
+  `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` without a
+  root viewport pin, tightening Flowchart root overrides to 85 entries and total root overrides to
+  352.
 - Render config parsing: centralize numeric and CSS `px` config parsing in `merman-render` so
   layout and SVG parity paths share finite-number, quoted YAML number, and CSS pixel semantics
   instead of carrying diagram-local `json_f64` copies. A disabled-root cross-check found no newly

@@ -5,6 +5,14 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-14
 
+- Matched Mermaid's split Flowchart htmlLabels semantics for the chained-statement height family:
+  node labels follow root `htmlLabels`, while edge labels, subgraph titles, generated CSS, and
+  styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.
+  `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020` now passes
+  focused disabled-root `parity-root`, so its root pin was deleted. Full Flowchart `parity-root`,
+  render nextest, render clippy, and override no-growth stayed green; the root budget is tightened
+  to `352` with Flowchart at `85`. The adjacent `upstream_flow_vertice_chaining_amp_to_single_spec`
+  pin remains a real `312.5px` versus `312.75px` disabled-root max-width guard.
 - Centralized render numeric config parsing in `crates/merman-render/src/config.rs`, removing
   diagram-local `json_f64` / `config_f64` / CSS `px` parser copies across layout and SVG parity
   modules. Full render nextest and full `parity-root` stayed green; a disabled-root cross-check

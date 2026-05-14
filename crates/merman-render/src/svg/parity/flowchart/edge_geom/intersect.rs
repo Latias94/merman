@@ -753,6 +753,7 @@ fn compute_node_label_metrics_for_intersection(
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
+            preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
         },
     );
 
@@ -760,7 +761,7 @@ fn compute_node_label_metrics_for_intersection(
         ctx.class_defs,
         &flow_node.classes,
     );
-    if span_css_height_parity {
+    if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
         crate::text::flowchart_apply_mermaid_styled_node_height_parity(
             &mut metrics,
             &node_text_style,
@@ -937,6 +938,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
             },
         );
 
@@ -944,7 +946,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             ctx.class_defs,
             &flow_node.classes,
         );
-        if span_css_height_parity {
+        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 &node_text_style,
@@ -1043,6 +1045,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
             },
         );
 
@@ -1050,7 +1053,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             ctx.class_defs,
             &flow_node.classes,
         );
-        if span_css_height_parity {
+        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 &node_text_style,

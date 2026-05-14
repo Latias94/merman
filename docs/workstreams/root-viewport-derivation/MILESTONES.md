@@ -267,6 +267,14 @@ Progress:
   they no longer produce DOM mismatches when root overrides are disabled. Focused disabled-root
   `parity-root` passes for the five removed fixtures, tightening the root budget to `362` with
   `59` Sequence root entries.
+- Derived the Flowchart chained-statement height root by matching Mermaid's split htmlLabels
+  semantics: nodes follow root `htmlLabels`, while edge labels, subgraph titles, CSS selectors,
+  and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.
+  Removed `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020`
+  after focused disabled-root and normal `parity-root` passed, refreshed its layout golden, and
+  tightened the root budget to `352` with `85` Flowchart root entries. The sibling
+  `upstream_flow_vertice_chaining_amp_to_single_spec` remains pinned for a real `312.5px` versus
+  `312.75px` disabled-root max-width drift.
 - Collapsed exact-duplicate Flowchart root override match arms into Rust or-patterns. This does
   not delete fixture-key coverage or claim a new derivation rule; it removes generated-table
   redundancy for stems that already shared identical root tuples, tightening the inventory budget

@@ -15,7 +15,8 @@ use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_effective_text_style_for_classes,
+    FlowchartLabelMetricsRequest, flowchart_effective_html_labels,
+    flowchart_effective_node_html_labels, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_html_label_measurement_base_style,
     flowchart_label_metrics_for_layout, flowchart_node_has_span_css_height_parity,
 };
@@ -726,19 +727,14 @@ fn layout_flowchart_v2_with_model(
     // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
     // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
     let cluster_title_wrapping_width = 200.0;
-    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for *node* labels, while
-    // subgraph titles + edge labels follow `flowchart.htmlLabels` (falling back to the global
-    // toggle when unset).
-    let node_html_labels = effective_config_value
-        .get("htmlLabels")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    let edge_html_labels = effective_config_value
-        .get("flowchart")
-        .and_then(|v| v.get("htmlLabels"))
-        .and_then(Value::as_bool)
-        .unwrap_or(node_html_labels);
+    // Mermaid flowchart-v2 has split htmlLabels semantics: node labels follow the root
+    // `htmlLabels` toggle, while edge labels, subgraph titles, CSS selectors, and browser-style
+    // styled-label height quirks follow `flowchart.htmlLabels` and fall back to the root toggle.
+    let node_html_labels = flowchart_effective_node_html_labels(effective_config_value);
+    let flowchart_html_labels = flowchart_effective_html_labels(effective_config_value);
+    let edge_html_labels = flowchart_html_labels;
     let cluster_html_labels = edge_html_labels;
+    let node_html_label_css_parity = node_html_labels && flowchart_html_labels;
     let node_wrap_mode = if node_html_labels {
         WrapMode::HtmlLike
     } else {
@@ -959,10 +955,11 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
+            preserve_string_whitespace_height: node_html_label_css_parity,
         });
         let span_css_height_parity =
             flowchart_node_has_span_css_height_parity(&model.class_defs, &n.classes);
-        if span_css_height_parity {
+        if node_html_label_css_parity && span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
                 node_text_style.as_ref(),
@@ -1030,6 +1027,7 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
+            preserve_string_whitespace_height: node_html_label_css_parity,
         });
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
@@ -1209,6 +1207,7 @@ fn layout_flowchart_v2_with_model(
                     wrap_mode: edge_wrap_mode,
                     config: effective_config,
                     math_renderer,
+                    preserve_string_whitespace_height: false,
                 })
             };
             let (label_width, label_height) = if edge_html_labels {
@@ -2066,6 +2065,7 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
+            preserve_string_whitespace_height: false,
         });
         let mut rect = if let Some(r) = content {
             r
@@ -2146,6 +2146,7 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
+            preserve_string_whitespace_height: false,
         });
         let title_w = title_metrics.width.max(1.0);
         let title_h = title_metrics.height.max(1.0);
@@ -2261,6 +2262,7 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: cluster_wrap_mode,
             config: effective_config,
             math_renderer,
+            preserve_string_whitespace_height: false,
         });
         if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type != "markdown" {
             // Mermaid's flowchart cluster titles rendered as plain SVG `<text>` are measured via

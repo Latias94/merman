@@ -325,17 +325,11 @@ fn render_flowchart_v2_svg_with_config_inner(
     let wrapping_width = config_f64(effective_config_value, &["flowchart", "wrappingWidth"])
         .unwrap_or(200.0)
         .max(1.0);
-    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
-    // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
-    let node_html_labels = effective_config_value
-        .get("htmlLabels")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true);
-    let edge_html_labels = effective_config_value
-        .get("flowchart")
-        .and_then(|v| v.get("htmlLabels"))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(node_html_labels);
+    let node_html_labels =
+        crate::flowchart::flowchart_effective_node_html_labels(effective_config_value);
+    let flowchart_html_labels =
+        crate::flowchart::flowchart_effective_html_labels(effective_config_value);
+    let edge_html_labels = flowchart_html_labels;
     let node_wrap_mode = if node_html_labels {
         crate::text::WrapMode::HtmlLike
     } else {
@@ -760,6 +754,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         wrap_mode: ctx.node_wrap_mode,
                                         config: ctx.config,
                                         math_renderer: ctx.math_renderer,
+                                        preserve_string_whitespace_height: ctx.node_html_labels
+                                            && ctx.edge_html_labels,
                                     },
                                 );
                                 let pre_w = if shape == "delay" {
@@ -810,6 +806,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         wrap_mode: ctx.node_wrap_mode,
                                         config: ctx.config,
                                         math_renderer: ctx.math_renderer,
+                                        preserve_string_whitespace_height: ctx.node_html_labels
+                                            && ctx.edge_html_labels,
                                     },
                                 );
                                 (metrics.width, metrics.height)
@@ -884,6 +882,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         wrap_mode: ctx.node_wrap_mode,
                                         config: ctx.config,
                                         math_renderer: ctx.math_renderer,
+                                        preserve_string_whitespace_height: ctx.node_html_labels
+                                            && ctx.edge_html_labels,
                                     },
                                 );
                                 metrics.height
@@ -952,6 +952,8 @@ fn render_flowchart_v2_svg_with_config_inner(
                                         wrap_mode: ctx.node_wrap_mode,
                                         config: ctx.config,
                                         math_renderer: ctx.math_renderer,
+                                        preserve_string_whitespace_height: ctx.node_html_labels
+                                            && ctx.edge_html_labels,
                                     },
                                 );
                                 (metrics.width, metrics.height)

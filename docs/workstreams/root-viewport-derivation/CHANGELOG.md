@@ -2,6 +2,15 @@
 
 ## 2026-05-14
 
+- Matched Mermaid's split Flowchart htmlLabels semantics for the chained-statement height family:
+  node labels use the root `htmlLabels` toggle, while edge labels, subgraph titles, Flowchart CSS
+  selectors, and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root
+  fallback. `upstream_cypress_flowchart_spec_20_multiple_nodes_and_chaining_in_one_statement_020`
+  now derives the upstream `234.015625 x 300` root without a pin; focused disabled-root and normal
+  `parity-root`, full Flowchart `parity-root`, render nextest, render clippy, and
+  `report-overrides --check-no-growth` pass. Root entries are now `352`, with Flowchart at `85`.
+  The sibling `upstream_flow_vertice_chaining_amp_to_single_spec` remains pinned because
+  disabled-root parity still has upstream `312.5px` versus local `312.75px` max-width drift.
 - Centralized render numeric config parsing so quoted YAML numbers and CSS `px` config values are
   handled by shared helpers rather than per-diagram copies. A full disabled-root cross-check after
   the migration found all generated root viewport pins still map to DOM mismatches (`stale=0`), so
