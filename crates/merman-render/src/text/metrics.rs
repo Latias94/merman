@@ -7,10 +7,13 @@ use super::{
 };
 
 pub(crate) fn is_flowchart_default_font(style: &TextStyle) -> bool {
-    let Some(f) = style.font_family.as_deref() else {
-        return false;
-    };
-    normalize_font_key(f) == FLOWCHART_DEFAULT_FONT_KEY
+    style
+        .font_family
+        .as_deref()
+        .map(normalize_font_key)
+        .filter(|key| !key.is_empty())
+        .unwrap_or_else(|| FLOWCHART_DEFAULT_FONT_KEY.to_string())
+        == FLOWCHART_DEFAULT_FONT_KEY
 }
 
 pub(crate) fn style_requests_bold_font_weight(style: &TextStyle) -> bool {

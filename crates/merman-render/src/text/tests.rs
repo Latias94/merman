@@ -545,6 +545,30 @@ fn flowchart_html_default_font_fills_missing_browser_kerning_pairs() {
 }
 
 #[test]
+fn flowchart_html_default_font_weight_bold_uses_shared_metrics() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let regular = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let bold = TextStyle {
+        font_weight: Some("bold".to_string()),
+        ..regular.clone()
+    };
+
+    let d_regular = measurer.measure_wrapped("D", &regular, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(d_regular.width, 9.8125);
+    let d_bold = measurer.measure_wrapped("D", &bold, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(d_bold.width, 10.28125);
+
+    let e_regular = measurer.measure_wrapped("E", &regular, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(e_regular.width, 8.578125);
+    let e_bold = measurer.measure_wrapped("E", &bold, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(e_bold.width, 9.109375);
+}
+
+#[test]
 fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

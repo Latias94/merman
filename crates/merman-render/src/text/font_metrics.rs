@@ -1076,7 +1076,7 @@ fn vendored_measure_wrapped_impl(
         WrapMode::HtmlLike => 1.5,
     };
 
-    let html_overrides: &[(&'static str, f64)] = if use_html_overrides {
+    let html_overrides: &[(&'static str, f64)] = if use_html_overrides && !bold {
         table.html_overrides
     } else {
         &[]

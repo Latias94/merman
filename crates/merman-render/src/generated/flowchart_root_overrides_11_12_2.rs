@@ -50,9 +50,6 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 0.000003814697265625 769.890625 341.0105285644531",
             "769.891",
         )),
-        "upstream_cypress_flowchart_handdrawn_spec_fhd5_should_style_nodes_via_a_class_005" => {
-            Some(("0 0 205.390625 382", "205.391"))
-        }
         "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
             Some(("0 0 1926.8125 452", "1926.81"))
         }
