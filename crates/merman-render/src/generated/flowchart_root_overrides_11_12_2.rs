@@ -20,9 +20,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_dense_parallel_edges_002" => {
             Some(("0 0 658.677490234375 697.390625", "658.677"))
         }
-        "stress_flowchart_escape_sequences_and_quotes_012" => {
-            Some(("0 0 994.43310546875 70", "994.433"))
-        }
         "stress_flowchart_shape_mix_009" => Some(("0 0 369.66796875 698.21875", "369.668")),
         "stress_flowchart_subgraph_title_margin_extremes_015" => {
             Some(("0 25 806.421875 796", "806.422"))

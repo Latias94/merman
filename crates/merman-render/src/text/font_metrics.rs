@@ -19,6 +19,7 @@ struct FontMetricProfile<'a> {
     kern_pairs: &'a [(u32, u32, f64)],
     space_trigrams: &'a [(u32, u32, f64)],
     trigrams: &'a [(u32, u32, u32, f64)],
+    missing_v_comma_kern_em: f64,
     missing_space_before_capital_a_em: f64,
 }
 
@@ -32,6 +33,11 @@ impl VendoredFontMetricsTextMeasurer {
             kern_pairs: table.kern_pairs,
             space_trigrams: table.space_trigrams,
             trigrams: table.trigrams,
+            missing_v_comma_kern_em: if table.font_key == FLOWCHART_DEFAULT_FONT_KEY {
+                -140.0 / 1024.0
+            } else {
+                0.0
+            },
             missing_space_before_capital_a_em: if table.font_key
                 == "trebuchetms,verdana,arial,sans-serif"
             {
@@ -224,6 +230,23 @@ impl VendoredFontMetricsTextMeasurer {
                 _ => hi = mid,
             }
         }
+        0.0
+    }
+
+    fn lookup_profile_kern_em(profile: FontMetricProfile<'_>, a: char, b: char) -> f64 {
+        let explicit = Self::lookup_kern_em(profile.kern_pairs, a, b);
+        if explicit != 0.0 {
+            return explicit;
+        }
+
+        if a == 'v' && b == ',' {
+            // The generated default-font table captures strong comma kerning for nearby lowercase
+            // terminal shapes such as `r,` and `y,`, but fixture coverage does not always observe
+            // `v,`. Keep this as a narrow missing-pair fallback instead of adding literal label
+            // overrides for JSON-like prose.
+            return profile.missing_v_comma_kern_em;
+        }
+
         0.0
     }
 
@@ -719,7 +742,7 @@ impl VendoredFontMetricsTextMeasurer {
             let (ch, delta_em) = normalize_whitespace_like(ch);
             em += Self::lookup_char_em(profile.entries, profile.default_em, ch) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_kern_em(profile.kern_pairs, p, ch);
+                em += Self::lookup_profile_kern_em(profile, p, ch);
             }
             if bold {
                 if let Some(p) = prev {
@@ -781,7 +804,7 @@ impl VendoredFontMetricsTextMeasurer {
             let (ch_norm, delta_em) = normalize_whitespace_like(*ch);
             em += Self::lookup_char_em(profile.entries, profile.default_em, ch_norm) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_kern_em(profile.kern_pairs, p, ch_norm);
+                em += Self::lookup_profile_kern_em(profile, p, ch_norm);
             }
             if bold {
                 if let Some(p) = prev {

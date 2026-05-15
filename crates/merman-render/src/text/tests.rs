@@ -425,6 +425,25 @@ fn default_font_paired_ascii_punctuation_reuses_counterpart_width() {
 }
 
 #[test]
+fn default_font_missing_v_comma_kern_matches_upstream_jsonish_text() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let jsonish = measurer.measure_wrapped(
+        "json: {k: v, n: 1}",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(jsonish.width, 115.09375);
+    assert_eq!(jsonish.height, 24.0);
+}
+
+#[test]
 fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let default_style = TextStyle {
