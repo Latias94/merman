@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion or table compression | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty Flowchart root pins removed; the latest Flowchart table cleanup also collapses eight exact-duplicate inventory arms without changing fixture-key coverage |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion or table compression | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the latest Flowchart table cleanup also collapses eight exact-duplicate inventory arms without changing fixture-key coverage |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -40,15 +40,15 @@ seeded auto-id warm-up passes, and the Flowchart imageSquare image-plus-label, a
 SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-margin cleanup,
 HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback,
 FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing,
-quoted-numeric rankSpacing, chained-statement split `htmlLabels`, and FontAwesome label-boundary
-passes:
+quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome label-boundary,
+cluster external-flag preservation, and recursive title-padding stale-pin cleanup passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `83` inventory entries.
-- Root viewport total: `350` entries.
+- Flowchart: `81` inventory entries.
+- Root viewport total: `348` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -314,6 +314,23 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-15: Flowchart recursive title-padding stale-pin cleanup removed
+  `stress_flowchart_subgraph_deep_nesting_title_padding_044` from
+  `flowchart_root_overrides_11_12_2.rs`. Focused normal and disabled-root
+  `compare-flowchart-svgs --filter stress_flowchart_subgraph_deep_nesting_title_padding_044
+  --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --text-measurer vendored`
+  both passed after the earlier recursive cluster title bbox derivation. The adjacent retained
+  `stress_flowchart_subgraph_title_margin_extremes_015` and
+  `stress_flowchart_subgraph_title_long_with_punct_038` still fail disabled-root comparison with
+  real `max-width` drift, so their pins remain.
+- 2026-05-15: after deleting the stale Flowchart title-padding pin,
+  `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total `348`,
+  Flowchart root count `81`, text lookup total `484`, SVG text metric table total `186`, font
+  metric table total `3774`, and zero helper overrides or manual raw SVG/path bridges. Full
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --text-measurer vendored` passed. `cargo nextest run -p merman-render` first
+  hit MSVC `LNK1102` under parallel linking, then passed with `CARGO_BUILD_JOBS=1` and `-j 1`
+  (`174` tests passed).
 - 2026-05-15: `cargo run -p xtask -- report-overrides --check-no-growth` passed with root total
   `350`, Flowchart root count `83`, text lookup total `484`, SVG text metric table total `186`,
   font metric table total `3774`, and zero hand-curated helper overrides or manual raw SVG/path

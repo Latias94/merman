@@ -34,9 +34,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_title_long_with_punct_038" => {
             Some(("0 0 567.546875 140", "567.547"))
         }
-        "stress_flowchart_subgraph_deep_nesting_title_padding_044" => {
-            Some(("0 0 628.5234375 703", "628.523"))
-        }
         "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
         "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
         "stress_flowchart_icons_click_security_strict_057" => {
