@@ -1303,17 +1303,56 @@ fn layout_flowchart_v2_with_model(
 
     type Rect = merman_core::geom::Box2;
 
+    struct ClusterTitleMetricsContext<'a> {
+        subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
+        measurer: &'a dyn TextMeasurer,
+        text_style: &'a TextStyle,
+        html_label_text_style: &'a TextStyle,
+        title_wrapping_width: f64,
+        wrap_mode: WrapMode,
+        config: &'a MermaidConfig,
+        math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    }
+
+    fn cluster_title_metrics_for_layout(
+        id: &str,
+        ctx: &ClusterTitleMetricsContext<'_>,
+    ) -> Option<(f64, f64)> {
+        let sg = ctx.subgraphs_by_id.get(id)?;
+        let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: ctx.measurer,
+            raw_label: &sg.title,
+            label_type,
+            style: if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            },
+            max_width_px: Some(ctx.title_wrapping_width),
+            wrap_mode: ctx.wrap_mode,
+            config: ctx.config,
+            math_renderer: ctx.math_renderer,
+            preserve_string_whitespace_height: false,
+        });
+        Some((metrics.width.max(1.0), metrics.height.max(1.0)))
+    }
+
     fn extracted_graph_bbox_rect(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         title_total_margin: f64,
         extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
         subgraph_id_set: &std::collections::HashSet<String>,
+        title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
+        cluster_padding: f64,
     ) -> Option<Rect> {
         fn graph_content_rect(
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
             subgraph_id_set: &std::collections::HashSet<String>,
             title_total_margin: f64,
+            title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
+            cluster_padding: f64,
         ) -> Option<Rect> {
             let mut out: Option<Rect> = None;
             for id in g.node_ids() {
@@ -1321,6 +1360,7 @@ fn layout_flowchart_v2_with_model(
                 let (Some(x), Some(y)) = (n.x, n.y) else {
                     continue;
                 };
+                let mut width = n.width;
                 let mut height = n.height;
                 let is_cluster_node = extracted.contains_key(&id) && g.children(&id).is_empty();
                 let is_non_recursive_cluster =
@@ -1332,11 +1372,19 @@ fn layout_flowchart_v2_with_model(
                 //
                 // For leaf clusterNodes (recursively rendered clusters), the node's width/height
                 // comes directly from `updateNodeBounds(...)`, so do not add margins again.
-                if !is_cluster_node && is_non_recursive_cluster && title_total_margin > 0.0 {
-                    height = (height + title_total_margin).max(1.0);
+                if !is_cluster_node && is_non_recursive_cluster {
+                    if title_total_margin > 0.0 {
+                        height = (height + title_total_margin).max(1.0);
+                    }
+                    if let Some((title_w, title_h)) =
+                        cluster_title_metrics_for_layout(&id, title_metrics_ctx)
+                    {
+                        width = width.max(title_w + cluster_padding);
+                        height = height.max(title_h + title_total_margin);
+                    }
                 }
 
-                let r = Rect::from_center(x, y, n.width, height);
+                let r = Rect::from_center(x, y, width, height);
                 if let Some(ref mut cur) = out {
                     cur.union(r);
                 } else {
@@ -1363,7 +1411,14 @@ fn layout_flowchart_v2_with_model(
             out
         }
 
-        graph_content_rect(g, extracted, subgraph_id_set, title_total_margin)
+        graph_content_rect(
+            g,
+            extracted,
+            subgraph_id_set,
+            title_total_margin,
+            title_metrics_ctx,
+            cluster_padding,
+        )
     }
 
     fn apply_mermaid_subgraph_title_shifts(
@@ -1423,6 +1478,8 @@ fn layout_flowchart_v2_with_model(
         y_shift: f64,
         cluster_node_labels: &'a std::collections::HashMap<String, NodeLabel>,
         title_total_margin: f64,
+        title_metrics_ctx: &'a ClusterTitleMetricsContext<'a>,
+        cluster_padding: f64,
         timings: &'a mut FlowchartLayoutTimings,
         timing_enabled: bool,
     }
@@ -1490,6 +1547,8 @@ fn layout_flowchart_v2_with_model(
                 ctx.title_total_margin,
                 ctx.extracted,
                 ctx.subgraph_id_set,
+                ctx.title_metrics_ctx,
+                ctx.cluster_padding,
             ) {
                 if let Some(n) = graph.node_mut(&id) {
                     n.width = r.width().max(1.0);
@@ -1539,12 +1598,24 @@ fn layout_flowchart_v2_with_model(
 
     let layout_start = timing_enabled.then(std::time::Instant::now);
     {
+        let title_metrics_ctx = ClusterTitleMetricsContext {
+            subgraphs_by_id: &subgraphs_by_id,
+            measurer,
+            text_style: &text_style,
+            html_label_text_style: &html_label_text_style,
+            title_wrapping_width: cluster_title_wrapping_width,
+            wrap_mode: cluster_wrap_mode,
+            config: effective_config,
+            math_renderer,
+        };
         let mut recursive_layout_ctx = RecursiveLayoutContext {
             extracted: &mut extracted_graphs,
             subgraph_id_set: &subgraph_id_set,
             y_shift,
             cluster_node_labels: &cluster_node_labels,
             title_total_margin,
+            title_metrics_ctx: &title_metrics_ctx,
+            cluster_padding,
             timings: &mut timings,
             timing_enabled,
         };
@@ -1591,6 +1662,7 @@ fn layout_flowchart_v2_with_model(
         leaf_rects: &'a mut std::collections::HashMap<String, Rect>,
         cluster_rects_from_graph: &'a mut std::collections::HashMap<String, Rect>,
         extracted_cluster_rects: &'a mut std::collections::HashMap<String, Rect>,
+        extracted_cluster_base_widths: &'a mut std::collections::HashMap<String, f64>,
         edge_override_points: &'a mut std::collections::HashMap<String, Vec<LayoutPoint>>,
         edge_override_label: &'a mut std::collections::HashMap<String, Option<LayoutLabel>>,
         edge_override_from_cluster: &'a mut std::collections::HashMap<String, Option<String>>,
@@ -1777,6 +1849,8 @@ fn layout_flowchart_v2_with_model(
             // adding `title_total_margin` again here.
             let r = Rect::from_center(parent_x, parent_y, n.width, n.height);
             out.extracted_cluster_rects.insert(id.clone(), r);
+            out.extracted_cluster_base_widths
+                .insert(id.clone(), cnode.width.max(1.0));
             place_graph(child, child_offset, false, inputs, out);
         }
     }
@@ -1784,6 +1858,8 @@ fn layout_flowchart_v2_with_model(
     let mut cluster_rects_from_graph: std::collections::HashMap<String, Rect> =
         std::collections::HashMap::new();
     let mut extracted_cluster_rects: std::collections::HashMap<String, Rect> =
+        std::collections::HashMap::new();
+    let mut extracted_cluster_base_widths: std::collections::HashMap<String, f64> =
         std::collections::HashMap::new();
     let place_start = timing_enabled.then(std::time::Instant::now);
     {
@@ -1798,6 +1874,7 @@ fn layout_flowchart_v2_with_model(
             leaf_rects: &mut leaf_rects,
             cluster_rects_from_graph: &mut cluster_rects_from_graph,
             extracted_cluster_rects: &mut extracted_cluster_rects,
+            extracted_cluster_base_widths: &mut extracted_cluster_base_widths,
             edge_override_points: &mut edge_override_points,
             edge_override_label: &mut edge_override_label,
             edge_override_from_cluster: &mut edge_override_from_cluster,
@@ -2223,7 +2300,10 @@ fn layout_flowchart_v2_with_model(
                         .map(|v| v.0)
                         .unwrap_or_else(|_| Rect::from_center(0.0, 0.0, 1.0, 1.0))
                 });
-            let base_width = rect.width();
+            let base_width = extracted_cluster_base_widths
+                .get(&sg.id)
+                .copied()
+                .unwrap_or_else(|| rect.width());
             let rect = adjust_cluster_rect_for_title(
                 rect,
                 &sg.title,

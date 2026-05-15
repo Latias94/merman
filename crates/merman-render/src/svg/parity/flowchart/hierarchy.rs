@@ -45,7 +45,11 @@ pub(in crate::svg::parity) fn flowchart_cluster_root_offsets(
     const ROOT_MARGIN_PX: f64 = 8.0;
     let cluster = ctx.layout_clusters_by_id.get(cid)?;
 
-    let abs_left = (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX;
+    let abs_left = if cluster.diff > 0.0 {
+        (cluster.x + cluster.diff - cluster.width / 2.0) + ctx.tx
+    } else {
+        (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX
+    };
     let title_total_margin = (cluster.title_margin_top + cluster.title_margin_bottom).max(0.0);
     let title_y_shift = title_total_margin / 2.0;
 

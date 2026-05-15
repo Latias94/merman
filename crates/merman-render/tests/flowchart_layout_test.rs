@@ -1,7 +1,8 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::text::{TextMeasurer, WrapMode};
+use merman_render::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -417,6 +418,64 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
 
     assert!((cluster.diff - expected_diff).abs() < 1e-6);
     assert!((cluster.offset_y - expected_offset_y).abs() < 1e-6);
+}
+
+#[test]
+fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("flowchart")
+            .join("stress_flowchart_subgraph_deep_nesting_title_padding_044.mmd"),
+    )
+    .expect("read fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let out = layout_parsed(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        },
+    )
+    .expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let cluster = |id: &str| {
+        layout
+            .clusters
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap_or_else(|| panic!("cluster {id}"))
+    };
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+
+    let c1 = cluster("c1");
+    let c2 = cluster("c2");
+    let c1a = node("c1a");
+
+    // Mermaid measures the rendered child `<g class="root">` with the title-widened cluster rect
+    // before laying out the parent graph. If we only feed the pre-title compound width back to the
+    // parent, c1 collapses by about 59px and c1a lands too close to c2.
+    assert!(
+        c2.width >= c2.title_label.width + c2.padding - 1e-6,
+        "c2 should expose the rendered title-widened cluster width"
+    );
+    assert!(
+        c1.width >= c2.width + c1a.width + 100.0,
+        "parent cluster width should reflect the rendered child clusterNode bbox"
+    );
 }
 
 #[test]
