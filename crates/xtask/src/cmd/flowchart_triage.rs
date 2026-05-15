@@ -42,13 +42,14 @@ enum TriageBucket {
     LayoutShapeGeometry,
     RootOnlyLayout,
     LayoutTextAccumulation,
+    DeferMojibakeFontFallback,
     DeferCourierFont,
     DeferIconFont,
     DeferFontEnv,
 }
 
 impl TriageBucket {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::SharedTextCandidate,
         Self::SharedMultilineText,
         Self::LowNoiseText,
@@ -56,6 +57,7 @@ impl TriageBucket {
         Self::LayoutShapeGeometry,
         Self::RootOnlyLayout,
         Self::LayoutTextAccumulation,
+        Self::DeferMojibakeFontFallback,
         Self::DeferCourierFont,
         Self::DeferIconFont,
         Self::DeferFontEnv,
@@ -70,6 +72,7 @@ impl TriageBucket {
             Self::LayoutShapeGeometry => "layout-shape-geometry",
             Self::RootOnlyLayout => "root-only-layout",
             Self::LayoutTextAccumulation => "layout-text-accumulation",
+            Self::DeferMojibakeFontFallback => "defer-mojibake-font-fallback",
             Self::DeferCourierFont => "defer-courier-font",
             Self::DeferIconFont => "defer-icon-font",
             Self::DeferFontEnv => "defer-font-env",
@@ -428,6 +431,17 @@ fn classify_root_pin(
         return (
             TriageBucket::DeferFontEnv,
             "custom font/family/size environment; likely baseline font difference".to_string(),
+        );
+    }
+    if fixture_source.is_some_and(contains_c1_control_chars)
+        || labels
+            .iter()
+            .any(|label| contains_c1_control_chars(&label.text))
+        || boundary.is_some_and(|summary| summary_contains_c1_control_chars(summary))
+    {
+        return (
+            TriageBucket::DeferMojibakeFontFallback,
+            "contains mojibake C1 control bytes; residual default-stack fallback is browser/font-environment dependent, so keep the pin instead of adding glyph lookup data".to_string(),
         );
     }
     if edge_pairing_deltas >= 2 {
@@ -930,6 +944,25 @@ fn normalize_report_text(s: &str) -> String {
         .join(" ")
 }
 
+fn contains_c1_control_chars(s: &str) -> bool {
+    s.chars().any(|ch| ('\u{80}'..='\u{9f}').contains(&ch))
+}
+
+fn summary_contains_c1_control_chars(summary: &RootBoundarySummary) -> bool {
+    [
+        summary.left.as_ref(),
+        summary.right.as_ref(),
+        summary.top.as_ref(),
+        summary.bottom.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|side| {
+        contains_c1_control_chars(&side.upstream.text)
+            || contains_c1_control_chars(&side.local.text)
+    })
+}
+
 fn format_edge(v: f64) -> String {
     format!("{v:.3}")
 }
@@ -1059,6 +1092,20 @@ mod tests {
         assert_eq!(
             classify_root_pin(&font_env, &[], Some("classDef c font-family: serif"), None).0,
             TriageBucket::DeferFontEnv
+        );
+
+        let mojibake = [label_row(
+            "nodeLabel",
+            "78.281x24.000",
+            "72.594x24.000",
+            -5.688,
+            0.0,
+            "ç»\u{93}æ\u{9d}\u{9f}",
+            "br",
+        )];
+        assert_eq!(
+            classify_root_pin(&root_row("mojibake"), &[&mojibake[0]], None, None).0,
+            TriageBucket::DeferMojibakeFontFallback
         );
 
         let edge_row = root_row("edge_order");

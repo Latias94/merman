@@ -316,6 +316,21 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-16: Flowchart retained-root triage now separates mojibake/C1 fallback drift from
+  ordinary shared multiline text candidates. The focused `fhd12` audit still reports real root
+  drift (`1926.810px` upstream max-width versus `1905.300px` local), but character-level review
+  showed that a shared C1 fallback constant would improve the `SA/DBA` execution labels while
+  worsening other same-fixture mojibake labels such as the submit/owner-confirmation lines. The triage tool
+  therefore classifies
+  `upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012`
+  as `defer-mojibake-font-fallback` instead of `shared-multiline-text`, keeping the root pin
+  rather than adding fixture/glyph lookup data. Evidence files:
+  `target/compare/flowchart_fhd12_no_overrides.md`,
+  `target/compare/flowchart_fhd12_triage.md`, and
+  `target/compare/flowchart_root_pin_triage_no_overrides_current.md`. The regenerated full
+  Flowchart retained-root triage now has `25` root pins, `300` label delta rows, no removal
+  candidates, and only two non-deferred work buckets left: `layout-shape-geometry` and
+  `layout-text-accumulation`.
 - 2026-05-15: Flowchart compare now supports focused retained-root audit rows via
   `--report-root-pins-only` and `--report-label-root-pins-only`. This keeps the label-level
   audit scoped to fixtures still covered by `flowchart_root_overrides_11_12_2.rs` instead of

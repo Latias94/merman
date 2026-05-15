@@ -1,5 +1,14 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-16
+
+- Reclassified the retained Flowchart `fhd12` mojibake root pin as browser/font fallback drift
+  rather than an ordinary shared multiline text candidate. The focused audit still has real root
+  drift, but C1-control-byte fallback tuning cannot explain the same fixture consistently without
+  becoming glyph/fixture data. `xtask triage-flowchart-root-pins` now emits a
+  `defer-mojibake-font-fallback` bucket, leaves the root pin in place, and keeps the next clean
+  Flowchart target focused on `layout-text-accumulation`.
+
 ## 2026-05-15
 
 - Tightened the Flowchart FontAwesome HTML-label width root family without using a fixture-derived

@@ -482,11 +482,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `2/2`, Mindmap `39/39`, Requirement `10/10`, Sankey `3/3`, Sequence `59/59`, State `34/34`,
   and Timeline `9/9`, with `stale=0` and `missing=0` for every table. No root pin was deleted in
   this audit because all retained keys still guard visible `parity-root` drift.
-- [ ] Derive the next Flowchart disabled-root family after the FontAwesome boundary pass.
-  Recommended starting points are the remaining icon-label max-width drift, subgraph title
-  padding/margin width drift (`-58.75px` and `-24.75px` examples), wrapping-long-text height drift
-  (`-24px` examples), or the retained amp-to-single chaining sub-pixel width guard. A stale-pin
-  sweep alone is not expected to delete entries until one of these typed derivation rules lands.
+- [x] Reclassify the retained Flowchart `fhd12` mojibake root pin without adding glyph data.
+  Evidence: focused retained-root audit and character-level inspection show that the residual
+  default-font-stack drift comes from C1 control-byte/mojibake browser fallback behavior. A single
+  shared C1 fallback adjustment improves some labels but regresses other same-fixture labels, so
+  `xtask triage-flowchart-root-pins` now reports this case as
+  `defer-mojibake-font-fallback` rather than `shared-multiline-text`. The root pin remains, no
+  fixture/glyph lookup table was added, and `target/compare/flowchart_root_pin_triage_no_overrides_current.md`
+  now leaves only `layout-shape-geometry` and `layout-text-accumulation` as non-deferred Flowchart
+  buckets.
+- [ ] Derive the next Flowchart disabled-root family after the mojibake triage pass.
+  Recommended starting point is `upstream_docs_diagrams_flowchart_code_flow`, the remaining
+  `layout-text-accumulation` bucket. The remaining icon-label, courier, mojibake, and custom-font
+  root guards should stay retained unless a clean shared browser/font model appears; a stale-pin
+  sweep alone is not expected to delete entries until one typed derivation rule lands.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.
