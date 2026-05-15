@@ -288,7 +288,9 @@ fn flowchart_find_non_cluster_child(
     reserve
 }
 
-fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+fn adjust_flowchart_clusters_and_edges(
+    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> std::collections::HashMap<String, bool> {
     use serde_json::Value;
 
     fn is_descendant(
@@ -412,6 +414,11 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
 
         graph.set_edge_named(v, w, ek.name, Some(edge_label));
     }
+
+    cluster_db
+        .into_iter()
+        .map(|(id, entry)| (id, entry.external_connections))
+        .collect()
 }
 
 fn copy_cluster(
@@ -481,7 +488,7 @@ fn copy_cluster(
 fn extract_clusters_recursively(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
-    _effective_dir_by_id: &std::collections::HashMap<String, String>,
+    external_connections_by_id: &std::collections::HashMap<String, bool>,
     extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
     depth: usize,
 ) {
@@ -499,35 +506,24 @@ fn extract_clusters_recursively(
         descendants.insert(id.clone(), extract_descendants(id, graph));
     }
 
-    let mut external: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
-    for id in descendants.keys() {
-        let Some(ds) = descendants.get(id) else {
-            continue;
-        };
-        let mut has_external = false;
-        for e in graph.edges() {
-            let d1 = ds.contains(&e.v);
-            let d2 = ds.contains(&e.w);
-            if d1 ^ d2 {
-                has_external = true;
-                break;
-            }
-        }
-        external.insert(id.clone(), has_external);
-    }
-
     let mut extracted_here: Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> = Vec::new();
 
     let candidates: Vec<String> = node_ids
         .into_iter()
         .filter(|id| graph.has_node(id))
         .filter(|id| !graph.children(id).is_empty())
-        // Mermaid's extractor does not require clusters to be root-level; it only checks
-        // `externalConnections` and `children.length > 0`, then recurses into extracted graphs.
+        // Mermaid's extractor does not recompute external connections after
+        // `adjustClustersAndEdges` rewrites cluster endpoints to anchor children. It uses the
+        // global `clusterDb.externalConnections` flag computed before those rewrites, then recurses
+        // into extracted graphs with the same `clusterDb`.
         //
         // Reference:
         // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
-        .filter(|id| !external.get(id).copied().unwrap_or(false))
+        .filter(|id| {
+            external_connections_by_id
+                .get(id.as_str())
+                .is_some_and(|external| !external)
+        })
         .collect();
 
     for id in candidates {
@@ -584,7 +580,7 @@ fn extract_clusters_recursively(
         extract_clusters_recursively(
             &mut g,
             subgraphs_by_id,
-            _effective_dir_by_id,
+            external_connections_by_id,
             extracted,
             depth + 1,
         );
@@ -1249,9 +1245,11 @@ fn layout_flowchart_v2_with_model(
         }
     }
 
-    if has_subgraphs {
-        adjust_flowchart_clusters_and_edges(&mut g);
-    }
+    let external_connections_by_id = if has_subgraphs {
+        adjust_flowchart_clusters_and_edges(&mut g)
+    } else {
+        std::collections::HashMap::new()
+    };
 
     let mut edge_endpoints_by_id: HashMap<String, (String, String)> = HashMap::new();
     for ek in g.edge_keys() {
@@ -1278,7 +1276,7 @@ fn layout_flowchart_v2_with_model(
         extract_clusters_recursively(
             &mut g,
             &subgraphs_by_id,
-            &effective_dir_by_id,
+            &external_connections_by_id,
             &mut extracted_graphs,
             0,
         );

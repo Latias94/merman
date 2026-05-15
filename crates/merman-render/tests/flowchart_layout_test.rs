@@ -611,6 +611,63 @@ fn flowchart_subgraph_dir_is_not_applied_when_cluster_has_external_edges() {
 }
 
 #[test]
+fn flowchart_edge_to_ancestor_cluster_keeps_ancestor_non_recursive() {
+    let text = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures")
+            .join("flowchart")
+            .join("stress_flowchart_subgraph_title_margins_extreme_nested_030.mmd"),
+    )
+    .expect("read fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let out = layout_parsed(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        },
+    )
+    .expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let nodes_by_id = layout
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), (n.x, n.y)))
+        .collect::<std::collections::HashMap<_, _>>();
+    let clusters_by_id = layout
+        .clusters
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let (ax, ay) = nodes_by_id["a"];
+    let (bx, by) = nodes_by_id["b"];
+    let (cx, cy) = nodes_by_id["c"];
+    assert!(
+        bx > ax + 60.0 && cx > bx + 60.0,
+        "ancestor cluster edge should not make Outer use its TB direction as a recursive layout"
+    );
+    assert!(
+        (cy - ay).abs() < 80.0 && (by - ay).abs() < 80.0,
+        "nodes should stay in the root LR layout band"
+    );
+
+    let inner = clusters_by_id["Inner"];
+    let outer = clusters_by_id["Outer"];
+    assert!(
+        inner.width > inner.height && outer.width > outer.height,
+        "non-recursive nested clusters should keep the upstream wide LR footprint"
+    );
+}
+
+#[test]
 fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Inner\n    a -->|this is a very very long label| b\n  end\nend\n";
 
