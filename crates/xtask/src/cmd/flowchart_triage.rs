@@ -4,9 +4,11 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use crate::{XtaskError, cmd};
+use regex::Regex;
 
 #[derive(Debug, Clone)]
 struct RootRow {
@@ -39,19 +41,21 @@ enum TriageBucket {
     LayoutEdgeOrder,
     LayoutShapeGeometry,
     RootOnlyLayout,
+    LayoutTextAccumulation,
     DeferCourierFont,
     DeferIconFont,
     DeferFontEnv,
 }
 
 impl TriageBucket {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::SharedTextCandidate,
         Self::SharedMultilineText,
         Self::LowNoiseText,
         Self::LayoutEdgeOrder,
         Self::LayoutShapeGeometry,
         Self::RootOnlyLayout,
+        Self::LayoutTextAccumulation,
         Self::DeferCourierFont,
         Self::DeferIconFont,
         Self::DeferFontEnv,
@@ -65,6 +69,7 @@ impl TriageBucket {
             Self::LayoutEdgeOrder => "layout-edge-order",
             Self::LayoutShapeGeometry => "layout-shape-geometry",
             Self::RootOnlyLayout => "root-only-layout",
+            Self::LayoutTextAccumulation => "layout-text-accumulation",
             Self::DeferCourierFont => "defer-courier-font",
             Self::DeferIconFont => "defer-icon-font",
             Self::DeferFontEnv => "defer-font-env",
@@ -223,15 +228,24 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
             .push(label);
     }
 
-    let mut buckets: BTreeMap<TriageBucket, Vec<(&RootRow, String, Vec<&LabelRow>)>> =
-        BTreeMap::new();
+    let mut buckets: BTreeMap<
+        TriageBucket,
+        Vec<(
+            &RootRow,
+            String,
+            Vec<&LabelRow>,
+            Option<RootBoundarySummary>,
+        )>,
+    > = BTreeMap::new();
     for row in root_rows {
         let labels = labels_by_fixture
             .get(row.fixture.as_str())
             .cloned()
             .unwrap_or_default();
         let fixture_source = read_flowchart_fixture(&row.fixture);
-        let (bucket, reason) = classify_root_pin(row, &labels, fixture_source.as_deref());
+        let boundary = read_flowchart_root_boundary_summary(&row.fixture);
+        let (bucket, reason) =
+            classify_root_pin(row, &labels, fixture_source.as_deref(), boundary.as_ref());
         let mut top = labels;
         top.sort_by(|a, b| {
             let a_delta = a.delta_w.abs().max(a.delta_h.abs());
@@ -241,7 +255,10 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         top.truncate(4);
-        buckets.entry(bucket).or_default().push((row, reason, top));
+        buckets
+            .entry(bucket)
+            .or_default()
+            .push((row, reason, top, boundary));
     }
 
     let mut out = String::new();
@@ -266,7 +283,7 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
         });
 
         out.push_str(&format!("## {} ({})\n\n", bucket.title(), items.len()));
-        for (row, reason, labels) in items {
+        for (row, reason, labels, boundary) in items {
             out.push_str(&format!(
                 "- `{}` root Δ {:+.3}px (max-width {} -> {}; viewBox {} -> {})\n",
                 row.fixture,
@@ -277,6 +294,22 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
                 row.local_viewbox
             ));
             out.push_str(&format!("  - reason: {reason}\n"));
+            if let Some(summary) = boundary
+                .as_ref()
+                .and_then(RootBoundarySummary::dominant_horizontal)
+            {
+                out.push_str(&format!("  - boundary: {}\n", summary.markdown_summary()));
+            }
+            if let Some(summary) = boundary
+                .as_ref()
+                .and_then(RootBoundarySummary::dominant_vertical)
+                .filter(|summary| summary.delta.abs() >= 0.25)
+            {
+                out.push_str(&format!(
+                    "  - vertical boundary: {}\n",
+                    summary.markdown_summary()
+                ));
+            }
             if labels.is_empty() {
                 out.push_str("  - labels: no paired label delta rows\n");
             } else {
@@ -345,6 +378,7 @@ fn classify_root_pin(
     row: &RootRow,
     labels: &[&LabelRow],
     fixture_source: Option<&str>,
+    boundary: Option<&RootBoundarySummary>,
 ) -> (TriageBucket, String) {
     let source = fixture_source.unwrap_or_default().to_ascii_lowercase();
     let fixture = row.fixture.to_ascii_lowercase();
@@ -416,6 +450,25 @@ fn classify_root_pin(
             "shape/cluster geometry or emitted bounds likely dominates".to_string(),
         );
     }
+    if let Some(edge) = boundary.and_then(RootBoundarySummary::dominant_horizontal) {
+        let root_delta = row.delta.abs().max(0.001);
+        let boundary_delta = edge.delta.abs();
+        let owner_has_reported_label_delta = boundary_edge_matches_label_delta(edge, labels);
+        if !labels.is_empty()
+            && boundary_delta >= root_delta * 0.5
+            && max_label_delta > root_delta * 4.0
+            && !owner_has_reported_label_delta
+        {
+            return (
+                TriageBucket::LayoutTextAccumulation,
+                format!(
+                    "root {} boundary is `{}` but largest label deltas are elsewhere; likely cumulative Dagre spacing from shared text metrics",
+                    edge.side.title(),
+                    edge.owner_summary()
+                ),
+            );
+        }
+    }
     if labels
         .iter()
         .any(|label| label.text.contains("\\n") || label.markup.contains("br"))
@@ -441,6 +494,455 @@ fn classify_root_pin(
         TriageBucket::RootOnlyLayout,
         "no label deltas in report; layout/emitted bounds candidate".to_string(),
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoundarySide {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl BoundarySide {
+    fn title(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BoundaryContributor {
+    element: String,
+    owner: String,
+    class_name: String,
+    text: String,
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+}
+
+impl BoundaryContributor {
+    fn edge_value(&self, side: BoundarySide) -> f64 {
+        match side {
+            BoundarySide::Left => self.left,
+            BoundarySide::Right => self.right,
+            BoundarySide::Top => self.top,
+            BoundarySide::Bottom => self.bottom,
+        }
+    }
+
+    fn short_label(&self) -> String {
+        let owner = if self.owner.is_empty() {
+            "<anonymous>"
+        } else {
+            self.owner.as_str()
+        };
+        let class = if self.class_name.is_empty() {
+            String::new()
+        } else {
+            format!(".{}", self.class_name.replace(' ', "."))
+        };
+        let text = if self.text.is_empty() {
+            String::new()
+        } else {
+            format!(" `{}`", markdown_cell(&self.text))
+        };
+        format!("{}{} `{}`{}", self.element, class, owner, text)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BoundarySideDelta {
+    side: BoundarySide,
+    upstream: BoundaryContributor,
+    local: BoundaryContributor,
+    delta: f64,
+}
+
+impl BoundarySideDelta {
+    fn owner_summary(&self) -> String {
+        if !self.local.owner.is_empty() {
+            self.local.owner.clone()
+        } else {
+            self.upstream.owner.clone()
+        }
+    }
+
+    fn markdown_summary(&self) -> String {
+        format!(
+            "{} edge {} -> {}, Δ {:+.3}; upstream {}, local {}",
+            self.side.title(),
+            format_edge(self.upstream.edge_value(self.side)),
+            format_edge(self.local.edge_value(self.side)),
+            self.delta,
+            self.upstream.short_label(),
+            self.local.short_label()
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RootBoundarySummary {
+    left: Option<BoundarySideDelta>,
+    right: Option<BoundarySideDelta>,
+    top: Option<BoundarySideDelta>,
+    bottom: Option<BoundarySideDelta>,
+}
+
+impl RootBoundarySummary {
+    fn dominant_horizontal(&self) -> Option<&BoundarySideDelta> {
+        match (self.left.as_ref(), self.right.as_ref()) {
+            (Some(left), Some(right)) => {
+                if left.delta.abs() > right.delta.abs() {
+                    Some(left)
+                } else {
+                    Some(right)
+                }
+            }
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (None, None) => None,
+        }
+    }
+
+    fn dominant_vertical(&self) -> Option<&BoundarySideDelta> {
+        match (self.top.as_ref(), self.bottom.as_ref()) {
+            (Some(top), Some(bottom)) => {
+                if top.delta.abs() > bottom.delta.abs() {
+                    Some(top)
+                } else {
+                    Some(bottom)
+                }
+            }
+            (Some(top), None) => Some(top),
+            (None, Some(bottom)) => Some(bottom),
+            (None, None) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SvgBoundaryContributors {
+    left: BoundaryContributor,
+    right: BoundaryContributor,
+    top: BoundaryContributor,
+    bottom: BoundaryContributor,
+}
+
+fn read_flowchart_root_boundary_summary(fixture: &str) -> Option<RootBoundarySummary> {
+    let upstream_path = cmd::fixtures_root()
+        .join("upstream-svgs")
+        .join("flowchart")
+        .join(format!("{fixture}.svg"));
+    let local_path = cmd::target_root()
+        .join("compare")
+        .join("flowchart")
+        .join(format!("{fixture}.svg"));
+    let upstream = fs::read_to_string(upstream_path).ok()?;
+    let local = fs::read_to_string(local_path).ok()?;
+    collect_root_boundary_summary(&upstream, &local).ok()
+}
+
+fn collect_root_boundary_summary(
+    upstream_svg: &str,
+    local_svg: &str,
+) -> Result<RootBoundarySummary, String> {
+    let upstream = extract_svg_boundary_contributors(upstream_svg)?;
+    let local = extract_svg_boundary_contributors(local_svg)?;
+
+    let side = |side: BoundarySide,
+                upstream: BoundaryContributor,
+                local: BoundaryContributor|
+     -> Option<BoundarySideDelta> {
+        let delta = local.edge_value(side) - upstream.edge_value(side);
+        Some(BoundarySideDelta {
+            side,
+            upstream,
+            local,
+            delta,
+        })
+    };
+
+    Ok(RootBoundarySummary {
+        left: side(BoundarySide::Left, upstream.left, local.left),
+        right: side(BoundarySide::Right, upstream.right, local.right),
+        top: side(BoundarySide::Top, upstream.top, local.top),
+        bottom: side(BoundarySide::Bottom, upstream.bottom, local.bottom),
+    })
+}
+
+fn extract_svg_boundary_contributors(svg: &str) -> Result<SvgBoundaryContributors, String> {
+    let svg = crate::svgdom::normalize_xml_entities(svg);
+    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
+    let has_root_group = doc.descendants().any(|n| {
+        n.is_element()
+            && n.has_tag_name("g")
+            && n.attribute("class")
+                .unwrap_or_default()
+                .split_whitespace()
+                .any(|t| t == "root")
+    });
+
+    let mut contributors: Vec<BoundaryContributor> = Vec::new();
+    for n in doc.descendants().filter(|n| n.is_element()) {
+        if has_root_group && !is_inside_root_group(n) {
+            continue;
+        }
+        let Some((min_x, min_y, max_x, max_y)) = element_local_bbox(n) else {
+            continue;
+        };
+        if (max_x - min_x).abs() < 1e-9 && (max_y - min_y).abs() < 1e-9 {
+            continue;
+        }
+        let (tx, ty) = accumulated_translate(n);
+        let (owner, class_name) = owner_and_class(n);
+        contributors.push(BoundaryContributor {
+            element: n.tag_name().name().to_string(),
+            owner,
+            class_name,
+            text: owner_label_text(n),
+            left: tx + min_x,
+            top: ty + min_y,
+            right: tx + max_x,
+            bottom: ty + max_y,
+        });
+    }
+
+    let Some(first) = contributors.first().cloned() else {
+        return Err("no root boundary contributors found".to_string());
+    };
+    let mut left = first.clone();
+    let mut right = first.clone();
+    let mut top = first.clone();
+    let mut bottom = first;
+    for c in contributors.into_iter().skip(1) {
+        if c.left < left.left {
+            left = c.clone();
+        }
+        if c.right > right.right {
+            right = c.clone();
+        }
+        if c.top < top.top {
+            top = c.clone();
+        }
+        if c.bottom > bottom.bottom {
+            bottom = c;
+        }
+    }
+
+    Ok(SvgBoundaryContributors {
+        left,
+        right,
+        top,
+        bottom,
+    })
+}
+
+fn is_inside_root_group(node: roxmltree::Node<'_, '_>) -> bool {
+    node.ancestors().filter(|n| n.is_element()).any(|n| {
+        n.has_tag_name("g")
+            && n.attribute("class")
+                .unwrap_or_default()
+                .split_whitespace()
+                .any(|t| t == "root")
+    })
+}
+
+fn element_local_bbox(node: roxmltree::Node<'_, '_>) -> Option<(f64, f64, f64, f64)> {
+    match node.tag_name().name() {
+        "rect" | "foreignObject" | "image" => {
+            let x = parse_attr_f64(node, "x").unwrap_or(0.0);
+            let y = parse_attr_f64(node, "y").unwrap_or(0.0);
+            let w = parse_attr_f64(node, "width").unwrap_or(0.0);
+            let h = parse_attr_f64(node, "height").unwrap_or(0.0);
+            Some((x, y, x + w, y + h))
+        }
+        "circle" => {
+            let cx = parse_attr_f64(node, "cx").unwrap_or(0.0);
+            let cy = parse_attr_f64(node, "cy").unwrap_or(0.0);
+            let r = parse_attr_f64(node, "r").unwrap_or(0.0);
+            Some((cx - r, cy - r, cx + r, cy + r))
+        }
+        "ellipse" => {
+            let cx = parse_attr_f64(node, "cx").unwrap_or(0.0);
+            let cy = parse_attr_f64(node, "cy").unwrap_or(0.0);
+            let rx = parse_attr_f64(node, "rx").unwrap_or(0.0);
+            let ry = parse_attr_f64(node, "ry").unwrap_or(0.0);
+            Some((cx - rx, cy - ry, cx + rx, cy + ry))
+        }
+        "line" => {
+            let x1 = parse_attr_f64(node, "x1").unwrap_or(0.0);
+            let y1 = parse_attr_f64(node, "y1").unwrap_or(0.0);
+            let x2 = parse_attr_f64(node, "x2").unwrap_or(0.0);
+            let y2 = parse_attr_f64(node, "y2").unwrap_or(0.0);
+            Some((x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2)))
+        }
+        "polygon" | "polyline" => {
+            let nums = extract_numbers(node.attribute("points").unwrap_or_default());
+            bbox_from_number_pairs(&nums)
+        }
+        "path" => {
+            let nums = extract_numbers(node.attribute("d").unwrap_or_default());
+            bbox_from_number_pairs(&nums)
+        }
+        _ => None,
+    }
+}
+
+fn parse_attr_f64(node: roxmltree::Node<'_, '_>, attr: &str) -> Option<f64> {
+    node.attribute(attr)?.parse::<f64>().ok()
+}
+
+fn bbox_from_number_pairs(nums: &[f64]) -> Option<(f64, f64, f64, f64)> {
+    let mut chunks = nums.chunks_exact(2);
+    let first = chunks.next()?;
+    let mut min_x = first[0];
+    let mut max_x = first[0];
+    let mut min_y = first[1];
+    let mut max_y = first[1];
+    for pair in chunks {
+        min_x = min_x.min(pair[0]);
+        max_x = max_x.max(pair[0]);
+        min_y = min_y.min(pair[1]);
+        max_y = max_y.max(pair[1]);
+    }
+    Some((min_x, min_y, max_x, max_y))
+}
+
+fn extract_numbers(s: &str) -> Vec<f64> {
+    static NUMBER_RE: OnceLock<Regex> = OnceLock::new();
+    let re = NUMBER_RE.get_or_init(|| {
+        Regex::new(r#"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"#).expect("valid number regex")
+    });
+    re.find_iter(s)
+        .filter_map(|m| m.as_str().parse::<f64>().ok())
+        .collect()
+}
+
+fn accumulated_translate(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+    let mut x = 0.0;
+    let mut y = 0.0;
+    for n in node.ancestors().filter(|n| n.is_element()) {
+        if let Some((tx, ty)) = parse_translate(n.attribute("transform").unwrap_or_default()) {
+            x += tx;
+            y += ty;
+        }
+    }
+    (x, y)
+}
+
+fn parse_translate(transform: &str) -> Option<(f64, f64)> {
+    static TRANSLATE_RE: OnceLock<Regex> = OnceLock::new();
+    let re = TRANSLATE_RE
+        .get_or_init(|| Regex::new(r#"translate\(([^)]*)\)"#).expect("valid translate regex"));
+    let caps = re.captures(transform)?;
+    let nums = extract_numbers(caps.get(1)?.as_str());
+    match nums.as_slice() {
+        [x, y, ..] => Some((*x, *y)),
+        [x] => Some((*x, 0.0)),
+        _ => None,
+    }
+}
+
+fn owner_and_class(node: roxmltree::Node<'_, '_>) -> (String, String) {
+    for n in node.ancestors().filter(|n| n.is_element()) {
+        if let Some(id) = n.attribute("id") {
+            return (
+                id.to_string(),
+                n.attribute("class").unwrap_or_default().to_string(),
+            );
+        }
+    }
+    (
+        String::new(),
+        node.attribute("class").unwrap_or_default().to_string(),
+    )
+}
+
+fn owner_label_text(node: roxmltree::Node<'_, '_>) -> String {
+    if node.has_tag_name("foreignObject") {
+        return foreignobject_text(node).replace("\\n", "\n");
+    }
+    for n in node.ancestors().filter(|n| n.is_element()) {
+        if n.attribute("id").is_none() {
+            continue;
+        }
+        if let Some(fo) = n.descendants().find(|d| d.has_tag_name("foreignObject")) {
+            return foreignobject_text(fo).replace("\\n", "\n");
+        }
+        break;
+    }
+    String::new()
+}
+
+fn foreignobject_text(fo: roxmltree::Node<'_, '_>) -> String {
+    let mut raw = String::new();
+    for n in fo.descendants() {
+        if n.is_element() {
+            match n.tag_name().name() {
+                "br" => raw.push('\n'),
+                "p" => {
+                    if !raw.is_empty() && !raw.ends_with('\n') {
+                        raw.push('\n');
+                    }
+                }
+                _ => {}
+            }
+        }
+        if n.is_text() {
+            if let Some(t) = n.text() {
+                raw.push_str(t);
+            }
+        }
+    }
+    raw.split('\n')
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\\n")
+}
+
+fn boundary_edge_matches_label_delta(edge: &BoundarySideDelta, labels: &[&LabelRow]) -> bool {
+    let boundary_text = normalize_report_text(if !edge.local.text.is_empty() {
+        &edge.local.text
+    } else {
+        &edge.upstream.text
+    });
+    if boundary_text.is_empty() {
+        return false;
+    }
+    labels
+        .iter()
+        .any(|label| normalize_report_text(&label.text) == boundary_text)
+}
+
+fn normalize_report_text(s: &str) -> String {
+    s.replace("\\n", "\n")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_edge(v: f64) -> String {
+    format!("{v:.3}")
+}
+
+fn markdown_cell(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    value
+        .replace('\\', "\\\\")
+        .replace('|', "\\|")
+        .replace('\r', "")
+        .replace('\n', "\\n")
 }
 
 #[cfg(test)]
@@ -539,7 +1041,8 @@ mod tests {
             "i.fa.fa-twitter",
         )];
 
-        let (bucket, _) = classify_root_pin(&row, &[&labels[0]], Some("graph LR\nA[fa:fa-car]"));
+        let (bucket, _) =
+            classify_root_pin(&row, &[&labels[0]], Some("graph LR\nA[fa:fa-car]"), None);
 
         assert_eq!(bucket, TriageBucket::DeferIconFont);
     }
@@ -548,13 +1051,13 @@ mod tests {
     fn classify_root_pin_covers_layout_and_text_buckets() {
         let courier = root_row("plain_courier");
         assert_eq!(
-            classify_root_pin(&courier, &[], Some("classDef c fontFamily: Courier")).0,
+            classify_root_pin(&courier, &[], Some("classDef c fontFamily: Courier"), None).0,
             TriageBucket::DeferCourierFont
         );
 
         let font_env = root_row("stress_flowchart_text_style_overrides_076");
         assert_eq!(
-            classify_root_pin(&font_env, &[], Some("classDef c font-family: serif")).0,
+            classify_root_pin(&font_env, &[], Some("classDef c font-family: serif"), None).0,
             TriageBucket::DeferFontEnv
         );
 
@@ -580,13 +1083,13 @@ mod tests {
             ),
         ];
         assert_eq!(
-            classify_root_pin(&edge_row, &[&edge_labels[0], &edge_labels[1]], None).0,
+            classify_root_pin(&edge_row, &[&edge_labels[0], &edge_labels[1]], None, None).0,
             TriageBucket::LayoutEdgeOrder
         );
 
         let shape_row = root_row("stress_flowchart_shape_mix_009");
         assert_eq!(
-            classify_root_pin(&shape_row, &[], None).0,
+            classify_root_pin(&shape_row, &[], None, None).0,
             TriageBucket::LayoutShapeGeometry
         );
 
@@ -601,7 +1104,7 @@ mod tests {
             "br",
         )];
         assert_eq!(
-            classify_root_pin(&multiline_row, &[&multiline[0]], None).0,
+            classify_root_pin(&multiline_row, &[&multiline[0]], None, None).0,
             TriageBucket::SharedMultilineText
         );
 
@@ -616,7 +1119,7 @@ mod tests {
             "",
         )];
         assert_eq!(
-            classify_root_pin(&low_noise_row, &[&low_noise[0]], None).0,
+            classify_root_pin(&low_noise_row, &[&low_noise[0]], None, None).0,
             TriageBucket::LowNoiseText
         );
 
@@ -631,13 +1134,13 @@ mod tests {
             "",
         )];
         assert_eq!(
-            classify_root_pin(&shared_row, &[&shared[0]], None).0,
+            classify_root_pin(&shared_row, &[&shared[0]], None, None).0,
             TriageBucket::SharedTextCandidate
         );
 
         let root_only = root_row("root_only");
         assert_eq!(
-            classify_root_pin(&root_only, &[], None).0,
+            classify_root_pin(&root_only, &[], None, None).0,
             TriageBucket::RootOnlyLayout
         );
     }
