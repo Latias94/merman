@@ -208,31 +208,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 );
             }
         } else {
-            // Upstream Mermaid inserts empty HTML edge-label wrappers before positioned labels while
-            // preserving edge order within each partition.
+            // Mermaid emits HTML edge-label wrappers in graph edge order. Empty labels stay in
+            // place as zero-sized foreignObjects instead of being partitioned ahead of labels.
             for e in &edges {
-                if edge_label_is_empty(ctx, e) {
-                    render_flowchart_edge_label(
-                        out,
-                        ctx,
-                        e,
-                        origin_x,
-                        content_origin_y,
-                        session.edge_cache,
-                    );
-                }
-            }
-            for e in &edges {
-                if !edge_label_is_empty(ctx, e) {
-                    render_flowchart_edge_label(
-                        out,
-                        ctx,
-                        e,
-                        origin_x,
-                        content_origin_y,
-                        session.edge_cache,
-                    );
-                }
+                render_flowchart_edge_label(
+                    out,
+                    ctx,
+                    e,
+                    origin_x,
+                    content_origin_y,
+                    session.edge_cache,
+                );
             }
         }
         out.push_str("</g>");

@@ -163,3 +163,46 @@ fn flowchart_html_labels_unescape_double_backslashes() {
         "expected output to not contain the raw double-backslash input"
     );
 }
+
+#[test]
+fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
+    let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    let edge_labels_start = svg.find(r#"<g class="edgeLabels">"#).expect("edgeLabels");
+    let nodes_start = svg[edge_labels_start..]
+        .find(r#"<g class="nodes">"#)
+        .map(|idx| edge_labels_start + idx)
+        .expect("nodes after edgeLabels");
+    let edge_labels = &svg[edge_labels_start..nodes_start];
+
+    let ab = edge_labels.find(r#"data-id="L_A_B_0""#).expect("A-B label");
+    let bc = edge_labels.find(r#"data-id="L_B_C_0""#).expect("B-C label");
+    let cd = edge_labels.find(r#"data-id="L_C_D_0""#).expect("C-D label");
+
+    assert!(
+        ab < bc && bc < cd,
+        "expected HTML edgeLabels to preserve graph edge order: {edge_labels}"
+    );
+}
