@@ -872,6 +872,36 @@ fn flowchart_label_metrics_for_layout_measures_markdown_inline_html_like_mermaid
 }
 
 #[test]
+fn flowchart_html_markdown_inline_bold_delta_can_force_extra_wrap_line() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+    let markdown = "This is **bold** </br>and <strong>strong</strong> for braces shape";
+
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: markdown,
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+        },
+    );
+
+    assert_eq!(metrics.width, 200.0);
+    assert_eq!(metrics.height, 72.0);
+    assert_eq!(metrics.line_count, 3);
+}
+
+#[test]
 fn flowchart_html_markdown_metrics_preserve_paragraph_break_height() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

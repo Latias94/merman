@@ -125,24 +125,6 @@ pub fn lookup_flowchart_root_viewport_override(
                 "373.23",
             ))
         }
-        "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_true_085" => {
-            Some((
-                "0 -0.00905609130859375 396.140625 989.5728149414062",
-                "396.141",
-            ))
-        }
-        "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_tb_md_html_true_037" => {
-            Some(("0 0 1714.1500244140625 272.97283935546875", "1714.15"))
-        }
-        "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_lr_md_html_true_093" => {
-            Some(("0 0 379.890625 274.8000183105469", "379.891"))
-        }
-        "upstream_cypress_newshapes_spec_newshapessets_newshapesset6_tb_md_html_true_045" => {
-            Some((
-                "0.00000762939453125 0 535.1500244140625 224.39999389648438",
-                "535.15",
-            ))
-        }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
             Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
         }

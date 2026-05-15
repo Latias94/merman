@@ -611,6 +611,37 @@ pub fn measure_html_with_flowchart_bold_deltas(
         None
     };
 
+    let inline_delta_extra_wrap_lines = if wrap_mode == WrapMode::HtmlLike {
+        max_width
+            .filter(|w| w.is_finite() && *w > 0.0)
+            .map(|w| {
+                lines
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, line)| {
+                        let text = line.trim();
+                        if text.is_empty()
+                            || icon_on_line.get(*idx).copied().unwrap_or(false)
+                            || !text.chars().any(|ch| ch.is_whitespace())
+                        {
+                            return false;
+                        }
+                        let delta = deltas_px_by_line.get(*idx).copied().unwrap_or(0.0);
+                        if delta <= 0.0 {
+                            return false;
+                        }
+                        let raw_width = measurer
+                            .measure_wrapped_raw(text, style, None, wrap_mode)
+                            .width;
+                        raw_width <= w && raw_width + delta > w
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
     let mut max_line_width: f64 = 0.0;
     for (idx, line) in lines.iter().enumerate() {
         let w = if icon_on_line[idx] {
@@ -713,6 +744,10 @@ pub fn measure_html_with_flowchart_bold_deltas(
     if icon_only_extra_lines > 0 {
         height += icon_only_extra_lines as f64 * style.font_size.max(1.0) * 1.5;
         line_count += icon_only_extra_lines;
+    }
+    if inline_delta_extra_wrap_lines > 0 {
+        height += inline_delta_extra_wrap_lines as f64 * style.font_size.max(1.0) * 1.5;
+        line_count += inline_delta_extra_wrap_lines;
     }
 
     TextMetrics {
