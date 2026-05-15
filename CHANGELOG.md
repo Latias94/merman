@@ -67,6 +67,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart parity: render `lined-document` from its label-box path and derive curly
+  brace/comment root bounds from the same label-box geometry used by the SVG emitter. The focused
+  disabled-root `newshapesset5_lr_md_html_false` shape-family drift drops from `+2.913px` to
+  `-0.008px`; the root pin remains because the residual is below a clean geometry rule and still
+  misses the exact deletion gate.
 - Flowchart parity: keep FontAwesome HTML icon-only lines as normal `1.5em` line boxes during
   label measurement. This derives
   `stress_flowchart_icons_multiline_br_054` without a root viewport pin, tightening Flowchart root

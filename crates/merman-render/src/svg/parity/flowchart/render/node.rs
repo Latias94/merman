@@ -6,7 +6,7 @@ mod geom;
 mod helpers;
 mod label;
 pub(in crate::svg::parity) mod roughjs;
-mod shapes;
+pub(in crate::svg::parity::flowchart) mod shapes;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
     pub shape: &'a str,

@@ -94,7 +94,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
 
         // Flowchart v2 curly brace/comment shapes (rendering-elements).
         "comment" | "brace" | "brace-l" | "brace-r" | "braces" => {
-            super::render_curly_brace_comment(out, common, label, details);
+            super::render_curly_brace_comment(out, ctx, common, label, details);
         }
 
         "imageSquare" => {

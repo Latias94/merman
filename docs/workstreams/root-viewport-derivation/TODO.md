@@ -501,12 +501,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   browser/font shaping rather than a clean shared metric rule. `xtask triage-flowchart-root-pins`
   now places this case in `defer-font-env`, keeps the root pin, and still avoids fixture/glyph
   lookup data.
-- [ ] Derive the next Flowchart disabled-root shape family.
-  Recommended starting point is
-  `upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086`, the remaining
-  non-deferred `layout-shape-geometry` bucket. The retained icon-label, courier, mojibake,
-  custom-font, and mixed-sign default-font accumulation guards should stay pinned unless a clean
-  shared browser/font model appears.
+- [x] Derive the next Flowchart disabled-root shape-family geometry as far as clean shared rules
+  allow. Evidence: `lined-document` now renders from its label-box path instead of the inflated
+  Dagre/updateNodeBounds box, and curly brace/comment root bounds reuse the same label-box geometry
+  as the SVG emitter instead of the symmetric `node.width / 2` approximation. Focused disabled-root
+  audit for `upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086`
+  improves from `+2.913px` to `-0.008px`, with the boundary now consistently on
+  `flowchart-n55-16` (`brace-r`). The root pin remains because the residual is a sub-1/64px SVG
+  Markdown/font lattice difference, and deleting the pin still requires exact root parity.
+- [ ] Decide whether the `newshapesset5_lr_md_html_false` `-0.008px` residual is a shared SVG
+  Markdown text-lattice rule or a font-environment residual. Do not add a fixture/glyph lookup
+  table for this; only continue if a shared rule improves other default-stack SVG Markdown labels
+  without regressing retained pins. The retained icon-label, courier, mojibake, custom-font, and
+  mixed-sign default-font accumulation guards should stay pinned unless a clean shared
+  browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

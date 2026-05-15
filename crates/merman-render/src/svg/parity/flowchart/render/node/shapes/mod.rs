@@ -36,6 +36,7 @@ mod window_pane;
 
 pub(super) use basic_geoms::{render_circle, render_diamond, render_double_circle};
 pub(super) use bow_tie_rect::render_bow_tie_rect;
+pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geometry;
 pub(super) use curly_braces::render_curly_brace_comment;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};

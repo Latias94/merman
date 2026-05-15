@@ -52,6 +52,16 @@ fn rough_svg_path_bounds(
     union_svg_path_bounds(&[fill_d.as_str(), stroke_d.as_str()])
 }
 
+fn rough_stroke_svg_path_bounds(
+    path_data: &str,
+) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
+    let stroke_d =
+        crate::svg::parity::flowchart::render::node::roughjs::roughjs_stroke_path_for_svg_path(
+            path_data, "#000", 1.3, "0 0", 0,
+        )?;
+    crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
+}
+
 fn generate_circle_points(
     center_x: f64,
     center_y: f64,
@@ -665,6 +675,56 @@ fn render_flowchart_v2_svg_with_config_inner(
                 let mut top_hh = n.height / 2.0;
                 let mut bottom_hh = top_hh;
                 if !n.is_cluster {
+                    let node_label_metrics =
+                        |n: &crate::model::LayoutNode| -> crate::text::TextMetrics {
+                            if let (Some(width), Some(height)) = (n.label_width, n.label_height) {
+                                return crate::text::TextMetrics {
+                                    width,
+                                    height,
+                                    line_count: 0,
+                                };
+                            }
+                            let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) else {
+                                return crate::text::TextMetrics {
+                                    width: 0.0,
+                                    height: 0.0,
+                                    line_count: 0,
+                                };
+                            };
+                            let label = flow_node.label.as_deref().unwrap_or("");
+                            let label_type = flow_node
+                                .label_type
+                                .as_deref()
+                                .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                            let label_base_style =
+                                if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                    &ctx.html_label_text_style
+                                } else {
+                                    &ctx.text_style
+                                };
+                            let node_text_style =
+                                crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                                    label_base_style,
+                                    ctx.class_defs,
+                                    &flow_node.classes,
+                                    &flow_node.styles,
+                                );
+                            crate::flowchart::flowchart_label_metrics_for_layout(
+                                crate::flowchart::FlowchartLabelMetricsRequest {
+                                    measurer: ctx.measurer,
+                                    raw_label: label,
+                                    label_type,
+                                    style: &node_text_style,
+                                    max_width_px: Some(ctx.wrapping_width),
+                                    wrap_mode: ctx.node_wrap_mode,
+                                    config: ctx.config,
+                                    math_renderer: ctx.math_renderer,
+                                    preserve_string_whitespace_height: ctx.node_html_labels
+                                        && ctx.edge_html_labels,
+                                },
+                            )
+                        };
+
                     if let Some(shape) = ctx
                         .nodes_by_id
                         .get(n.id.as_str())
@@ -846,6 +906,90 @@ fn render_flowchart_v2_svg_with_config_inner(
                             }
                         }
 
+                        // Mermaid `linedWaveEdgedRect.ts` follows the same split as the other
+                        // wave document shapes: Dagre uses the post-`updateNodeBounds(...)`
+                        // dimensions, while the rendered root bbox comes from the original
+                        // label-box path. Do not use `node.width / 2` here, or the root viewport
+                        // keeps the inflated layout bbox after the SVG path itself is rendered
+                        // from the label metrics.
+                        if matches!(shape, "lin-doc" | "lined-document") {
+                            let (label_w, label_h) = if let (Some(w), Some(h)) =
+                                (n.label_width, n.label_height)
+                            {
+                                (w, h)
+                            } else if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
+                                let label = flow_node.label.as_deref().unwrap_or("");
+                                let label_type = flow_node
+                                    .label_type
+                                    .as_deref()
+                                    .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_base_style =
+                                    if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+                                        &ctx.html_label_text_style
+                                    } else {
+                                        &ctx.text_style
+                                    };
+                                let node_text_style =
+                                    crate::flowchart::flowchart_effective_text_style_for_node_classes(
+                                        label_base_style,
+                                        ctx.class_defs,
+                                        &flow_node.classes,
+                                        &flow_node.styles,
+                                    );
+                                let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    crate::flowchart::FlowchartLabelMetricsRequest {
+                                        measurer: ctx.measurer,
+                                        raw_label: label,
+                                        label_type,
+                                        style: &node_text_style,
+                                        max_width_px: Some(ctx.wrapping_width),
+                                        wrap_mode: ctx.node_wrap_mode,
+                                        config: ctx.config,
+                                        math_renderer: ctx.math_renderer,
+                                        preserve_string_whitespace_height: ctx.node_html_labels
+                                            && ctx.edge_html_labels,
+                                    },
+                                );
+                                (metrics.width, metrics.height)
+                            } else {
+                                (0.0, 0.0)
+                            };
+
+                            let w = (label_w + 2.0 * node_padding).max(0.0);
+                            let h = (label_h + 2.0 * node_padding).max(0.0);
+                            let wave_amplitude = h / 4.0;
+                            let final_h = h + wave_amplitude;
+                            let extra = (w / 2.0) * 0.1;
+                            let mut points: Vec<(f64, f64)> = Vec::new();
+                            points.push((-w / 2.0 - extra, -final_h / 2.0));
+                            points.push((-w / 2.0 - extra, final_h / 2.0));
+                            points.extend(generate_full_sine_wave_points(
+                                -w / 2.0 - extra,
+                                final_h / 2.0,
+                                w / 2.0 + extra,
+                                final_h / 2.0,
+                                wave_amplitude,
+                                0.8,
+                            ));
+                            points.push((w / 2.0 + extra, -final_h / 2.0));
+                            points.push((-w / 2.0 - extra, -final_h / 2.0));
+                            points.push((-w / 2.0, -final_h / 2.0));
+                            points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+                            points.push((-w / 2.0, -final_h / 2.0));
+
+                            let path_data =
+                                crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                    &points,
+                                );
+                            if let Some(pb) = rough_svg_path_bounds(&path_data) {
+                                let y_shift = -wave_amplitude / 2.0;
+                                left_hw = (-pb.min_x).max(0.0);
+                                right_hw = pb.max_x.max(0.0);
+                                top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                                bottom_hh = (pb.max_y + y_shift).max(0.0);
+                            }
+                        }
+
                         // Mermaid `taggedWaveEdgedRectangle.ts` (tagged-document) renders from
                         // the base label box, then `updateNodeBounds(...)` stores a slightly
                         // shorter outer bbox. The rendered wave is also vertically asymmetric
@@ -895,6 +1039,47 @@ fn render_flowchart_v2_svg_with_config_inner(
                             let wave_amplitude = h / 4.0;
                             top_hh = h / 2.0 + wave_amplitude;
                             bottom_hh = (n.height - top_hh).max(0.0);
+                        }
+
+                        // Mermaid computes the root viewport from the rendered DOM bbox. Curly
+                        // brace/comment shapes emit narrow RoughJS stroke paths plus an invisible
+                        // path; using the inflated Dagre `node.width / 2` keeps a phantom right
+                        // edge in the root viewBox.
+                        if matches!(
+                            shape,
+                            "comment" | "brace" | "brace-l" | "brace-r" | "braces"
+                        ) {
+                            let metrics = node_label_metrics(n);
+                            let geometry = crate::svg::parity::flowchart::render::node::shapes::curly_brace_comment_geometry(
+                                shape,
+                                metrics.width,
+                                metrics.height,
+                                node_padding,
+                            );
+                            let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> =
+                                None;
+                            for path in geometry.paths {
+                                if let Some(mut pb) = rough_stroke_svg_path_bounds(&path.d) {
+                                    pb.min_x += geometry.group_tx;
+                                    pb.max_x += geometry.group_tx;
+                                    bounds = Some(match bounds {
+                                        Some(mut acc) => {
+                                            acc.min_x = acc.min_x.min(pb.min_x);
+                                            acc.min_y = acc.min_y.min(pb.min_y);
+                                            acc.max_x = acc.max_x.max(pb.max_x);
+                                            acc.max_y = acc.max_y.max(pb.max_y);
+                                            acc
+                                        }
+                                        None => pb,
+                                    });
+                                }
+                            }
+                            if let Some(pb) = bounds {
+                                left_hw = (-pb.min_x).max(0.0);
+                                right_hw = pb.max_x.max(0.0);
+                                top_hh = (-pb.min_y).max(0.0);
+                                bottom_hh = pb.max_y.max(0.0);
+                            }
                         }
 
                         // Mermaid `forkJoin.ts` inflates Dagre dimensions (via `state.padding/2`)
