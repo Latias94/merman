@@ -79,9 +79,6 @@ pub fn lookup_flowchart_root_viewport_override(
         | "upstream_html_demos_flowchart_flowchart_049" => {
             Some(("0 0 2004.41015625 1046", "2004.41"))
         }
-        "upstream_cypress_flowchart_handdrawn_spec_fdh49_should_add_edge_animation_049" => {
-            Some(("0 0 309.125 322.390625", "309.125"))
-        }
         "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 92.046875 70", "92.0469")),
         "upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005" => {
             Some(("0 0 104.6875 368", "104.688"))
