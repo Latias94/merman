@@ -100,10 +100,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_spec_8_should_render_labels_with_numbers_at_the_start_008" => {
             Some(("0 0 177.625 140", "177.625"))
         }
-        "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_allpairs_067" => Some((
-            "-0.0100250244140625 0 1274.9244384765625 300.7861328125",
-            "1274.92",
-        )),
         "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086" => {
             Some((
                 "0 -0.009033203125 373.23016357421875 924.65283203125",

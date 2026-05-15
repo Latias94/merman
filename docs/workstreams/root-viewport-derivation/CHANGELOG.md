@@ -2,6 +2,11 @@
 
 ## 2026-05-16
 
+- Deleted the now-derived Flowchart `newshapesset3_lr_allpairs_067` root pin after a focused
+  disabled-root `parity-root` check matched without the generated override. Flowchart root
+  overrides are now `43`, total root overrides are now `310`, and the full retained-root audit now
+  reports `49` root pins, `297` label delta rows, `defer-low-noise-text-lattice` (16), and
+  `layout-shape-geometry` (1).
 - Derived the retained Flowchart crossed-circle alias root pin and cleaned up the stacked-rectangle
   shape geometry path without adding fixture/glyph lookup data. `multiRect.ts` treats the Dagre
   `node.width/height` as the final outer bbox, so the renderer now subtracts the 5px stacked offset

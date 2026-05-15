@@ -543,8 +543,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037`, so that root pin was
   deleted. The full retained-root triage now reports `50` root pins, `297` label delta rows, no
   removal candidates, `defer-low-noise-text-lattice` (16), and `layout-shape-geometry` (2).
+- [x] Delete the already-derived Flowchart `newshapesset3_lr_allpairs_067` root pin. Evidence:
+  focused disabled-root `parity-root` matches without the generated override, and
+  `report-overrides --check-no-growth` now reports `310` total root overrides with `43`
+  Flowchart entries. The full retained-root triage now reports `49` root pins, `297` label delta
+  rows, no removal candidates, `defer-low-noise-text-lattice` (16), and
+  `layout-shape-geometry` (1).
 - [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `layout-shape-geometry` (2). Keep the retained low-noise text-lattice,
+  all-root triage: `layout-shape-geometry` (1). Keep the retained low-noise text-lattice,
   icon-label, courier, mojibake, custom-font, and mixed-sign default-font accumulation guards
   pinned unless a clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without

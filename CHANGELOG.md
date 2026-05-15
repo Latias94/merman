@@ -13,6 +13,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   crossed-circle RoughJS root-bbox asymmetry to all aliases. This removes the retained
   `shape_alias_aliasset37_037` root viewport pin and narrows the remaining Flowchart
   `layout-shape-geometry` bucket.
+- Flowchart root audit: remove the now-derived `newshapesset3_lr_allpairs_067` root viewport pin
+  after focused disabled-root `parity-root` matched without the generated override, tightening the
+  inventory to `310` total root overrides and `43` Flowchart root overrides.
 - Flowchart parity: include empty subgraph-as-node rectangles in computed root viewBox bounds for
   nested-root diagrams, removing the two retained outgoing-links-4 root viewport pins without
   adding fixture or glyph lookup data.

@@ -381,6 +381,14 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   (16), `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (2),
   `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
   `defer-font-env` (3).
+- 2026-05-16: Flowchart `upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_allpairs_067`
+  now passes focused disabled-root `parity-root` without the generated root override, so the
+  stale pin was deleted. The generated root inventory is now `310` total entries with `43`
+  Flowchart entries. The full retained-root audit now produces `49` root delta rows and `297`
+  label delta rows; triage reports no removal candidates and current buckets
+  `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (1),
+  `layout-shape-geometry` (1), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
+  `defer-icon-font` (19), and `defer-font-env` (3).
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
