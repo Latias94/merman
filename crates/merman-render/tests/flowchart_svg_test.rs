@@ -165,6 +165,39 @@ fn flowchart_html_labels_unescape_double_backslashes() {
 }
 
 #[test]
+fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
+    let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"\n  First\n      Second\n  \"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains("<p>First<br />Second</p>"),
+        "expected plain multiline HTML label to trim indentation: {svg}"
+    );
+    assert!(
+        !svg.contains("<br />      Second"),
+        "expected no source indentation after HTML line break"
+    );
+}
+
+#[test]
 fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
     let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
     let engine = Engine::new();

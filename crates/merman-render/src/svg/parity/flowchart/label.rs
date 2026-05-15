@@ -239,6 +239,22 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         t[end + 1..].trim().is_empty()
     }
 
+    fn normalize_plain_multiline_label_for_html(label: &str) -> std::borrow::Cow<'_, str> {
+        if !label.contains('\n') {
+            return std::borrow::Cow::Borrowed(label);
+        }
+
+        std::borrow::Cow::Owned(
+            label
+                .split('\n')
+                .map(str::trim)
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string(),
+        )
+    }
+
     let has_literal_backticks = label_type != "markdown" && label.contains('`');
     let looks_like_markdown = label_type != "markdown" && !has_literal_backticks && {
         // Mermaid flowchart-v2 treats `**...**` as Markdown strong inside HTML labels even when the
@@ -513,6 +529,8 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             };
             let label = label.trim_end_matches('\n');
             let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+            let label = normalize_plain_multiline_label_for_html(label);
+            let label = label.as_ref();
 
             // Fast path for the overwhelmingly common case: plain text labels (no HTML, no
             // entities, no Mermaid icon syntax). In upstream Mermaid, these go through
