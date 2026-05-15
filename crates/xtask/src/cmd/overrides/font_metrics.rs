@@ -67,6 +67,186 @@ fn solve_ridge(at_a: &mut [Vec<f64>], at_b: &mut [f64]) -> Vec<f64> {
     at_b.to_vec()
 }
 
+#[derive(Debug, Clone)]
+struct Sample {
+    font_key: String,
+    text: String,
+    width_px: f64,
+    font_size_px: f64,
+    plain_html_label: bool,
+}
+
+fn median(v: &mut [f64]) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    v.sort_by(|a, b| a.total_cmp(b));
+    let mid = v.len() / 2;
+    if v.len() % 2 == 1 {
+        Some(v[mid])
+    } else {
+        Some((v[mid - 1] + v[mid]) / 2.0)
+    }
+}
+
+fn rust_f64(v: f64) -> String {
+    let mut s = format!("{v}");
+    if !s.contains('.') && !s.contains('e') && !s.contains('E') {
+        s.push_str(".0");
+    }
+    s
+}
+
+fn has_class_ancestor(node: roxmltree::Node<'_, '_>, class_names: &[&str]) -> bool {
+    node.ancestors().filter(|n| n.is_element()).any(|n| {
+        n.attribute("class")
+            .unwrap_or_default()
+            .split_whitespace()
+            .any(|t| class_names.iter().any(|class_name| *class_name == t))
+    })
+}
+
+fn foreignobject_content_width_px(fo: roxmltree::Node<'_, '_>, width_px: f64) -> f64 {
+    let has_icon_or_image_shape_ancestor = has_class_ancestor(fo, &["icon-shape", "image-shape"]);
+    let has_paragraph = fo.descendants().any(|n| n.has_tag_name("p"));
+
+    // Mermaid icon/image HTML labels inherit `.icon-shape p, .image-shape p { padding: 2px; }`.
+    // The exported `<foreignObject width>` therefore includes 2px on each side, while the
+    // layout-time text measurer is expected to return the content width and the renderer adds
+    // the label background padding separately.
+    if has_icon_or_image_shape_ancestor && has_paragraph {
+        (width_px - 4.0).max(0.0)
+    } else {
+        width_px
+    }
+}
+
+fn is_plain_html_label_sample(fo: roxmltree::Node<'_, '_>) -> bool {
+    if has_class_ancestor(fo, &["icon-shape", "image-shape"]) {
+        return false;
+    }
+
+    let mut paragraphs = 0usize;
+    for n in fo.descendants().filter(|n| n.is_element()) {
+        let name = n.tag_name().name();
+        if name == "p" {
+            paragraphs += 1;
+            continue;
+        }
+
+        if !matches!(name, "foreignObject" | "div" | "span") {
+            return false;
+        }
+
+        let class_attr = n.attribute("class").unwrap_or_default();
+        if class_attr
+            .split_whitespace()
+            .any(|t| matches!(t, "label-icon" | "fa" | "fas" | "far" | "fab"))
+        {
+            return false;
+        }
+    }
+
+    paragraphs == 1
+}
+
+fn build_html_overrides_by_font(
+    samples_by_font: &BTreeMap<String, Vec<Sample>>,
+    plain_html_only: bool,
+) -> BTreeMap<String, Vec<(String, f64)>> {
+    let mut out = BTreeMap::new();
+    for (font_key, ss) in samples_by_font {
+        let mut by_text: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        let mut mixed_texts: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for s in ss {
+            if plain_html_only {
+                if !s.plain_html_label {
+                    mixed_texts.insert(s.text.clone());
+                    continue;
+                }
+            }
+            if !(s.width_px.is_finite() && s.width_px > 0.0) {
+                continue;
+            }
+            let em = s.width_px / s.font_size_px.max(1.0);
+            if em.is_finite() && em > 0.0 {
+                by_text.entry(s.text.clone()).or_default().push(em);
+            }
+        }
+
+        let mut html_overrides = Vec::new();
+        for (text, mut ems) in by_text {
+            if plain_html_only && mixed_texts.contains(&text) {
+                continue;
+            }
+            let Some(m) = median(&mut ems) else {
+                continue;
+            };
+            if m.is_finite() && m > 0.0 {
+                html_overrides.push((text, m));
+            }
+        }
+        html_overrides.sort_by(|a, b| a.0.cmp(&b.0));
+        out.insert(font_key.clone(), html_overrides);
+    }
+    out
+}
+
+fn replace_html_overrides_for_font(
+    source: &str,
+    font_key: &str,
+    html_overrides: &[(String, f64)],
+) -> Result<String, XtaskError> {
+    let font_key_line = format!("        font_key: {font_key:?},");
+    let Some(font_key_start) = source.find(&font_key_line) else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "preserved font metrics missing font_key {font_key:?}"
+        )));
+    };
+
+    let Some(rel_html_start) = source[font_key_start..].find("        html_overrides: &[") else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "preserved font metrics missing html_overrides for font_key {font_key:?}"
+        )));
+    };
+    let html_start = font_key_start + rel_html_start;
+    let Some(rel_svg_start) = source[html_start..].find("        svg_overrides: &[") else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "preserved font metrics missing svg_overrides after font_key {font_key:?}"
+        )));
+    };
+    let svg_start = html_start + rel_svg_start;
+
+    let header = "        html_overrides: &[\n";
+    let entries_start = html_start + header.len();
+    let Some(rel_entries_end) = source[html_start..svg_start].rfind("        ],\n") else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "preserved font metrics has malformed html_overrides for font_key {font_key:?}"
+        )));
+    };
+    let entries_end = html_start + rel_entries_end;
+    let mut entries = source[entries_start..entries_end].to_string();
+
+    for (text, em) in html_overrides {
+        let prefix = format!("            ({text:?}, ");
+        let Some(start) = entries.find(&prefix) else {
+            continue;
+        };
+        let value_start = start + prefix.len();
+        let Some(rel_line_end) = entries[value_start..].find("),\n") else {
+            continue;
+        };
+        let value_end = value_start + rel_line_end;
+        entries.replace_range(value_start..value_end, &rust_f64(*em));
+    }
+
+    let mut out = String::with_capacity(source.len());
+    out.push_str(&source[..entries_start]);
+    out.push_str(&entries);
+    out.push_str(&source[entries_end..]);
+    Ok(out)
+}
+
 pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     let mut in_dir: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
@@ -76,6 +256,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     let mut backend: String = "browser".to_string();
     let mut browser_exe: Option<PathBuf> = None;
     let mut svg_sample_mode: String = "flowchart".to_string();
+    let mut preserve_layout_from: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -120,6 +301,10 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "flowchart".to_string());
             }
+            "--preserve-layout-from" => {
+                i += 1;
+                preserve_layout_from = args.get(i).map(PathBuf::from);
+            }
             "--browser-exe" => {
                 i += 1;
                 browser_exe = args.get(i).map(PathBuf::from);
@@ -132,14 +317,6 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
 
     let in_dir = in_dir.ok_or(XtaskError::Usage)?;
     let out_path = out_path.ok_or(XtaskError::Usage)?;
-
-    #[derive(Debug, Clone)]
-    struct Sample {
-        font_key: String,
-        text: String,
-        width_px: f64,
-        font_size_px: f64,
-    }
 
     fn normalize_font_key(s: &str) -> String {
         s.chars()
@@ -328,12 +505,14 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                     text: text.clone(),
                     width_px: 0.0,
                     font_size_px: diagram_font_size_px,
+                    plain_html_label: false,
                 });
                 html_seed_samples.push(Sample {
                     font_key: sans_key.clone(),
                     text: text.clone(),
                     width_px: 0.0,
                     font_size_px: diagram_font_size_px,
+                    plain_html_label: false,
                 });
             }
 
@@ -360,8 +539,9 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             html_samples.push(Sample {
                 font_key: font_key.clone(),
                 text,
-                width_px,
+                width_px: foreignobject_content_width_px(fo, width_px),
                 font_size_px: diagram_font_size_px,
+                plain_html_label: is_plain_html_label_sample(fo),
             });
         }
 
@@ -385,12 +565,14 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 text: line.clone(),
                 width_px: 0.0,
                 font_size_px: diagram_font_size_px,
+                plain_html_label: false,
             });
             svg_samples.push(Sample {
                 font_key: sans_key.clone(),
                 text: line,
                 width_px: 0.0,
                 font_size_px: diagram_font_size_px,
+                plain_html_label: false,
             });
         }
 
@@ -412,12 +594,14 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                     text: title_text.clone(),
                     width_px: 0.0,
                     font_size_px: title_font_size_px,
+                    plain_html_label: false,
                 });
                 svg_samples.push(Sample {
                     font_key: sans_key.clone(),
                     text: title_text,
                     width_px: 0.0,
                     font_size_px: title_font_size_px,
+                    plain_html_label: false,
                 });
             }
         }
@@ -461,12 +645,14 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                         text: line.clone(),
                         width_px: 0.0,
                         font_size_px: diagram_font_size_px,
+                        plain_html_label: false,
                     });
                     svg_samples.push(Sample {
                         font_key: sans_key.clone(),
                         text: line,
                         width_px: 0.0,
                         font_size_px: diagram_font_size_px,
+                        plain_html_label: false,
                     });
                 }
                 if pushed_any {
@@ -482,12 +668,14 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                     text: line.clone(),
                     width_px: 0.0,
                     font_size_px: diagram_font_size_px,
+                    plain_html_label: false,
                 });
                 svg_samples.push(Sample {
                     font_key: sans_key.clone(),
                     text: line,
                     width_px: 0.0,
                     font_size_px: diagram_font_size_px,
+                    plain_html_label: false,
                 });
             }
         }
@@ -504,14 +692,73 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 text: text.to_string(),
                 width_px: 0.0,
                 font_size_px: base_font_size_px.max(1.0),
+                plain_html_label: false,
             });
             svg_samples.push(Sample {
                 font_key: font_key.clone(),
                 text: text.to_string(),
                 width_px: 0.0,
                 font_size_px: base_font_size_px.max(1.0),
+                plain_html_label: false,
             });
         }
+    }
+
+    if html_samples.is_empty() {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "no foreignObject samples found under {}",
+            in_dir.display()
+        )));
+    }
+
+    if let Some(preserve_path) = preserve_layout_from.as_deref() {
+        let mut html_samples_by_font: BTreeMap<String, Vec<Sample>> = BTreeMap::new();
+        for s in html_samples {
+            html_samples_by_font
+                .entry(s.font_key.clone())
+                .or_default()
+                .push(s);
+        }
+
+        let html_overrides_by_font = build_html_overrides_by_font(&html_samples_by_font, true);
+        if html_overrides_by_font.is_empty() {
+            return Err(XtaskError::SvgCompareFailed(
+                "no html_overrides collected for preserve-layout mode".to_string(),
+            ));
+        }
+
+        let mut preserved =
+            fs::read_to_string(preserve_path).map_err(|source| XtaskError::ReadFile {
+                path: preserve_path.display().to_string(),
+                source,
+            })?;
+        let mut replaced_fonts = 0usize;
+        for (font_key, html_overrides) in &html_overrides_by_font {
+            let font_key_line = format!("        font_key: {font_key:?},");
+            if !preserved.contains(&font_key_line) {
+                continue;
+            }
+            preserved = replace_html_overrides_for_font(&preserved, font_key, html_overrides)?;
+            replaced_fonts += 1;
+        }
+        if replaced_fonts == 0 {
+            return Err(XtaskError::SvgCompareFailed(
+                "preserve-layout mode did not match any generated font table".to_string(),
+            ));
+        }
+
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+                path: parent.display().to_string(),
+                source,
+            })?;
+        }
+        fs::write(&out_path, preserved).map_err(|source| XtaskError::WriteFile {
+            path: out_path.display().to_string(),
+            source,
+        })?;
+
+        return Ok(());
     }
 
     if matches!(backend.as_str(), "browser" | "puppeteer") && !svg_samples.is_empty() {
@@ -563,13 +810,6 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         svg_samples.retain(|s| s.width_px.is_finite() && s.width_px > 0.0);
-    }
-
-    if html_samples.is_empty() {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "no foreignObject samples found under {}",
-            in_dir.display()
-        )));
     }
 
     if let Some(dt) = debug_text.as_deref() {
@@ -727,19 +967,6 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         /// approximations (scale factors / per-glyph overhang) can drift for long titles. These
         /// overrides are measured via a real browser and used to match upstream viewBox parity.
         svg_overrides: Vec<(String, f64, f64)>,
-    }
-
-    fn median(v: &mut [f64]) -> Option<f64> {
-        if v.is_empty() {
-            return None;
-        }
-        v.sort_by(|a, b| a.total_cmp(b));
-        let mid = v.len() / 2;
-        if v.len() % 2 == 1 {
-            Some(v[mid])
-        } else {
-            Some((v[mid - 1] + v[mid]) / 2.0)
-        }
     }
 
     fn fit_tables(
@@ -1862,13 +2089,6 @@ const strings = input.strings;
 
     // Render as a deterministic Rust module.
     let mut out = String::new();
-    fn rust_f64(v: f64) -> String {
-        let mut s = format!("{v}");
-        if !s.contains('.') && !s.contains('e') && !s.contains('E') {
-            s.push_str(".0");
-        }
-        s
-    }
     let _ = writeln!(&mut out, "// This file is generated by `xtask`.\n");
     let _ = writeln!(&mut out, "#[derive(Debug, Clone, Copy)]");
     let _ = writeln!(&mut out, "pub struct FontMetricsTables {{");
@@ -1991,7 +2211,11 @@ const strings = input.strings;
 
 #[cfg(test)]
 mod tests {
-    use super::solve_ridge;
+    use super::{
+        Sample, build_html_overrides_by_font, foreignobject_content_width_px,
+        replace_html_overrides_for_font, solve_ridge,
+    };
+    use std::collections::BTreeMap;
 
     fn assert_close(actual: f64, expected: f64) {
         assert!(
@@ -2020,5 +2244,109 @@ mod tests {
 
         assert_close(solution[0], 1.0);
         assert_close(solution[1], 2.0);
+    }
+
+    #[test]
+    fn icon_shape_foreignobject_width_excludes_paragraph_padding() {
+        let svg = r#"<svg><g class="icon-shape"><foreignObject width="88.6875"><div><span><p>CloudWatch</p></span></div></foreignObject></g></svg>"#;
+        let doc = roxmltree::Document::parse(svg).unwrap();
+        let fo = doc
+            .descendants()
+            .find(|n| n.has_tag_name("foreignObject"))
+            .unwrap();
+
+        assert_close(foreignobject_content_width_px(fo, 88.6875), 84.6875);
+    }
+
+    #[test]
+    fn normal_foreignobject_width_keeps_full_label_width() {
+        let svg = r#"<svg><g class="node"><foreignObject width="111.109375"><div><span><p>This ❤ Unicode</p></span></div></foreignObject></g></svg>"#;
+        let doc = roxmltree::Document::parse(svg).unwrap();
+        let fo = doc
+            .descendants()
+            .find(|n| n.has_tag_name("foreignObject"))
+            .unwrap();
+
+        assert_close(foreignobject_content_width_px(fo, 111.109375), 111.109375);
+    }
+
+    #[test]
+    fn preserve_layout_updates_existing_html_overrides_only() {
+        let source = r#"pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
+    FontMetricsTables {
+        font_key: "trebuchetms,verdana,arial,sans-serif",
+        base_font_size_px: 16.0,
+        default_em: 0.5,
+        entries: &[
+            ('A', 0.5),
+        ],
+        kern_pairs: &[
+            (65, 66, -0.1),
+        ],
+        space_trigrams: &[],
+        trigrams: &[],
+        html_overrides: &[
+            ("keep", 1.0),
+            ("new", 1.0),
+        ],
+        svg_overrides: &[
+            ("old", 0.5, 0.5),
+        ],
+        svg_scale: 1.0, svg_bbox_overhang_left_default_em: 0.0, svg_bbox_overhang_right_default_em: 0.0, svg_bbox_overhang_left: &[], svg_bbox_overhang_right: &[] },
+];
+"#;
+        let mut samples_by_font = BTreeMap::new();
+        samples_by_font.insert(
+            "trebuchetms,verdana,arial,sans-serif".to_string(),
+            vec![
+                Sample {
+                    font_key: "trebuchetms,verdana,arial,sans-serif".to_string(),
+                    text: "new".to_string(),
+                    width_px: 32.0,
+                    font_size_px: 16.0,
+                    plain_html_label: true,
+                },
+                Sample {
+                    font_key: "trebuchetms,verdana,arial,sans-serif".to_string(),
+                    text: "insert".to_string(),
+                    width_px: 48.0,
+                    font_size_px: 16.0,
+                    plain_html_label: false,
+                },
+                Sample {
+                    font_key: "trebuchetms,verdana,arial,sans-serif".to_string(),
+                    text: "mixed".to_string(),
+                    width_px: 16.0,
+                    font_size_px: 16.0,
+                    plain_html_label: true,
+                },
+                Sample {
+                    font_key: "trebuchetms,verdana,arial,sans-serif".to_string(),
+                    text: "mixed".to_string(),
+                    width_px: 48.0,
+                    font_size_px: 16.0,
+                    plain_html_label: false,
+                },
+            ],
+        );
+        let by_font = build_html_overrides_by_font(&samples_by_font, true);
+        let updated = replace_html_overrides_for_font(
+            source,
+            "trebuchetms,verdana,arial,sans-serif",
+            by_font.get("trebuchetms,verdana,arial,sans-serif").unwrap(),
+        )
+        .unwrap();
+
+        assert!(updated.contains("            ('A', 0.5),"));
+        assert!(updated.contains("            (65, 66, -0.1),"));
+        assert!(updated.contains("            (\"keep\", 1.0),"));
+        assert!(updated.contains("            (\"new\", 2.0),"));
+        assert!(!updated.contains("insert"));
+        assert!(!updated.contains("mixed"));
+        assert!(
+            updated.contains(
+                "        svg_overrides: &[\n            (\"old\", 0.5, 0.5),\n        ],"
+            )
+        );
     }
 }

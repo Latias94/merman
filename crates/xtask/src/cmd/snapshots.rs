@@ -497,12 +497,14 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
         actual_flowchart_font_metrics.display().to_string(),
         "--font-size".to_string(),
         "16".to_string(),
+        "--preserve-layout-from".to_string(),
+        expected_flowchart_font_metrics.display().to_string(),
     ])?;
     if read_text_normalized(&expected_flowchart_font_metrics)?
         != read_text_normalized(&actual_flowchart_font_metrics)?
     {
         failures.push(format!(
-            "flowchart font metrics mismatch: regenerate with `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16` ({})",
+            "flowchart font metrics mismatch: regenerate with `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16 --preserve-layout-from crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` ({})",
             expected_flowchart_font_metrics.display()
         ));
     }
