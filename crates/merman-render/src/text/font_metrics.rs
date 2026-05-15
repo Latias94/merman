@@ -20,7 +20,10 @@ struct FontMetricProfile<'a> {
     space_trigrams: &'a [(u32, u32, f64)],
     trigrams: &'a [(u32, u32, u32, f64)],
     missing_v_comma_kern_em: f64,
+    missing_t_o_kern_em: f64,
+    missing_t_r_kern_em: f64,
     missing_space_before_capital_a_em: f64,
+    missing_space_after_capital_a_before_open_paren_em: f64,
 }
 
 impl VendoredFontMetricsTextMeasurer {
@@ -38,7 +41,24 @@ impl VendoredFontMetricsTextMeasurer {
             } else {
                 0.0
             },
+            missing_t_o_kern_em: if table.font_key == FLOWCHART_DEFAULT_FONT_KEY {
+                -128.0 / 1024.0
+            } else {
+                0.0
+            },
+            missing_t_r_kern_em: if table.font_key == FLOWCHART_DEFAULT_FONT_KEY {
+                -113.0 / 1024.0
+            } else {
+                0.0
+            },
             missing_space_before_capital_a_em: if table.font_key
+                == "trebuchetms,verdana,arial,sans-serif"
+            {
+                -57.0 / 1024.0
+            } else {
+                0.0
+            },
+            missing_space_after_capital_a_before_open_paren_em: if table.font_key
                 == "trebuchetms,verdana,arial,sans-serif"
             {
                 -57.0 / 1024.0
@@ -245,6 +265,12 @@ impl VendoredFontMetricsTextMeasurer {
             // `v,`. Keep this as a narrow missing-pair fallback instead of adding literal label
             // overrides for JSON-like prose.
             return profile.missing_v_comma_kern_em;
+        }
+        if a == 'T' && b == 'o' {
+            return profile.missing_t_o_kern_em;
+        }
+        if a == 'T' && b == 'r' {
+            return profile.missing_t_r_kern_em;
         }
 
         0.0
@@ -757,6 +783,8 @@ impl VendoredFontMetricsTextMeasurer {
                             Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
                         if space_delta != 0.0 {
                             em += space_delta;
+                        } else if a == 'A' && ch == '(' {
+                            em += profile.missing_space_after_capital_a_before_open_paren_em;
                         } else if ch == 'A' && a.is_ascii_alphanumeric() {
                             // The default Mermaid stack consistently tightens a preceding word
                             // space before capital `A`. The generated table captures this for

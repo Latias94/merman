@@ -519,6 +519,32 @@ fn flowchart_html_default_font_tightens_missing_space_before_capital_a_pairs() {
 }
 
 #[test]
+fn flowchart_html_default_font_fills_missing_browser_kerning_pairs() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let a_source = measurer.measure_wrapped("A (source)", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(a_source.width, 71.796875);
+
+    let b_source = measurer.measure_wrapped("B (source)", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(b_source.width, 72.3125);
+
+    let c_source = measurer.measure_wrapped("C (source)", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(c_source.width, 72.828125);
+
+    let transform = measurer.measure_wrapped("Transform", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(transform.width, 71.375);
+
+    let top_cluster =
+        measurer.measure_wrapped("Top Cluster", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(top_cluster.width, 80.40625);
+}
+
+#[test]
 fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
