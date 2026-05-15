@@ -14,6 +14,7 @@ pub use layout::{layout_flowchart_v2, layout_flowchart_v2_typed};
 pub(crate) use label::{
     FlowchartLabelMetricsRequest, flowchart_decode_label_escapes,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+    flowchart_normalize_plain_multiline_label_for_html,
 };
 pub(crate) use node::flowchart_node_render_dimensions;
 pub(crate) use self_loop::{FlowchartSelfLoopEdgeOptions, flowchart_self_loop_helper_edges};

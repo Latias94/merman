@@ -488,6 +488,24 @@ pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {
     out
 }
 
+pub(crate) fn flowchart_normalize_plain_multiline_label_for_html(
+    label: &str,
+) -> std::borrow::Cow<'_, str> {
+    if !label.contains('\n') {
+        return std::borrow::Cow::Borrowed(label);
+    }
+
+    std::borrow::Cow::Owned(
+        label
+            .split('\n')
+            .map(str::trim)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string(),
+    )
+}
+
 pub(crate) fn flowchart_label_plain_text_for_layout(
     label: &str,
     label_type: &str,
