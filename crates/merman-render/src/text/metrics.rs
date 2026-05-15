@@ -945,6 +945,34 @@ pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
     wrap_markdown_word_lines(measurer, &parsed, style, max_width_px, wrap_mode, true)
 }
 
+fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
+    if !markdown.contains("\n\n") && !markdown.contains("\r\n\r\n") {
+        return 0;
+    }
+
+    let markdown = markdown
+        .strip_prefix('`')
+        .and_then(|s| s.strip_suffix('`'))
+        .unwrap_or(markdown)
+        .replace("\r\n", "\n");
+    let parser = pulldown_cmark::Parser::new_ext(
+        &markdown,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    );
+    let paragraph_count = parser
+        .filter(|ev| {
+            matches!(
+                ev,
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph)
+            )
+        })
+        .count();
+
+    paragraph_count.saturating_sub(1)
+}
+
 fn measure_markdown_with_flowchart_bold_deltas_impl(
     measurer: &dyn TextMeasurer,
     markdown: &str,
@@ -1110,6 +1138,11 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
     }
 
     let raw_parsed = mermaid_markdown_to_lines(markdown, true);
+    let html_paragraph_gap_lines = if wrap_mode == WrapMode::HtmlLike {
+        html_markdown_paragraph_gap_lines(markdown)
+    } else {
+        0
+    };
     let parsed = if manually_wrap_words {
         wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true)
     } else {
@@ -1211,8 +1244,8 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
 
     TextMetrics {
         width,
-        height: base.height,
-        line_count: base.line_count,
+        height: base.height + html_paragraph_gap_lines as f64 * style.font_size.max(1.0) * 1.5,
+        line_count: base.line_count + html_paragraph_gap_lines,
     }
 }
 
