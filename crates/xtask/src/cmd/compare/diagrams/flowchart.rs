@@ -2,10 +2,13 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
-    parse_root_delta_report_limit, write_root_deltas_report,
+    DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, LabelDeltaReportLimit,
+    LabelMetricDelta, RootDelta, RootDeltaReportLimit, collect_label_metric_deltas,
+    parse_label_delta_report_limit, parse_root_attrs, parse_root_delta_report_limit,
+    write_label_deltas_report, write_root_deltas_report,
 };
 use crate::svgdom;
+use regex::Regex;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
@@ -17,6 +20,8 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
+    let mut report_label: bool = false;
+    let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
     let mut text_measurer: String = "vendored".to_string();
@@ -38,10 +43,21 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 report_root = true;
                 root_report_limit = RootDeltaReportLimit::All;
             }
+            "--report-label" => report_label = true,
+            "--report-label-all" => {
+                report_label = true;
+                label_report_limit = LabelDeltaReportLimit::All;
+            }
             "--report-root-limit" => {
                 i += 1;
                 report_root = true;
                 root_report_limit = parse_root_delta_report_limit(args.get(i).map(String::as_str))?;
+            }
+            "--report-label-limit" => {
+                i += 1;
+                report_label = true;
+                label_report_limit =
+                    parse_label_delta_report_limit(args.get(i).map(String::as_str))?;
             }
             "--dom-decimals" => {
                 i += 1;
@@ -128,6 +144,12 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     );
 
     let mut root_deltas: Vec<RootDelta> = Vec::new();
+    let mut label_deltas: Vec<LabelMetricDelta> = Vec::new();
+    let flowchart_root_pin_ids = if report_label {
+        collect_flowchart_root_pin_ids()
+    } else {
+        std::collections::BTreeSet::new()
+    };
 
     let mut failures: Vec<String> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -258,6 +280,14 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
+        if report_label {
+            let root_pinned = flowchart_root_pin_ids.contains(stem);
+            match collect_label_metric_deltas(stem, &upstream_svg, &local_svg, root_pinned) {
+                Ok(mut rows) => label_deltas.append(&mut rows),
+                Err(e) => failures.push(format!("label metric parse failed for {stem}: {e}")),
+            }
+        }
+
         if should_report_root {
             match (
                 parse_root_attrs(&upstream_svg),
@@ -343,6 +373,9 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     if should_report_root {
         write_root_deltas_report(&mut report, &mut root_deltas[..], root_report_limit);
     }
+    if report_label {
+        write_label_deltas_report(&mut report, &mut label_deltas[..], label_report_limit);
+    }
 
     if let Some(parent) = out_path.parent() {
         fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
@@ -360,4 +393,22 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
     }
+}
+
+fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
+    let path = crate::cmd::workspace_root()
+        .join("crates")
+        .join("merman-render")
+        .join("src")
+        .join("generated")
+        .join("flowchart_root_overrides_11_12_2.rs");
+    let Ok(src) = fs::read_to_string(path) else {
+        return std::collections::BTreeSet::new();
+    };
+    let Ok(re) = Regex::new(r#""((?:stress|upstream)_[^"]+)""#) else {
+        return std::collections::BTreeSet::new();
+    };
+    re.captures_iter(&src)
+        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+        .collect()
 }
