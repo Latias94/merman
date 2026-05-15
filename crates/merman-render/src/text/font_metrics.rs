@@ -811,16 +811,13 @@ impl VendoredFontMetricsTextMeasurer {
             //
             // Intentionally *exclude* '=': upstream fixtures show tokens like `wrappingWidth=120`
             // overflowing rather than breaking at '='.
-            let is_path_like = tok.starts_with("http://")
-                || tok.starts_with("https://")
+            let is_url_like = tok.starts_with("http://") || tok.starts_with("https://");
+            let is_path_like = is_url_like
                 || tok.len() >= 24
                     && tok
                         .chars()
                         .filter(|ch| {
-                            matches!(
-                                ch,
-                                '/' | '\\' | '-' | ':' | '?' | '&' | '#' | '.' | '[' | ']'
-                            )
+                            matches!(ch, '/' | '\\' | '-' | ':' | '?' | '&' | '#' | '[' | ']')
                         })
                         .count()
                         >= 2;
@@ -828,18 +825,16 @@ impl VendoredFontMetricsTextMeasurer {
                 return vec![tok.to_string()];
             }
 
-            fn is_break_after(ch: char) -> bool {
-                matches!(
-                    ch,
-                    '/' | '-' | ':' | '?' | '&' | '#' | ')' | ']' | '}' | '.'
-                )
+            fn is_break_after(ch: char, is_url_like: bool) -> bool {
+                matches!(ch, '/' | '-' | ':' | '?' | '&' | '#' | ')' | ']' | '}')
+                    || (is_url_like && ch == '.')
             }
 
             let mut out: Vec<String> = Vec::new();
             let mut cur = String::new();
             for ch in tok.chars() {
                 cur.push(ch);
-                if is_break_after(ch) && !cur.is_empty() {
+                if is_break_after(ch, is_url_like) && !cur.is_empty() {
                     out.push(std::mem::take(&mut cur));
                 }
             }

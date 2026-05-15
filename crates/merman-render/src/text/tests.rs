@@ -599,6 +599,26 @@ fn courier_svg_edge_label_width_matches_upstream() {
 }
 
 #[test]
+fn courier_html_dotted_identifier_overflows_without_dot_wrapping() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("courier".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let metrics = measurer.measure_wrapped(
+        "SAM.CommonFA.CommonFAFinanceBudget",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(metrics.width, 326.609375);
+    assert_eq!(metrics.height, 24.0);
+    assert_eq!(metrics.line_count, 1);
+}
+
+#[test]
 fn flowchart_svg_edge_label_background_y_matches_upstream_fonts() {
     let trebuchet = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
