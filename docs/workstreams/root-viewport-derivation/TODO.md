@@ -488,9 +488,8 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   shared C1 fallback adjustment improves some labels but regresses other same-fixture labels, so
   `xtask triage-flowchart-root-pins` now reports this case as
   `defer-mojibake-font-fallback` rather than `shared-multiline-text`. The root pin remains, no
-  fixture/glyph lookup table was added, and `target/compare/flowchart_root_pin_triage_no_overrides_current.md`
-  now leaves only `layout-shape-geometry` and `layout-text-accumulation` as non-deferred Flowchart
-  buckets.
+  fixture/glyph lookup table was added, and the retained-root triage keeps this case out of the
+  ordinary shared multiline text bucket.
 - [x] Reclassify the retained Flowchart `code_flow` accumulation root without adding glyph data.
   Evidence: focused retained-root audit shows that the root right boundary is
   `flowchart-intersectRect-155`, whose label width already matches upstream, while the largest
@@ -509,12 +508,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   improves from `+2.913px` to `-0.008px`, with the boundary now consistently on
   `flowchart-n55-16` (`brace-r`). The root pin remains because the residual is a sub-1/64px SVG
   Markdown/font lattice difference, and deleting the pin still requires exact root parity.
-- [ ] Decide whether the `newshapesset5_lr_md_html_false` `-0.008px` residual is a shared SVG
-  Markdown text-lattice rule or a font-environment residual. Do not add a fixture/glyph lookup
-  table for this; only continue if a shared rule improves other default-stack SVG Markdown labels
-  without regressing retained pins. The retained icon-label, courier, mojibake, custom-font, and
-  mixed-sign default-font accumulation guards should stay pinned unless a clean shared
-  browser/font model appears.
+- [x] Reclassify the `newshapesset5_lr_md_html_false` `-0.008px` residual without adding lookup
+  data. Evidence: full retained-root triage now emits a narrow `defer-subpixel-text-lattice`
+  bucket for
+  `upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086`: root
+  max-width and viewBox drift are both below `1/64px`, the boundary contributor is the same
+  `flowchart-n55-16` path on both sides, and there are no paired label delta rows. The
+  classifier also requires full viewBox width/height drift to stay below the same threshold, so
+  height-only retained pins such as the nested-subgraph outgoing-link fixtures remain
+  `root-only-layout` instead of being hidden as text-lattice noise.
+- [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
+  all-root triage: `shared-multiline-text` (3), `low-noise-text` (10),
+  `layout-shape-geometry` (9), and `root-only-layout` (2). Keep the retained icon-label,
+  courier, mojibake, custom-font, and mixed-sign default-font accumulation guards pinned unless a
+  clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

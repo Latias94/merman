@@ -2,6 +2,12 @@
 
 ## 2026-05-16
 
+- Reclassified the retained Flowchart `newshapesset5_lr_md_html_false` residual into a new
+  `defer-subpixel-text-lattice` triage bucket. The rule is deliberately narrow: root max-width
+  and full viewBox width/height drift must be below `1/64px`, the boundary contributor must match,
+  and there must be no paired label delta rows. This keeps the `-0.008px` SVG Markdown/font
+  lattice residual pinned without adding glyph data, while height-only nested-subgraph root drift
+  stays in `root-only-layout`.
 - Reclassified the retained Flowchart `upstream_docs_diagrams_flowchart_code_flow` root pin as
   mixed-sign default-font accumulation drift. Its boundary label already matches upstream, and a
   shared `break-spaces` min-content experiment improves the long function signatures while making

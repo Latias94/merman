@@ -327,10 +327,21 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   rather than adding fixture/glyph lookup data. Evidence files:
   `target/compare/flowchart_fhd12_no_overrides.md`,
   `target/compare/flowchart_fhd12_triage.md`, and
-  `target/compare/flowchart_root_pin_triage_no_overrides_current.md`. The regenerated full
-  Flowchart retained-root triage now has `25` root pins, `300` label delta rows, no removal
-  candidates, and only two non-deferred work buckets left: `layout-shape-geometry` and
-  `layout-text-accumulation`.
+  `target/compare/flowchart_root_pin_triage_no_overrides_current.md`.
+- 2026-05-16: Flowchart retained-root triage now separates root-only subpixel text-lattice noise
+  from shape geometry. The full retained-root command
+  `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --no-root-overrides --report-root-pins-only --report-root-all --report-label-root-pins-only --report-label-all --out target/compare/flowchart_root_pin_label_audit_current.md`
+  produced `56` root delta rows and `300` label delta rows; the follow-up
+  `cargo run -p xtask -- triage-flowchart-root-pins --in target/compare/flowchart_root_pin_label_audit_current.md --out target/compare/flowchart_root_pin_triage_current.md`
+  reports no removal candidates and classifies
+  `upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086` as
+  `defer-subpixel-text-lattice` (`-0.008px`, same `flowchart-n55-16` boundary, no paired label
+  delta rows). The classifier checks full viewBox width/height drift as well as max-width drift,
+  so the two nested-subgraph outgoing-link fixtures with `20px` height drift remain
+  `root-only-layout`. Current full retained Flowchart buckets are `shared-multiline-text` (3),
+  `low-noise-text` (10), `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (9),
+  `root-only-layout` (2), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
+  `defer-icon-font` (19), and `defer-font-env` (3).
 - 2026-05-15: Flowchart compare now supports focused retained-root audit rows via
   `--report-root-pins-only` and `--report-label-root-pins-only`. This keeps the label-level
   audit scoped to fixtures still covered by `flowchart_root_overrides_11_12_2.rs` instead of

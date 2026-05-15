@@ -8,6 +8,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- `xtask triage-flowchart-root-pins`: add a narrow `defer-subpixel-text-lattice` bucket for
+  retained Flowchart root pins whose max-width and full viewBox drift are both below `1/64px`,
+  boundary contributors match, and no paired label delta rows exist.
 - Sequence parity: add KaTeX/math measurement and SVG rendering for actors, messages, notes, and
   box/block labels, and wire the Sequence SVG comparer to the Node KaTeX backend.
 - Docs: add the `docs/workstreams/fearless-refactor/` workstream with roadmap, TODOs, milestones,

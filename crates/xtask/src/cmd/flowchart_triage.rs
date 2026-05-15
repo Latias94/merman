@@ -38,6 +38,7 @@ enum TriageBucket {
     SharedTextCandidate,
     SharedMultilineText,
     LowNoiseText,
+    DeferSubpixelTextLattice,
     LayoutEdgeOrder,
     LayoutShapeGeometry,
     RootOnlyLayout,
@@ -49,10 +50,11 @@ enum TriageBucket {
 }
 
 impl TriageBucket {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 12] = [
         Self::SharedTextCandidate,
         Self::SharedMultilineText,
         Self::LowNoiseText,
+        Self::DeferSubpixelTextLattice,
         Self::LayoutEdgeOrder,
         Self::LayoutShapeGeometry,
         Self::RootOnlyLayout,
@@ -68,6 +70,7 @@ impl TriageBucket {
             Self::SharedTextCandidate => "shared-text-candidate",
             Self::SharedMultilineText => "shared-multiline-text",
             Self::LowNoiseText => "low-noise-text",
+            Self::DeferSubpixelTextLattice => "defer-subpixel-text-lattice",
             Self::LayoutEdgeOrder => "layout-edge-order",
             Self::LayoutShapeGeometry => "layout-shape-geometry",
             Self::RootOnlyLayout => "root-only-layout",
@@ -450,6 +453,12 @@ fn classify_root_pin(
             format!("{edge_pairing_deltas} edgeLabel pair/order deltas; not primarily text width"),
         );
     }
+    if is_subpixel_root_text_lattice_residual(row, labels, boundary) {
+        return (
+            TriageBucket::DeferSubpixelTextLattice,
+            "root-only sub-1/64px residual with the same boundary contributor and no reported label drift; likely SVG Markdown/font lattice, so keep the pin instead of adding glyph lookup data".to_string(),
+        );
+    }
     if fixture.contains("newshapes")
         || fixture.contains("oldshapes")
         || fixture.contains("shape_alias")
@@ -518,6 +527,61 @@ fn classify_root_pin(
         TriageBucket::RootOnlyLayout,
         "no label deltas in report; layout/emitted bounds candidate".to_string(),
     )
+}
+
+fn is_subpixel_root_text_lattice_residual(
+    row: &RootRow,
+    labels: &[&LabelRow],
+    boundary: Option<&RootBoundarySummary>,
+) -> bool {
+    const SUBPIXEL_TEXT_LATTICE_PX: f64 = 1.0 / 64.0;
+
+    if !labels.is_empty()
+        || root_viewport_matches_upstream(row)
+        || row.delta.abs() > SUBPIXEL_TEXT_LATTICE_PX
+        || !viewbox_delta_within(row, SUBPIXEL_TEXT_LATTICE_PX)
+    {
+        return false;
+    }
+
+    let Some(horizontal) = boundary.and_then(RootBoundarySummary::dominant_horizontal) else {
+        return false;
+    };
+    if horizontal.delta.abs() > SUBPIXEL_TEXT_LATTICE_PX
+        || !same_boundary_contributor(&horizontal.upstream, &horizontal.local)
+    {
+        return false;
+    }
+
+    boundary
+        .and_then(RootBoundarySummary::dominant_vertical)
+        .map_or(true, |vertical| {
+            vertical.delta.abs() <= SUBPIXEL_TEXT_LATTICE_PX
+        })
+}
+
+fn same_boundary_contributor(upstream: &BoundaryContributor, local: &BoundaryContributor) -> bool {
+    upstream.element == local.element
+        && upstream.owner == local.owner
+        && upstream.class_name == local.class_name
+}
+
+fn viewbox_delta_within(row: &RootRow, threshold: f64) -> bool {
+    match (
+        parse_viewbox_size(&row.upstream_viewbox),
+        parse_viewbox_size(&row.local_viewbox),
+    ) {
+        (Some((uw, uh)), Some((lw, lh))) => {
+            (lw - uw).abs() <= threshold && (lh - uh).abs() <= threshold
+        }
+        _ => false,
+    }
+}
+
+fn parse_viewbox_size(value: &str) -> Option<(f64, f64)> {
+    let normalized = value.replace('×', "x");
+    let (w, h) = normalized.split_once('x')?;
+    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1184,6 +1248,36 @@ mod tests {
         assert_eq!(
             classify_root_pin(&shape_row, &[], None, None).0,
             TriageBucket::LayoutShapeGeometry
+        );
+
+        let subpixel_shape_row = RootRow {
+            fixture:
+                "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086"
+                    .to_string(),
+            upstream_max_width: "373.230".to_string(),
+            local_max_width: "373.222".to_string(),
+            delta: -0.008,
+            upstream_viewbox: "373.230x924.653".to_string(),
+            local_viewbox: "373.222x924.653".to_string(),
+        };
+        let boundary = right_boundary_summary(boundary_edge("flowchart-n55-16", "", -0.008));
+        assert_eq!(
+            classify_root_pin(&subpixel_shape_row, &[], None, Some(&boundary)).0,
+            TriageBucket::DeferSubpixelTextLattice
+        );
+
+        let height_only_root_drift = RootRow {
+            fixture: "upstream_cypress_flowchart_v2_spec_nested_subgraph_height".to_string(),
+            upstream_max_width: "154.922".to_string(),
+            local_max_width: "154.922".to_string(),
+            delta: 0.0,
+            upstream_viewbox: "154.922x364.000".to_string(),
+            local_viewbox: "154.922x344.000".to_string(),
+        };
+        let boundary = right_boundary_summary(boundary_edge("A", "A", 0.0));
+        assert_eq!(
+            classify_root_pin(&height_only_root_drift, &[], None, Some(&boundary)).0,
+            TriageBucket::RootOnlyLayout
         );
 
         let multiline_row = root_row("multiline");
