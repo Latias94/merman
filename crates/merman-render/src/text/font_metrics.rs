@@ -129,14 +129,40 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn lookup_char_em(entries: &[(char, f64)], default_em: f64, ch: char) -> f64 {
-        let mut lo = 0usize;
-        let mut hi = entries.len();
-        while lo < hi {
-            let mid = (lo + hi) / 2;
-            match entries[mid].0.cmp(&ch) {
-                std::cmp::Ordering::Equal => return entries[mid].1,
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
+        fn find_entry_em(entries: &[(char, f64)], ch: char) -> Option<f64> {
+            let mut lo = 0usize;
+            let mut hi = entries.len();
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                match entries[mid].0.cmp(&ch) {
+                    std::cmp::Ordering::Equal => return Some(entries[mid].1),
+                    std::cmp::Ordering::Less => lo = mid + 1,
+                    std::cmp::Ordering::Greater => hi = mid,
+                }
+            }
+            None
+        }
+
+        if let Some(em) = find_entry_em(entries, ch) {
+            return em;
+        }
+
+        // Browser-measured metric tables are generated from observed fixture text, so a table can
+        // contain one side of a mirrored ASCII punctuation pair but not the other. Use the measured
+        // counterpart before falling back to the broad average; this keeps ordinary punctuation
+        // labels deterministic without adding fixture-specific width lookups.
+        let paired = match ch {
+            '(' => Some(')'),
+            ')' => Some('('),
+            '[' => Some(']'),
+            ']' => Some('['),
+            '{' => Some('}'),
+            '}' => Some('{'),
+            _ => None,
+        };
+        if let Some(other) = paired {
+            if let Some(other_em) = find_entry_em(entries, other) {
+                return other_em;
             }
         }
         if ch.is_ascii() {

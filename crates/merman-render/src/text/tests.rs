@@ -375,6 +375,29 @@ fn default_font_flowchart_html_width_overrides_match_upstream() {
 }
 
 #[test]
+fn default_font_paired_ascii_punctuation_reuses_counterpart_width() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let open_brace = measurer.measure_wrapped("{", &style, None, WrapMode::HtmlLike);
+    let close_brace = measurer.measure_wrapped("}", &style, None, WrapMode::HtmlLike);
+    assert_eq!(open_brace.width, close_brace.width);
+    assert_eq!(open_brace.width, 5.875);
+
+    let bracketed = measurer.measure_wrapped(
+        "brackets: [x] {y} (z)",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(bracketed.width, 140.1875);
+}
+
+#[test]
 fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let default_style = TextStyle {
