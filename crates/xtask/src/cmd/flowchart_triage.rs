@@ -252,6 +252,7 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
     );
     out.push_str(&format!("- root pins: {}\n", root_rows.len()));
     out.push_str(&format!("- label delta rows: {}\n\n", label_rows.len()));
+    push_removal_candidates_section(&mut out, root_rows);
 
     for bucket in TriageBucket::ALL {
         let Some(items) = buckets.get_mut(&bucket) else {
@@ -298,6 +299,37 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
     }
 
     out
+}
+
+fn push_removal_candidates_section(out: &mut String, root_rows: &[RootRow]) {
+    let mut removable = root_rows
+        .iter()
+        .filter(|row| root_viewport_matches_upstream(row))
+        .collect::<Vec<_>>();
+    removable.sort_by(|a, b| a.fixture.cmp(&b.fixture));
+
+    out.push_str("## root-pin-removal-candidates\n\n");
+    out.push_str(
+        "Candidates require no-overrides root parity: upstream/local max-width and viewBox must both match in the audit report.\n\n",
+    );
+    if removable.is_empty() {
+        out.push_str(
+            "- none; keep all current flowchart root pins until shared text/layout fixes remove the remaining root drift.\n\n",
+        );
+        return;
+    }
+
+    for row in removable {
+        out.push_str(&format!(
+            "- `{}` max-width {}; viewBox {}\n",
+            row.fixture, row.upstream_max_width, row.upstream_viewbox
+        ));
+    }
+    out.push('\n');
+}
+
+fn root_viewport_matches_upstream(row: &RootRow) -> bool {
+    row.upstream_max_width == row.local_max_width && row.upstream_viewbox == row.local_viewbox
 }
 
 fn read_flowchart_fixture(fixture: &str) -> Option<String> {
@@ -423,6 +455,17 @@ mod tests {
             delta: 1.0,
             upstream_viewbox: "100.000x40.000".to_string(),
             local_viewbox: "101.000x40.000".to_string(),
+        }
+    }
+
+    fn exact_root_row(fixture: &str) -> RootRow {
+        RootRow {
+            fixture: fixture.to_string(),
+            upstream_max_width: "100.000".to_string(),
+            local_max_width: "100.000".to_string(),
+            delta: 0.0,
+            upstream_viewbox: "100.000x40.000".to_string(),
+            local_viewbox: "100.000x40.000".to_string(),
         }
     }
 
@@ -597,5 +640,38 @@ mod tests {
             classify_root_pin(&root_only, &[], None).0,
             TriageBucket::RootOnlyLayout
         );
+    }
+
+    #[test]
+    fn triage_report_lists_only_exact_root_viewport_removal_candidates() {
+        let exact = exact_root_row("ready_to_delete");
+        let width_only = RootRow {
+            fixture: "width_only".to_string(),
+            upstream_max_width: "100.000".to_string(),
+            local_max_width: "100.000".to_string(),
+            delta: 0.0,
+            upstream_viewbox: "100.000x40.000".to_string(),
+            local_viewbox: "100.000x39.000".to_string(),
+        };
+        let report = render_triage_report(
+            Path::new("target/compare/audit.md"),
+            &[exact, width_only],
+            &[],
+        );
+
+        assert!(report.contains("## root-pin-removal-candidates"));
+        assert!(report.contains("`ready_to_delete` max-width 100.000; viewBox 100.000x40.000"));
+        assert!(!report.contains("`width_only` max-width"));
+    }
+
+    #[test]
+    fn triage_report_says_none_when_no_root_pin_is_exactly_matched() {
+        let report = render_triage_report(
+            Path::new("target/compare/audit.md"),
+            &[root_row("drift")],
+            &[],
+        );
+
+        assert!(report.contains("- none; keep all current flowchart root pins"));
     }
 }

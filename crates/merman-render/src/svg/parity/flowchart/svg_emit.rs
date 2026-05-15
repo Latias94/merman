@@ -1355,14 +1355,16 @@ fn render_flowchart_v2_svg_with_config_inner(
     let mut max_w_attr = fmt_max_width_px(vb_w);
     let mut w_attr = fmt_string(vb_w);
     let mut h_attr = fmt_string(vb_h);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override,
-    );
+    if options.apply_root_overrides {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override,
+        );
+    }
 
     let acc_title = model
         .acc_title

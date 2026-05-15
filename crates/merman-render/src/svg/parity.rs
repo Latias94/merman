@@ -98,6 +98,8 @@ pub struct SvgRenderOptions {
     pub now_ms_override: Option<i64>,
     /// Optional math renderer for `$$...$$` style labels.
     pub math_renderer: Option<std::sync::Arc<dyn MathRenderer + Send + Sync>>,
+    /// When false, renderers that support root viewport override lookup emit computed bounds.
+    pub apply_root_overrides: bool,
 }
 
 impl Default for SvgRenderOptions {
@@ -113,6 +115,7 @@ impl Default for SvgRenderOptions {
             include_edge_id_labels: false,
             now_ms_override: None,
             math_renderer: None,
+            apply_root_overrides: true,
         }
     }
 }

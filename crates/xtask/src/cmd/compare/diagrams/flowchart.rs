@@ -27,6 +27,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
     let mut text_measurer: String = "vendored".to_string();
+    let mut apply_root_overrides: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -87,6 +88,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
             }
+            "--no-root-overrides" => apply_root_overrides = false,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -142,7 +144,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
         dom_mode,
         dom_decimals,
         text_measurer,
@@ -150,6 +152,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             "node-katex"
         } else {
             "none"
+        },
+        if apply_root_overrides {
+            "enabled"
+        } else {
+            "disabled"
         },
         if report_root_pins_only {
             "root-pins-only"
@@ -280,6 +287,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
             math_renderer: flowchart_math_renderer.clone(),
+            apply_root_overrides,
             ..Default::default()
         };
 
