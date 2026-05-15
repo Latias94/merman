@@ -37,7 +37,7 @@ struct LabelRow {
 enum TriageBucket {
     SharedTextCandidate,
     SharedMultilineText,
-    LowNoiseText,
+    DeferLowNoiseTextLattice,
     DeferSubpixelTextLattice,
     LayoutEdgeOrder,
     LayoutShapeGeometry,
@@ -53,7 +53,7 @@ impl TriageBucket {
     const ALL: [Self; 12] = [
         Self::SharedTextCandidate,
         Self::SharedMultilineText,
-        Self::LowNoiseText,
+        Self::DeferLowNoiseTextLattice,
         Self::DeferSubpixelTextLattice,
         Self::LayoutEdgeOrder,
         Self::LayoutShapeGeometry,
@@ -69,7 +69,7 @@ impl TriageBucket {
         match self {
             Self::SharedTextCandidate => "shared-text-candidate",
             Self::SharedMultilineText => "shared-multiline-text",
-            Self::LowNoiseText => "low-noise-text",
+            Self::DeferLowNoiseTextLattice => "defer-low-noise-text-lattice",
             Self::DeferSubpixelTextLattice => "defer-subpixel-text-lattice",
             Self::LayoutEdgeOrder => "layout-edge-order",
             Self::LayoutShapeGeometry => "layout-shape-geometry",
@@ -513,8 +513,8 @@ fn classify_root_pin(
     }
     if !labels.is_empty() && max_label_delta <= 0.25 {
         return (
-            TriageBucket::LowNoiseText,
-            "only subpixel plain text deltas; validate before changing metrics".to_string(),
+            TriageBucket::DeferLowNoiseTextLattice,
+            "only subpixel plain/default-stack text deltas; browser probes match upstream while vendored drift is mixed-sign lattice noise, so keep the pin instead of adding lookup data".to_string(),
         );
     }
     if !labels.is_empty() {
@@ -1307,7 +1307,7 @@ mod tests {
         )];
         assert_eq!(
             classify_root_pin(&low_noise_row, &[&low_noise[0]], None, None).0,
-            TriageBucket::LowNoiseText
+            TriageBucket::DeferLowNoiseTextLattice
         );
 
         let shared_row = root_row("shared_text");

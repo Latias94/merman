@@ -10,6 +10,10 @@
   `168.0x72.0`, focused disabled-root `parity-root` checks pass, and those three Flowchart root
   pins were deleted. Full retained-root triage now reports `53` root pins and no
   `shared-multiline-text` bucket.
+- Reclassified the retained Flowchart `low-noise-text` bucket as
+  `defer-low-noise-text-lattice`. Browser probes match upstream for the sampled labels, but the
+  vendored model has mixed-sign 1/64px lattice drift; widening the tiny-pair rule would regress
+  other labels, so the ten roots stay pinned without adding lookup data.
 - Reclassified the retained Flowchart `newshapesset5_lr_md_html_false` residual into a new
   `defer-subpixel-text-lattice` triage bucket. The rule is deliberately narrow: root max-width
   and full viewBox width/height drift must be below `1/64px`, the boundary contributor must match,

@@ -528,8 +528,8 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   retained-root triage now reports `53` root pins, `297` label delta rows, no removal candidates,
   and no `shared-multiline-text` bucket.
 - [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `low-noise-text` (10), `layout-shape-geometry` (9), and `root-only-layout`
-  (2). Keep the retained icon-label, courier, mojibake, custom-font, and mixed-sign default-font
+  all-root triage: `layout-shape-geometry` (9) and `root-only-layout` (2). Keep the retained
+  low-noise text-lattice, icon-label, courier, mojibake, custom-font, and mixed-sign default-font
   accumulation guards pinned unless a clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox

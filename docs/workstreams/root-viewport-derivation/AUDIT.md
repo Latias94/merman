@@ -351,10 +351,17 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `upstream_html_demos_flowchart_flowchart_046`, and
   `upstream_html_demos_flowchart_graph_003`, so their Flowchart root pins were deleted. The full
   retained-root audit now produces `53` root delta rows and `297` label delta rows; triage reports
-  no removal candidates and current buckets `low-noise-text` (10),
+  no removal candidates and current buckets `defer-low-noise-text-lattice` (10),
   `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (9), `root-only-layout` (2),
   `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
   `defer-font-env` (3).
+- 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
+  `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
+  (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
+  `This is the (text) in the box`, and related labels) match upstream widths exactly, while the
+  vendored model drifts by mixed signs on the 1/64px lattice. A broad tiny-pair suppression
+  experiment improved some narrow labels but regressed already-too-wide labels, so this bucket is
+  documented as low-value DOM/font lattice noise rather than a clean shared metric rule.
 - 2026-05-15: Flowchart compare now supports focused retained-root audit rows via
   `--report-root-pins-only` and `--report-label-root-pins-only`. This keeps the label-level
   audit scoped to fixtures still covered by `flowchart_root_overrides_11_12_2.rs` instead of
