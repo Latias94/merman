@@ -549,10 +549,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Flowchart entries. The full retained-root triage now reports `49` root pins, `297` label delta
   rows, no removal candidates, `defer-low-noise-text-lattice` (16), and
   `layout-shape-geometry` (1).
-- [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `layout-shape-geometry` (1). Keep the retained low-noise text-lattice,
-  icon-label, courier, mojibake, custom-font, and mixed-sign default-font accumulation guards
-  pinned unless a clean shared browser/font model appears.
+- [x] Extend Flowchart retained-root label audit to cover SVG `<text>/<tspan>` labels for
+  `htmlLabels:false`. Evidence: label reports now include emitted SVG label-container geometry,
+  and focused audit for
+  `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038` shows four
+  three-line SVG Markdown text/container deltas (`-0.023px`, `-0.023px`, `-0.008px`,
+  `-0.008px`) explaining the retained `-0.060px` root drift. The full retained-root triage now
+  reports `49` root pins, `301` label delta rows, no removal candidates,
+  `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (2), and no
+  `layout-shape-geometry` bucket.
+- [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
+  the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
+  mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
+  remaining retained pins.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

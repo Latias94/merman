@@ -2,6 +2,17 @@
 
 ## 2026-05-16
 
+- Extended Flowchart retained-root label audit to include `htmlLabels:false` SVG `<text>/<tspan>`
+  labels by reporting emitted label-container geometry instead of estimating text width from
+  strings. The former non-deferred
+  `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038` case now reports
+  four SVG Markdown text/container label deltas (`-0.023px`, `-0.023px`, `-0.008px`, `-0.008px`)
+  that explain the `-0.060px` root drift, so triage keeps the root pin in
+  `defer-subpixel-text-lattice` without adding fixture/glyph lookup data. Full retained-root
+  triage now reports `49` root pins, `301` label delta rows, no removal candidates,
+  `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (2),
+  `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
+  `defer-font-env` (3); there are no remaining non-deferred Flowchart buckets.
 - Deleted the now-derived Flowchart `newshapesset3_lr_allpairs_067` root pin after a focused
   disabled-root `parity-root` check matched without the generated override. Flowchart root
   overrides are now `43`, total root overrides are now `310`, and the full retained-root audit now

@@ -454,10 +454,12 @@ fn classify_root_pin(
         );
     }
     if is_subpixel_root_text_lattice_residual(row, labels, boundary) {
-        return (
-            TriageBucket::DeferSubpixelTextLattice,
-            "root-only sub-1/64px residual with the same boundary contributor and no reported label drift; likely SVG Markdown/font lattice, so keep the pin instead of adding glyph lookup data".to_string(),
-        );
+        let reason = if labels.is_empty() {
+            "root-only sub-1/64px residual with the same boundary contributor and no reported label drift; likely SVG Markdown/font lattice, so keep the pin instead of adding glyph lookup data"
+        } else {
+            "subpixel residual with matching SVG text/container label drift and the same boundary contributor; likely SVG Markdown/font lattice, so keep the pin instead of adding glyph lookup data"
+        };
+        return (TriageBucket::DeferSubpixelTextLattice, reason.to_string());
     }
     if fixture.contains("newshapes")
         || fixture.contains("oldshapes")
@@ -538,18 +540,32 @@ fn is_subpixel_root_text_lattice_residual(
 ) -> bool {
     const SUBPIXEL_TEXT_LATTICE_PX: f64 = 1.0 / 64.0;
 
-    if !labels.is_empty()
-        || root_viewport_matches_upstream(row)
-        || row.delta.abs() > SUBPIXEL_TEXT_LATTICE_PX
-        || !viewbox_delta_within(row, SUBPIXEL_TEXT_LATTICE_PX)
-    {
+    if root_viewport_matches_upstream(row) {
+        return false;
+    }
+    let svg_text_label_lattice = !labels.is_empty()
+        && labels.iter().all(|label| {
+            label.markup.contains("svgText")
+                && label.delta_w.abs() <= SUBPIXEL_TEXT_LATTICE_PX * 2.0
+                && label.delta_h.abs() <= SUBPIXEL_TEXT_LATTICE_PX
+        });
+    if !labels.is_empty() && !svg_text_label_lattice {
+        return false;
+    }
+    let accumulated_label_width_delta = labels.iter().map(|label| label.delta_w.abs()).sum::<f64>();
+    let allowed_root_delta = if svg_text_label_lattice {
+        accumulated_label_width_delta + SUBPIXEL_TEXT_LATTICE_PX
+    } else {
+        SUBPIXEL_TEXT_LATTICE_PX
+    };
+    if row.delta.abs() > allowed_root_delta || !viewbox_delta_within(row, allowed_root_delta) {
         return false;
     }
 
     let Some(horizontal) = boundary.and_then(RootBoundarySummary::dominant_horizontal) else {
         return false;
     };
-    if horizontal.delta.abs() > SUBPIXEL_TEXT_LATTICE_PX
+    if horizontal.delta.abs() > allowed_root_delta
         || !same_boundary_contributor(&horizontal.upstream, &horizontal.local)
     {
         return false;
@@ -557,9 +573,7 @@ fn is_subpixel_root_text_lattice_residual(
 
     boundary
         .and_then(RootBoundarySummary::dominant_vertical)
-        .map_or(true, |vertical| {
-            vertical.delta.abs() <= SUBPIXEL_TEXT_LATTICE_PX
-        })
+        .map_or(true, |vertical| vertical.delta.abs() <= allowed_root_delta)
 }
 
 fn same_boundary_contributor(upstream: &BoundaryContributor, local: &BoundaryContributor) -> bool {
@@ -1285,6 +1299,70 @@ mod tests {
         let boundary = right_boundary_summary(boundary_edge("flowchart-n55-16", "", -0.008));
         assert_eq!(
             classify_root_pin(&subpixel_shape_row, &[], None, Some(&boundary)).0,
+            TriageBucket::DeferSubpixelTextLattice
+        );
+
+        let subpixel_svg_text_shape_row = RootRow {
+            fixture: "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038"
+                .to_string(),
+            upstream_max_width: "1377.200".to_string(),
+            local_max_width: "1377.140".to_string(),
+            delta: -0.060,
+            upstream_viewbox: "1377.199x199.200".to_string(),
+            local_viewbox: "1377.137x199.200".to_string(),
+        };
+        let subpixel_svg_labels = [
+            label_row(
+                "nodeLabel",
+                "272.934x69.200",
+                "272.911x69.200",
+                -0.023,
+                0.0,
+                r"This is bold\nand <strong> strong\n</strong> for lean-r shape",
+                "svgText:3lines weight:bold",
+            ),
+            label_row(
+                "nodeLabel",
+                "271.434x69.200",
+                "271.411x69.200",
+                -0.023,
+                0.0,
+                r"This is bold\nand <strong> strong\n</strong> for lean-l shape",
+                "svgText:3lines weight:bold",
+            ),
+            label_row(
+                "nodeLabel",
+                "302.341x84.200",
+                "302.333x84.200",
+                -0.008,
+                0.0,
+                r"This is bold\nand <strong> strong\n</strong> for trap-t shape",
+                "svgText:3lines weight:bold",
+            ),
+            label_row(
+                "nodeLabel",
+                "274.919x69.200",
+                "274.911x69.200",
+                -0.008,
+                0.0,
+                r"This is bold\nand <strong> strong\n</strong> for trap-b shape",
+                "svgText:3lines weight:bold",
+            ),
+        ];
+        let boundary = right_boundary_summary(boundary_edge("flowchart-n44-13", "", -0.060));
+        assert_eq!(
+            classify_root_pin(
+                &subpixel_svg_text_shape_row,
+                &[
+                    &subpixel_svg_labels[0],
+                    &subpixel_svg_labels[1],
+                    &subpixel_svg_labels[2],
+                    &subpixel_svg_labels[3],
+                ],
+                None,
+                Some(&boundary),
+            )
+            .0,
             TriageBucket::DeferSubpixelTextLattice
         );
 

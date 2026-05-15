@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
+  retained-root reports by pairing emitted label-container geometry, so the remaining
+  `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape
+  geometry.
 - Flowchart parity: render stacked-rectangle aliases from the layout bbox without double-applying
   the 5px stack offset, shift their labels with Mermaid's `multiRect.ts` offset, and apply the
   crossed-circle RoughJS root-bbox asymmetry to all aliases. This removes the retained
@@ -22,6 +26,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- `xtask triage-flowchart-root-pins`: classify accumulated subpixel SVG text/container drift as
+  `defer-subpixel-text-lattice` when small SVG text label deltas explain the retained root
+  boundary without adding fixture or glyph lookup data.
 - `xtask triage-flowchart-root-pins`: add a narrow `defer-subpixel-text-lattice` bucket for
   retained Flowchart root pins whose max-width and full viewBox drift are both below `1/64px`,
   boundary contributors match, and no paired label delta rows exist.

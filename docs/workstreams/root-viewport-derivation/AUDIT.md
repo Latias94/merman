@@ -389,6 +389,19 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (1),
   `layout-shape-geometry` (1), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
   `defer-icon-font` (19), and `defer-font-env` (3).
+- 2026-05-16: Flowchart retained-root label audit now includes `htmlLabels:false` SVG
+  `<text>/<tspan>` labels by pairing emitted label-container geometry. This removes the audit
+  blind spot for
+  `upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038`: focused audit
+  reports four three-line SVG Markdown text/container deltas (`-0.023px`, `-0.023px`, `-0.008px`,
+  `-0.008px`) and the right boundary remains the same `flowchart-n44-13` polygon contributor.
+  The residual is accumulated SVG Markdown/font lattice drift rather than a clean shape geometry
+  rule, so the root pin stays retained without fixture/glyph lookup data. The full retained-root
+  audit now produces `49` root delta rows and `301` label delta rows; triage reports no removal
+  candidates and current buckets `defer-low-noise-text-lattice` (16),
+  `defer-subpixel-text-lattice` (2), `defer-mojibake-font-fallback` (1),
+  `defer-courier-font` (8), `defer-icon-font` (19), and `defer-font-env` (3), with no remaining
+  `layout-shape-geometry` bucket.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
