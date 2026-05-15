@@ -61,6 +61,33 @@ fn flowchart_html_unicode_entity_title_width_matches_upstream() {
 }
 
 #[test]
+fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let emoji = measurer.measure_wrapped("emoji: 😀😅👍", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(emoji.width, 111.71875);
+    assert_eq!(emoji.height, 24.0);
+
+    let rtl = measurer.measure_wrapped("rtl: שלום-עולם", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(rtl.width, 95.296875);
+    assert_eq!(rtl.height, 24.0);
+
+    let cjk_hangul = measurer.measure_wrapped(
+        "中文 / 日本語 / 한글",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(cjk_hangul.width, 143.75);
+    assert_eq!(cjk_hangul.height, 24.0);
+}
+
+#[test]
 fn markdown_strong_width_matches_flowchart_table() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

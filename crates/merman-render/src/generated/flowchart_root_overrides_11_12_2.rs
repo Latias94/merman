@@ -28,9 +28,6 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 25 806.421875 796", "806.422"))
         }
         "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.75 88", "521.75")),
-        "stress_flowchart_unicode_punct_in_ids_labels_035" => {
-            Some(("0 0 824.703125 70", "824.703"))
-        }
         "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
         "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
         "stress_flowchart_icons_click_security_strict_057" => {

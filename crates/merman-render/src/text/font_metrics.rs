@@ -177,16 +177,33 @@ impl VendoredFontMetricsTextMeasurer {
             return 0.997_8;
         }
 
+        Self::lookup_non_ascii_fallback_em(default_em, ch)
+    }
+
+    fn lookup_non_ascii_fallback_em(default_em: f64, ch: char) -> f64 {
+        let code = ch as u32;
+
         // Mermaid's default font stack is `"trebuchet ms", verdana, arial, sans-serif`.
-        // In browser rendering, non-Latin glyphs (CJK/emoji) frequently fall back to a
-        // different font with much wider advances than Trebuchet's ASCII average.
-        //
-        // Our vendored metrics tables are ASCII-heavy. Without a fallback, wide glyphs can be
-        // severely under-measured, changing wrap decisions and causing SVG DOM deltas in
-        // `parity-root` mode. Model this by using a conservative full-em advance for wide
-        // characters, and 0 for combining marks.
+        // In browser rendering, non-Latin glyphs frequently fall back to script-specific fonts
+        // rather than inheriting Trebuchet's Latin average. Keep the model at Unicode block
+        // granularity: this mirrors browser fallback classes without adding per-fixture strings
+        // or glyph lookup tables.
+        if unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) == 0
+            || (0x1f3fb..=0x1f3ff).contains(&code)
+        {
+            return 0.0;
+        }
+        if (0x0590..=0x05ff).contains(&code) {
+            return 0.479_980_468_75;
+        }
+        if (0x1f300..=0x1faff).contains(&code) || (0x2600..=0x27bf).contains(&code) {
+            return 1.249_67;
+        }
+        if (0xac00..=0xd7af).contains(&code) {
+            return 0.864_257_812_5;
+        }
+
         match unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) {
-            0 => 0.0,
             2.. => 1.0,
             _ => default_em,
         }
