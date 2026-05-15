@@ -355,6 +355,17 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (9), `root-only-layout` (2),
   `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
   `defer-font-env` (3).
+- 2026-05-16: Flowchart `root-only-layout` outgoing-links-4 drift is now derived without a
+  fixture/glyph lookup. The rendered SVG already emitted empty subgraph `B` as an ordinary node,
+  but the root viewBox bounds skipped layout nodes absent from `node_dom_index`; including empty
+  subgraph-as-node rectangles restores the missing top 20px. Focused disabled-root `parity-root`
+  checks now match upstream for
+  `upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015` and
+  `_016`, so both root pins were deleted. The full retained-root audit now produces `51` root
+  delta rows and `297` label delta rows; triage reports no removal candidates and current buckets
+  `defer-low-noise-text-lattice` (10), `defer-subpixel-text-lattice` (1),
+  `layout-shape-geometry` (9), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
+  `defer-icon-font` (19), and `defer-font-env` (3).
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

@@ -2,6 +2,13 @@
 
 ## 2026-05-16
 
+- Derived the retained Flowchart `root-only-layout` outgoing-links-4 pair by including empty
+  subgraph-as-node rectangles in the computed root viewBox bounds. Focused disabled-root
+  `parity-root` checks now match the `154.921875x364` upstream viewBox for
+  `upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_{015,016}`,
+  so both root pins were deleted. Full retained-root triage now reports `51` root pins and no
+  `root-only-layout` bucket; the only remaining non-deferred bucket is
+  `layout-shape-geometry` (9).
 - Derived the retained Flowchart shared multiline HTML text bucket without adding fixture/glyph
   lookup data. The vendored font measurer now keeps tiny same-glyph DOM-lattice residuals from
   generated two-character samples from accumulating across every overlapping pair in long repeated

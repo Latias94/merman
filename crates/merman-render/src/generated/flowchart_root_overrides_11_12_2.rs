@@ -62,9 +62,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
         }
-        "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
-            Some(("0 0 154.921875 364", "154.922"))
-        }
         "upstream_html_demos_flowchart_flowchart_010"
         | "upstream_html_demos_flowchart_flowchart_049" => {
             Some(("0 0 2004.41015625 1046", "2004.41"))
@@ -105,9 +102,6 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_cypress_flowchart_spec_8_should_render_labels_with_numbers_at_the_start_008" => {
             Some(("0 0 177.625 140", "177.625"))
-        }
-        "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016" => {
-            Some(("0 0 154.921875 364", "154.922"))
         }
         "upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_allpairs_067" => Some((
             "-0.0100250244140625 0 1274.9244384765625 300.7861328125",

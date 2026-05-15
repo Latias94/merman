@@ -527,10 +527,17 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_html_demos_flowchart_graph_003`, so those three root pins were deleted. The full
   retained-root triage now reports `53` root pins, `297` label delta rows, no removal candidates,
   and no `shared-multiline-text` bucket.
+- [x] Derive the retained Flowchart `root-only-layout` outgoing-links-4 root pins without adding
+  lookup data. Evidence: empty subgraphs that Mermaid emits as ordinary nodes are now included in
+  the root viewBox bounds, so focused disabled-root `parity-root` checks match the
+  `154.921875x364` upstream viewBox for
+  `upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_{015,016}`.
+  Both root pins were deleted. The full retained-root triage now reports `51` root pins, `297`
+  label delta rows, no removal candidates, and no `root-only-layout` bucket.
 - [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `layout-shape-geometry` (9) and `root-only-layout` (2). Keep the retained
-  low-noise text-lattice, icon-label, courier, mojibake, custom-font, and mixed-sign default-font
-  accumulation guards pinned unless a clean shared browser/font model appears.
+  all-root triage: `layout-shape-geometry` (9). Keep the retained low-noise text-lattice,
+  icon-label, courier, mojibake, custom-font, and mixed-sign default-font accumulation guards
+  pinned unless a clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

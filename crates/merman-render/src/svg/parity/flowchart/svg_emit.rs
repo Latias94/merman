@@ -663,13 +663,20 @@ fn render_flowchart_v2_svg_with_config_inner(
         }
 
         for n in &layout.nodes {
+            let is_empty_subgraph_node = ctx
+                .subgraphs_by_id
+                .get(n.id.as_str())
+                .is_some_and(|sg| sg.nodes.is_empty());
             let root = if n.is_cluster && ctx.recursive_clusters.contains(n.id.as_str()) {
                 Some(n.id.as_str())
             } else {
                 effective_parent_for_id(&n.id)
             };
             let y_off = y_offset_for_root(root);
-            if n.is_cluster || ctx.node_dom_index.contains_key(n.id.as_str()) {
+            if n.is_cluster
+                || ctx.node_dom_index.contains_key(n.id.as_str())
+                || is_empty_subgraph_node
+            {
                 let mut left_hw = n.width / 2.0;
                 let mut right_hw = left_hw;
                 let mut top_hh = n.height / 2.0;

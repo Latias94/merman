@@ -6,6 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Changed
+
+- Flowchart parity: include empty subgraph-as-node rectangles in computed root viewBox bounds for
+  nested-root diagrams, removing the two retained outgoing-links-4 root viewport pins without
+  adding fixture or glyph lookup data.
+
 ### Added
 
 - `xtask triage-flowchart-root-pins`: add a narrow `defer-subpixel-text-lattice` bucket for
