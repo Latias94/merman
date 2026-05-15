@@ -481,6 +481,30 @@ impl VendoredFontMetricsTextMeasurer {
         (l + r).max(0.0)
     }
 
+    fn line_svg_title_bbox_extents_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+    ) -> (f64, f64) {
+        let profile = Self::metric_profile(table);
+        let t = text.trim_end();
+        if t.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        // Flowchart titles are emitted as a centered single `<text>` node. The final upstream
+        // root bbox behaves as a symmetric title advance, while the generic SVG override table
+        // captures simple-text probes with per-edge overhang. Keep title measurement separate so
+        // those simple-text asymmetries do not force fixture root viewport pins.
+        let advance_px = if let Some(em) = Self::lookup_html_override_em(table.html_overrides, t) {
+            em * font_size
+        } else {
+            Self::line_width_px(profile, t, false, font_size) * table.svg_scale
+        };
+        let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
+        (half, half)
+    }
+
     fn split_token_to_svg_bbox_width_px(
         table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
         tok: &str,
@@ -1274,7 +1298,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         let mut left: f64 = 0.0;
         let mut right: f64 = 0.0;
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-            let (l, r) = Self::line_svg_bbox_extents_px_single_run(table, &line, font_size);
+            let (l, r) = Self::line_svg_title_bbox_extents_px(table, &line, font_size);
             left = left.max(l);
             right = right.max(r);
         }

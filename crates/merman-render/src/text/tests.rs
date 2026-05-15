@@ -676,6 +676,24 @@ fn flowchart_svg_width_uses_override_for_pruned_literals() {
 }
 
 #[test]
+fn flowchart_title_bbox_uses_symmetric_shared_advance() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 18.0,
+        font_weight: None,
+    };
+
+    let (left, right) = measurer.measure_svg_title_bbox_x("Simple flowchart", &style);
+    assert_eq!(left, 68.3359375);
+    assert_eq!(right, 68.3359375);
+    assert_eq!(
+        measurer.measure_svg_simple_text_bbox_width_px("Simple flowchart", &style),
+        137.5244140625
+    );
+}
+
+#[test]
 fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

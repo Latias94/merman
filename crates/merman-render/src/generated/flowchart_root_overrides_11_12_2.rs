@@ -123,12 +123,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_spec_8_should_render_labels_with_numbers_at_the_start_008" => {
             Some(("0 0 177.625 140", "177.625"))
         }
-        "upstream_cypress_flowchart_v2_spec_1433_should_render_a_titled_flowchart_with_titletopmargin_set_to_040" => {
-            Some(("-33.6171875 -35 152.671875 209", "152.672"))
-        }
-        "upstream_cypress_flowchart_v2_spec_3258_should_render_subgraphs_with_main_graph_nodespacing_and_ran_046" => {
-            Some(("-66.3203125 -50 406.09375 196", "406.094"))
-        }
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016" => {
             Some(("0 0 154.921875 364", "154.922"))
         }
@@ -166,57 +160,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
             Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
         }
-        "upstream_flow_vertice_chaining_amp_to_single_spec" => {
-            Some(("-53.9921875 -50 312.484375 224", "312.484"))
-        }
-        "upstream_flowchart_v2_arrows_double_dotted_text_spec" => {
-            Some(("-149.5 -50 384.4375 248", "384.438"))
-        }
-        "upstream_flowchart_v2_arrows_double_point_spec" => {
-            Some(("-103.765625 -50 292.96875 224", "292.969"))
-        }
-        "upstream_flowchart_v2_arrows_double_point_text_spec" => {
-            Some(("-143.4921875 -50 372.421875 248", "372.422"))
-        }
-        "upstream_flowchart_v2_arrows_double_thick_spec" => {
-            Some(("-102.9140625 -50 291.265625 224", "291.266"))
-        }
-        "upstream_flowchart_v2_arrows_graph_direction_caret_spec" => {
-            Some(("-127.8046875 -50 341.046875 224", "341.047"))
-        }
-        "upstream_flowchart_v2_arrows_graph_direction_gt_spec" => {
-            Some(("-68.2734375 -50 341.046875 120", "341.047"))
-        }
-        "upstream_flowchart_v2_arrows_graph_direction_lt_spec" => {
-            Some(("-79.4375 -50 363.375 120", "363.375"))
-        }
-        "upstream_flowchart_v2_lines_edge_id_curve_without_overriding_default_spec" => {
-            Some(("-123.890625 -50 452.421875 224", "452.422"))
-        }
-        "upstream_flowchart_v2_lines_linkstyle_multi_numbered_interpolate_spec" => {
-            Some(("-110.6015625 -50 425.84375 224", "425.844"))
-        }
-        "upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_spec" => {
-            Some(("-86.1171875 -50 376.875 224", "376.875"))
-        }
-        "upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_with_style_spec" => {
-            Some(("-128.5 -50 461.640625 224", "461.641"))
-        }
-        "upstream_flowchart_v2_lines_stroke_dotted_spec" => {
-            Some(("-64.5703125 -50 214.578125 224", "214.578"))
-        }
-        "upstream_flowchart_v2_lines_stroke_thick_spec" => {
-            Some(("-57.71875 -50 200.875 224", "200.875"))
-        }
-        "upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_main_graph_spec" => {
-            Some(("-66.3203125 -50 406.09375 196", "406.094"))
-        }
-        "upstream_flowchart_v2_subgraph_numeric_id_spec" => {
-            Some(("-96.1875 -50 408.453125 298", "408.453"))
-        }
-        "upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec" => {
-            Some(("-33.6171875 -35 152.671875 209", "152.672"))
-        }
         "upstream_html_demos_flowchart_flowchart_004"
         | "upstream_html_demos_flowchart_flowchart_046" => Some(("0 0 417 646", "417")),
         "upstream_html_demos_flowchart_flowchart_008"
@@ -233,9 +176,6 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 0.000003814697265625 769.890625 341.0105285644531",
             "769.891",
         )),
-        "upstream_html_demos_flowchart_flowchart_063" => {
-            Some(("-98.8515625 -50 406.09375 196", "406.094"))
-        }
         "upstream_html_demos_flowchart_graph_003" => Some(("0 -50 417 696", "417")),
         "upstream_html_demos_flowchart_graph_021" => Some(("0 0 953.6875 257", "953.688")),
         "upstream_pkgtests_flow_singlenode_spec_010" => Some(("0 0 438.859375 70", "438.859")),
