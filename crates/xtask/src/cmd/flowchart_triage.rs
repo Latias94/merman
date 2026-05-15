@@ -473,6 +473,16 @@ fn classify_root_pin(
             && max_label_delta > root_delta * 4.0
             && !owner_has_reported_label_delta
         {
+            if has_mixed_sign_label_width_drift(labels, 1.0) {
+                return (
+                    TriageBucket::DeferFontEnv,
+                    format!(
+                        "root {} boundary is `{}` and has no reported label drift, while other default-stack labels have mixed positive/negative width drift; likely accumulated browser/font shaping rather than a clean shared metric rule",
+                        edge.side.title(),
+                        edge.owner_summary()
+                    ),
+                );
+            }
             return (
                 TriageBucket::LayoutTextAccumulation,
                 format!(
@@ -937,6 +947,12 @@ fn boundary_edge_matches_label_delta(edge: &BoundarySideDelta, labels: &[&LabelR
         .any(|label| normalize_report_text(&label.text) == boundary_text)
 }
 
+fn has_mixed_sign_label_width_drift(labels: &[&LabelRow], threshold: f64) -> bool {
+    let has_negative = labels.iter().any(|label| label.delta_w <= -threshold);
+    let has_positive = labels.iter().any(|label| label.delta_w >= threshold);
+    has_negative && has_positive
+}
+
 fn normalize_report_text(s: &str) -> String {
     s.replace("\\n", "\n")
         .split_whitespace()
@@ -1023,6 +1039,36 @@ mod tests {
             delta_h,
             text: text.to_string(),
             markup: markup.to_string(),
+        }
+    }
+
+    fn boundary_edge(owner: &str, text: &str, delta: f64) -> BoundarySideDelta {
+        let upstream = BoundaryContributor {
+            element: "rect".to_string(),
+            owner: owner.to_string(),
+            class_name: "node default".to_string(),
+            text: text.to_string(),
+            left: 0.0,
+            top: 0.0,
+            right: 100.0,
+            bottom: 24.0,
+        };
+        let mut local = upstream.clone();
+        local.right += delta;
+        BoundarySideDelta {
+            side: BoundarySide::Right,
+            upstream,
+            local,
+            delta,
+        }
+    }
+
+    fn right_boundary_summary(edge: BoundarySideDelta) -> RootBoundarySummary {
+        RootBoundarySummary {
+            left: None,
+            right: Some(edge),
+            top: None,
+            bottom: None,
         }
     }
 
@@ -1190,6 +1236,78 @@ mod tests {
             classify_root_pin(&root_only, &[], None, None).0,
             TriageBucket::RootOnlyLayout
         );
+    }
+
+    #[test]
+    fn mixed_sign_accumulated_default_text_drift_is_deferred_font_env() {
+        let row = root_row("default_font_accumulation");
+        let labels = [
+            label_row(
+                "nodeLabel",
+                "210.000x48.000",
+                "205.000x48.000",
+                -5.0,
+                0.0,
+                "large negative drift",
+                "",
+            ),
+            label_row(
+                "nodeLabel",
+                "150.000x48.000",
+                "153.000x48.000",
+                3.0,
+                0.0,
+                "large positive drift",
+                "br",
+            ),
+        ];
+        let boundary = right_boundary_summary(boundary_edge(
+            "flowchart-boundary",
+            "boundary label with no reported drift",
+            -0.6,
+        ));
+
+        let (bucket, reason) =
+            classify_root_pin(&row, &[&labels[0], &labels[1]], None, Some(&boundary));
+
+        assert_eq!(bucket, TriageBucket::DeferFontEnv);
+        assert!(reason.contains("mixed positive/negative width drift"));
+    }
+
+    #[test]
+    fn one_direction_accumulated_text_drift_stays_layout_candidate() {
+        let row = root_row("shared_text_accumulation");
+        let labels = [
+            label_row(
+                "nodeLabel",
+                "210.000x48.000",
+                "205.000x48.000",
+                -5.0,
+                0.0,
+                "large negative drift",
+                "",
+            ),
+            label_row(
+                "nodeLabel",
+                "150.000x48.000",
+                "148.000x48.000",
+                -2.0,
+                0.0,
+                "another negative drift",
+                "br",
+            ),
+        ];
+        let boundary = right_boundary_summary(boundary_edge(
+            "flowchart-boundary",
+            "boundary label with no reported drift",
+            -0.6,
+        ));
+
+        let (bucket, reason) =
+            classify_root_pin(&row, &[&labels[0], &labels[1]], None, Some(&boundary));
+
+        assert_eq!(bucket, TriageBucket::LayoutTextAccumulation);
+        assert!(reason.contains("largest label deltas are elsewhere"));
     }
 
     #[test]

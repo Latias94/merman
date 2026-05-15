@@ -491,11 +491,22 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   fixture/glyph lookup table was added, and `target/compare/flowchart_root_pin_triage_no_overrides_current.md`
   now leaves only `layout-shape-geometry` and `layout-text-accumulation` as non-deferred Flowchart
   buckets.
-- [ ] Derive the next Flowchart disabled-root family after the mojibake triage pass.
-  Recommended starting point is `upstream_docs_diagrams_flowchart_code_flow`, the remaining
-  `layout-text-accumulation` bucket. The remaining icon-label, courier, mojibake, and custom-font
-  root guards should stay retained unless a clean shared browser/font model appears; a stale-pin
-  sweep alone is not expected to delete entries until one typed derivation rule lands.
+- [x] Reclassify the retained Flowchart `code_flow` accumulation root without adding glyph data.
+  Evidence: focused retained-root audit shows that the root right boundary is
+  `flowchart-intersectRect-155`, whose label width already matches upstream, while the largest
+  upstream/local label deltas live elsewhere and have mixed signs: long function signatures are
+  too narrow locally, but several default-stack multiline/plain labels are too wide. A tested
+  shared `break-spaces` min-content adjustment fixed the long signatures but regressed the root
+  max-width from `-0.500px` drift to about `+4.100px`, so the residual is treated as accumulated
+  browser/font shaping rather than a clean shared metric rule. `xtask triage-flowchart-root-pins`
+  now places this case in `defer-font-env`, keeps the root pin, and still avoids fixture/glyph
+  lookup data.
+- [ ] Derive the next Flowchart disabled-root shape family.
+  Recommended starting point is
+  `upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086`, the remaining
+  non-deferred `layout-shape-geometry` bucket. The retained icon-label, courier, mojibake,
+  custom-font, and mixed-sign default-font accumulation guards should stay pinned unless a clean
+  shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

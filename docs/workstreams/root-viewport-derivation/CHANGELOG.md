@@ -2,6 +2,12 @@
 
 ## 2026-05-16
 
+- Reclassified the retained Flowchart `upstream_docs_diagrams_flowchart_code_flow` root pin as
+  mixed-sign default-font accumulation drift. Its boundary label already matches upstream, and a
+  shared `break-spaces` min-content experiment improves the long function signatures while making
+  the overall root viewport worse, so the residual is not a clean text-rule candidate. The triage
+  report now moves this case to `defer-font-env`, keeps the root pin, and leaves the next
+  non-deferred Flowchart target on `newshapes set5` shape geometry.
 - Reclassified the retained Flowchart `fhd12` mojibake root pin as browser/font fallback drift
   rather than an ordinary shared multiline text candidate. The focused audit still has real root
   drift, but C1-control-byte fallback tuning cannot explain the same fixture consistently without
