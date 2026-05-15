@@ -68,6 +68,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   classDef-compiled border styles, letting direct `style ... border:...` nodes derive their root
   viewport without a fixture-scoped pin.
 
+### Fixed
+
+- Flowchart HTML text metrics: prevent tiny same-glyph DOM-lattice residuals from generated
+  two-character font samples from accumulating across every overlapping pair in long repeated
+  runs. This derives the shared multiline HTML label used by
+  `upstream_html_demos_flowchart_{flowchart_004,flowchart_046,graph_003}` and removes three
+  Flowchart root viewport pins without adding fixture or glyph lookup data.
+
 ### Changed
 
 - Flowchart parity: render `lined-document` from its label-box path and derive curly

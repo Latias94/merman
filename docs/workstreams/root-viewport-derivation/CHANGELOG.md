@@ -2,6 +2,14 @@
 
 ## 2026-05-16
 
+- Derived the retained Flowchart shared multiline HTML text bucket without adding fixture/glyph
+  lookup data. The vendored font measurer now keeps tiny same-glyph DOM-lattice residuals from
+  generated two-character samples from accumulating across every overlapping pair in long repeated
+  runs. The shared three-line HTML label in
+  `upstream_html_demos_flowchart_{flowchart_004,flowchart_046,graph_003}` now measures
+  `168.0x72.0`, focused disabled-root `parity-root` checks pass, and those three Flowchart root
+  pins were deleted. Full retained-root triage now reports `53` root pins and no
+  `shared-multiline-text` bucket.
 - Reclassified the retained Flowchart `newshapesset5_lr_md_html_false` residual into a new
   `defer-subpixel-text-lattice` triage bucket. The rule is deliberately narrow: root max-width
   and full viewBox width/height drift must be below `1/64px`, the boundary contributor must match,

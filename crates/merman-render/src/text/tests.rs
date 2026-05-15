@@ -402,6 +402,57 @@ fn default_font_flowchart_html_width_overrides_match_upstream() {
 }
 
 #[test]
+fn default_font_repeated_glyph_html_runs_match_browser_lattice() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    for (text, expected) in [
+        ("sss", 19.4375),
+        ("sssssssssssssssssssssss", 148.96875),
+        ("tttssssssssssssssssssssss", 161.515625),
+        ("tttsssssssssssssssssssssss", 168.0),
+        ("tttssssssssssssssssssssssss", 174.46875),
+    ] {
+        let metrics = measurer.measure_wrapped(text, &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(metrics.width, expected, "{text}");
+        assert_eq!(metrics.height, 24.0, "{text}");
+    }
+}
+
+#[test]
+fn flowchart_multiline_html_label_uses_widest_browser_line_width() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "Let me thinksssssx<br/>sssssssssssssssssssuuu<br />tttsssssssssssssssssssssss",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+        },
+    );
+
+    assert_eq!(metrics.width, 168.0);
+    assert_eq!(metrics.height, 72.0);
+    assert_eq!(metrics.line_count, 3);
+}
+
+#[test]
 fn default_font_paired_ascii_punctuation_reuses_counterpart_width() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {

@@ -517,11 +517,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   classifier also requires full viewBox width/height drift to stay below the same threshold, so
   height-only retained pins such as the nested-subgraph outgoing-link fixtures remain
   `root-only-layout` instead of being hidden as text-lattice noise.
+- [x] Derive the retained Flowchart shared multiline HTML text root pins without adding lookup
+  data. Evidence: repeated same-glyph HTML runs now suppress only tiny 1/64px DOM-lattice
+  residuals that came from generated two-character pair samples, so the shared
+  `tttsssssssssssssssssssssss` line measures `168.0px` and the three-line HTML label keeps its
+  `168.0x72.0` layout metrics. Focused disabled-root `parity-root` checks pass for
+  `upstream_html_demos_flowchart_flowchart_004`,
+  `upstream_html_demos_flowchart_flowchart_046`, and
+  `upstream_html_demos_flowchart_graph_003`, so those three root pins were deleted. The full
+  retained-root triage now reports `53` root pins, `297` label delta rows, no removal candidates,
+  and no `shared-multiline-text` bucket.
 - [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `shared-multiline-text` (3), `low-noise-text` (10),
-  `layout-shape-geometry` (9), and `root-only-layout` (2). Keep the retained icon-label,
-  courier, mojibake, custom-font, and mixed-sign default-font accumulation guards pinned unless a
-  clean shared browser/font model appears.
+  all-root triage: `low-noise-text` (10), `layout-shape-geometry` (9), and `root-only-layout`
+  (2). Keep the retained icon-label, courier, mojibake, custom-font, and mixed-sign default-font
+  accumulation guards pinned unless a clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

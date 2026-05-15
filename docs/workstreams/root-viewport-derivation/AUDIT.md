@@ -342,6 +342,19 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `low-noise-text` (10), `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (9),
   `root-only-layout` (2), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
   `defer-icon-font` (19), and `defer-font-env` (3).
+- 2026-05-16: Flowchart shared multiline HTML text drift is now derived by the shared vendored
+  font measurer instead of a fixture/glyph lookup. Chromium reports repeated same-glyph runs such
+  as `sss` and `tttsssssssssssssssssssssss` on a 1/64px DOM lattice; applying the generated
+  two-character residual to every overlapping pair made long runs too narrow. The renderer now
+  treats only those tiny same-glyph residuals as per-pair-cell lattice noise. Focused disabled-root
+  `parity-root` checks pass for `upstream_html_demos_flowchart_flowchart_004`,
+  `upstream_html_demos_flowchart_flowchart_046`, and
+  `upstream_html_demos_flowchart_graph_003`, so their Flowchart root pins were deleted. The full
+  retained-root audit now produces `53` root delta rows and `297` label delta rows; triage reports
+  no removal candidates and current buckets `low-noise-text` (10),
+  `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (9), `root-only-layout` (2),
+  `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
+  `defer-font-env` (3).
 - 2026-05-15: Flowchart compare now supports focused retained-root audit rows via
   `--report-root-pins-only` and `--report-label-root-pins-only`. This keeps the label-level
   audit scoped to fixtures still covered by `flowchart_root_overrides_11_12_2.rs` instead of

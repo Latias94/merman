@@ -322,6 +322,37 @@ impl VendoredFontMetricsTextMeasurer {
         0.0
     }
 
+    fn is_tiny_lattice_residual_em(v: f64) -> bool {
+        // At Mermaid's 16px default font size, Chromium's 1/64px DOM lattice is 1/1024em.
+        // Generated two-character samples can capture that quantization as a tiny "kerning"
+        // residual. For same-glyph runs, browser layout accumulates it per glyph pair cell
+        // (`ss`, `ssss`, ...), not per overlapping pair (`ss`, `sss`, ...).
+        v.abs() <= (1.0 / 1024.0) + 1e-12
+    }
+
+    fn same_glyph_pair_kern_em(
+        profile: FontMetricProfile<'_>,
+        a: char,
+        b: char,
+        same_run_len_after: usize,
+    ) -> f64 {
+        let kern = Self::lookup_profile_kern_em(profile, a, b);
+        if a == b && Self::is_tiny_lattice_residual_em(kern) && same_run_len_after % 2 == 1 {
+            0.0
+        } else {
+            kern
+        }
+    }
+
+    fn same_glyph_trigram_em(profile: FontMetricProfile<'_>, a: char, b: char, c: char) -> f64 {
+        let delta = Self::lookup_trigram_em(profile.trigrams, a, b, c);
+        if a == b && b == c && Self::is_tiny_lattice_residual_em(delta) {
+            0.0
+        } else {
+            delta
+        }
+    }
+
     fn lookup_html_override_em(overrides: &[(&'static str, f64)], text: &str) -> Option<f64> {
         let mut lo = 0usize;
         let mut hi = overrides.len();
@@ -764,11 +795,17 @@ impl VendoredFontMetricsTextMeasurer {
         let mut em = 0.0;
         let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
+        let mut same_run_len = 0usize;
         for ch in text.chars() {
             let (ch, delta_em) = normalize_whitespace_like(ch);
+            let next_same_run_len = if prev == Some(ch) {
+                same_run_len + 1
+            } else {
+                1
+            };
             em += Self::lookup_char_em(profile.entries, profile.default_em, ch) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_profile_kern_em(profile, p, ch);
+                em += Self::same_glyph_pair_kern_em(profile, p, ch, next_same_run_len);
             }
             if bold {
                 if let Some(p) = prev {
@@ -794,11 +831,12 @@ impl VendoredFontMetricsTextMeasurer {
                         }
                     }
                 } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
-                    em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
+                    em += Self::same_glyph_trigram_em(profile, a, b, ch);
                 }
             }
             prevprev = prev;
             prev = Some(ch);
+            same_run_len = next_same_run_len;
         }
         em * font_size
     }
@@ -826,13 +864,19 @@ impl VendoredFontMetricsTextMeasurer {
         let mut em = 0.0;
         let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
+        let mut same_run_len = 0usize;
         let chars = tok.chars().collect::<Vec<_>>();
         let mut split_at = 0usize;
         for (idx, ch) in chars.iter().enumerate() {
             let (ch_norm, delta_em) = normalize_whitespace_like(*ch);
+            let next_same_run_len = if prev == Some(ch_norm) {
+                same_run_len + 1
+            } else {
+                1
+            };
             em += Self::lookup_char_em(profile.entries, profile.default_em, ch_norm) + delta_em;
             if let Some(p) = prev {
-                em += Self::lookup_profile_kern_em(profile, p, ch_norm);
+                em += Self::same_glyph_pair_kern_em(profile, p, ch_norm, next_same_run_len);
             }
             if bold {
                 if let Some(p) = prev {
@@ -842,11 +886,12 @@ impl VendoredFontMetricsTextMeasurer {
             }
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if !(a.is_whitespace() || b.is_whitespace() || ch_norm.is_whitespace()) {
-                    em += Self::lookup_trigram_em(profile.trigrams, a, b, ch_norm);
+                    em += Self::same_glyph_trigram_em(profile, a, b, ch_norm);
                 }
             }
             prevprev = prev;
             prev = Some(ch_norm);
+            same_run_len = next_same_run_len;
             if em > max_em && idx > 0 {
                 break;
             }

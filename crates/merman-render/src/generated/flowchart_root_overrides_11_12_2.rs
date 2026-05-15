@@ -122,8 +122,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
             Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
         }
-        "upstream_html_demos_flowchart_flowchart_004"
-        | "upstream_html_demos_flowchart_flowchart_046" => Some(("0 0 417 646", "417")),
         "upstream_html_demos_flowchart_flowchart_008"
         | "upstream_html_demos_flowchart_flowchart_048" => {
             Some(("0 -45 2400.640625 645", "2400.64"))
@@ -138,7 +136,6 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 0.000003814697265625 769.890625 341.0105285644531",
             "769.891",
         )),
-        "upstream_html_demos_flowchart_graph_003" => Some(("0 -50 417 696", "417")),
         "upstream_html_demos_flowchart_graph_021" => Some(("0 0 953.6875 257", "953.688")),
         "upstream_pkgtests_flow_singlenode_spec_010" => Some(("0 0 438.859375 70", "438.859")),
         _ => None,
