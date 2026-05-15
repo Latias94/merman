@@ -431,6 +431,25 @@ fn flowchart_html_wrapped_measurement_does_not_leak_other_diagram_overrides() {
 }
 
 #[test]
+fn flowchart_html_default_font_tightens_missing_space_before_capital_a_pairs() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let step = measurer.measure_wrapped("Step A", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(step.width, 45.0625);
+
+    let option = measurer.measure_wrapped("Option A", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(option.width, 61.3125);
+
+    let inner = measurer.measure_wrapped("Inner A", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(inner.width, 50.265625);
+}
+
+#[test]
 fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
@@ -446,6 +465,23 @@ fn flowchart_svg_cluster_title_precise_width_matches_upstream_wrapped_text() {
         Some(200.0),
     );
     assert_eq!(width, 186.90625);
+}
+
+#[test]
+fn flowchart_html_subgraph_title_punctuation_wraps_at_spaces_like_upstream() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let title = "Title: with punctuation (a/b/c) + dashes - and spaces";
+    let metrics = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::HtmlLike);
+
+    assert_eq!(metrics.width, 200.0);
+    assert_eq!(metrics.height, 72.0);
+    assert_eq!(metrics.line_count, 3);
 }
 
 #[test]

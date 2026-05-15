@@ -19,6 +19,7 @@ struct FontMetricProfile<'a> {
     kern_pairs: &'a [(u32, u32, f64)],
     space_trigrams: &'a [(u32, u32, f64)],
     trigrams: &'a [(u32, u32, u32, f64)],
+    missing_space_before_capital_a_em: f64,
 }
 
 impl VendoredFontMetricsTextMeasurer {
@@ -31,6 +32,13 @@ impl VendoredFontMetricsTextMeasurer {
             kern_pairs: table.kern_pairs,
             space_trigrams: table.space_trigrams,
             trigrams: table.trigrams,
+            missing_space_before_capital_a_em: if table.font_key
+                == "trebuchetms,verdana,arial,sans-serif"
+            {
+                -57.0 / 1024.0
+            } else {
+                0.0
+            },
         }
     }
 
@@ -655,7 +663,17 @@ impl VendoredFontMetricsTextMeasurer {
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if b == ' ' {
                     if !(a.is_whitespace() || ch.is_whitespace()) {
-                        em += Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
+                        let space_delta =
+                            Self::lookup_space_trigram_em(profile.space_trigrams, a, ch);
+                        if space_delta != 0.0 {
+                            em += space_delta;
+                        } else if ch == 'A' && a.is_ascii_alphanumeric() {
+                            // The default Mermaid stack consistently tightens a preceding word
+                            // space before capital `A`. The generated table captures this for
+                            // observed pairs such as `r A`; use the same profile delta as a
+                            // fallback for missing pairs instead of carrying per-label overrides.
+                            em += profile.missing_space_before_capital_a_em;
+                        }
                     }
                 } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
                     em += Self::lookup_trigram_em(profile.trigrams, a, b, ch);
@@ -737,11 +755,29 @@ impl VendoredFontMetricsTextMeasurer {
     ) -> Vec<String> {
         fn split_html_breakable_segments(tok: &str) -> Vec<String> {
             // Browser HTML line breaking (UAX #14) provides extra break opportunities inside
-            // punctuation-heavy tokens (notably URLs). Mermaid's HTML labels rely on that
-            // behavior; model a small, stable subset here.
+            // path/URL-like tokens. Keep this deliberately narrow: short prose punctuation such
+            // as `(a/b/c)` in subgraph titles should still wrap at spaces first, matching upstream
+            // Mermaid's rendered 200px HTML title boxes.
             //
             // Intentionally *exclude* '=': upstream fixtures show tokens like `wrappingWidth=120`
             // overflowing rather than breaking at '='.
+            let is_path_like = tok.starts_with("http://")
+                || tok.starts_with("https://")
+                || tok.len() >= 24
+                    && tok
+                        .chars()
+                        .filter(|ch| {
+                            matches!(
+                                ch,
+                                '/' | '\\' | '-' | ':' | '?' | '&' | '#' | '.' | '[' | ']'
+                            )
+                        })
+                        .count()
+                        >= 2;
+            if !is_path_like {
+                return vec![tok.to_string()];
+            }
+
             fn is_break_after(ch: char) -> bool {
                 matches!(
                     ch,
