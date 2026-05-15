@@ -122,7 +122,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_stacked_document(out, ctx, common, label, details);
         }
         "procs" | "processes" | "st-rect" | "stacked-rectangle" => {
-            super::render_stacked_rectangle(out, common, details);
+            super::render_stacked_rectangle(out, common, label, details);
         }
         "paper-tape" | "flag" => {
             super::render_paper_tape(out, common, details);

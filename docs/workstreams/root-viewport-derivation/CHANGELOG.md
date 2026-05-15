@@ -2,6 +2,15 @@
 
 ## 2026-05-16
 
+- Derived the retained Flowchart crossed-circle alias root pin and cleaned up the stacked-rectangle
+  shape geometry path without adding fixture/glyph lookup data. `multiRect.ts` treats the Dagre
+  `node.width/height` as the final outer bbox, so the renderer now subtracts the 5px stacked offset
+  before building the inner rectangle and shifts labels by `(-5,+5)`. The crossed-circle root
+  estimator now applies the RoughJS circle bbox asymmetry to `cross-circ`, `summary`, and
+  `crossed-circle`, so focused disabled-root `parity-root` has no retained delta for
+  `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037` and that root pin was
+  deleted. Full retained-root triage now reports `50` root pins, `297` label delta rows,
+  `defer-low-noise-text-lattice` (16), and `layout-shape-geometry` (2).
 - Derived the retained Flowchart `root-only-layout` outgoing-links-4 pair by including empty
   subgraph-as-node rectangles in the computed root viewBox bounds. Focused disabled-root
   `parity-root` checks now match the `154.921875x364` upstream viewBox for

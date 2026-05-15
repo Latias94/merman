@@ -8,6 +8,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Flowchart parity: render stacked-rectangle aliases from the layout bbox without double-applying
+  the 5px stack offset, shift their labels with Mermaid's `multiRect.ts` offset, and apply the
+  crossed-circle RoughJS root-bbox asymmetry to all aliases. This removes the retained
+  `shape_alias_aliasset37_037` root viewport pin and narrows the remaining Flowchart
+  `layout-shape-geometry` bucket.
 - Flowchart parity: include empty subgraph-as-node rectangles in computed root viewBox bounds for
   nested-root diagrams, removing the two retained outgoing-links-4 root viewport pins without
   adding fixture or glyph lookup data.

@@ -279,3 +279,58 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
         "expected computed root viewBox to include top-level empty subgraph node: {svg}"
     );
 }
+
+#[test]
+fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
+    let text = r#"flowchart
+ n0@{ shape: cross-circ, label: "cross-circ" }
+ n1@{ shape: summary, label: "summary" }
+ n2@{ shape: crossed-circle, label: "crossed-circle" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some(
+                "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037"
+                    .to_string(),
+            ),
+            apply_root_overrides: false,
+            ..Default::default()
+        },
+    )
+    .expect("render svg");
+
+    let viewbox_start = svg.find(r#"viewBox=""#).expect("viewBox") + r#"viewBox=""#.len();
+    let viewbox_end = svg[viewbox_start..].find('"').expect("viewBox end") + viewbox_start;
+    let viewbox = &svg[viewbox_start..viewbox_end];
+    let values = viewbox
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("viewBox number"))
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 4, "expected four viewBox values: {viewbox}");
+    assert!(
+        (values[0] - 0.028_488).abs() < 0.000_01
+            && values[1] == 0.0
+            && (values[2] - 296.170_9).abs() < 0.000_1
+            && values[3] == 76.0,
+        "expected crossed-circle aliases to share RoughJS bbox asymmetry: {svg}"
+    );
+}

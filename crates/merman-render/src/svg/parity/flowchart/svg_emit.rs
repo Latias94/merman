@@ -765,7 +765,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
                         // Mermaid `crossedCircle.ts` uses a RoughJS circle path with radius=30;
                         // its bbox is slightly asymmetric in Chromium.
-                        if matches!(shape, "cross-circ") {
+                        if matches!(shape, "cross-circ" | "summary" | "crossed-circle") {
                             left_hw = 30.0;
                             right_hw = (n.width - 30.0).max(0.0);
                             top_hh = 30.0;

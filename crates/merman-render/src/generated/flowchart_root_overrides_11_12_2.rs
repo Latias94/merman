@@ -73,9 +73,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034" => {
             Some(("0 0 609.140625 80", "609.141"))
         }
-        "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037" => {
-            Some(("0.0284881591796875 0 296.1708984375 76", "296.171"))
-        }
         "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
             Some(("0 0 304.046875 734", "304.047"))
         }

@@ -534,8 +534,17 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_{015,016}`.
   Both root pins were deleted. The full retained-root triage now reports `51` root pins, `297`
   label delta rows, no removal candidates, and no `root-only-layout` bucket.
+- [x] Derive the retained Flowchart crossed-circle alias root pin and tighten stacked-rectangle
+  geometry evidence without adding lookup data. Evidence: stacked rectangle aliases now render from
+  the final `multiRect.ts` bbox instead of expanding the 5px stack offset twice, labels shift by
+  `(-5,+5)`, and the root bbox estimator applies the crossed-circle RoughJS asymmetry to
+  `cross-circ`, `summary`, and `crossed-circle`. Focused disabled-root `parity-root` now has no
+  retained delta for
+  `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037`, so that root pin was
+  deleted. The full retained-root triage now reports `50` root pins, `297` label delta rows, no
+  removal candidates, `defer-low-noise-text-lattice` (16), and `layout-shape-geometry` (2).
 - [ ] Continue Flowchart retained-root audit on the remaining non-deferred buckets from the full
-  all-root triage: `layout-shape-geometry` (9). Keep the retained low-noise text-lattice,
+  all-root triage: `layout-shape-geometry` (2). Keep the retained low-noise text-lattice,
   icon-label, courier, mojibake, custom-font, and mixed-sign default-font accumulation guards
   pinned unless a clean shared browser/font model appears.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without

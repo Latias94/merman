@@ -468,10 +468,12 @@ fn classify_root_pin(
         || label_text.contains("subroutine")
         || label_text.contains("shape test")
     {
-        return (
-            TriageBucket::LayoutShapeGeometry,
-            "shape/cluster geometry or emitted bounds likely dominates".to_string(),
-        );
+        if labels.is_empty() || max_label_delta > 0.25 {
+            return (
+                TriageBucket::LayoutShapeGeometry,
+                "shape/cluster geometry or emitted bounds likely dominates".to_string(),
+            );
+        }
     }
     if let Some(edge) = boundary.and_then(RootBoundarySummary::dominant_horizontal) {
         let root_delta = row.delta.abs().max(0.001);
@@ -1248,6 +1250,26 @@ mod tests {
         assert_eq!(
             classify_root_pin(&shape_row, &[], None, None).0,
             TriageBucket::LayoutShapeGeometry
+        );
+
+        let low_noise_shape = [label_row(
+            "nodeLabel",
+            "128.578x24.000",
+            "128.594x24.000",
+            0.016,
+            0.0,
+            "stacked-rectangle",
+            "",
+        )];
+        assert_eq!(
+            classify_root_pin(
+                &root_row("upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034"),
+                &[&low_noise_shape[0]],
+                None,
+                None,
+            )
+            .0,
+            TriageBucket::DeferLowNoiseTextLattice
         );
 
         let subpixel_shape_row = RootRow {

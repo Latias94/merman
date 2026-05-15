@@ -366,6 +366,21 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `defer-low-noise-text-lattice` (10), `defer-subpixel-text-lattice` (1),
   `layout-shape-geometry` (9), `defer-mojibake-font-fallback` (1), `defer-courier-font` (8),
   `defer-icon-font` (19), and `defer-font-env` (3).
+- 2026-05-16: Flowchart stacked-rectangle aliases and crossed-circle aliases now share the upstream
+  shape geometry rules without fixture/glyph lookup data. `multiRect.ts` stores Dagre dimensions
+  after the 5px stacked offset has already expanded the final outer bbox, so the renderer now
+  subtracts that offset before drawing the inner rectangle and applies Mermaid's `(-5,+5)` label
+  shift. This removes the local `+5px` right/bottom path-boundary drift in
+  `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034`; the fixture remains
+  pinned only because its plain labels still have `±0.016px` low-noise text-lattice drift.
+  `cross-circ`, `summary`, and `crossed-circle` now share the RoughJS circle bbox asymmetry in the
+  root estimator, so focused disabled-root `parity-root` has no retained delta for
+  `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037` and that root pin was
+  deleted. The full retained-root audit now produces `50` root delta rows and `297` label delta
+  rows; triage reports no removal candidates and current buckets `defer-low-noise-text-lattice`
+  (16), `defer-subpixel-text-lattice` (1), `layout-shape-geometry` (2),
+  `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
+  `defer-font-env` (3).
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
