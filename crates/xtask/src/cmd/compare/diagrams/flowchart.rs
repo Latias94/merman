@@ -20,8 +20,10 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
+    let mut report_root_pins_only: bool = false;
     let mut report_label: bool = false;
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
+    let mut report_label_root_pins_only: bool = false;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
     let mut text_measurer: String = "vendored".to_string();
@@ -39,11 +41,19 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             }
             "--check-dom" => check_dom = true,
             "--report-root" => report_root = true,
+            "--report-root-pins-only" => {
+                report_root = true;
+                report_root_pins_only = true;
+            }
             "--report-root-all" => {
                 report_root = true;
                 root_report_limit = RootDeltaReportLimit::All;
             }
             "--report-label" => report_label = true,
+            "--report-label-root-pins-only" => {
+                report_label = true;
+                report_label_root_pins_only = true;
+            }
             "--report-label-all" => {
                 report_label = true;
                 label_report_limit = LabelDeltaReportLimit::All;
@@ -132,7 +142,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n",
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
         dom_mode,
         dom_decimals,
         text_measurer,
@@ -140,16 +150,27 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             "node-katex"
         } else {
             "none"
+        },
+        if report_root_pins_only {
+            "root-pins-only"
+        } else {
+            "all fixtures"
+        },
+        if report_label_root_pins_only {
+            "root-pins-only"
+        } else {
+            "all fixtures"
         }
     );
 
     let mut root_deltas: Vec<RootDelta> = Vec::new();
     let mut label_deltas: Vec<LabelMetricDelta> = Vec::new();
-    let flowchart_root_pin_ids = if report_label {
-        collect_flowchart_root_pin_ids()
-    } else {
-        std::collections::BTreeSet::new()
-    };
+    let flowchart_root_pin_ids =
+        if report_label || report_label_root_pins_only || report_root_pins_only {
+            collect_flowchart_root_pin_ids()
+        } else {
+            std::collections::BTreeSet::new()
+        };
 
     let mut failures: Vec<String> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -280,15 +301,15 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
-        if report_label {
-            let root_pinned = flowchart_root_pin_ids.contains(stem);
+        let root_pinned = flowchart_root_pin_ids.contains(stem);
+        if report_label && (!report_label_root_pins_only || root_pinned) {
             match collect_label_metric_deltas(stem, &upstream_svg, &local_svg, root_pinned) {
                 Ok(mut rows) => label_deltas.append(&mut rows),
                 Err(e) => failures.push(format!("label metric parse failed for {stem}: {e}")),
             }
         }
 
-        if should_report_root {
+        if should_report_root && (!report_root_pins_only || root_pinned) {
             match (
                 parse_root_attrs(&upstream_svg),
                 parse_root_attrs(&local_svg),

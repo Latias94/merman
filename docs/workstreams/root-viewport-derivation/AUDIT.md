@@ -41,14 +41,15 @@ SVG-like subgraph-title/root-bounds, Unicode/entities HTML title, stale title-ma
 HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fallback,
 FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing,
 quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome label-boundary,
-cluster external-flag preservation, and recursive title-padding stale-pin cleanup passes:
+cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
+metric refresh, and root-pin-only Flowchart audit tooling passes:
 
 - State: `34` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `81` inventory entries.
-- Root viewport total: `348` entries.
+- Flowchart: `59` inventory entries.
+- Root viewport total: `326` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -296,6 +297,7 @@ cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root-pins-only --report-root-all --report-label-root-pins-only --report-label-all
 cargo run -p xtask -- report-overrides --check-no-growth
 cargo clippy -p merman-render --all-targets --all-features -- -D warnings
 cargo run -p xtask -- verify --strict
@@ -314,6 +316,28 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-15: Flowchart compare now supports focused retained-root audit rows via
+  `--report-root-pins-only` and `--report-label-root-pins-only`. This keeps the label-level
+  audit scoped to fixtures still covered by `flowchart_root_overrides_11_12_2.rs` instead of
+  mixing in unrelated non-pinned fixtures. With root overrides disabled,
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-flowchart-svgs
+  --dom-mode parity-root --dom-decimals 3
+  --report-root-pins-only --report-root-all --report-label-root-pins-only --report-label-all
+  --out target/compare/flowchart_root_pin_label_audit_2026_05_15.md` passed as a reporting
+  command and produced `67` retained Flowchart root fixture-key rows plus `386` retained label
+  delta rows. The top retained buckets are still serif/custom-font style drift, long mojibake/CJK
+  labels, icon/FontAwesome labels, punctuation-heavy plain labels, and shape/edge geometry drift.
+- 2026-05-15: a focused disabled-root `parity-root` check rejected twelve apparent stale
+  Flowchart candidates whose max-width delta was `0.000` but whose full root viewBox still
+  differed. The rejected candidates were `upstream_flowchart_v2_stadium_shape_spec`, the three
+  `wrapping_long_text_with_a_new_line` fixtures, the two nested-subgraph outgoing-link fixtures,
+  the line-break/trapezoid Cypress fixtures, the `newshapesset5_lr_md_html_true` fixture, and
+  the three HTML demo simple-graph aliases. All remain pinned because `parity-root` compares the
+  full `viewBox`, not only `max-width`.
+- 2026-05-15: `cargo run -p xtask -- report-overrides --check-no-growth` passed after the
+  Flowchart root-pin-only audit tooling change with root total `326`, Flowchart root count `59`,
+  text lookup total `484`, SVG text metric table total `186`, font metric table total `3774`,
+  and zero helper overrides or manual raw SVG/path bridges.
 - 2026-05-15: Flowchart recursive title-padding stale-pin cleanup removed
   `stress_flowchart_subgraph_deep_nesting_title_padding_044` from
   `flowchart_root_overrides_11_12_2.rs`. Focused normal and disabled-root
