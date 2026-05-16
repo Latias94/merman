@@ -434,6 +434,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   without adding fixture, glyph, or root viewport lookup data. The outside-table audit target is
   now narrowed to two GitGraph continuous-development roots and three Mindmap icon/tidy-tree
   roots.
+- 2026-05-16: GitGraph `continuous_development_graph_{005,006}` root width parity now comes from
+  the emitted title/root bbox path. When a centered title alone expands both horizontal root bounds,
+  the final width gets the observed Chromium 1/128px lattice bias before `f32` upward rounding. The
+  focused continuous-development checks and full GitGraph `parity-root` pass without adding
+  fixture, glyph, or root viewport lookup data. The outside-table audit target is now narrowed to
+  three Mindmap icon/tidy-tree roots.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

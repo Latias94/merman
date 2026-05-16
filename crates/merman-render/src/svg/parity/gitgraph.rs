@@ -784,11 +784,15 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     });
     include_gitgraph_branch_line_bounds(&mut b, layout);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
+    let mut title_expands_x_bounds = false;
     if let Some(title) = title {
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
-        b.min_x = b.min_x.min(title_anchor_x - title_left);
-        b.max_x = b.max_x.max(title_anchor_x + title_right);
+        let title_min_x = title_anchor_x - title_left;
+        let title_max_x = title_anchor_x + title_right;
+        title_expands_x_bounds = title_min_x < b.min_x && title_max_x > b.max_x;
+        b.min_x = b.min_x.min(title_min_x);
+        b.max_x = b.max_x.max(title_max_x);
         b.min_y = b.min_y.min(title_y - ascent);
         b.max_y = b.max_y.max(title_y + descent);
     }
@@ -863,7 +867,15 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     // Match Chromium's `getBBox()` behavior more closely:
     // - x/y: `f32`-quantized extrema
     // - w/h: computed in `f64`, then rounded to `f32` with an upward bias
-    let bbox_w = f32_round_up(b.max_x - b.min_x);
+    let title_bbox_w_bias = if title_expands_x_bounds {
+        // GitGraph centers titles after measuring the emitted graph bbox. When the title alone
+        // expands both horizontal bounds, Chromium's final root width behaves one 1/128px lattice
+        // cell wider than the deterministic symmetric title half-width.
+        1.0 / 128.0
+    } else {
+        0.0
+    };
+    let bbox_w = f32_round_up((b.max_x - b.min_x) + title_bbox_w_bias);
     let bbox_h = f32_round_up(b.max_y - b.min_y);
     let _ = &bb_dbg;
 

@@ -569,10 +569,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
 - [ ] Triage the outside-table normal `parity-root` failures surfaced by the global audit without
   adding new fixture/glyph lookup tables by default. Evidence so far: the seven Flowchart
   `newshapesset4` height roots are now derived by browser-like `HtmlLike` wrapping for long
-  multi-hyphen compounds, with no new fixture, glyph, or root viewport lookup data. Remaining
-  candidates are two GitGraph `continuous_development_graph_{005,006}` max-width roots and three
-  Mindmap icon/tidy-tree roots. These are not stale retained pins; they need typed geometry/text
-  derivation or an explicit policy decision to accept weaker root parity.
+  multi-hyphen compounds, and the two GitGraph `continuous_development_graph_{005,006}` max-width
+  roots are now derived by applying GitGraph title-expanded root width's 1/128px browser lattice
+  bias. Neither pass added fixture, glyph, or root viewport lookup data. Remaining candidates are
+  three Mindmap icon/tidy-tree roots; they need typed geometry/text derivation or an explicit policy
+  decision to accept weaker root parity.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the

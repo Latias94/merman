@@ -15,6 +15,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Flowchart HTML label wrapping: treat long multi-hyphen compounds as browser-breakable tokens in
   `HtmlLike` measurement, matching Mermaid's `foreignObject` layout for the `newshapesset4`
   labels without adding fixture, glyph, or root viewport lookup data.
+- GitGraph root derivation: add the Chromium-like 1/128px title-width lattice bias when a centered
+  title expands both horizontal root bounds, matching the continuous-development docs roots without
+  adding fixture, glyph, or root viewport lookup data.
 - Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
   retained-root reports by pairing emitted label-container geometry, so the remaining
   `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape
