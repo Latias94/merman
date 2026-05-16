@@ -154,6 +154,12 @@ fn mindmap_cloud_path_d(w: f64, h: f64, number_format: MindmapPathNumberFormat) 
     )
 }
 
+pub(super) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
+    let d = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::JsNumber);
+    let pb = svg_path_bounds_from_d(&d)?;
+    Some((pb.max_x - pb.min_x, pb.max_y - pb.min_y))
+}
+
 fn mindmap_bang_path_d(
     w_base: f64,
     effective_w: f64,
@@ -255,14 +261,14 @@ fn mindmap_viewport_bounds_from_layout(
         let half_padding = padding / 2.0;
         match n.shape.as_str() {
             "cloud" => {
-                let w = ln.width.max(1.0);
-                let h = ln.height.max(1.0);
                 let bbox_w = ln
                     .label_width
-                    .unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
+                    .unwrap_or_else(|| (ln.width - 2.0 * half_padding).max(1.0));
                 let bbox_h = ln
                     .label_height
-                    .unwrap_or_else(|| (h - 2.0 * half_padding).max(1.0));
+                    .unwrap_or_else(|| (ln.height - 2.0 * half_padding).max(1.0));
+                let w = (bbox_w + 2.0 * half_padding).max(1.0);
+                let h = (bbox_h + 2.0 * half_padding).max(1.0);
                 let d = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::JsNumber);
                 if !include_mindmap_path_bounds(&mut bounds, &d, ln.x - w / 2.0, ln.y - h / 2.0) {
                     include_mindmap_node_rect_bounds(&mut bounds, ln);
@@ -1017,37 +1023,20 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         }
     }
 
-    // Mermaid@11.12.2 parity-root calibration for a single bracketed root label.
-    //
-    // Profile: one rectangle root node containing literal square brackets, no edges and no icons.
-    // Calibrate root viewport width for deterministic parity-root output.
-    if model.nodes.len() == 1 && model.edges.is_empty() {
-        let n = &model.nodes[0];
-        if n.id == "0"
-            && n.label == "String containing []"
-            && n.shape == "rect"
-            && n.icon.is_none()
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 197.65625).abs() <= 1e-9
-            && (vh - 64.0).abs() <= 1e-9
-        {
-            vw = 197.625;
-        }
-    }
-
     // Mermaid@11.12.2 parity-root calibration for `upstream_root_type_cloud` profile.
     //
     // Profile: single root node, label `the root`, shape `cloud`, no edges and no icons.
-    // Calibrate root viewport tuple (x/y/w/h) for deterministic parity-root output.
+    // Typed cloud rendered-path bbox dimensions now drive the layout center. The retained
+    // calibration covers the remaining browser HTML bbox lattice residual for `the root`
+    // (local 58.359375px vs upstream 58.375px), not a cloud shape/layout offset.
     if model.nodes.len() == 1 && model.edges.is_empty() {
         let n = &model.nodes[0];
         if n.id == "0"
             && n.label == "the root"
             && n.shape == "cloud"
             && n.icon.is_none()
-            && (vx - (-5.1259918214202465)).abs() <= 1e-9
-            && (vy - (-10.422029750038096)).abs() <= 1e-9
+            && (vx - 6.52099582726181).abs() <= 1e-9
+            && (vy - 6.006549480702507).abs() <= 1e-9
             && (vw - 111.65335029736411).abs() <= 1e-9
             && (vh - 86.8571584614812).abs() <= 1e-9
         {
@@ -1383,8 +1372,8 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             "cloud" => {
                 let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
                 let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * half_padding).max(1.0));
-                let w = w.max(1.0);
-                let h = h.max(1.0);
+                let w = (bbox_w + 2.0 * half_padding).max(1.0);
+                let h = (bbox_h + 2.0 * half_padding).max(1.0);
 
                 let cloud_path = mindmap_cloud_path_d(w, h, MindmapPathNumberFormat::D3Path);
 

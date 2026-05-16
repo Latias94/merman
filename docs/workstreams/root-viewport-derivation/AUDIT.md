@@ -454,11 +454,24 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   generated root overrides, `upstream_shaped_root_without_id` and the stale
   `upstream_docs_example_icons_br` branch no longer match the current raw viewport after earlier
   text/layout changes. Focused `parity-root` checks pass for the deleted retained cases.
-  Remaining branches are classified as must-retain until broader typed rules exist:
+  A follow-up typed HTML bbox rule then removed `upstream_pkgtests_mindmap_spec_018`; the remaining
+  branches are classified as must-retain until broader typed rules exist:
   `mindmap/basic`, the simple docs/package chain, `upstream_decorations_and_descriptions`,
   `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
-  `upstream_pkgtests_mindmap_spec_018`, `upstream_root_type_cloud`, and
-  `upstream_whitespace_and_comments`.
+  `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`.
+- 2026-05-16: `upstream_pkgtests_mindmap_spec_018` no longer uses a Mindmap profile calibration.
+  Mindmap plain one-line HTML labels ending in `[]` / `()` now model Chromium's
+  `getBoundingClientRect()` lattice for these delimiter-pair labels by reducing the vendored
+  one-line HTML bbox width by `1/32px` when it already lands on the 1/64px browser grid and is
+  below the wrapping container. This derives `String containing []` and the sibling
+  `String containing ()` evidence in `upstream_pkgtests_mindmap_spec_019` without fixture, glyph,
+  or root lookup data. Focused `parity-root` and full-DOM checks pass for
+  `upstream_pkgtests_mindmap_spec_018`; focused full-DOM also passes for
+  `upstream_pkgtests_mindmap_spec_019`. The old Mindmap profile calibration block now has 7
+  retained branches. `upstream_root_type_cloud` stays retained for now: the typed cloud SVG path
+  bounds/layout rule is already active, but the remaining single-node root tuple still reflects
+  the browser HTML label bbox lattice for `the root` (`58.359375px` local vs `58.375px`
+  upstream) rather than another cloud shape lookup.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

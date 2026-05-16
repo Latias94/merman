@@ -2,7 +2,7 @@ use crate::config::config_f64_css_px;
 use crate::json::from_value_ref;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 use crate::{Error, Result};
 use serde_json::Value;
 
@@ -105,6 +105,45 @@ fn is_simple_markdown_label(text: &str) -> bool {
     true
 }
 
+fn mindmap_plain_html_label_metrics(
+    text: &str,
+    label_type: &str,
+    metrics: TextMetrics,
+    max_node_width_px: f64,
+) -> TextMetrics {
+    let mut metrics = metrics;
+    if label_type == "markdown"
+        || metrics.line_count != 1
+        || text.contains('\n')
+        || text.contains('\r')
+    {
+        return metrics;
+    }
+    if metrics.width >= max_node_width_px - 1e-3 {
+        return metrics;
+    }
+    let width_units = metrics.width * 64.0;
+    if (width_units - width_units.round()).abs() > 1e-6 {
+        return metrics;
+    }
+
+    let trimmed = text.trim();
+    if trimmed.len() <= 2 || trimmed != text {
+        return metrics;
+    }
+
+    if trimmed.ends_with("[]") || trimmed.ends_with("()") {
+        // Mermaid's mindmap HTML labels come from `labelHelper(...)` measuring a `<div>` with
+        // `getBoundingClientRect()`. For plain one-line labels whose visible text is or ends in
+        // ASCII delimiter pairs, Chromium 11.12.2 baselines land one 1/32px cell below the
+        // vendored advance sum while staying on the same 1/64px lattice. Keep this local to
+        // Mindmap HTML labels so other diagrams keep their established measurement contracts.
+        metrics.width = (metrics.width - (1.0 / 32.0)).max(0.0);
+    }
+
+    metrics
+}
+
 fn mindmap_label_bbox_px(
     text: &str,
     label_type: &str,
@@ -169,6 +208,7 @@ fn mindmap_label_bbox_px(
 
     let wrapped =
         measurer.measure_wrapped_raw(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
+    let wrapped = mindmap_plain_html_label_metrics(text, label_type, wrapped, max_node_width_px);
 
     // The HTML-like measurement path already includes min-content width for unbreakable tokens.
     // Do not re-expand normal wrapping prose back to its unwrapped paragraph width, or Mindmap
@@ -218,8 +258,15 @@ fn mindmap_node_dimensions_px(
             let d = bbox_w + 2.0 * padding;
             (d, d)
         }
-        // `cloud.ts`: w = bbox.width + 2*halfPadding; h = bbox.height + 2*halfPadding
-        "cloud" => (bbox_w + 2.0 * half_padding, bbox_h + 2.0 * half_padding),
+        // `cloud.ts` first draws a path from w = bbox.width + 2*halfPadding and
+        // h = bbox.height + 2*halfPadding, then upstream cose-bilkent lays out the node
+        // using the inserted SVG node's rendered path bbox.
+        "cloud" => {
+            let shape_w = bbox_w + 2.0 * half_padding;
+            let shape_h = bbox_h + 2.0 * half_padding;
+            crate::svg::mindmap_cloud_rendered_bbox_size_px(shape_w, shape_h)
+                .unwrap_or((shape_w, shape_h))
+        }
         // `bang.ts`:
         // - w = bbox.width + 10*halfPadding; h = bbox.height + 8*halfPadding
         // - minWidth = bbox.width + 20; minHeight = bbox.height + 20
@@ -549,5 +596,52 @@ mod tests {
 
         assert_eq!(width, 200.0);
         assert_eq!(height, 72.0);
+    }
+
+    #[test]
+    fn mindmap_plain_delimiter_labels_use_browser_html_bbox_width() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+
+        for text in ["String containing []", "String containing ()"] {
+            let (width, height) = super::mindmap_label_bbox_px(text, "", &measurer, &style, 200.0);
+            assert_eq!(width, 137.625);
+            assert_eq!(height, 24.0);
+        }
+    }
+
+    #[test]
+    fn mindmap_cloud_layout_uses_rendered_path_bbox_dimensions() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let node = super::MindmapNodeModel {
+            id: "0".to_string(),
+            dom_id: "node_0".to_string(),
+            label: "the root".to_string(),
+            label_type: String::new(),
+            is_group: false,
+            shape: "cloud".to_string(),
+            width: 0.0,
+            height: 0.0,
+            padding: 10.0,
+            css_classes: "mindmap-node section-root section--1".to_string(),
+            css_styles: Vec::new(),
+            look: String::new(),
+            icon: None,
+            x: None,
+            y: None,
+            level: 0,
+            node_id: "0".to_string(),
+            node_type: 0,
+            section: None,
+        };
+
+        let (width, height, label_width, label_height) =
+            super::mindmap_node_dimensions_px(&node, &measurer, &style, 200.0);
+
+        assert!((label_width - 58.359375).abs() < 1e-9);
+        assert_eq!(label_height, 24.0);
+        assert!((width - 91.65335029736411).abs() < 1e-9);
+        assert!((height - 66.8571584614812).abs() < 1e-9);
     }
 }

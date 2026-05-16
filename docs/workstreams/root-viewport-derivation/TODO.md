@@ -583,12 +583,26 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_root_type_bang`, `upstream_shaped_root_without_id`, and the no-longer-matching
   `upstream_docs_example_icons_br` profile. Focused `parity-root` checks for
   `upstream_node_types`, `upstream_root_type_bang`, and `upstream_pkgtests_mindmap_spec_018`
-  still pass. Retain for now: `mindmap/basic`, the simple docs/package
+  still pass. A follow-up typed HTML bbox rule then replaced
+  `upstream_pkgtests_mindmap_spec_018`, so the current retained list is `mindmap/basic`, the simple docs/package
   `Photograph -> Waterfall` tree, `upstream_decorations_and_descriptions`,
   `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
-  `upstream_pkgtests_mindmap_spec_018` (single bracketed root label),
   `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`. These retained blocks are
   replacement candidates only when a typed shape/text/tidy-tree rule can explain them.
+- [x] Replace the Mindmap `upstream_pkgtests_mindmap_spec_018` single-node calibration with a typed
+  HTML label bbox rule. Evidence: Mindmap plain one-line labels ending in `[]` / `()` now apply the
+  local browser `getBoundingClientRect()` 1/32px lattice correction after vendored HTML measurement,
+  deriving the root, node center, rect width, and `foreignObject` width for
+  `upstream_pkgtests_mindmap_spec_018`. Focused `parity-root` and full-DOM checks pass for
+  `upstream_pkgtests_mindmap_spec_018`; `upstream_pkgtests_mindmap_spec_019` also passes full-DOM
+  with the same typed rule. The remaining profile calibration block count is 7:
+  `mindmap/basic`, the simple docs/package `Photograph -> Waterfall` tree,
+  `upstream_decorations_and_descriptions`, `upstream_hierarchy_nodes`,
+  `upstream_docs_unclear_indentation`, `upstream_root_type_cloud`, and
+  `upstream_whitespace_and_comments`. `upstream_root_type_cloud` remains retained because the
+  current typed cloud rendered-path bbox layout rule is already in place, while the residual
+  single-node tuple now tracks the browser HTML label bbox lattice for `the root`
+  (`58.359375px` local vs `58.375px` upstream).
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the

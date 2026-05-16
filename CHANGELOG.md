@@ -18,6 +18,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - GitGraph root derivation: add the Chromium-like 1/128px title-width lattice bias when a centered
   title expands both horizontal root bounds, matching the continuous-development docs roots without
   adding fixture, glyph, or root viewport lookup data.
+- Mindmap HTML label measurement: apply the browser `getBoundingClientRect()` lattice correction for
+  plain one-line labels ending in ASCII delimiter pairs, deriving
+  `upstream_pkgtests_mindmap_spec_018` without its old single-node profile calibration.
+- Mindmap cloud layout: feed the rendered cloud path bbox back into layout normalization so the
+  single-node cloud root center now follows the inserted SVG geometry, leaving only the final
+  browser HTML label lattice residual on `upstream_root_type_cloud`.
 - Mindmap root audit: classify the three remaining outside-table docs/example roots as accepted
   browser-font/tidy-tree residuals for now. The shared docs/basic tree is dominated by plain label
   width drift, and the tidy-tree variant amplifies the same small text deltas through layout, so no

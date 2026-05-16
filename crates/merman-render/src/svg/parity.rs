@@ -53,6 +53,9 @@ use css::{
 };
 pub use fallback::foreign_object_label_fallback_svg_text;
 use path_bounds::svg_path_bounds_from_d;
+pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
+    mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
+}
 pub use state::{SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds};
 use state::{
     roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
