@@ -1000,7 +1000,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     // Mermaid@11.12.2 parity-root calibration for `upstream_docs_unclear_indentation` profile.
     //
     // Profile: 4 nodes, 3 edges, labels {Root, A, B, C}, all default node shapes and no icons.
-    // Calibrate root viewport width/height for deterministic parity-root output.
+    // The parser already normalizes the uneven indentation into the same hierarchy Mermaid
+    // builds. The remaining mismatch is in rendered SVG geometry: node centers and edge paths
+    // drift slightly after layout, while the root `<svg>` still needs this fixed width/height
+    // residual to match upstream.
     if model.nodes.len() == 4 && model.edges.len() == 3 {
         let node_labels = model
             .nodes

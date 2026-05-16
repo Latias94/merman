@@ -612,6 +612,13 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `mindmap/basic`, the simple docs/package `Photograph -> Waterfall` tree,
   `upstream_decorations_and_descriptions`, `upstream_hierarchy_nodes`,
   `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
+- [x] Reclassify the Mindmap `upstream_docs_unclear_indentation` profile calibration as retained.
+  Evidence: the parser already resolves the uneven indentation into Mermaid's hierarchy
+  (`Root -> A -> {B, C}` with levels `0/4/8/6`), so the residual is not an indentation
+  normalization gap. Focused SVG position debugging still shows rendered node-center drift after
+  layout, such as `node_2` at `102.686300` upstream versus `98.606399` local on the y axis, while
+  the retained root width/height calibration aligns the root SVG. Focused `parity-root` and
+  full-DOM checks pass without adding fixture, glyph, or root lookup data.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
