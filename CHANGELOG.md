@@ -12,6 +12,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   tables, delete two stale ER/State root pins proven by focused `parity-root` checks, and tighten
   the root override no-growth budget to `308`. The audit now reports no stale generated root pins
   and surfaces the remaining outside-table root-only candidates separately.
+- Flowchart HTML label wrapping: treat long multi-hyphen compounds as browser-breakable tokens in
+  `HtmlLike` measurement, matching Mermaid's `foreignObject` layout for the `newshapesset4`
+  labels without adding fixture, glyph, or root viewport lookup data.
 - Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
   retained-root reports by pairing emitted label-container geometry, so the remaining
   `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape

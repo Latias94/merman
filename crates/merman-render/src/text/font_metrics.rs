@@ -924,8 +924,12 @@ impl VendoredFontMetricsTextMeasurer {
             //
             // Intentionally *exclude* '=': upstream fixtures show tokens like `wrappingWidth=120`
             // overflowing rather than breaking at '='.
+            let hyphen_count = tok.chars().filter(|ch| *ch == '-').count();
+            let char_count = tok.chars().count();
+            let is_hyphenated_compound = hyphen_count >= 2 && char_count >= 16;
             let is_url_like = tok.starts_with("http://") || tok.starts_with("https://");
-            let is_path_like = is_url_like
+            let is_path_like = is_hyphenated_compound
+                || is_url_like
                 || tok.len() >= 24
                     && tok
                         .chars()

@@ -427,6 +427,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   representatives from all three families fail today, so the next practical work is typed
   geometry/root-bounds derivation or an explicit policy decision to accept weaker root parity for
   those cases.
+- 2026-05-16: Flowchart `newshapesset4` root height parity now comes from `HtmlLike` text
+  measurement rather than a root pin. Long multi-hyphen compounds such as
+  `half-rounded-rectangle` are treated as browser-breakable tokens, which restores the affected
+  two-line `foreignObject` label height and removes the seven Flowchart outside-table candidates
+  without adding fixture, glyph, or root viewport lookup data. The outside-table audit target is
+  now narrowed to two GitGraph continuous-development roots and three Mindmap icon/tidy-tree
+  roots.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

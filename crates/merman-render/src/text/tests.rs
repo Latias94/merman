@@ -766,6 +766,27 @@ fn courier_html_dotted_identifier_overflows_without_dot_wrapping() {
 }
 
 #[test]
+fn default_font_html_hyphenated_compound_wraps_like_browser() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+
+    let metrics = measurer.measure_wrapped(
+        "This is a label for half-rounded-rectangle shape",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+
+    assert_eq!(metrics.width, 200.0);
+    assert_eq!(metrics.height, 48.0);
+    assert_eq!(metrics.line_count, 2);
+}
+
+#[test]
 fn flowchart_svg_edge_label_background_y_matches_upstream_fonts() {
     let trebuchet = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
