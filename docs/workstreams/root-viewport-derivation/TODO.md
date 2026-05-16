@@ -578,6 +578,17 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   while `upstream_docs_tidy_tree_example_usage_002` propagates the same small text deltas through
   tidy-tree placement into a `671.5` versus `671.75` normalized height bucket. No pass added
   fixture, glyph, or root viewport lookup data.
+- [x] Clean up the old Mindmap profile calibration block and split the remaining debt into
+  keep/delete buckets. Evidence: deleted stale profile calibrations for `upstream_node_types`,
+  `upstream_root_type_bang`, `upstream_shaped_root_without_id`, and the no-longer-matching
+  `upstream_docs_example_icons_br` profile. Focused `parity-root` checks for
+  `upstream_node_types`, `upstream_root_type_bang`, and `upstream_pkgtests_mindmap_spec_018`
+  still pass. Retain for now: `mindmap/basic`, the simple docs/package
+  `Photograph -> Waterfall` tree, `upstream_decorations_and_descriptions`,
+  `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
+  `upstream_pkgtests_mindmap_spec_018` (single bracketed root label),
+  `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`. These retained blocks are
+  replacement candidates only when a typed shape/text/tidy-tree rule can explain them.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the

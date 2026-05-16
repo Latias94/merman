@@ -449,6 +449,16 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   root-height bucket from `671.5` upstream to `671.75` local. Updating the old profile calibration
   would hide browser font/tidy-tree drift behind another fixture-shaped rule, so the audit keeps
   these three visible until a broader typed text/layout model is worth the complexity.
+- 2026-05-16: Mindmap's old profile calibration block was reduced from 12 fixture-shaped branches
+  to 8. Removed branches: `upstream_node_types` and `upstream_root_type_bang` are now covered by
+  generated root overrides, `upstream_shaped_root_without_id` and the stale
+  `upstream_docs_example_icons_br` branch no longer match the current raw viewport after earlier
+  text/layout changes. Focused `parity-root` checks pass for the deleted retained cases.
+  Remaining branches are classified as must-retain until broader typed rules exist:
+  `mindmap/basic`, the simple docs/package chain, `upstream_decorations_and_descriptions`,
+  `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
+  `upstream_pkgtests_mindmap_spec_018`, `upstream_root_type_cloud`, and
+  `upstream_whitespace_and_comments`.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

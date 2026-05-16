@@ -991,158 +991,6 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         }
     }
 
-    // Mermaid@11.12.2 parity-root calibration for `upstream_node_types` profile.
-    //
-    // Profile: 5 nodes, 4 edges, root label `root`, four children with the same label `the root`,
-    // and shape signature {defaultMindmapNode=1, mindmapCircle=1, cloud=1, bang=1, hexagon=1}.
-    // Calibrate root viewport tuple (x/y/w/h) for deterministic parity-root output.
-    if model.nodes.len() == 5 && model.edges.len() == 4 {
-        let root_label_count = model.nodes.iter().filter(|n| n.label == "root").count();
-        let child_label_count = model.nodes.iter().filter(|n| n.label == "the root").count();
-        let default_count = model
-            .nodes
-            .iter()
-            .filter(|n| n.shape == "defaultMindmapNode")
-            .count();
-        let circle_count = model
-            .nodes
-            .iter()
-            .filter(|n| n.shape == "mindmapCircle")
-            .count();
-        let cloud_count = model.nodes.iter().filter(|n| n.shape == "cloud").count();
-        let bang_count = model.nodes.iter().filter(|n| n.shape == "bang").count();
-        let hex_count = model.nodes.iter().filter(|n| n.shape == "hexagon").count();
-        let no_icons = model.nodes.iter().all(|n| n.icon.is_none());
-
-        if root_label_count == 1
-            && child_label_count == 4
-            && default_count == 1
-            && circle_count == 1
-            && cloud_count == 1
-            && bang_count == 1
-            && hex_count == 1
-            && no_icons
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 427.4510912613955).abs() <= 1e-9
-            && (vh - 262.9534058631798).abs() <= 1e-9
-        {
-            vx = 7.709373474121094;
-            vw = 412.6386413574219;
-            vh = 268.28924560546875;
-        }
-    }
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_root_type_bang` profile.
-    //
-    // Profile: single root node, label `the root`, shape `bang`, no edges and no icons.
-    // Calibrate root viewport tuple (x/y/w/h) for deterministic parity-root output.
-    if model.nodes.len() == 1 && model.edges.is_empty() {
-        let n = &model.nodes[0];
-        if n.id == "0"
-            && n.label == "the root"
-            && n.shape == "bang"
-            && n.icon.is_none()
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 128.359375).abs() <= 1e-9
-            && (vh - 84.0).abs() <= 1e-9
-        {
-            vx = 7.709373474121094;
-            vy = 6.599998474121094;
-            vw = 155.46875;
-            vh = 100.0;
-        }
-    }
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_root_type_cloud` profile.
-    //
-    // Profile: single root node, label `the root`, shape `cloud`, no edges and no icons.
-    // Calibrate root viewport tuple (x/y/w/h) for deterministic parity-root output.
-    if model.nodes.len() == 1 && model.edges.is_empty() {
-        let n = &model.nodes[0];
-        if n.id == "0"
-            && n.label == "the root"
-            && n.shape == "cloud"
-            && n.icon.is_none()
-            && (vx - (-5.1259918214202465)).abs() <= 1e-9
-            && (vy - (-10.422029750038096)).abs() <= 1e-9
-            && (vw - 111.65335029736411).abs() <= 1e-9
-            && (vh - 86.8571584614812).abs() <= 1e-9
-        {
-            vx = 6.52117919921875;
-            vy = 6.006782531738281;
-            vw = 111.66693878173828;
-            vh = 86.86467742919922;
-        }
-    }
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_shaped_root_without_id` profile.
-    //
-    // Profile: single root node, label `root`, shape `rounded`, no edges and no icons.
-    // Calibrate root viewport width/height for deterministic parity-root output.
-    if model.nodes.len() == 1 && model.edges.is_empty() {
-        let n = &model.nodes[0];
-        if n.id == "0"
-            && n.label == "root"
-            && n.shape == "rounded"
-            && n.icon.is_none()
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 89.734375).abs() <= 1e-9
-            && (vh - 84.0).abs() <= 1e-9
-        {
-            vw = 79.734375;
-            vh = 74.0;
-        }
-    }
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_docs_example_icons_br` profile.
-    //
-    // Profile: 15 nodes, 14 edges, root label `mindmap` with `mindmapCircle`, exactly one icon
-    // (`fa fa-book`), and exactly one `<br/>` label break in the node label set (docs example).
-    // Calibrate root viewport width/height for deterministic parity-root output.
-    if model.nodes.len() == 15 && model.edges.len() == 14 {
-        let node_labels = model
-            .nodes
-            .iter()
-            .map(|n| n.label.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
-        let default_count = model
-            .nodes
-            .iter()
-            .filter(|n| n.shape == "defaultMindmapNode")
-            .count();
-        let circle_count = model
-            .nodes
-            .iter()
-            .filter(|n| n.shape == "mindmapCircle")
-            .count();
-        let icon_count = model.nodes.iter().filter(|n| n.icon.is_some()).count();
-        let has_book_icon = model
-            .nodes
-            .iter()
-            .any(|n| n.icon.as_deref() == Some("fa fa-book"));
-        let has_br_label = model.nodes.iter().any(|n| n.label.contains("<br"));
-
-        if node_labels.contains("British popular psychology author Tony Buzan")
-            && node_labels.contains("On effectiveness<br/>and features")
-            && node_labels.contains("mindmap")
-            && default_count == 14
-            && circle_count == 1
-            && icon_count == 1
-            && has_book_icon
-            && has_br_label
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 758.0433506780688).abs() <= 1e-6
-            && (vh - 720.9790731983021).abs() <= 1e-6
-        {
-            vw = 756.3554077148438;
-            vh = 720.9426879882812;
-        }
-    }
-
     // Mermaid@11.12.2 parity-root calibration for `upstream_docs_unclear_indentation` profile.
     //
     // Profile: 4 nodes, 3 edges, labels {Root, A, B, C}, all default node shapes and no icons.
@@ -1185,6 +1033,28 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             && (vh - 64.0).abs() <= 1e-9
         {
             vw = 197.625;
+        }
+    }
+
+    // Mermaid@11.12.2 parity-root calibration for `upstream_root_type_cloud` profile.
+    //
+    // Profile: single root node, label `the root`, shape `cloud`, no edges and no icons.
+    // Calibrate root viewport tuple (x/y/w/h) for deterministic parity-root output.
+    if model.nodes.len() == 1 && model.edges.is_empty() {
+        let n = &model.nodes[0];
+        if n.id == "0"
+            && n.label == "the root"
+            && n.shape == "cloud"
+            && n.icon.is_none()
+            && (vx - (-5.1259918214202465)).abs() <= 1e-9
+            && (vy - (-10.422029750038096)).abs() <= 1e-9
+            && (vw - 111.65335029736411).abs() <= 1e-9
+            && (vh - 86.8571584614812).abs() <= 1e-9
+        {
+            vx = 6.52117919921875;
+            vy = 6.006782531738281;
+            vw = 111.66693878173828;
+            vh = 86.86467742919922;
         }
     }
 

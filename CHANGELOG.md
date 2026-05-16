@@ -22,6 +22,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   browser-font/tidy-tree residuals for now. The shared docs/basic tree is dominated by plain label
   width drift, and the tidy-tree variant amplifies the same small text deltas through layout, so no
   fixture, glyph, or root viewport lookup data was added.
+- Mindmap root cleanup: remove four stale profile calibration blocks now covered by generated root
+  overrides or explicit weak-root policy, and document the remaining profile-shaped calibrations as
+  keep/replace candidates instead of letting old fixture-shaped rules accumulate silently.
 - Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
   retained-root reports by pairing emitted label-container geometry, so the remaining
   `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape
