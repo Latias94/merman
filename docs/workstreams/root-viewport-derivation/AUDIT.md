@@ -454,8 +454,8 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   generated root overrides, `upstream_shaped_root_without_id` and the stale
   `upstream_docs_example_icons_br` branch no longer match the current raw viewport after earlier
   text/layout changes. Focused `parity-root` checks pass for the deleted retained cases.
-  A follow-up typed HTML bbox rule then removed `upstream_pkgtests_mindmap_spec_018`; the remaining
-  branches are classified as must-retain until broader typed rules exist:
+  A follow-up typed HTML bbox rule then removed `upstream_pkgtests_mindmap_spec_018`; the
+  then-remaining branches were classified as must-retain until broader typed rules exist:
   `mindmap/basic`, the simple docs/package chain, `upstream_decorations_and_descriptions`,
   `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
   `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`.
@@ -472,6 +472,12 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   bounds/layout rule is already active, but the remaining single-node root tuple still reflects
   the browser HTML label bbox lattice for `the root` (`58.359375px` local vs `58.375px`
   upstream) rather than another cloud shape lookup.
+- 2026-05-16: `upstream_whitespace_and_comments` no longer uses a Mindmap profile calibration.
+  The old raw tuple guard (`337.2026680068237` x `389.4263190830933`) is stale after the typed
+  Mindmap shape/text passes. Current natural output is `317.0134437302554` x
+  `345.3722723123543`, close to the upstream `317.027587890625` x `345.3640441894531`, and the
+  focused `parity-root` / full-DOM comparisons pass without a fixture, glyph, or root lookup.
+  The old Mindmap profile calibration block now has 6 retained branches.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

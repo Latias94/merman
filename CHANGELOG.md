@@ -24,6 +24,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Mindmap cloud layout: feed the rendered cloud path bbox back into layout normalization so the
   single-node cloud root center now follows the inserted SVG geometry, leaving only the final
   browser HTML label lattice residual on `upstream_root_type_cloud`.
+- Mindmap root cleanup: remove the now-stale `upstream_whitespace_and_comments` profile calibration
+  after focused checks passed on the natural typed shape/text output.
 - Mindmap root audit: classify the three remaining outside-table docs/example roots as accepted
   browser-font/tidy-tree residuals for now. The shared docs/basic tree is dominated by plain label
   width drift, and the tidy-tree variant amplifies the same small text deltas through layout, so no

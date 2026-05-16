@@ -584,11 +584,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_docs_example_icons_br` profile. Focused `parity-root` checks for
   `upstream_node_types`, `upstream_root_type_bang`, and `upstream_pkgtests_mindmap_spec_018`
   still pass. A follow-up typed HTML bbox rule then replaced
-  `upstream_pkgtests_mindmap_spec_018`, so the current retained list is `mindmap/basic`, the simple docs/package
+  `upstream_pkgtests_mindmap_spec_018`, so the retained list was `mindmap/basic`, the simple docs/package
   `Photograph -> Waterfall` tree, `upstream_decorations_and_descriptions`,
   `upstream_hierarchy_nodes`, `upstream_docs_unclear_indentation`,
-  `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`. These retained blocks are
-  replacement candidates only when a typed shape/text/tidy-tree rule can explain them.
+  `upstream_root_type_cloud`, and `upstream_whitespace_and_comments`. These retained blocks were
+  replacement candidates only when a typed shape/text/tidy-tree rule could explain them.
 - [x] Replace the Mindmap `upstream_pkgtests_mindmap_spec_018` single-node calibration with a typed
   HTML label bbox rule. Evidence: Mindmap plain one-line labels ending in `[]` / `()` now apply the
   local browser `getBoundingClientRect()` 1/32px lattice correction after vendored HTML measurement,
@@ -603,6 +603,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   current typed cloud rendered-path bbox layout rule is already in place, while the residual
   single-node tuple now tracks the browser HTML label bbox lattice for `the root`
   (`58.359375px` local vs `58.375px` upstream).
+- [x] Remove the stale Mindmap `upstream_whitespace_and_comments` profile calibration.
+  Evidence: after the typed Mindmap shape/text passes, the old raw profile tuple
+  (`337.2026680068237` x `389.4263190830933`) no longer matches current output. The natural local
+  root is now `317.0134437302554` x `345.3722723123543` against upstream
+  `317.027587890625` x `345.3640441894531`, and focused `parity-root` / full-DOM checks pass
+  without fixture, glyph, or root lookup data. The remaining profile calibration block count is 6:
+  `mindmap/basic`, the simple docs/package `Photograph -> Waterfall` tree,
+  `upstream_decorations_and_descriptions`, `upstream_hierarchy_nodes`,
+  `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
