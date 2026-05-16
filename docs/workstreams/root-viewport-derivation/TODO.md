@@ -566,14 +566,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `stress_state_unicode_and_rtl_036`; focused disabled-root plus normal `parity-root` checks pass
   for both after deletion. The post-delete audit reports `308` root inventory entries, `314`
   fixture keys, `314` retained root-delta keys, and `0` stale generated pins.
-- [ ] Triage the outside-table normal `parity-root` failures surfaced by the global audit without
+- [x] Triage the outside-table normal `parity-root` failures surfaced by the global audit without
   adding new fixture/glyph lookup tables by default. Evidence so far: the seven Flowchart
   `newshapesset4` height roots are now derived by browser-like `HtmlLike` wrapping for long
   multi-hyphen compounds, and the two GitGraph `continuous_development_graph_{005,006}` max-width
   roots are now derived by applying GitGraph title-expanded root width's 1/128px browser lattice
-  bias. Neither pass added fixture, glyph, or root viewport lookup data. Remaining candidates are
-  three Mindmap icon/tidy-tree roots; they need typed geometry/text derivation or an explicit policy
-  decision to accept weaker root parity.
+  bias. The three remaining Mindmap docs/example roots are explicitly accepted as weaker root
+  parity for now: `upstream_docs_example_icons_br` and
+  `upstream_examples_mindmap_basic_mindmap_001` are the same docs/basic tree and are dominated by
+  plain label width drift (`Pen and paper` is `102.53125px` upstream versus `103.265625px` local),
+  while `upstream_docs_tidy_tree_example_usage_002` propagates the same small text deltas through
+  tidy-tree placement into a `671.5` versus `671.75` normalized height bucket. No pass added
+  fixture, glyph, or root viewport lookup data.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the

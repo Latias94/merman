@@ -440,6 +440,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   focused continuous-development checks and full GitGraph `parity-root` pass without adding
   fixture, glyph, or root viewport lookup data. The outside-table audit target is now narrowed to
   three Mindmap icon/tidy-tree roots.
+- 2026-05-16: the three remaining Mindmap outside-table docs/example roots are classified as
+  accepted weak root-parity residuals rather than new table debt. The `upstream_docs_example_icons_br`
+  and `upstream_examples_mindmap_basic_mindmap_001` SVGs share the same docs/basic tree; node-level
+  inspection shows plain label width drift, with `Pen and paper` measuring `102.53125px` upstream
+  versus `103.265625px` locally. `upstream_docs_tidy_tree_example_usage_002` uses the same label
+  family and propagates those small text deltas through tidy-tree placement, crossing the normalized
+  root-height bucket from `671.5` upstream to `671.75` local. Updating the old profile calibration
+  would hide browser font/tidy-tree drift behind another fixture-shaped rule, so the audit keeps
+  these three visible until a broader typed text/layout model is worth the complexity.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

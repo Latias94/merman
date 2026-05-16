@@ -18,6 +18,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - GitGraph root derivation: add the Chromium-like 1/128px title-width lattice bias when a centered
   title expands both horizontal root bounds, matching the continuous-development docs roots without
   adding fixture, glyph, or root viewport lookup data.
+- Mindmap root audit: classify the three remaining outside-table docs/example roots as accepted
+  browser-font/tidy-tree residuals for now. The shared docs/basic tree is dominated by plain label
+  width drift, and the tidy-tree variant amplifies the same small text deltas through layout, so no
+  fixture, glyph, or root viewport lookup data was added.
 - Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
   retained-root reports by pairing emitted label-container geometry, so the remaining
   `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape
