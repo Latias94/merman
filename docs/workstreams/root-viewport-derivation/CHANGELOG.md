@@ -2,6 +2,17 @@
 
 ## 2026-05-16
 
+- Added `xtask audit-root-overrides`, a global generated-table governance audit that expands root
+  override fixture keys by diagram family, runs child compare commands with
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, and classifies retained/stale keys by exact
+  upstream/local root `viewBox` and `max-width` comparison. The first full run found two stale
+  generated pins: `upstream_docs_entityrelationshipdiagram_unicode_text_007` and
+  `stress_state_unicode_and_rtl_036`. Focused disabled-root and normal `parity-root` checks passed
+  for both, so the pins were deleted and the root override no-growth budget was tightened to
+  `308`. The post-delete audit reports `stale=0` across `308` inventory entries / `314`
+  fixture keys. It also exposes 12 outside-table normal `parity-root` failures for later
+  derivation work: seven Flowchart new-shape set4 height roots, two GitGraph continuous
+  development max-width roots, and three Mindmap icon/tidy-tree roots.
 - Extended Flowchart retained-root label audit to include `htmlLabels:false` SVG `<text>/<tspan>`
   labels by reporting emitted label-container geometry instead of estimating text width from
   strings. The former non-deferred

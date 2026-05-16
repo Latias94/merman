@@ -27,7 +27,6 @@ pub fn lookup_state_root_viewport_override(
             Some(("0 0 390.5546875 983", "390.555"))
         }
         "stress_state_quoted_multiline_state_names_032" => Some(("0 0 145.59375 346", "145.594")),
-        "stress_state_unicode_and_rtl_036" => Some(("0 0 135.28125 574", "135.281")),
         "stress_state_scale_wrapping_long_edge_labels_038" => {
             Some(("0 0 375.640625 670", "375.641"))
         }

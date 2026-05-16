@@ -51,6 +51,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let fixtures_dir = compare_paths.fixtures_dir;
     let upstream_dir = compare_paths.upstream_dir;
     let out_path = compare_paths.out_path;
+    let out_svg_dir = compare_paths.out_svg_dir;
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
 
     if mmd_files.is_empty() {
@@ -59,6 +60,11 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             fixtures_dir.display()
         )));
     }
+
+    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_svg_dir.display().to_string(),
+        source,
+    })?;
 
     let re_viewbox = Regex::new(r#"viewBox="([^"]+)""#).unwrap();
     let re_max_width = Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap();
@@ -213,6 +219,9 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
         };
+
+        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
+        let _ = fs::write(&local_out_path, &local_svg);
 
         let upstream_sig = sig_for_svg(
             &upstream_svg,

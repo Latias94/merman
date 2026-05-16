@@ -42,14 +42,22 @@ HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fa
 FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing,
 quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome label-boundary,
 cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
-metric refresh, and root-pin-only Flowchart audit tooling passes:
+metric refresh, root-pin-only Flowchart audit tooling, and the global ER/State stale-pin audit
+passes:
 
-- State: `34` entries.
+- State: `33` entries.
 - Mindmap: `39` entries.
 - Sequence: `59` entries.
 - GitGraph: `23` entries.
-- Flowchart: `59` inventory entries.
-- Root viewport total: `326` entries.
+- Flowchart: `43` inventory entries covering `49` fixture keys.
+- Architecture: `31` entries.
+- C4: `35` entries.
+- ER: `21` entries.
+- Journey: `2` entries.
+- Requirement: `10` entries.
+- Sankey: `3` entries.
+- Timeline: `9` entries.
+- Root viewport total: `308` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -64,7 +72,7 @@ retained entries still include long-word min-content drift, Markdown/HTML saniti
 icon-bearing stress fixtures, shape profiles, and tree-wide transform drift. This workstream
 therefore focuses on derivation work, not blind deletion.
 
-The latest State disabled-root sweep still fails as expected with the 34 retained State root pins
+The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
 acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
 long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multiline-label geometry,
 unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
@@ -402,6 +410,23 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `defer-subpixel-text-lattice` (2), `defer-mojibake-font-fallback` (1),
   `defer-courier-font` (8), `defer-icon-font` (19), and `defer-font-env` (3), with no remaining
   `layout-shape-geometry` bucket.
+- 2026-05-16: global root override governance is now a reusable xtask pass. `xtask
+  audit-root-overrides --fail-on-stale` expands generated root table fixture keys by diagram
+  family, runs child compare commands with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, and decides
+  staleness from exact upstream/local root `viewBox` and `max-width` attrs rather than DOM report
+  rounding. The first run found two stale generated pins:
+  `upstream_docs_entityrelationshipdiagram_unicode_text_007` and
+  `stress_state_unicode_and_rtl_036`. Focused disabled-root and normal `parity-root` checks passed
+  for both after deletion. The post-delete audit reports `308` inventory entries, `314` fixture
+  keys, `314` retained root-delta keys, and `0` stale generated pins.
+- 2026-05-16: the same global audit surfaces 12 outside-table normal `parity-root` failures. These
+  are not stale retained pins and should not be hidden by adding fixture/glyph tables by default:
+  seven Flowchart `newshapesset4` roots have viewBox height drift, two GitGraph continuous
+  development fixtures have `349.75px` upstream versus `349.5px` local max-width, and three
+  Mindmap docs/example fixtures have icon/tidy-tree root drift. Focused normal probes confirm
+  representatives from all three families fail today, so the next practical work is typed
+  geometry/root-bounds derivation or an explicit policy decision to accept weaker root parity for
+  those cases.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

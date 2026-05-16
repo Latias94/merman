@@ -558,6 +558,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   reports `49` root pins, `301` label delta rows, no removal candidates,
   `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (2), and no
   `layout-shape-geometry` bucket.
+- [x] Run a generated-table global root override governance audit by diagram family. Evidence:
+  `xtask audit-root-overrides --fail-on-stale` now expands all generated root table fixture keys,
+  runs disabled-root `parity-root` compares, and verifies retained keys by exact SVG root attrs.
+  The first run found stale ER and State pins
+  `upstream_docs_entityrelationshipdiagram_unicode_text_007` and
+  `stress_state_unicode_and_rtl_036`; focused disabled-root plus normal `parity-root` checks pass
+  for both after deletion. The post-delete audit reports `308` root inventory entries, `314`
+  fixture keys, `314` retained root-delta keys, and `0` stale generated pins.
+- [ ] Triage the outside-table normal `parity-root` failures surfaced by the global audit without
+  adding new fixture/glyph lookup tables by default. Current candidates are seven Flowchart
+  `newshapesset4` height roots, two GitGraph `continuous_development_graph_{005,006}` max-width
+  roots, and three Mindmap icon/tidy-tree roots. These are not stale retained pins; they need
+  typed geometry/text derivation or an explicit policy decision to accept weaker root parity.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the

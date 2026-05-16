@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Root override governance: add a global disabled-root audit across all generated root viewport
+  tables, delete two stale ER/State root pins proven by focused `parity-root` checks, and tighten
+  the root override no-growth budget to `308`. The audit now reports no stale generated root pins
+  and surfaces the remaining outside-table root-only candidates separately.
 - Flowchart root audit: include `htmlLabels:false` SVG `<text>/<tspan>` labels in label-level
   retained-root reports by pairing emitted label-container geometry, so the remaining
   `oldshapes set5` pin is classified as SVG Markdown text lattice drift instead of shape
@@ -26,6 +30,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
+- `xtask audit-root-overrides`: cross-check generated root viewport tables by diagram family
+  against disabled-root `parity-root` outputs, using exact SVG root attr comparison for retained
+  keys and reporting stale plus outside-table DOM candidates.
 - `xtask triage-flowchart-root-pins`: classify accumulated subpixel SVG text/container drift as
   `defer-subpixel-text-lattice` when small SVG text label deltas explain the retained root
   boundary without adding fixture or glyph lookup data.

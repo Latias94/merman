@@ -7,6 +7,7 @@ pub(crate) mod generate;
 pub(crate) mod import;
 pub(crate) mod overrides;
 pub(crate) mod paths;
+pub(crate) mod root_override_audit;
 pub(crate) mod snapshots;
 pub(crate) mod verify;
 
@@ -19,5 +20,6 @@ pub(crate) use generate::*;
 pub(crate) use import::*;
 pub(crate) use overrides::*;
 pub(crate) use paths::*;
+pub(crate) use root_override_audit::*;
 pub(crate) use snapshots::*;
 pub(crate) use verify::*;

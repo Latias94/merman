@@ -20,7 +20,7 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is tightened to `350` after the GitGraph seeded auto-id
+- Root viewport override no-growth is tightened to `308` after the GitGraph seeded auto-id
   warm-up pass, the GitGraph horizontal
   branch-label width pass, the GitGraph commit/tag label computed-length pass, the Flowchart
   imageSquare layout-bounds pass, and the Flowchart anchor layout-bounds pass, the Flowchart C1
@@ -34,8 +34,9 @@ What is done:
   and docs/control message-width and actor/frame-width fact corrections, plus the latest Sequence
   stale-pin cross-check, the Flowchart exact-duplicate root override arm compression, the
   Flowchart quoted-numeric rankSpacing derivation, the Flowchart chained-statement split
-  `htmlLabels` derivation, the Flowchart icon-only multiline line-box derivation, and the
-  Flowchart FontAwesome label-boundary pass.
+  `htmlLabels` derivation, the Flowchart icon-only multiline line-box derivation, the Flowchart
+  FontAwesome label-boundary pass, the retained Flowchart SVG-label audit cleanup, and the latest
+  global root override audit that deleted two stale ER/State pins.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes.
@@ -44,6 +45,9 @@ What is done:
 - A disabled-root cross-check after numeric config parser centralization found no newly stale root
   viewport pins across generated root tables, so current root debt remains retained evidence rather
   than cleanup-by-count work.
+- The latest `xtask audit-root-overrides --fail-on-stale` cross-check reports `0` stale generated
+  root pins after deleting the two ER/State stale rows, and separately lists 12 outside-table
+  root-parity candidates for future typed derivation.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in
   `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
 - Root `CHANGELOG.md` now calls out the refactor release-readiness work.
@@ -70,8 +74,8 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `flowchart` 83, `sequence` 59, `mindmap` 39, `c4` 35,
-  `state` 34
+- root viewport: `sequence` 59, `flowchart` 43 inventory entries / 49 fixture keys, `mindmap` 39,
+  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 21
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 
 ## Next Practical Slices

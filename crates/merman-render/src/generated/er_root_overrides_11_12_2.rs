@@ -47,9 +47,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_docs_entityrelationshipdiagram_markdown_formatting_009" => {
             Some(("0 0 179.859375 100", "179.859"))
         }
-        "upstream_docs_entityrelationshipdiagram_unicode_text_007" => {
-            Some(("0 0 167.109375 100", "167.109"))
-        }
         "upstream_docs_examples_entity_relationship_diagram_exclamation_experimental_syntax_enti_006" => {
             Some(("0 0 434.015625 470", "434.016"))
         }

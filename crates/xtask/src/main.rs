@@ -84,6 +84,7 @@ fn print_help(topic: Option<&str>) {
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
     println!("  report-overrides");
+    println!("  audit-root-overrides");
     println!("  triage-flowchart-root-pins");
     println!();
     println!("Per-diagram SVG compare commands:");
@@ -206,6 +207,7 @@ fn main() -> Result<(), XtaskError> {
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),
         "report-overrides" => cmd::report_overrides(args.collect()),
+        "audit-root-overrides" => cmd::audit_root_overrides(args.collect()),
         "triage-flowchart-root-pins" => cmd::triage_flowchart_root_pins(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
