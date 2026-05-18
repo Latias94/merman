@@ -149,7 +149,11 @@ Because the table also contains negative width drift for loop/create-destroy/typ
 fixtures, a broad shared message, note, or frame slack would trade one retained pin for outside
 regressions rather than proving a typed derivation rule. The Sequence table therefore remains a
 real guard set for now, with the next candidate work split by text escaping/line-break metrics,
-nested frame vertical geometry, and participant type/lifecycle vertical geometry.
+nested frame vertical geometry, and participant type/lifecycle vertical geometry. This supersedes
+the earlier TODO item that waited on broad message-width inference before revisiting the bucket.
+Follow-up ledger verification found no remaining unchecked workstream TODO items and passed
+`git diff --check`, `cargo fmt --all --check`, and
+`cargo run -p xtask -- report-overrides --check-no-growth`.
 
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.

@@ -33,7 +33,8 @@ strict release gates green.
   passes plus the latest stale-pin cross-check. The latest disabled-root Sequence retained-root
   recheck still maps all `59` generated keys to `parity-root` DOM mismatches, so the remaining
   table is split into retained message/note text measurement, nested frame/rect vertical geometry,
-  and participant type/lifecycle geometry debt rather than stale table debt.
+  and participant type/lifecycle geometry debt rather than stale table debt. This supersedes the
+  earlier pending revisit TODO that waited on message-width inference before reopening the bucket.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up

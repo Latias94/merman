@@ -294,7 +294,8 @@ Progress:
   generated key to a `parity-root` DOM mismatch, with `0` stale entries. The retained rows mix
   message/note width drift, text escaping and line-break handling, nested frame/rect height drift,
   participant type/lifecycle height drift, and mixed-sign width cases, so no broad shared
-  message/note/frame slack rule is safe to apply.
+  message/note/frame slack rule is safe to apply. This supersedes the earlier TODO item that
+  waited on broad message-width inference before revisiting the bucket.
 - Derived the Flowchart chained-statement height root by matching Mermaid's split htmlLabels
   semantics: nodes follow root `htmlLabels`, while edge labels, subgraph titles, CSS selectors,
   and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.

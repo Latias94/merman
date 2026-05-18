@@ -48,7 +48,10 @@
   drift, spanning message/note escaping and line-break text measurement, nested frame/rect
   vertical geometry, participant type/lifecycle geometry, and mixed-sign loop/create-destroy cases.
   No broad shared message, note, or frame slack rule was kept, and no fixture/glyph/root lookup
-  data was added.
+  data was added. This supersedes the earlier TODO item that waited on broad message-width
+  inference before revisiting the bucket. Follow-up ledger verification found no remaining
+  unchecked workstream TODO items and passed `git diff --check`, `cargo fmt --all --check`, and
+  `cargo run -p xtask -- report-overrides --check-no-growth`.
 - Rechecked the current State retained-root bucket and kept all `33` generated State root pins.
   The disabled-root sweep in `target/compare/state_disabled_root_current.md` maps all `33`
   generated keys to exact root-delta rows: `20` positive width drifts, `13` negative width drifts,

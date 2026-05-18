@@ -274,8 +274,12 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059`,
   and `upstream_docs_examples_basic_sequence_diagram_005`. `report-overrides --check-no-growth`
   reports `362` root entries with `59` Sequence entries.
-- [ ] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
+- [x] Revisit the broader Sequence note/message/frame bucket after message width can be inferred
   without fixture-specific text rows.
+  Evidence: superseded by the 2026-05-18 Sequence retained-root reclassify. The fresh disabled-root
+  sweep in `target/compare/sequence_disabled_root_current.md` still maps all `59` generated keys
+  to `parity-root` DOM mismatches with `0` stale entries, so no safe shared message/note/frame rule
+  was kept and the bucket remains retained rather than becoming fixture-specific text rows.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch
   cross-checking.
   Evidence: `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`
