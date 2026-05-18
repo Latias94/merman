@@ -15,13 +15,15 @@ strict release gates green.
 
 - State root viewport overrides: `45` entries.
 - Mindmap root viewport overrides: `52` entries.
-- Current State root viewport overrides: `34` entries after the style-directive border,
+- Current State root viewport overrides: `33` entries after the style-directive border,
   Mermaid entity-placeholder edge-label, multiline note-label, transition edge-label, and shared
   alias/styled node-label derivation passes.
 - Current Mindmap root viewport overrides: `39` entries after deriving the single-line delimiter
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and
-  the stale retained pins exposed by the post-wrapping disabled-root sweep.
+  the stale retained pins exposed by the post-wrapping disabled-root sweep. The separate
+  hand-written Mindmap profile calibration block is now gone; its remaining cases were replaced by
+  Mindmap-owned plain HTML label metrics rather than fixture, glyph, or root lookup data.
 - Current Sequence root viewport overrides: `59` entries after the follow-up Sequence
   message-width metric, note/message/frame, actor/root-bounds, and SVG metric-table cleanup
   passes plus the latest stale-pin cross-check.
@@ -31,7 +33,8 @@ strict release gates green.
   behavior, then honoring commit/tag label theme-variable styles and pruning the now-derived pins
   while retaining the remaining table as real
   root-drift guards.
-- Current Flowchart root viewport overrides: `83` inventory entries after deriving imageSquare
+- Current Flowchart root viewport overrides: `43` inventory entries covering `49` fixture keys
+  after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
   measurement, SVG-like subgraph-title/root bounds, Unicode/entities HTML title bounds, HTML-label
   font-size precedence, iconSquare outer layout bounds, the unregistered custom FontAwesome
@@ -50,7 +53,7 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `350` entries.
+- Current root viewport override budget: `308` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

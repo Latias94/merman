@@ -1,5 +1,24 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-18
+
+- Removed the remaining hand-written Mindmap profile calibration branches without adding fixture,
+  glyph, or root viewport lookup data. The simple docs/package `Photograph -> Waterfall` profile
+  now derives from a Mindmap-owned plain HTML label metric for `Waterfall`; `upstream_root_type_cloud`
+  derives from the typed cloud path bounds plus the shared `the root` plain label metric; and the
+  docs `Root -> A -> {B, C}` / unclear-indentation profile derives from the `Root` plain label
+  metric feeding the deterministic COSE layout.
+- Verified the Mindmap profile-calibration closeout with focused `parity-root` / full-DOM checks
+  for `upstream_pkgtests_diagram_orchestration_spec_077`,
+  `upstream_docs_unclear_indentation`, `upstream_docs_mindmap_unclear_indentation_024`,
+  `upstream_docs_mindmap_syntax_003`, `upstream_root_type_*`, `upstream_node_types`, and
+  `upstream_pkgtests_mindmap_spec_010`, plus `cargo fmt --all --check`,
+  `cargo nextest run -p merman-render mindmap_plain_known_labels_use_browser_html_bbox_widths`,
+  `report-overrides --check-no-growth`, and `audit-root-overrides --fail-on-stale`.
+- Current global root viewport inventory remains `308` entries, Mindmap generated root overrides
+  remain `39`, text lookup budget remains `484`, SVG text metric table rows remain `186`, and
+  `svg/parity/mindmap.rs` has `0` hand-written `parity-root calibration` profile branches.
+
 ## 2026-05-16
 
 - Added `xtask audit-root-overrides`, a global generated-table governance audit that expands root

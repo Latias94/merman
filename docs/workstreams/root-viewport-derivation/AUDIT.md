@@ -13,8 +13,8 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | --- | --- | --- |
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
-| Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Started |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion or table compression | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the latest Flowchart table cleanup also collapses eight exact-duplicate inventory arms without changing fixture-key coverage |
+| Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -66,11 +66,14 @@ passes:
 - Font metric table total: `3774` rows.
 - Hand-curated helper overrides and manual raw SVG/path bridges: `0`.
 
-The latest Mindmap focused disabled-root checks show the plain wrapping prose/icon trio and five
-additional stale retained pins are covered by the current layout/bounds derivation. The remaining
-retained entries still include long-word min-content drift, Markdown/HTML sanitization,
-icon-bearing stress fixtures, shape profiles, and tree-wide transform drift. This workstream
-therefore focuses on derivation work, not blind deletion.
+The Mindmap generated root table still contains `39` retained root override entries, and the latest
+global audit reports `0` stale generated Mindmap pins. Separately, the old hand-written Mindmap
+profile calibration block has been eliminated: the residual docs/package, root-cloud, and
+docs unclear-indentation profiles now derive through Mindmap-owned plain HTML label metrics for
+`Waterfall`, `the root`, and `Root`. The remaining visible Mindmap outside-table DOM mismatches
+are the three accepted docs/example residuals (`upstream_docs_example_icons_br`,
+`upstream_docs_tidy_tree_example_usage_002`, and `upstream_examples_mindmap_basic_mindmap_001`),
+which still represent browser font/tidy-tree drift rather than table growth.
 
 The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
 acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
@@ -478,6 +481,14 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `345.3722723123543`, close to the upstream `317.027587890625` x `345.3640441894531`, and the
   focused `parity-root` / full-DOM comparisons pass without a fixture, glyph, or root lookup.
   The old Mindmap profile calibration block now has 6 retained branches.
+- 2026-05-18: the old Mindmap profile calibration block has been fully removed. The final retained
+  branches were replaced by Mindmap-owned plain HTML label metrics rather than fixture, glyph, or
+  root viewport lookup data: `Waterfall` derives the simple docs/package chain,
+  `the root` derives `upstream_root_type_cloud` on top of the typed cloud path-bounds rule, and
+  `Root` derives the docs `Root -> A -> {B, C}` / unclear-indentation profile by feeding the
+  deterministic COSE layout the browser `foreignObject` bbox width. Focused `parity-root`,
+  full-DOM, and SVG-position debug checks pass for the affected fixtures, and
+  `svg/parity/mindmap.rs` has zero hand-written `parity-root calibration` profile branches.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

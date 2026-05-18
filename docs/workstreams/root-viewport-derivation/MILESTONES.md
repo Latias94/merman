@@ -77,7 +77,8 @@ Exit criteria:
 
 ## M2: Mindmap First Pass
 
-Status: in progress.
+Status: complete for the first pass; remaining Mindmap root pins are tracked as generated-table
+guards or accepted outside-table residuals, not hand-written profile calibration debt.
 
 Scope:
 
@@ -103,6 +104,11 @@ Progress:
   lookup debt.
 - Removed five additional stale Mindmap root pins after a post-wrapping disabled-root sweep proved
   those fixtures were already covered by the new layout/bounds rules.
+- Removed the old hand-written Mindmap profile calibration branches by moving the remaining
+  browser `foreignObject` bbox facts for `Waterfall`, `the root`, and `Root` into Mindmap-owned
+  plain HTML label metrics. The final docs `Root -> A -> {B, C}` calibration now derives through
+  the same deterministic COSE layout path, and `svg/parity/mindmap.rs` no longer contains
+  `parity-root calibration` profile branches.
 
 Exit criteria:
 
