@@ -70,6 +70,12 @@
   `stress_sequence_batch5_whitespace_semicolons_051`, and
   `upstream_docs_sequence_note_with_br` showed `6` positive width drifts, `0` negative width
   drifts, `0` height changes, and one exact match.
+- Rechecked the narrower Sequence typed participant width/spacing subfamily and kept the four
+  generated root pins retained. With root overrides disabled, the typed Cypress roots still drift
+  right by `+12`, `+35`, and `+14` pixels, while the adjacent quoted/typed stress fixture drifts
+  left by `-7` pixels. Element probes split the drift across actor columns, message centers, and
+  note widths (`150 -> 160` in the Cypress notes/loops fixture, but `678 -> 671` in the quoted
+  stress fixture), so no shared actor visual-width, spacing, or emitted-bounds rule was kept.
 - Rechecked the narrower Sequence nested frame / rect vertical geometry subfamily and kept those
   pins retained. Focused disabled-root `parity-root` checks for
   `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and

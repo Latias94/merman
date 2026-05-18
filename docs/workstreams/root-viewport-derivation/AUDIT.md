@@ -162,6 +162,22 @@ the earlier TODO item that waited on broad message-width inference before revisi
 Follow-up ledger verification found no remaining unchecked workstream TODO items and passed
 `git diff --check`, `cargo fmt --all --check`, and
 `cargo run -p xtask -- report-overrides --check-no-growth`.
+The typed participant width/spacing residuals also stay retained after a focused recheck. With
+root overrides disabled, the Cypress typed participant fixtures still drift right by different
+amounts:
+`upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015`
+reports `1471x793 -> 1506x793`,
+`upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014`
+reports `1450x706 -> 1464x706`, and
+`upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016`
+reports `1450x770 -> 1462x770`; the sibling wrapping-text typed fixture remains an exact
+`1650x660 -> 1650x660` match. The adjacent quoted/typed stress fixture moves the other way:
+`stress_quoted_participants_and_types_023` reports `878x484 -> 871x484`. Element probes show the
+Cypress notes/loops case has actor columns, message centers, and the rightOf note widening and
+shifting together (`note` width `150 -> 160` local), while the quoted stress case has quoted-label
+actor columns and the over-note width narrowing (`678 -> 671`). This mixed sign and mixed
+actor/message/note participation makes a shared actor visual-width, spacing, or emitted-bounds
+adjustment unsafe without adding fixture-specific text or root data.
 The narrower text escaping / line-break subfamily stays retained as well: the focused disabled-root
 slice over `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
 `stress_message_text_with_colons_039`,

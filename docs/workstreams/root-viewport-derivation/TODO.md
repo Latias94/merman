@@ -759,7 +759,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   rows such as `upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_loops_039`
   (`871 -> 861`, height `695 -> 725`) and
   `stress_sequence_batch5_create_destroy_in_par_046` (`734 -> 725`) make a global message/note or
-  frame slack unsafe. No fixture, glyph, or root lookup table was added.
+  frame slack unsafe. A narrower typed-participant recheck over
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014`,
+  and `stress_quoted_participants_and_types_023` still shows mixed-sign root widths
+  (`+12`, `+35`, `+14`, and `-7`) with actor, message, and note offsets moving in different
+  directions, so there is still no safe shared actor-width or spacing rule to delete. No fixture,
+  glyph, or root lookup table was added.
 - [x] Follow up the retained Sequence participant type/lifecycle height row with a typed lifecycle
   cursor rule.
   Evidence:

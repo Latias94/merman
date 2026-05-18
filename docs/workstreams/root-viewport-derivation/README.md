@@ -43,7 +43,11 @@ strict release gates green.
   as well: `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and
   `stress_nested_rect_par_029` remain height-only root guards, but element probes split the drift
   across footer placement, nested frame internals, rect/par cursor movement, activation bounds, and
-  note/loop bounds rather than one safe shared vertical boundary rule.
+  note/loop bounds rather than one safe shared vertical boundary rule. The typed participant
+  width/spacing subfamily is retained too: focused disabled-root checks still show mixed root
+  width signs across typed Cypress fixtures (`+12`, `+35`, `+14`) and the adjacent quoted/typed
+  stress fixture (`-7`), with actor-column, message-center, and note-width deltas rather than one
+  shared actor visual-width rule.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
