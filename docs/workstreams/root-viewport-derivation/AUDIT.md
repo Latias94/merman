@@ -129,6 +129,22 @@ A follow-up disabled-root mismatch cross-check over the then-current Sequence ta
 and `upstream_docs_examples_basic_sequence_diagram_005`; all five pass focused disabled-root
 `parity-root` and were deleted.
 
+The current Sequence retained-root recheck keeps the remaining `59` generated pins. The
+disabled-root sweep in `target/compare/sequence_disabled_root_current.md` still maps all `59`
+generated keys to `parity-root` DOM mismatches, with no stale generated entries. The row shape is
+mixed: `48` retained rows have positive width drift, `4` have negative width drift, `7` have zero
+width drift but height drift, and `11` have non-zero height drift. The largest width drifts are
+message/note text measurement and escaping cases (`upstream_docs_diagrams_mermaid_api_sequence`
+`2869 -> 3037`, `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`
+`1002 -> 1101`, and `stress_message_text_with_colons_039` `986 -> 1079`). The height-only rows
+are separate nested frame/rect and participant-lifecycle debts (`stress_deep_nested_frames_018`,
+`stress_nested_frames_001`, `stress_nested_rect_par_029`, and the v2 participant creation root).
+Because the table also contains negative width drift for loop/create-destroy/typed-participant
+fixtures, a broad shared message, note, or frame slack would trade one retained pin for outside
+regressions rather than proving a typed derivation rule. The Sequence table therefore remains a
+real guard set for now, with the next candidate work split by text escaping/line-break metrics,
+nested frame vertical geometry, and participant type/lifecycle vertical geometry.
+
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.
 LR/RL branch labels keep the computed-length rule. A disabled-root audit over the previous

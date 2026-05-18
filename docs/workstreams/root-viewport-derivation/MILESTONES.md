@@ -284,6 +284,12 @@ Progress:
   they no longer produce DOM mismatches when root overrides are disabled. Focused disabled-root
   `parity-root` passes for the five removed fixtures, tightening the root budget to `362` with
   `59` Sequence root entries.
+- Rechecked the current Sequence retained note/message/frame bucket and kept all remaining `59`
+  generated root pins. A fresh disabled-root `compare-sequence-svgs` sweep still maps every
+  generated key to a `parity-root` DOM mismatch, with `0` stale entries. The retained rows mix
+  message/note width drift, text escaping and line-break handling, nested frame/rect height drift,
+  participant type/lifecycle height drift, and mixed-sign width cases, so no broad shared
+  message/note/frame slack rule is safe to apply.
 - Derived the Flowchart chained-statement height root by matching Mermaid's split htmlLabels
   semantics: nodes follow root `htmlLabels`, while edge labels, subgraph titles, CSS selectors,
   and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.

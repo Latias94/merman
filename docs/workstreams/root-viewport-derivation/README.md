@@ -26,7 +26,10 @@ strict release gates green.
   Mindmap-owned plain HTML label metrics rather than fixture, glyph, or root lookup data.
 - Current Sequence root viewport overrides: `59` entries after the follow-up Sequence
   message-width metric, note/message/frame, actor/root-bounds, and SVG metric-table cleanup
-  passes plus the latest stale-pin cross-check.
+  passes plus the latest stale-pin cross-check. The latest disabled-root Sequence retained-root
+  recheck still maps all `59` generated keys to `parity-root` DOM mismatches, so the remaining
+  table is split into retained message/note text measurement, nested frame/rect vertical geometry,
+  and participant type/lifecycle geometry debt rather than stale table debt.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
@@ -85,6 +88,7 @@ typed bounds coverage:
 $env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES

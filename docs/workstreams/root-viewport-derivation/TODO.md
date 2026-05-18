@@ -708,6 +708,26 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `simple_branch_and_merge_graph_001`; each remains an exact root guard. A shared commit/tag height
   probe regressed outside-table fixtures, confirming the remaining roots are subpixel browser
   lattice debt rather than a safe table-pruning target.
+- [x] Reclassify the current Sequence note/message/frame retained roots as retained until a
+  narrower typed measurement rule appears.
+  Evidence: the fresh disabled-root Sequence sweep
+  `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_disabled_root_current.md`
+  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` still reports all `59` generated Sequence root
+  pins as `parity-root` DOM mismatches, with `0` stale pins. The retained rows split into mixed
+  families instead of one safe shared rule: `48` positive width drifts, `4` negative width drifts,
+  `7` width-zero height-only drifts, and `11` rows with height drift. Top width cases are message
+  and note text measurement/escaping roots such as `upstream_docs_diagrams_mermaid_api_sequence`
+  (`2869 -> 3037`, plus `239px` height drift),
+  `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`
+  (`1002 -> 1101`), and `stress_message_text_with_colons_039` (`986 -> 1079`). Height-only
+  cases such as `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and
+  `stress_nested_rect_par_029` are frame/rect vertical geometry debt, while
+  `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+  still reflects participant type/lifecycle height drift (`1040x580 -> 1040x591`). Mixed-sign
+  rows such as `upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_loops_039`
+  (`871 -> 861`, height `695 -> 725`) and
+  `stress_sequence_batch5_create_destroy_in_par_046` (`734 -> 725`) make a global message/note or
+  frame slack unsafe. No fixture, glyph, or root lookup table was added.
 
 ## P3: Release Closeout
 

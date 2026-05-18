@@ -40,6 +40,15 @@
   plus title/root f32 and tag-height residuals. A shared 10px commit/tag bbox-height probe improved
   `upstream_merges_spec` but caused outside-table height mismatches, so no clean shared rule was
   kept and no fixture/glyph/root lookup data was added.
+- Rechecked the current Sequence retained note/message/frame root bucket and kept all `59`
+  generated Sequence root pins. The disabled-root sweep in
+  `target/compare/sequence_disabled_root_current.md` maps all `59` generated keys to
+  `parity-root` DOM mismatches with `0` stale entries. The retained rows mix `48` positive width
+  drifts, `4` negative width drifts, `7` width-zero height-only drifts, and `11` rows with height
+  drift, spanning message/note escaping and line-break text measurement, nested frame/rect
+  vertical geometry, participant type/lifecycle geometry, and mixed-sign loop/create-destroy cases.
+  No broad shared message, note, or frame slack rule was kept, and no fixture/glyph/root lookup
+  data was added.
 
 ## 2026-05-16
 
