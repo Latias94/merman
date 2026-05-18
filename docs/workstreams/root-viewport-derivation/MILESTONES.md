@@ -66,6 +66,11 @@ Progress:
   disabled-root drift is in note-cluster rect bounds, not a direct text width mismatch.
 - Retained the next compound-title, style-precedence, and choice candidates for now because their
   disabled-root drift does not collapse to a single reusable typed metric.
+- Rechecked all current `33` retained State root pins after the broader root-viewport passes. The
+  disabled-root sweep still maps every generated key to an exact root-delta row, with `32` snapped
+  `parity-root` DOM mismatches and one exact-only guard. The remaining roots mix noteGroup bounds,
+  RTL/scale layout, edge-label wrapping, style/font precedence, compound/choice geometry, and
+  browser-lattice drift, so no broad shared State rule was safe to keep in this pass.
 
 Exit criteria:
 

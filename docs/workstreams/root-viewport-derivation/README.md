@@ -17,7 +17,11 @@ strict release gates green.
 - Mindmap root viewport overrides: `52` entries.
 - Current State root viewport overrides: `33` entries after the style-directive border,
   Mermaid entity-placeholder edge-label, multiline note-label, transition edge-label, and shared
-  alias/styled node-label derivation passes.
+  alias/styled node-label derivation passes. The latest disabled-root State retained-root recheck
+  still maps all `33` generated keys to exact root-delta rows, with `32` snapped `parity-root` DOM
+  mismatches and one exact-only root guard. The retained table spans noteGroup bounds, RTL/scale
+  roots, edge-label wrapping, style/font precedence, and small browser-float guards rather than one
+  safe shared rule.
 - Current Mindmap root viewport overrides: `39` entries after deriving the single-line delimiter
   label bounds for the Cypress square/rounded-rect/circle fixtures, the docs circle plain-label
   measurement path, the docs cloud emitted path bbox, plain wrapping-label container bounds, and

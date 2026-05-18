@@ -76,9 +76,15 @@ are the three accepted docs/example residuals (`upstream_docs_example_icons_br`,
 which still represent browser font/tidy-tree drift rather than table growth.
 
 The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
-acting as current guards. They cluster around HTML-sanitized notes, right-to-left scale bounds with
-long IDs, dense or wrapping edge-label bounds, markdown edge labels, note/multiline-label geometry,
-unicode/RTL text metrics, style/font precedence, and small browser float or lattice guards.
+acting as current guards. Crossing `target/compare/state_disabled_root_current.md` with
+`state_root_overrides_11_12_2.rs` found all `33` generated keys still have exact root deltas:
+`20` positive width drifts, `13` negative width drifts, `5` rows with height drift, `32` snapped
+`parity-root` DOM mismatches, and one exact-only guard
+(`stress_state_unicode_quotes_and_br_in_notes_048`). They cluster around HTML-sanitized notes,
+right-to-left scale bounds with long IDs, dense or wrapping edge-label bounds, markdown edge
+labels, note/multiline-label geometry, unicode/RTL text metrics, style/font precedence, and small
+browser float or lattice guards. The mix is too broad for a safe global slack or one shared text
+rule.
 
 The latest Sequence checks removed the small-font precedence root pin, the docs boundary root pin,
 three title/accessibility root pins, two residual default-title root pins, twelve simple
@@ -574,6 +580,35 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   TB/BT preserved LR/RL but no longer fixed the retained tag case. No fixture, glyph, or root
   viewport lookup data was added, no code change was kept, and the GitGraph table remains at
   `23` retained exact-root entries.
+- 2026-05-18: rechecked the current State retained roots for shared note-cluster, RTL/scale,
+  edge-label wrapping, style/font precedence, or browser-float derivation rules. The disabled-root
+  sweep
+  `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/state_disabled_root_current.md`
+  exited `1` as expected and produced `284` root-delta rows. Crossing that report with
+  `state_root_overrides_11_12_2.rs` found all `33` generated State keys still have exact root
+  deltas: `20` positive width drifts, `13` negative width drifts, `5` rows with height drift, and
+  `32` snapped `parity-root` DOM mismatches. The only generated key without a snapped DOM mismatch
+  is `stress_state_unicode_quotes_and_br_in_notes_048`, which still differs by an exact root
+  width (`398.375 -> 398.367`) and remains an exact guard. Representative retained families are
+  not one mechanism: `stress_state_html_sanitization_notes_025` expands from `365.93x402` to
+  `799.11x530` through HTML-sanitized notes / noteGroup bounds;
+  `stress_state_direction_rl_scale_and_long_ids_054` and
+  `stress_state_batch5_direction_rl_scale_long_ids_065` shrink scaled RTL roots to `826.01px`;
+  wrapped edge-label / Dagre cases include
+  `upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040`
+  (`1283.54 -> 1143.46`) and `stress_state_scale_wrapping_long_edge_labels_038`
+  (`375.64 -> 286.63`); `stress_state_font_size_precedence_071` mixes a `-30.30px` width drift
+  with `386 -> 422` height drift; and the note-pair
+  `state_with_a_note_together_with_another_state` stays on the known small note-cluster bounds
+  delta. No global width/height slack, note text width, edge-label width, or font-size rule was
+  clean enough to keep without trading retained roots for fixture-like or outside-table drift, so
+  no fixture, glyph, or root viewport lookup data was added. Verification after the documentation
+  update passed `git diff --check`, `cargo fmt --all --check`, State normal DOM parity,
+  State `parity-root`, `cargo run -p xtask -- report-overrides --check-no-growth`, and
+  `cargo run -p xtask -- audit-root-overrides --fail-on-stale --out
+  target/compare/root_override_global_audit_current.md`. The global audit reports `308` root
+  inventory entries, `314` fixture keys, `314` retained root-delta keys, `0` stale generated pins,
+  and the same three accepted Mindmap outside-table residuals.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

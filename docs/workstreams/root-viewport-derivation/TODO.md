@@ -728,6 +728,25 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   (`871 -> 861`, height `695 -> 725`) and
   `stress_sequence_batch5_create_destroy_in_par_046` (`734 -> 725`) make a global message/note or
   frame slack unsafe. No fixture, glyph, or root lookup table was added.
+- [x] Reclassify the current State retained roots as retained until narrower note, scaled-root,
+  edge-label wrapping, style/font, or browser-lattice rules appear.
+  Evidence: the fresh disabled-root State sweep
+  `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/state_disabled_root_current.md`
+  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` still maps all `33` generated State root keys
+  to exact root-delta rows. Crossing the report with
+  `state_root_overrides_11_12_2.rs` found `20` positive width drifts, `13` negative width drifts,
+  `5` rows with height drift, `32` snapped `parity-root` DOM mismatches, and one exact-only guard
+  (`stress_state_unicode_quotes_and_br_in_notes_048`). The retained rows span distinct mechanisms:
+  HTML-sanitized note `foreignObject` / noteGroup bounds
+  (`stress_state_html_sanitization_notes_025`, `365.93 -> 799.11`, height `402 -> 530`),
+  right-to-left scaled long-id bounds (`stress_state_direction_rl_scale_and_long_ids_054`,
+  `1006.57 -> 826.01`), edge-label wrapping/Dagre placement
+  (`upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040`,
+  `1283.54 -> 1143.46`), font-size precedence
+  (`stress_state_font_size_precedence_071`, `182.30 -> 152.00`, height `386 -> 422`), and
+  small browser float guards. A broad root slack or text-width correction would hide mixed
+  mechanisms rather than prove a typed derivation rule, so no fixture, glyph, or root lookup table
+  was added.
 
 ## P3: Release Closeout
 

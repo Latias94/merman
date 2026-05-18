@@ -49,6 +49,14 @@
   vertical geometry, participant type/lifecycle geometry, and mixed-sign loop/create-destroy cases.
   No broad shared message, note, or frame slack rule was kept, and no fixture/glyph/root lookup
   data was added.
+- Rechecked the current State retained-root bucket and kept all `33` generated State root pins.
+  The disabled-root sweep in `target/compare/state_disabled_root_current.md` maps all `33`
+  generated keys to exact root-delta rows: `20` positive width drifts, `13` negative width drifts,
+  `5` rows with height drift, `32` snapped `parity-root` DOM mismatches, and one exact-only root
+  guard (`stress_state_unicode_quotes_and_br_in_notes_048`). The retained rows span
+  HTML-sanitized noteGroup bounds, right-to-left scaled long-id roots, edge-label wrapping/Dagre
+  placement, font-size and style precedence, and small browser-float guards. No broad shared
+  State slack or measurement rule was kept, and no fixture/glyph/root lookup data was added.
 
 ## 2026-05-16
 
