@@ -171,7 +171,8 @@ browser lattice, deleting the Journey root override module and tightening the in
 Requirement then moved the repeated styled-node Cypress root trio into final CSS font-weight label
 measurement, reducing the current inventory to `302` without growing text lookup data. Timeline
 then moved the empty-diagram root into typed layout bounds, reducing the current inventory to
-`301`.
+`301`. ER then moved the simple frontmatter-title root into emitted title bbox derivation,
+reducing the current inventory to `300`.
 The FontAwesome boundary deliberately keeps standard icons as
 nominal inline boxes and the
 unregistered custom-pack example as an empty inline element; it does not add a per-icon glyph
@@ -386,13 +387,13 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `301`.
+Total entries reported by `xtask`: `300`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
-| `er_root_overrides_11_12_2.rs` | 21 |
+| `er_root_overrides_11_12_2.rs` | 20 |
 | `flowchart_root_overrides_11_12_2.rs` | 43 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -414,6 +415,10 @@ is now deleted after empty-pie viewport and legend bbox behavior moved into type
 Timeline's empty orchestration fixture is now also derived by typed layout bounds, leaving `8`
 Timeline entries that still guard text bbox width, CJK/emoji height, and Fira Sans vertical-line
 height residuals.
+ER's simple frontmatter-title fixture is now also derived by emitted title bounds. The remaining
+20 ER entries still fail with root overrides disabled and split across entity-label browser width
+drift, multiline/attribute-table width drift, relationship-label bounds, recursive relationship
+residuals, and ELK/layout root differences.
 
 Mindmap note: after the single-line delimiter and docs circle plain-label passes, disabling the
 remaining Mindmap root lookup still leaves 47 `parity-root` DOM mismatches. Those entries stay in
@@ -539,6 +544,14 @@ Post-Timeline global audit note: `cargo run -p xtask -- audit-root-overrides --f
 passes on the current `301` root inventory. The generated root tables cover `307` fixture keys and
 `307` retained root-delta keys, with `294` disabled-root DOM mismatches, `0` stale generated pins,
 and the same three accepted Mindmap outside-table residuals.
+
+Post-ER-title note:
+`upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009` now
+passes focused disabled-root ER `parity-root` without a generated root pin. Full ER normal DOM
+parity, full ER `parity-root`, and a disabled-root ER sweep confirm the remaining `20` ER root
+entries are still real drift rather than stale table debt. The follow-up global audit reports
+`300` root inventory entries, `306` fixture keys, `306` retained root-delta keys, `293`
+disabled-root DOM mismatches, and `0` stale generated pins.
 
 State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`
 produced 283 root rows, with 125 non-zero `max-width` deltas and 125 changed viewBox dimensions.

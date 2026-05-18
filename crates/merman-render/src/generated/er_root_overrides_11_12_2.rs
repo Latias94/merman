@@ -17,9 +17,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_docs_accessibility_entity_relationship_diagram_009" => {
             Some(("0 0 434.015625 470", "434.016"))
         }
-        "upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009" => {
-            Some(("-7.984375 -48 148.03125 518", "148.031"))
-        }
         "upstream_cypress_erdiagram_spec_should_render_a_not_so_simple_er_diagram_005" => {
             Some(("0 0 872.265625 655", "872.266"))
         }

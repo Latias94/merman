@@ -42,8 +42,8 @@ HTML-label font-size precedence, iconSquare layout-bounds, custom FontAwesome fa
 FontAwesome icon-only multiline label height, LR fork/join direction-sensitive sizing,
 quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome label-boundary,
 cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
-metric refresh, root-pin-only Flowchart audit tooling, and the global ER/State stale-pin audit
-passes:
+metric refresh, root-pin-only Flowchart audit tooling, the global ER/State stale-pin audit passes,
+the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontmatter-title pass:
 
 - State: `33` entries.
 - Mindmap: `39` entries.
@@ -52,12 +52,12 @@ passes:
 - Flowchart: `43` inventory entries covering `49` fixture keys.
 - Architecture: `31` entries.
 - C4: `35` entries.
-- ER: `21` entries.
+- ER: `20` entries.
 - Journey: `0` entries.
 - Requirement: `7` entries.
 - Sankey: `3` entries.
 - Timeline: `8` entries.
-- Root viewport total: `301` entries.
+- Root viewport total: `300` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -217,6 +217,16 @@ still reports three accepted outside-table Mindmap DOM mismatches
 (`upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
 `upstream_examples_mindmap_basic_mindmap_001`), so the global retained baseline is stable rather
 than stale.
+The follow-up ER title root pass keeps that global audit clean after tightening the root inventory
+again. `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`
+now derives from emitted ER title bounds: the title inherits the root SVG font-size, the width
+uses the browser 1/32px SVG bbox lattice, and the bounds include Chromium's extra 4px vertical
+title overhang. A focused disabled-root ER `parity-root` check passes for that fixture, full ER
+normal DOM parity and full ER `parity-root` pass, and the remaining ER disabled-root sweep reports
+exactly `20` DOM mismatches matching the remaining ER root table. The refreshed global audit
+reports `300` inventory entries, `306` fixture keys, `306` retained root-delta keys, `293`
+disabled-root DOM mismatches, `0` stale generated pins, and the same three accepted Mindmap
+outside-table residuals.
 The typed participant width/spacing residuals also stay retained after a focused recheck. With
 root overrides disabled, the Cypress typed participant fixtures still drift right by different
 amounts:
@@ -770,6 +780,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   target/compare/root_override_global_audit_current.md`. The global audit reports `308` root
   inventory entries, `314` fixture keys, `314` retained root-delta keys, `0` stale generated pins,
   and the same three accepted Mindmap outside-table residuals.
+- 2026-05-19: derived the simple ER frontmatter-title root without adding fixture, glyph, text, or
+  root lookup data. ER title root bounds now inherit the root SVG font-size, floor the title SVG
+  bbox width to Chromium's 1/32px lattice, and include the extra 4px vertical title overhang. The
+  focused disabled-root `parity-root` check for
+  `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009` passes
+  with natural root `0 0 148.03125 518`, so the generated ER root arm was deleted. Full ER normal
+  DOM parity, full ER `parity-root`, `report-overrides --check-no-growth`, and the global root
+  override audit pass; the audit reports `300` inventory entries, `306` fixture keys, `306`
+  retained root-delta keys, `293` disabled-root DOM mismatches, and `0` stale generated pins.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

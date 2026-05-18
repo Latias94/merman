@@ -1,6 +1,6 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-05-18
+Snapshot: 2026-05-19
 
 This page is the short-form dashboard for the fearless-refactor workstream.
 The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
@@ -20,7 +20,7 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is now `307` according to
+- Root viewport override no-growth is now `300` according to
   `cargo run -p xtask -- report-overrides --check-no-growth`. The root-viewport derivation
   workstream removed additional generated pins and now governs the five remaining full-strict
   outside-table root residuals with an exact `compare-all-svgs` policy instead of silent debt.
@@ -64,8 +64,8 @@ It is mostly evidence-driven debt reduction:
 Largest remaining buckets:
 
 - root viewport: `sequence` 58, `flowchart` 43 inventory entries / 49 fixture keys, `mindmap` 39,
-  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 21, `requirement` 10,
-  `timeline` 9, `sankey` 3, `journey` 2
+  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 20, `requirement` 7,
+  `timeline` 8, `sankey` 3
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 
 ## Next Practical Slices

@@ -538,17 +538,22 @@ pub(super) fn render_er_diagram_svg_model(
     if let Some(title) = diagram_title {
         let title_style = crate::text::TextStyle {
             font_family: Some(font_family.clone()),
-            font_size: 18.0,
+            font_size,
             font_weight: None,
         };
         let measure = measurer.measure(title, &title_style);
+        // ER titles inherit the root font-size in upstream CSS. Chromium's SVG bbox for this
+        // inherited title sits on a 1/32px width lattice and includes 4px of vertical overhang
+        // beyond the shared single-line text height.
+        let title_width = ((measure.width.max(1.0) * 32.0).floor()) / 32.0;
+        let title_height = measure.height + 4.0;
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
         let title_x = content_bounds.min_x + w / 2.0;
         let title_y = -title_top_margin;
-        let title_min_x = title_x - measure.width / 2.0;
-        let title_max_x = title_x + measure.width / 2.0;
+        let title_min_x = title_x - title_width / 2.0;
+        let title_max_x = title_x + title_width / 2.0;
         // Approximate the SVG text bbox using the measured height above the baseline.
-        let title_min_y = title_y - measure.height;
+        let title_min_y = title_y - title_height;
         let title_max_y = title_y;
         content_bounds.min_x = content_bounds.min_x.min(title_min_x);
         content_bounds.max_x = content_bounds.max_x.max(title_max_x);

@@ -843,6 +843,28 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `target/compare/root_override_global_audit_current.md` and passes with `301` inventory entries,
   `307` fixture keys, `307` retained root-delta keys, `294` disabled-root DOM mismatches, `0`
   stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
+- [x] Derive the simple ER frontmatter-title root from emitted title bounds.
+  Evidence: ER title bounds now inherit the root SVG font-size, floor the title SVG bbox width to
+  the browser 1/32px lattice, and include Chromium's extra 4px vertical title overhang. The focused
+  disabled-root `parity-root` check for
+  `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009` now
+  passes with natural local root `0 0 148.03125 518`, so its generated ER root arm was deleted.
+  `report-overrides --check-no-growth` reports `300` root entries with `20` ER root entries.
+- [x] Reclassify the remaining ER retained roots after the title derivation.
+  Evidence: a full disabled-root ER sweep
+  `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/er_disabled_root_after_title.md`
+  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now reports exactly `20` ER `parity-root` DOM
+  mismatches, matching the remaining `er_root_overrides_11_12_2.rs` entries. The retained rows are
+  mixed mechanisms: entity-label browser width drift (`DELIVERY-ADDRESS`,
+  `PRODUCT-CATEGORY`, `CATEGORY`, `ATLAS-*`), multiline/attribute-table width drift, recursive
+  relationship and edge-label bounds residuals, and ELK/layout root differences. Full ER normal
+  DOM parity and full ER `parity-root` stay green, so no fixture, glyph, text, or root lookup data
+  was added.
+- [x] Refresh the global generated root override audit after deleting the ER title root pin.
+  Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
+  `target/compare/root_override_global_audit_current.md` and passes with `300` inventory entries,
+  `306` fixture keys, `306` retained root-delta keys, `293` disabled-root DOM mismatches, `0`
+  stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
 
 ## P3: Release Closeout
 

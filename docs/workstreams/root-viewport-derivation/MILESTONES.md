@@ -461,3 +461,32 @@ Exit criteria:
 - Full Timeline normal DOM parity, full Timeline `parity-root`, `report-overrides
   --check-no-growth`, global root override audit, render clippy, formatting, and `git diff --check`
   pass.
+
+## M8: ER Simple Title Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove one ER frontmatter-title root pin when emitted title bounds explain the root viewport.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `301` to `300`.
+
+Progress:
+
+- ER title root bounds now inherit the root SVG font-size instead of using a hard-coded 18px title
+  size.
+- The title bbox contribution is floored to Chromium's 1/32px width lattice and includes the extra
+  4px vertical overhang observed for inherited ER title text.
+- `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`
+  now derives its `148.03125x518` root naturally with root overrides disabled.
+- The remaining 20 ER roots were rechecked and stay retained as mixed entity-label, multiline
+  attribute-table, relationship-label, recursive-relationship, and ELK/layout residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`.
+- Full ER normal DOM parity, full ER `parity-root`, `report-overrides --check-no-growth`, global
+  root override audit, render clippy, formatting, and `git diff --check` pass.

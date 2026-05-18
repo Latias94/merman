@@ -62,9 +62,15 @@ strict release gates green.
   root naturally. The remaining Timeline pins still cover title/label browser bbox width drift,
   CJK/emoji text-height drift, and Fira Sans vertical-line height accumulation rather than a clean
   shared rule.
-- The global generated root override audit is currently clean on stale pins after the Timeline
-  cleanup. The latest `audit-root-overrides --fail-on-stale` report covers `301` inventory entries,
-  `307` fixture keys, `307` retained root-delta keys, `294` disabled-root DOM mismatches, `0`
+- Current ER root viewport overrides: `20` entries after deriving the simple frontmatter-title
+  root from emitted title bounds. ER title measurement now inherits the root SVG font-size, uses the
+  browser 1/32px SVG bbox width lattice, and includes Chromium's extra 4px vertical title overhang.
+  The remaining ER pins still cover entity-label browser width drift, multiline/attribute-table
+  width drift, relationship-label bounds, recursive relationship residuals, and ELK/layout root
+  differences rather than one safe shared rule.
+- The global generated root override audit is currently clean on stale pins after the ER title
+  cleanup. The latest `audit-root-overrides --fail-on-stale` report covers `300` inventory entries,
+  `306` fixture keys, `306` retained root-delta keys, `293` disabled-root DOM mismatches, `0`
   stale entries, and the same three accepted Mindmap outside-table DOM residuals, so the current
   baseline is stable rather than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
@@ -95,7 +101,7 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `301` entries.
+- Current root viewport override budget: `300` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence
@@ -120,6 +126,7 @@ cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 ```
 
 Use disabled-root sweeps only as diagnostic input. They are expected to fail until each bucket has
@@ -132,6 +139,7 @@ cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --
 cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
+cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 ```
 

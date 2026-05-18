@@ -1,5 +1,24 @@
 # Root Viewport Derivation Changelog
 
+## 2026-05-19
+
+- Derived the ER simple frontmatter-title root viewport without adding fixture, glyph, text, or
+  root lookup data. ER title bounds now inherit the root SVG font-size, floor the browser SVG bbox
+  width to the 1/32px lattice, and include Chromium's extra 4px vertical title overhang, so
+  `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`
+  naturally derives its `148.03125x518` root with root overrides disabled. The ER root table drops
+  from `21` to `20`, global root inventory is `300`, and text lookup remains `484`.
+- Rechecked the remaining ER retained-root bucket after the title derivation. A full disabled-root
+  ER `parity-root` sweep now reports exactly the remaining `20` ER root pins as DOM mismatches,
+  while full ER normal DOM parity and full ER `parity-root` stay green. The retained ER rows still
+  split across entity-label browser width drift, multiline/attribute-table width drift, recursive
+  relationship and edge-label bounds residuals, and ELK/layout root differences rather than one
+  safe shared rule.
+- Re-ran the global generated root override audit after the ER title cleanup. The current
+  `audit-root-overrides --fail-on-stale` report is clean on stale pins across `300` root inventory
+  entries, `306` fixture keys, and `306` retained root-delta keys. It reports `293` disabled-root
+  DOM mismatches plus the same three accepted Mindmap outside-table residuals.
+
 ## 2026-05-18
 
 - Derived the empty Timeline root viewport without adding fixture, glyph, text, or root lookup
