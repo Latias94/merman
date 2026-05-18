@@ -289,13 +289,18 @@ Progress:
   they no longer produce DOM mismatches when root overrides are disabled. Focused disabled-root
   `parity-root` passes for the five removed fixtures, tightening the root budget to `362` with
   `59` Sequence root entries.
-- Rechecked the current Sequence retained note/message/frame bucket and kept all remaining `59`
+- Rechecked the then-current Sequence retained note/message/frame bucket and kept all remaining `59`
   generated root pins. A fresh disabled-root `compare-sequence-svgs` sweep still maps every
   generated key to a `parity-root` DOM mismatch, with `0` stale entries. The retained rows mix
   message/note width drift, text escaping and line-break handling, nested frame/rect height drift,
   participant type/lifecycle height drift, and mixed-sign width cases, so no broad shared
   message/note/frame slack rule is safe to apply. This supersedes the earlier TODO item that
   waited on broad message-width inference before revisiting the bucket.
+- Removed the participant creation/destruction v2 root pin after matching Mermaid's lifecycle
+  cursor rule: create/destroy adjustments use the actor's pre-render layout height, while
+  type-specific SVG visual height mutations happen later and do not feed back into the message
+  cursor. The focused disabled-root check now matches `1040x580`, full Sequence `parity-root`
+  stays green, and the root budget is tightened to `307` with `58` Sequence root entries.
 - Reclassified the narrower Sequence text escaping / line-break subfamily as retained. A focused
   disabled-root slice over `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
   `stress_message_text_with_colons_039`,

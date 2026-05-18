@@ -28,12 +28,13 @@ strict release gates green.
   the stale retained pins exposed by the post-wrapping disabled-root sweep. The separate
   hand-written Mindmap profile calibration block is now gone; its remaining cases were replaced by
   Mindmap-owned plain HTML label metrics rather than fixture, glyph, or root lookup data.
-- Current Sequence root viewport overrides: `59` entries after the follow-up Sequence
+- Current Sequence root viewport overrides: `58` entries after the follow-up Sequence
   message-width metric, note/message/frame, actor/root-bounds, and SVG metric-table cleanup
-  passes plus the latest stale-pin cross-check. The latest disabled-root Sequence retained-root
-  recheck still maps all `59` generated keys to `parity-root` DOM mismatches, so the remaining
+  passes plus the latest stale-pin cross-check and the participant lifecycle-height derivation.
+  The participant creation/destruction v2 fixture now derives from Mermaid's pre-render actor
+  layout-height lifecycle cursor rule instead of a root pin. The remaining
   table is split into retained message/note text measurement, nested frame/rect vertical geometry,
-  and participant type/lifecycle geometry debt rather than stale table debt. This supersedes the
+  and typed participant width/spacing debt rather than stale table debt. This supersedes the
   earlier pending revisit TODO that waited on message-width inference before reopening the bucket.
   The narrower text escaping / line-break subfamily is retained too: the focused disabled-root
   slice over the line-break, colon, escaping, wrapped-message, whitespace-semicolon, and note-with-
@@ -71,7 +72,7 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `308` entries.
+- Current root viewport override budget: `307` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

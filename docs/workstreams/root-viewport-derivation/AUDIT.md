@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Started: eleven State root pins, thirteen Mindmap root pins, fifty-four Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Started: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
@@ -47,7 +47,7 @@ passes:
 
 - State: `33` entries.
 - Mindmap: `39` entries.
-- Sequence: `59` entries.
+- Sequence: `58` entries.
 - GitGraph: `23` entries.
 - Flowchart: `43` inventory entries covering `49` fixture keys.
 - Architecture: `31` entries.
@@ -57,7 +57,7 @@ passes:
 - Requirement: `10` entries.
 - Sankey: `3` entries.
 - Timeline: `9` entries.
-- Root viewport total: `308` entries.
+- Root viewport total: `307` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -123,10 +123,10 @@ SVG actor/frame spacing. That removed six more root pins:
 `upstream_docs_examples_sequencediagram_loops_alt_and_opt_011`,
 `upstream_docs_sequence_alt_and_opt_example`, `upstream_docs_sequence_box_groups_example`,
 `upstream_docs_sequence_create_destroy_example`, and
-`upstream_docs_sequence_rect_nested_example`. The participant-creation v2 sibling remains pinned:
-with root overrides disabled its width matches, but the root height still drifts from upstream
-`1040x580` to local `1040x591`, so the next fix belongs in participant type/lifecycle vertical
-geometry rather than another text-width fact.
+`upstream_docs_sequence_rect_nested_example`. The participant-creation v2 sibling initially
+remained pinned after that width pass: with root overrides disabled its width matched, but the root
+height still drifted from upstream `1040x580` to local `1040x591`, pointing to participant
+type/lifecycle vertical geometry rather than another text-width fact.
 A follow-up disabled-root mismatch cross-check over the then-current Sequence table found
 `root=64 mismatch=59 stale=5 missing=0`. The stale simple-root pins were
 `upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030`,
@@ -135,7 +135,15 @@ A follow-up disabled-root mismatch cross-check over the then-current Sequence ta
 and `upstream_docs_examples_basic_sequence_diagram_005`; all five pass focused disabled-root
 `parity-root` and were deleted.
 
-The current Sequence retained-root recheck keeps the remaining `59` generated pins. The
+The follow-up participant lifecycle pass resolved that height row without adding lookup data:
+create/destroy cursor adjustment now uses the actor's pre-render layout height, matching Mermaid's
+message-processing behavior before type-specific SVG glyph rendering mutates actor visuals. The
+focused disabled-root check for
+`upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+now reports `1040x580 -> 1040x580`, and the generated root pin is deleted.
+
+The Sequence retained-root recheck before that lifecycle follow-up kept the then-remaining `59`
+generated pins. The
 disabled-root sweep in `target/compare/sequence_disabled_root_current.md` still maps all `59`
 generated keys to `parity-root` DOM mismatches, with no stale generated entries. The row shape is
 mixed: `48` retained rows have positive width drift, `4` have negative width drift, `7` have zero
@@ -149,7 +157,7 @@ Because the table also contains negative width drift for loop/create-destroy/typ
 fixtures, a broad shared message, note, or frame slack would trade one retained pin for outside
 regressions rather than proving a typed derivation rule. The Sequence table therefore remains a
 real guard set for now, with the next candidate work split by text escaping/line-break metrics,
-nested frame vertical geometry, and participant type/lifecycle vertical geometry. This supersedes
+nested frame vertical geometry, and typed participant width/spacing residuals. This supersedes
 the earlier TODO item that waited on broad message-width inference before revisiting the bucket.
 Follow-up ledger verification found no remaining unchecked workstream TODO items and passed
 `git diff --check`, `cargo fmt --all --check`, and
@@ -382,6 +390,18 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 
 ## Verification Log
 
+- 2026-05-18: Derived the Sequence participant creation/destruction lifecycle-height root by using
+  the actor's pre-render layout height for create/destroy cursor advancement instead of
+  type-specific SVG visual height. Focused disabled-root `parity-root` now matches
+  `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+  at `1040x580 -> 1040x580`; create/destroy neighbors and typed participant neighbors also pass.
+  Full Sequence `parity-root` passes, `report-overrides --check-no-growth` reports `307` root
+  entries with `58` Sequence entries, `cargo fmt --all --check` and render clippy pass, and
+  Sequence-focused nextest passes (`13` tests). `cargo nextest run -p merman-render --no-fail-fast`
+  is still
+  blocked by unrelated Mindmap drift: `mindmap_cloud_layout_uses_rendered_path_bbox_dimensions`
+  and the global layout snapshot test over existing Mindmap goldens fail, while the other `196`
+  render tests pass.
 - 2026-05-16: Flowchart retained-root triage now separates mojibake/C1 fallback drift from
   ordinary shared multiline text candidates. The focused `fhd12` audit still reports real root
   drift (`1926.810px` upstream max-width versus `1905.300px` local), but character-level review

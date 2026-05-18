@@ -48,14 +48,10 @@ pub(super) struct SequenceActorLayoutPlan<'a> {
 
 pub(super) struct SequenceActorLifecycleContext<'a> {
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
-    pub(super) actor_widths: &'a [f64],
     pub(super) actor_base_heights: &'a [f64],
-    pub(super) actors: &'a BTreeMap<String, SequenceActor>,
     pub(super) created_actors: &'a BTreeMap<String, usize>,
     pub(super) destroyed_actors: &'a BTreeMap<String, usize>,
     pub(super) actor_height: f64,
-    pub(super) actor_width_min: f64,
-    pub(super) label_box_height: f64,
 }
 
 pub(super) fn plan_sequence_actors<'a>(
@@ -514,18 +510,20 @@ impl<'a> SequenceActorLifecycle<'a> {
         line_y: f64,
     ) -> f64 {
         // Mermaid updates created/destroyed actor vertical anchors while processing messages and
-        // advances the cursor by half of the affected actor's visual height.
+        // advances the cursor by half of the actor's pre-render layout height. Type-specific SVG
+        // glyph drawing may later mutate the visual height, but that does not feed back into this
+        // lifecycle cursor adjustment.
         if self.created_actor_index(to) == Some(msg_idx) {
-            let h = self.actor_visual_height(to);
+            let h = self.actor_lifecycle_height(to);
             self.created_top_center_y.insert(to.to_string(), line_y);
             h / 2.0
         } else if self.destroyed_actor_index(from) == Some(msg_idx) {
-            let h = self.actor_visual_height(from);
+            let h = self.actor_lifecycle_height(from);
             self.destroyed_bottom_top_y
                 .insert(from.to_string(), line_y - h / 2.0);
             h / 2.0
         } else if self.destroyed_actor_index(to) == Some(msg_idx) {
-            let h = self.actor_visual_height(to);
+            let h = self.actor_lifecycle_height(to);
             self.destroyed_bottom_top_y
                 .insert(to.to_string(), line_y - h / 2.0);
             h / 2.0
@@ -547,28 +545,16 @@ impl<'a> SequenceActorLifecycle<'a> {
         }
     }
 
-    fn actor_visual_height(&self, actor_id: &str) -> f64 {
+    fn actor_lifecycle_height(&self, actor_id: &str) -> f64 {
         let Some(idx) = self.ctx.actor_index.get(actor_id).copied() else {
             return self.ctx.actor_height.max(1.0);
         };
-        let w = self
-            .ctx
-            .actor_widths
-            .get(idx)
-            .copied()
-            .unwrap_or(self.ctx.actor_width_min);
-        let base_h = self
-            .ctx
+        self.ctx
             .actor_base_heights
             .get(idx)
             .copied()
-            .unwrap_or(self.ctx.actor_height);
-        self.ctx
-            .actors
-            .get(actor_id)
-            .map(|a| a.actor_type.as_str())
-            .map(|t| sequence_actor_visual_height(t, w, base_h, self.ctx.label_box_height))
-            .unwrap_or(base_h.max(1.0))
+            .unwrap_or(self.ctx.actor_height)
+            .max(1.0)
     }
 }
 

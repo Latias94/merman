@@ -66,14 +66,10 @@ impl<'a> SequenceLayoutLoopState<'a> {
         let activation_state = SequenceActivationState::new(ctx.activation_width);
         let actor_lifecycle = SequenceActorLifecycle::new(SequenceActorLifecycleContext {
             actor_index: ctx.actor_index,
-            actor_widths: ctx.actor_widths,
             actor_base_heights: ctx.actor_base_heights,
-            actors: &ctx.model.actors,
             created_actors: &ctx.model.created_actors,
             destroyed_actors: &ctx.model.destroyed_actors,
             actor_height: ctx.actor_height,
-            actor_width_min: ctx.actor_width_min,
-            label_box_height: ctx.label_box_height,
         });
 
         Self {

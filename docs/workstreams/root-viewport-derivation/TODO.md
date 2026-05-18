@@ -260,12 +260,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_docs_sequence_create_destroy_example`, and
   `upstream_docs_sequence_rect_nested_example` pass focused disabled-root `parity-root`, and
   `report-overrides --check-no-growth` reports `367` root entries with `64` Sequence entries.
-- [x] Keep the Sequence participant-creation v2 root pin until vertical geometry is modeled.
-  Evidence:
+- [x] Derive the Sequence participant-creation v2 lifecycle height root without adding lookup data.
+  Evidence: Mermaid advances create/destroy lifecycle cursors by half of the actor's pre-render
+  layout height, not by the later type-specific SVG visual height. Sequence lifecycle adjustment
+  now uses `actor_base_heights`, so
   `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
-  still drifts from upstream `1040x580` to local `1040x591` when root viewport overrides are
-  disabled, even after the relevant width facts match. This is participant type/lifecycle vertical
-  geometry debt, not another text-width cleanup.
+  moves the second half of the diagram back up by the prior `11px` drift and matches upstream
+  `1040x580` with root overrides disabled. The generated root pin was deleted, the target layout
+  golden was refreshed, and `report-overrides --check-no-growth` reports `307` root entries with
+  `58` Sequence entries.
 - [x] Sweep Sequence for stale retained root pins after the docs/control width-fact cleanup.
   Evidence: a disabled-root mismatch cross-check found 5 stale retained pins and no missing pins.
   Focused disabled-root `parity-root` passed for
@@ -737,7 +740,7 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `simple_branch_and_merge_graph_001`; each remains an exact root guard. A shared commit/tag height
   probe regressed outside-table fixtures, confirming the remaining roots are subpixel browser
   lattice debt rather than a safe table-pruning target.
-- [x] Reclassify the current Sequence note/message/frame retained roots as retained until a
+- [x] Reclassify the then-current Sequence note/message/frame retained roots as retained until a
   narrower typed measurement rule appears.
   Evidence: the fresh disabled-root Sequence sweep
   `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_disabled_root_current.md`
@@ -757,6 +760,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   (`871 -> 861`, height `695 -> 725`) and
   `stress_sequence_batch5_create_destroy_in_par_046` (`734 -> 725`) make a global message/note or
   frame slack unsafe. No fixture, glyph, or root lookup table was added.
+- [x] Follow up the retained Sequence participant type/lifecycle height row with a typed lifecycle
+  cursor rule.
+  Evidence:
+  `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+  no longer belongs to the retained set after lifecycle cursor adjustment switched from
+  type-specific visual actor height to pre-render actor layout height. Focused disabled-root
+  `parity-root` now reports `1040x580 -> 1040x580`, the create/destroy neighbor group and typed
+  participant group both pass, and full Sequence `parity-root` remains green. Root viewport
+  overrides are now `307` total with `58` Sequence entries.
 - [x] Reclassify the current State retained roots as retained until narrower note, scaled-root,
   edge-label wrapping, style/font, or browser-lattice rules appear.
   Evidence: the fresh disabled-root State sweep

@@ -62,9 +62,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010" => {
             Some(("-50 -10 938 633", "938"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012" => {
-            Some(("-50 -10 1040 580", "1040"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016" => {
             Some(("-50 -10 1450 770", "1450"))
         }

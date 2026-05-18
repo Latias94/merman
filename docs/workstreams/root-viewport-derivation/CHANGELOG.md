@@ -2,6 +2,14 @@
 
 ## 2026-05-18
 
+- Derived the Sequence participant creation/destruction lifecycle-height root without adding
+  fixture, glyph, text, or root lookup data. Mermaid advances create/destroy cursor positions by
+  half of the actor's pre-render layout height; Rust had been using the later type-specific visual
+  actor height, which made the `control` participant case accumulate an `11px` root-height drift.
+  `upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012`
+  now matches `1040x580` with root overrides disabled, so its generated Sequence root pin was
+  deleted. Current global root viewport inventory is `307` entries, and Sequence generated root
+  overrides are `58`.
 - Removed the remaining hand-written Mindmap profile calibration branches without adding fixture,
   glyph, or root viewport lookup data. The simple docs/package `Photograph -> Waterfall` profile
   now derives from a Mindmap-owned plain HTML label metric for `Waterfall`; `upstream_root_type_cloud`
@@ -15,8 +23,9 @@
   `upstream_pkgtests_mindmap_spec_010`, plus `cargo fmt --all --check`,
   `cargo nextest run -p merman-render mindmap_plain_known_labels_use_browser_html_bbox_widths`,
   `report-overrides --check-no-growth`, and `audit-root-overrides --fail-on-stale`.
-- Current global root viewport inventory remains `308` entries, Mindmap generated root overrides
-  remain `39`, text lookup budget remains `484`, SVG text metric table rows remain `186`, and
+- At the Mindmap profile-calibration closeout checkpoint, global root viewport inventory remained
+  `308` entries, Mindmap generated root overrides remained `39`, text lookup budget remained
+  `484`, SVG text metric table rows remained `186`, and
   `svg/parity/mindmap.rs` has `0` hand-written `parity-root calibration` profile branches.
 - Rechecked the Flowchart retained-root audit after the Mindmap closeout. The current retained-root
   triage still reports `49` root pins, `301` label delta rows, no removal candidates, and only
@@ -40,7 +49,7 @@
   plus title/root f32 and tag-height residuals. A shared 10px commit/tag bbox-height probe improved
   `upstream_merges_spec` but caused outside-table height mismatches, so no clean shared rule was
   kept and no fixture/glyph/root lookup data was added.
-- Rechecked the current Sequence retained note/message/frame root bucket and kept all `59`
+- Rechecked the then-current Sequence retained note/message/frame root bucket and kept all `59`
   generated Sequence root pins. The disabled-root sweep in
   `target/compare/sequence_disabled_root_current.md` maps all `59` generated keys to
   `parity-root` DOM mismatches with `0` stale entries. The retained rows mix `48` positive width
