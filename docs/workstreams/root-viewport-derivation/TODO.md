@@ -619,6 +619,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   layout, such as `node_2` at `102.686300` upstream versus `98.606399` local on the y axis, while
   the retained root width/height calibration aligns the root SVG. Focused `parity-root` and
   full-DOM checks pass without adding fixture, glyph, or root lookup data.
+- [x] Remove the stale Mindmap `upstream_hierarchy_nodes` profile calibration.
+  Evidence: existing typed rect/rounded/default shape sizing and hierarchy layout bounds now derive
+  the fixture without the old raw tuple (`161.3125` x `375.79146455711737`) matching current output.
+  The natural local root is `121.3125` x `345.8237327179229` against upstream
+  `121.3125` x `345.82373046875`, and focused SVG position debugging shows all node centers match.
+  Focused `parity-root` and full-DOM checks pass without fixture, glyph, or root lookup data. The
+  remaining profile calibration block count is 5: `mindmap/basic`, the simple docs/package
+  `Photograph -> Waterfall` tree, `upstream_decorations_and_descriptions`,
+  `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
