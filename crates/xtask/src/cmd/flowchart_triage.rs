@@ -83,6 +83,13 @@ impl TriageBucket {
     }
 }
 
+type TriageEntry<'a> = (
+    &'a RootRow,
+    String,
+    Vec<&'a LabelRow>,
+    Option<RootBoundarySummary>,
+);
+
 pub(crate) fn triage_flowchart_root_pins(args: Vec<String>) -> Result<(), XtaskError> {
     let mut input = cmd::target_root()
         .join("compare")
@@ -234,15 +241,7 @@ fn render_triage_report(input: &Path, root_rows: &[RootRow], label_rows: &[Label
             .push(label);
     }
 
-    let mut buckets: BTreeMap<
-        TriageBucket,
-        Vec<(
-            &RootRow,
-            String,
-            Vec<&LabelRow>,
-            Option<RootBoundarySummary>,
-        )>,
-    > = BTreeMap::new();
+    let mut buckets: BTreeMap<TriageBucket, Vec<TriageEntry<'_>>> = BTreeMap::new();
     for row in root_rows {
         let labels = labels_by_fixture
             .get(row.fixture.as_str())
@@ -440,7 +439,7 @@ fn classify_root_pin(
         || labels
             .iter()
             .any(|label| contains_c1_control_chars(&label.text))
-        || boundary.is_some_and(|summary| summary_contains_c1_control_chars(summary))
+        || boundary.is_some_and(summary_contains_c1_control_chars)
     {
         return (
             TriageBucket::DeferMojibakeFontFallback,
@@ -461,21 +460,19 @@ fn classify_root_pin(
         };
         return (TriageBucket::DeferSubpixelTextLattice, reason.to_string());
     }
-    if fixture.contains("newshapes")
+    let is_shape_geometry_fixture = fixture.contains("newshapes")
         || fixture.contains("oldshapes")
         || fixture.contains("shape_alias")
         || fixture.contains("shape_mix")
         || fixture.contains("stadium_shape")
         || label_text.contains("trapezoid")
         || label_text.contains("subroutine")
-        || label_text.contains("shape test")
-    {
-        if labels.is_empty() || max_label_delta > 0.25 {
-            return (
-                TriageBucket::LayoutShapeGeometry,
-                "shape/cluster geometry or emitted bounds likely dominates".to_string(),
-            );
-        }
+        || label_text.contains("shape test");
+    if is_shape_geometry_fixture && (labels.is_empty() || max_label_delta > 0.25) {
+        return (
+            TriageBucket::LayoutShapeGeometry,
+            "shape/cluster geometry or emitted bounds likely dominates".to_string(),
+        );
     }
     if let Some(edge) = boundary.and_then(RootBoundarySummary::dominant_horizontal) {
         let root_delta = row.delta.abs().max(0.001);
@@ -573,7 +570,7 @@ fn is_subpixel_root_text_lattice_residual(
 
     boundary
         .and_then(RootBoundarySummary::dominant_vertical)
-        .map_or(true, |vertical| vertical.delta.abs() <= allowed_root_delta)
+        .is_none_or(|vertical| vertical.delta.abs() <= allowed_root_delta)
 }
 
 fn same_boundary_contributor(upstream: &BoundaryContributor, local: &BoundaryContributor) -> bool {

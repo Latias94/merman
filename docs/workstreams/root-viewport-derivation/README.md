@@ -84,6 +84,12 @@ strict release gates green.
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence
   clusters.
+- Closeout status: current-stage split. The non-root release gate
+  `cargo run -p xtask -- verify --clippy --all-features --check-overrides --feature-matrix`
+  passes, including workspace nextest (`1081` passed, `3` skipped) and normal SVG DOM parity.
+  Full `verify --strict` is still blocked by root-parity residuals: two Class
+  `different_text_labels_037` roots and the three accepted Mindmap docs/example roots. Treat those
+  five residuals as the next follow-on scope rather than as silent closeout debt.
 - Keep the existing strict gate green:
 
 ```sh

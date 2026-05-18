@@ -667,9 +667,9 @@ mod tests {
         let (width, height, label_width, label_height) =
             super::mindmap_node_dimensions_px(&node, &measurer, &style, 200.0);
 
-        assert!((label_width - 58.359375).abs() < 1e-9);
+        assert!((label_width - 58.375).abs() < 1e-9);
         assert_eq!(label_height, 24.0);
-        assert!((width - 91.65335029736411).abs() < 1e-9);
-        assert!((height - 66.8571584614812).abs() < 1e-9);
+        assert!((width - 91.66693405421854).abs() < 1e-9);
+        assert!((height - 66.86466866912957).abs() < 1e-9);
     }
 }

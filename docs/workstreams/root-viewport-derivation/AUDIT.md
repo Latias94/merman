@@ -11,14 +11,14 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 
 | Requirement | Artifact or command | Current state |
 | --- | --- | --- |
-| Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Started |
-| Start with State | `TODO.md`, `MILESTONES.md`, State override audit | In progress |
+| Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Current-stage complete |
+| Start with State | `TODO.md`, `MILESTONES.md`, State override audit | Current-stage complete; all remaining State roots are documented retained guards |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Started: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
-| Keep nextest green for shared behavior edits | `cargo nextest run` | Render crate and strict workspace nextest passed |
-| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed |
+| Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
+| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Blocked only by root-parity residuals; split follow-on recorded below |
 
 ## Current Baseline
 
@@ -201,6 +201,42 @@ Closeout verification for this documentation-only reclassification passed `git d
 `cargo fmt --all --check`, and `cargo run -p xtask -- report-overrides --check-no-growth`.
 No `nextest` or `parity-root` gate was rerun because this pass changed only workstream evidence
 documents and did not touch Rust source, fixtures, generated tables, or goldens.
+
+The 2026-05-18 closeout gate restored the broad non-root verification set. First,
+`cargo run -p xtask -- verify --strict` exposed stale local maintenance debt: workspace clippy
+failed on six `xtask` lints, and workspace nextest then failed because
+`mindmap_cloud_layout_uses_rendered_path_bbox_dimensions` still expected the old `the root`
+Mindmap label width (`58.359375px`) even though the current Mindmap-owned label metric is
+`58.375px`. The clippy-only rewrites were mechanical (`collapsible_if`, `type_complexity`,
+`redundant_closure`, `unnecessary_map_or`, and `manual_contains`), and the Mindmap cloud unit
+test plus the twelve affected Mindmap layout goldens were updated from the current deterministic
+layout output. Focused checks then passed:
+`cargo test -p merman-render mindmap_cloud_layout_uses_rendered_path_bbox_dimensions` and
+`cargo test -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`.
+The broad closeout gate without root parity,
+`cargo run -p xtask -- verify --clippy --all-features --check-overrides --feature-matrix`, passed
+with fmt, workspace all-feature check, workspace clippy, override no-growth, feature matrix,
+workspace nextest (`1081` passed, `3` skipped), and normal SVG DOM parity.
+
+Full strict closeout is not claimed. A fresh `cargo run -p xtask -- verify --strict` passed through
+fmt, all-feature check, clippy, override no-growth, feature matrix, and workspace nextest
+(`1081` passed, `3` skipped), but failed in `--root-parity` on five outside-table root DOM
+residuals:
+
+- Class:
+  `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037`
+  and
+  `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037`
+  still report root `max-width` drift (`2355.75px` upstream versus `2345px` local).
+- Mindmap:
+  `upstream_docs_example_icons_br` and `upstream_examples_mindmap_basic_mindmap_001` still report
+  `max-width` drift (`756.25px` upstream versus `756.75px` local), and
+  `upstream_docs_tidy_tree_example_usage_002` still reports a root `viewBox` height drift
+  (`671.5` upstream versus `671.75` local).
+
+Therefore this workstream is closed only as a documented current-stage split: generated root table
+inventory is stable and stale-pin-free, the non-root release gate is green, and the remaining full
+strict closeout work is a follow-on root-parity residual lane.
 
 The nested frame / rect vertical geometry subfamily also stays retained after a narrower recheck.
 Focused disabled-root `parity-root` checks for `stress_deep_nested_frames_018`,

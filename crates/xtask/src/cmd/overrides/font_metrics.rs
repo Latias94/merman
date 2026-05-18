@@ -102,7 +102,7 @@ fn has_class_ancestor(node: roxmltree::Node<'_, '_>, class_names: &[&str]) -> bo
         n.attribute("class")
             .unwrap_or_default()
             .split_whitespace()
-            .any(|t| class_names.iter().any(|class_name| *class_name == t))
+            .any(|t| class_names.contains(&t))
     })
 }
 
@@ -159,11 +159,9 @@ fn build_html_overrides_by_font(
         let mut by_text: BTreeMap<String, Vec<f64>> = BTreeMap::new();
         let mut mixed_texts: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for s in ss {
-            if plain_html_only {
-                if !s.plain_html_label {
-                    mixed_texts.insert(s.text.clone());
-                    continue;
-                }
+            if plain_html_only && !s.plain_html_label {
+                mixed_texts.insert(s.text.clone());
+                continue;
             }
             if !(s.width_px.is_finite() && s.width_px > 0.0) {
                 continue;

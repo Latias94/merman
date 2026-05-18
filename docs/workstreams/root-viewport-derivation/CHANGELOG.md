@@ -2,6 +2,20 @@
 
 ## 2026-05-18
 
+- Ran closeout verification for the root viewport derivation stage and split the remaining full
+  strict closeout work into a follow-on root-parity residual lane. `cargo run -p xtask -- verify
+  --clippy --all-features --check-overrides --feature-matrix` passes with fmt, workspace
+  all-feature check, workspace clippy, override no-growth, feature matrix, workspace nextest
+  (`1081` passed, `3` skipped), and normal SVG DOM parity. A fresh `cargo run -p xtask -- verify
+  --strict` reaches root parity and then fails only on five outside-table root residuals: two Class
+  `different_text_labels_037` fixtures (`2355.75px` upstream max-width versus `2345px` local) and
+  the three accepted Mindmap docs/example residuals. The stage is therefore documented as a split,
+  not a full strict close.
+- Cleaned up strict-gate maintenance fallout: workspace clippy lints in `xtask` were reduced
+  without behavior changes, and the Mindmap cloud layout unit test plus twelve Mindmap layout
+  goldens were synchronized with the current `the root` plain-label metric (`58.375px`) and cloud
+  rendered-path bbox. Focused `mindmap_cloud_layout_uses_rendered_path_bbox_dimensions` and layout
+  snapshot checks pass.
 - Derived the Sequence participant creation/destruction lifecycle-height root without adding
   fixture, glyph, text, or root lookup data. Mermaid advances create/destroy cursor positions by
   half of the actor's pre-render layout height; Rust had been using the later type-specific visual

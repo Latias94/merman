@@ -14,7 +14,7 @@ Success means:
 
 ## M0: Baseline and Tooling
 
-Status: in progress.
+Status: complete.
 
 Scope:
 
@@ -31,7 +31,7 @@ Exit criteria:
 
 ## M1: State First Pass
 
-Status: in progress.
+Status: current-stage complete; remaining State roots are documented retained guards.
 
 Scope:
 
@@ -125,7 +125,8 @@ Exit criteria:
 
 ## M3: Broader Root-Debt Plan
 
-Status: started.
+Status: split for follow-on. The broader derivation passes are documented, but full strict
+`--root-parity` closeout remains blocked by residual Class and Mindmap root DOM drift.
 
 Scope:
 
@@ -342,9 +343,40 @@ Progress:
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
   the affected layout goldens, deleted eight now-derived Flowchart root pins after the follow-up
   stale-pin sweep, and tightened the root budget to `424` with `95` Flowchart root entries.
+- 2026-05-18 closeout verification restored the non-root strict gate set:
+  `cargo run -p xtask -- verify --clippy --all-features --check-overrides --feature-matrix`
+  passed with fmt, workspace all-feature check, workspace clippy, override no-growth, feature
+  matrix, workspace nextest (`1081` passed, `3` skipped), and normal SVG DOM parity. The full
+  `cargo run -p xtask -- verify --strict` gate still fails only in `--root-parity`: two Class
+  `different_text_labels_037` fixtures differ on root `max-width` (`2355.75px` upstream versus
+  `2345px` local), and the three already-accepted Mindmap outside-table residuals still differ
+  on root width/height. This workstream is therefore split rather than fully closed.
 
 Exit criteria:
 
 - `AUDIT.md` maps each remaining root bucket to a derivation plan or retention reason.
 - Strict release gate passes.
 - `cargo nextest run` is green if shared layout or renderer contracts changed.
+
+## M4: Root Parity Follow-On
+
+Status: proposed next goal.
+
+Scope:
+
+- Resolve or explicitly govern the two Class root-parity residuals:
+  `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037`
+  and
+  `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037`.
+- Resolve or explicitly govern the three Mindmap outside-table residuals:
+  `upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
+  `upstream_examples_mindmap_basic_mindmap_001`.
+- Re-run `cargo run -p xtask -- verify --strict` and close this workstream only when full root
+  parity is green, or when the residuals have a deliberate checked policy in the verification
+  tooling.
+
+Exit criteria:
+
+- The full strict gate passes, or `verify --strict` has an explicit residual policy that fails on
+  growth and documents every accepted outside-table root mismatch.
+- `AUDIT.md` records the final residual decision with command evidence.
