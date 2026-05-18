@@ -824,6 +824,10 @@ Progress:
 - Revalidated `cargo run -p xtask -- verify --strict` after the Flowchart root override inventory
   cleanup; the run passed with `354` root viewport entries, `484` text lookup entries, `1035`
   nextest tests passed, `3` skipped, and both normal DOM parity plus full root parity green.
+- Revalidated `cargo run -p xtask -- verify --strict` after the root viewport derivation closeout;
+  the run passed with `307` root viewport entries, `484` text lookup entries, `1084` nextest tests
+  passed, `3` skipped, normal DOM parity, and full root parity under the exact five-residual
+  governance policy.
 - Revalidated `cargo bench -p merman --features render` after the Flowchart root override
   inventory cleanup; the full bench gate completed in about `51m 13s`, and representative
   estimates are recorded in

@@ -3,6 +3,14 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-18
+
+- Synchronized the current-release closeout after the root viewport derivation workstream completed
+  full strict root parity under an explicit five-residual policy. `verify --strict` passes with
+  `307` root viewport entries, `484` text lookup entries, `1084` nextest tests passed, `3`
+  skipped, and exact governance for the two Class `different_text_labels_037` max-width residuals
+  plus the three Mindmap docs/example root residuals.
+
 ## 2026-05-15
 
 - Added `docs/workstreams/PARITY_BOUNDARY.md` as the Mermaid parity boundary: semantic/layout

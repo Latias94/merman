@@ -8,6 +8,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Root parity release gate: accept exactly five documented full-strict root residuals in
+  `compare-all-svgs` for root parity mode, covering the two Class `different_text_labels_037`
+  `max-width` deltas and the three Mindmap docs/example outside-table deltas. The policy fails on
+  changed values, missing accepted residuals, or any additional root mismatch, and `verify
+  --strict` now passes with `307` root viewport overrides and `484` text lookup entries.
 - Root override governance: add a global disabled-root audit across all generated root viewport
   tables, delete two stale ER/State root pins proven by focused `parity-root` checks, and tighten
   the root override no-growth budget to `308`. The audit now reports no stale generated root pins

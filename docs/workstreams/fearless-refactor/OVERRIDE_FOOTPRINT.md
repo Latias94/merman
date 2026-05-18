@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-15
+## Snapshot: 2026-05-18
 
 Command:
 
@@ -160,9 +160,13 @@ without a root viewport pin. At that point the Flowchart root table was `86` ent
 viewport no-growth budget was `353`; the follow-up disabled-root audit found `94` retained
 fixture-key mismatches, `0` stale pins, and `0` missing pins.
 The subsequent Flowchart chained-statement, icon-only multiline, and FontAwesome label-boundary
-passes removed three more root pins without growing text lookup debt. The current Flowchart root
-table is `83` inventory entries, and the root viewport no-growth budget is `350`. The
-FontAwesome boundary deliberately keeps standard icons as nominal inline boxes and the
+passes removed three more root pins without growing text lookup debt. Those passes brought the
+Flowchart root table to `83` inventory entries and the root viewport no-growth budget to `350`.
+A later root-viewport derivation closeout reduced the current root viewport inventory to `307`,
+with Flowchart at `43` entries and Sequence at `58` entries. It also governs five exact
+outside-table full-strict root residuals in `compare-all-svgs` rather than adding fixture, glyph,
+or root viewport lookup data. The FontAwesome boundary deliberately keeps standard icons as
+nominal inline boxes and the
 unregistered custom-pack example as an empty inline element; it does not add a per-icon glyph
 advance table derived from root deltas.
 It also reflects the final
@@ -373,21 +377,21 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `350`.
+Total entries reported by `xtask`: `307`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
-| `er_root_overrides_11_12_2.rs` | 22 |
-| `flowchart_root_overrides_11_12_2.rs` | 83 |
+| `er_root_overrides_11_12_2.rs` | 21 |
+| `flowchart_root_overrides_11_12_2.rs` | 43 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 59 |
-| `state_root_overrides_11_12_2.rs` | 34 |
+| `sequence_root_overrides_11_12_2.rs` | 58 |
+| `state_root_overrides_11_12_2.rs` | 33 |
 | `timeline_root_overrides_11_12_2.rs` | 9 |
 
 Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root
@@ -510,11 +514,11 @@ State root pins need scale/direction and edge-label bounds work before another p
 
 Largest root-viewport buckets:
 
-- `flowchart`: 83
-- `sequence`: 59
+- `sequence`: 58
+- `flowchart`: 43
 - `mindmap`: 39
 - `c4`: 35
-- `state`: 34
+- `state`: 33
 - `architecture`: 31
 - `gitgraph`: 23
 

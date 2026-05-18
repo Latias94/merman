@@ -1,6 +1,6 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-05-15
+Snapshot: 2026-05-18
 
 This page is the short-form dashboard for the fearless-refactor workstream.
 The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
@@ -20,34 +20,23 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is tightened to `308` after the GitGraph seeded auto-id
-  warm-up pass, the GitGraph horizontal
-  branch-label width pass, the GitGraph commit/tag label computed-length pass, the Flowchart
-  imageSquare layout-bounds pass, and the Flowchart anchor layout-bounds pass, the Flowchart C1
-  replacement-glyph measurement pass, and the Flowchart SVG-like and Unicode/entities
-  subgraph-title/root-bounds passes, followed by two stale Flowchart title-margin root-pin
-  deletions, the Flowchart HTML-label font-size precedence derivation, and the Flowchart
-  iconSquare layout-bounds, custom FontAwesome fallback, and LR fork/join direction-sensitive
-  layout passes plus the follow-up stale-pin sweep, the GitGraph vertical branch-label
-  centered-bbox pass, the GitGraph commit/tag label theme-variable pass, and the Sequence
-  `activation_explicit`, stacked-activation, `arrows_variants`, simple Cypress, package sequence,
-  and docs/control message-width and actor/frame-width fact corrections, plus the latest Sequence
-  stale-pin cross-check, the Flowchart exact-duplicate root override arm compression, the
-  Flowchart quoted-numeric rankSpacing derivation, the Flowchart chained-statement split
-  `htmlLabels` derivation, the Flowchart icon-only multiline line-box derivation, the Flowchart
-  FontAwesome label-boundary pass, the retained Flowchart SVG-label audit cleanup, and the latest
-  global root override audit that deleted two stale ER/State pins.
+- Root viewport override no-growth is now `307` according to
+  `cargo run -p xtask -- report-overrides --check-no-growth`. The root-viewport derivation
+  workstream removed additional generated pins and now governs the five remaining full-strict
+  outside-table root residuals with an exact `compare-all-svgs` policy instead of silent debt.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
-- `cargo run -p xtask -- verify --strict` passes.
-- `cargo run -p xtask -- verify --strict` now includes full `parity-root` coverage.
+- `cargo run -p xtask -- verify --strict` passes; the latest closeout run covered workspace
+  nextest (`1084` passed, `3` skipped), normal SVG DOM parity, and full root parity with the
+  explicit five-residual policy.
+- `cargo run -p xtask -- verify --strict` includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
 - A disabled-root cross-check after numeric config parser centralization found no newly stale root
   viewport pins across generated root tables, so current root debt remains retained evidence rather
   than cleanup-by-count work.
-- The latest `xtask audit-root-overrides --fail-on-stale` cross-check reports `0` stale generated
-  root pins after deleting the two ER/State stale rows, and separately lists 12 outside-table
-  root-parity candidates for future typed derivation.
+- The latest root closeout keeps generated root pins stale-free and locks the five accepted
+  outside-table root residuals to exact fixture/value pairs, so changed or additional residuals
+  fail the strict gate.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in
   `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
 - Root `CHANGELOG.md` now calls out the refactor release-readiness work.
@@ -74,8 +63,9 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `sequence` 59, `flowchart` 43 inventory entries / 49 fixture keys, `mindmap` 39,
-  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 21
+- root viewport: `sequence` 58, `flowchart` 43 inventory entries / 49 fixture keys, `mindmap` 39,
+  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 21, `requirement` 10,
+  `timeline` 9, `sankey` 3, `journey` 2
 - text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29
 
 ## Next Practical Slices
