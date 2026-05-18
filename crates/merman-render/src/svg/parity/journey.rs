@@ -359,8 +359,8 @@ pub(super) fn render_journey_diagram_svg_model(
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
 
-    let mut max_w_attr = fmt(layout.width).to_string();
-    let mut viewbox_attr = format!(
+    let max_w_attr = fmt(layout.width).to_string();
+    let viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
@@ -373,17 +373,6 @@ pub(super) fn render_journey_diagram_svg_model(
         vb_h
     })
     .to_string();
-    let mut width_attr = fmt(vb_w).to_string();
-    let mut height_attr = fmt(vb_h).to_string();
-
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut width_attr,
-        &mut height_attr,
-        &mut max_w_attr,
-        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override,
-    );
 
     let svg_h_attr = journey_svg_height_attr_from_viewbox(&viewbox_attr, &fallback_svg_h_attr);
 

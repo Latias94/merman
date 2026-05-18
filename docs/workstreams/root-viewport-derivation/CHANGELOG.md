@@ -2,6 +2,14 @@
 
 ## 2026-05-18
 
+- Derived the final two Journey long-label root viewport pins without adding fixture, glyph, text,
+  or root lookup data. Journey actor legend line bounds now use single-run SVG computed text length
+  floored to the 1/32px browser lattice, matching the emitted `<text><tspan>line</tspan></text>`
+  labels for the two Cypress wrapping fixtures. The Journey generated root override module is
+  deleted, `report-overrides --check-no-growth` reports `305` root viewport entries, and text
+  lookup remains `484`. Focused disabled-root Journey `parity-root`, full Journey `parity-root`,
+  full Journey normal DOM parity, render clippy, formatting, the focused unit test, override
+  no-growth, and `git diff --check` all pass.
 - Ran closeout verification for the root viewport derivation stage and completed the full strict
   gate under explicit root-parity residual governance. `cargo run -p xtask -- verify
   --clippy --all-features --check-overrides --feature-matrix` passes with fmt, workspace

@@ -165,7 +165,10 @@ Flowchart root table to `83` inventory entries and the root viewport no-growth b
 A later root-viewport derivation closeout reduced the current root viewport inventory to `307`,
 with Flowchart at `43` entries and Sequence at `58` entries. It also governs five exact
 outside-table full-strict root residuals in `compare-all-svgs` rather than adding fixture, glyph,
-or root viewport lookup data. The FontAwesome boundary deliberately keeps standard icons as
+or root viewport lookup data. Journey actor legend root bounds then moved the final two Journey
+long-label browser-float guards into single-run SVG computed-length measurement with a 1/32px
+browser lattice, deleting the Journey root override module and tightening the inventory to `305`.
+The FontAwesome boundary deliberately keeps standard icons as
 nominal inline boxes and the
 unregistered custom-pack example as an empty inline element; it does not add a per-icon glyph
 advance table derived from root deltas.
@@ -350,12 +353,13 @@ This pass applies `docs/workstreams/PARITY_BOUNDARY.md` to the retained override
 a classification and evidence pass, not a new exact-parity push.
 
 - Root viewport guards are retained export-root facts. The full all-diagram disabled-root audit
-  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` produced one DOM mismatch for every retained
+  under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` produced one DOM mismatch for every then-retained
   generated root key after expanding or-patterns: Architecture `31/31`, C4 `35/35`, ER `22/22`,
   Flowchart `91/91`, GitGraph `23/23`, Journey `2/2`, Mindmap `39/39`, Requirement `10/10`,
   Sankey `3/3`, Sequence `59/59`, State `34/34`, and Timeline `9/9`.
   Global result: `358` retained fixture keys, `358` mismatches, `0` stale pins, and `0` missing
-  guards. No root pin was deleted because the audit found no evidence-backed stale entry.
+  guards. Later focused derivation passes, including the Journey actor-legend cleanup, are reflected
+  in the current `305`-entry table below.
 - Text lookup overrides remain suspicious by default because many are exact strings. Under the
   parity boundary they are retained only as diagram-owned browser/font measurement facts:
   Block HTML width/height, Class calc/rendered/namespace widths, ER's 3-entry floor, Flowchart
@@ -377,7 +381,7 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `307`.
+Total entries reported by `xtask`: `305`.
 
 | file | entries |
 | --- | ---: |
@@ -386,7 +390,6 @@ Total entries reported by `xtask`: `307`.
 | `er_root_overrides_11_12_2.rs` | 21 |
 | `flowchart_root_overrides_11_12_2.rs` | 43 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
-| `journey_root_overrides_11_12_2.rs` | 2 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
 | `requirement_root_overrides_11_12_2.rs` | 10 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
@@ -497,14 +500,12 @@ participant-creation v2 sibling still drifts from upstream `1040x580` to local `
 root overrides disabled, so it remains a typed participant vertical-geometry target rather than a
 text-width cleanup. The remaining Sequence table should be reduced by typed bounds/text
 measurement work rather than by another blind deletion pass.
-Journey note: the table was reintroduced with two tiny browser-float root guards after full
-`parity-root` exposed `0.125px` and `0.109375px` root width drift in the two long-label Cypress
-fixtures. The renderer still derives normal Journey root behavior; these two entries are
-fixture-derived parity guards, not a return to a broad Journey root table. A follow-up audit tried
-1/16px actor-label width quantization: it fixed the whitespace fixture but left
-`upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010`
-drifting from upstream `1937.125px` to local `1937.25px`, so the two-entry table stays until
-Journey actor-label browser measurement is modeled more precisely.
+Journey note: the final two tiny browser-float root guards are now gone. The drift came from
+actor legend line width feeding `left_margin` and then root width; Journey emits each actor legend
+line as one SVG text run, so the renderer now uses single-run computed text length floored to the
+1/32px browser lattice for the legend root-bounds contribution. The whitespace and long-label
+Cypress fixtures pass focused disabled-root `parity-root`, and the Journey generated root override
+module is deleted.
 
 State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`
 produced 283 root rows, with 125 non-zero `max-width` deltas and 125 changed viewBox dimensions.

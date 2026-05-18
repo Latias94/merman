@@ -48,9 +48,14 @@ strict release gates green.
   width signs across typed Cypress fixtures (`+12`, `+35`, `+14`) and the adjacent quoted/typed
   stress fixture (`-7`), with actor-column, message-center, and note-width deltas rather than one
   shared actor visual-width rule.
+- Current Journey root viewport overrides: `0` entries. The remaining long-label Cypress roots now
+  derive from Journey actor legend single-run SVG computed text length, floored to the 1/32px
+  browser lattice used by the emitted `<text><tspan>line</tspan></text>` labels.
 - The global generated root override audit is currently clean on stale pins (`0` stale across the
-  `307`-entry inventory). The only remaining outside-table DOM mismatches are the three accepted
-  Mindmap docs/example residuals, so the current baseline is stable rather than stale.
+  previous `307`-entry inventory), and `report-overrides --check-no-growth` now reports `305`
+  root viewport entries after the Journey cleanup. The only remaining outside-table DOM mismatches
+  are the three accepted Mindmap docs/example residuals, so the current baseline is stable rather
+  than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
@@ -79,7 +84,7 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `307` entries.
+- Current root viewport override budget: `305` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

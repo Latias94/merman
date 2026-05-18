@@ -380,3 +380,27 @@ Exit criteria:
 
 - The full strict gate passes with explicit residual governance.
 - `AUDIT.md` records the final residual decision with command evidence.
+
+## M5: Journey Root Pin Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the two Journey long-label root viewport pins without adding fixture, glyph, or root
+  lookup data.
+- Keep Journey focused `parity-root` green with root viewport overrides disabled.
+- Tighten the root override inventory budget from `307` to `305`.
+
+Progress:
+
+- Journey actor legend line widths now use the single-run SVG computed text length path and floor
+  to the 1/32px browser lattice before contributing to `max_actor_label_width`.
+- The two Cypress long-label fixtures now derive their root `viewBox` and `max-width` naturally, so
+  the empty Journey generated root override module was deleted.
+
+Exit criteria:
+
+- Focused disabled-root Journey `parity-root` passes for the `should_wrap_*` fixture pair.
+- Full Journey `parity-root`, `report-overrides --check-no-growth`, render clippy, and formatting
+  gates pass.

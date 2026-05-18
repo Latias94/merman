@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Current-stage complete |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | Current-stage complete; all remaining State roots are documented retained guards |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
@@ -53,11 +53,11 @@ passes:
 - Architecture: `31` entries.
 - C4: `35` entries.
 - ER: `21` entries.
-- Journey: `2` entries.
+- Journey: `0` entries.
 - Requirement: `10` entries.
 - Sankey: `3` entries.
 - Timeline: `9` entries.
-- Root viewport total: `307` entries.
+- Root viewport total: `305` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -74,6 +74,18 @@ docs unclear-indentation profiles now derive through Mindmap-owned plain HTML la
 are the three accepted docs/example residuals (`upstream_docs_example_icons_br`,
 `upstream_docs_tidy_tree_example_usage_002`, and `upstream_examples_mindmap_basic_mindmap_001`),
 which still represent browser font/tidy-tree drift rather than table growth.
+
+Journey no longer has a generated root viewport override table. The two remaining long-label
+Cypress pins were replaced by Journey-owned actor legend measurement: each legend line uses the
+single-run SVG computed text length path and floors the result to the 1/32px browser lattice before
+feeding `max_actor_label_width`. Focused disabled-root `parity-root` checks for
+`upstream_cypress_journey_spec_should_wrap_*` now pass without fixture root pins, and
+`report-overrides --check-no-growth` reports `305` root viewport entries with text lookup still at
+`484`. Verification for this pass includes `cargo fmt --all --check`,
+`cargo test -p merman-render journey_actor_legend_width_uses_single_run_computed_length_lattice`,
+focused disabled-root Journey `parity-root`, full Journey `parity-root`, full Journey normal DOM
+parity, `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, override
+no-growth, and `git diff --check`.
 
 The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
 acting as current guards. Crossing `target/compare/state_disabled_root_current.md` with

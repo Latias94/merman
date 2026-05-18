@@ -114,6 +114,19 @@ fn wrap_actor_label_lines(
     }
 }
 
+fn journey_actor_legend_line_width_px(
+    line: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> f64 {
+    let width = measurer.measure_svg_text_computed_length_px(line, style);
+    if width.is_finite() && width > 0.0 {
+        (width * 32.0).floor() / 32.0
+    } else {
+        0.0
+    }
+}
+
 pub fn layout_journey_diagram(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
@@ -206,7 +219,7 @@ pub fn layout_journey_diagram_typed(
                 text_margin: box_text_margin,
             });
 
-            let line_width = measurer.measure(line, &legend_style).width;
+            let line_width = journey_actor_legend_line_width_px(line, measurer, &legend_style);
             if line_width > max_actor_label_width && line_width > left_margin_base - line_width {
                 max_actor_label_width = line_width;
             }
@@ -401,6 +414,8 @@ pub fn layout_journey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+
     #[test]
     fn journey_geometry_constants_match_mermaid() {
         assert_eq!(super::JOURNEY_VIEWBOX_TOP_PAD_PX, 25.0);
@@ -409,5 +424,28 @@ mod tests {
         assert_eq!(super::JOURNEY_FACE_RADIUS_PX, 15.0);
         assert_eq!(super::JOURNEY_FACE_BASE_Y_PX, 300.0);
         assert_eq!(super::JOURNEY_FACE_SCORE_STEP_Y_PX, 30.0);
+    }
+
+    #[test]
+    fn journey_actor_legend_width_uses_single_run_computed_length_lattice() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle::default();
+
+        assert_eq!(
+            super::journey_actor_legend_line_width_px(
+                "Giancarlo Esposito and is a",
+                &measurer,
+                &style
+            ),
+            191.6875
+        );
+        assert_eq!(
+            super::journey_actor_legend_line_width_px(
+                "split into multiple lines to test the wrapping",
+                &measurer,
+                &style
+            ),
+            318.5625
+        );
     }
 }

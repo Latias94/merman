@@ -795,6 +795,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   small browser float guards. A broad root slack or text-width correction would hide mixed
   mechanisms rather than prove a typed derivation rule, so no fixture, glyph, or root lookup table
   was added.
+- [x] Derive the two remaining Journey long-label root pins with actor legend browser text
+  measurement.
+  Evidence: Journey actor legend root bounds now measure each emitted legend line through the
+  single-run SVG computed-length path and floor to the 1/32px browser lattice. Focused
+  disabled-root `parity-root` for
+  `upstream_cypress_journey_spec_should_wrap_text_on_whitespace_without_adding_hyphens_009` and
+  `upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010`
+  passes without generated root overrides, so `journey_root_overrides_11_12_2.rs` is deleted and
+  the root viewport budget tightens to `305`.
 
 ## P3: Release Closeout
 
