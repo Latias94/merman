@@ -48,6 +48,9 @@ strict release gates green.
   width signs across typed Cypress fixtures (`+12`, `+35`, `+14`) and the adjacent quoted/typed
   stress fixture (`-7`), with actor-column, message-center, and note-width deltas rather than one
   shared actor visual-width rule.
+- The global generated root override audit is currently clean on stale pins (`0` stale across the
+  `307`-entry inventory). The only remaining outside-table DOM mismatches are the three accepted
+  Mindmap docs/example residuals, so the current baseline is stable rather than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up

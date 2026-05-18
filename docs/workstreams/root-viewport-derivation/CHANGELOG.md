@@ -76,6 +76,9 @@
   left by `-7` pixels. Element probes split the drift across actor columns, message centers, and
   note widths (`150 -> 160` in the Cypress notes/loops fixture, but `678 -> 671` in the quoted
   stress fixture), so no shared actor visual-width, spacing, or emitted-bounds rule was kept.
+- Ran the global root override audit with `audit-root-overrides --fail-on-stale`. The report
+  stayed clean on stale pins across the full `307`-entry root viewport inventory, and the only
+  remaining outside-table DOM mismatches are the three accepted Mindmap docs/example residuals.
 - Rechecked the narrower Sequence nested frame / rect vertical geometry subfamily and kept those
   pins retained. Focused disabled-root `parity-root` checks for
   `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and
