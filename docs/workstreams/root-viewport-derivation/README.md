@@ -51,11 +51,11 @@ strict release gates green.
 - Current Journey root viewport overrides: `0` entries. The remaining long-label Cypress roots now
   derive from Journey actor legend single-run SVG computed text length, floored to the 1/32px
   browser lattice used by the emitted `<text><tspan>line</tspan></text>` labels.
-- The global generated root override audit is currently clean on stale pins (`0` stale across the
-  previous `307`-entry inventory), and `report-overrides --check-no-growth` now reports `305`
-  root viewport entries after the Journey cleanup. The only remaining outside-table DOM mismatches
-  are the three accepted Mindmap docs/example residuals, so the current baseline is stable rather
-  than stale.
+- The global generated root override audit is currently clean on stale pins after the Journey
+  cleanup. The latest `audit-root-overrides --fail-on-stale` report covers `305` inventory entries,
+  `311` fixture keys, `311` retained root-delta keys, `298` disabled-root DOM mismatches, `0`
+  stale entries, and the same three accepted Mindmap outside-table DOM residuals, so the current
+  baseline is stable rather than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up

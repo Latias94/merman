@@ -804,6 +804,11 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_cypress_journey_spec_should_wrap_long_labels_into_multiple_lines_keep_them_under_max_010`
   passes without generated root overrides, so `journey_root_overrides_11_12_2.rs` is deleted and
   the root viewport budget tightens to `305`.
+- [x] Refresh the global generated root override audit after deleting the Journey root table.
+  Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
+  `target/compare/root_override_global_audit_current.md` and passes with `305` inventory entries,
+  `311` fixture keys, `311` retained root-delta keys, `298` disabled-root DOM mismatches, `0`
+  stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
 
 ## P3: Release Closeout
 

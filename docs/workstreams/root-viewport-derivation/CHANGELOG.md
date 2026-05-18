@@ -2,6 +2,11 @@
 
 ## 2026-05-18
 
+- Re-ran the global generated root override audit after the Journey cleanup. The current
+  `audit-root-overrides --fail-on-stale` report is clean on stale pins across `305` root inventory
+  entries, `311` fixture keys, and `311` retained root-delta keys. It reports `298` disabled-root
+  DOM mismatches plus the same three accepted Mindmap outside-table residuals, so no additional
+  root table entry is currently stale.
 - Derived the final two Journey long-label root viewport pins without adding fixture, glyph, text,
   or root lookup data. Journey actor legend line bounds now use single-run SVG computed text length
   floored to the 1/32px browser lattice, matching the emitted `<text><tspan>line</tspan></text>`
@@ -97,9 +102,10 @@
   left by `-7` pixels. Element probes split the drift across actor columns, message centers, and
   note widths (`150 -> 160` in the Cypress notes/loops fixture, but `678 -> 671` in the quoted
   stress fixture), so no shared actor visual-width, spacing, or emitted-bounds rule was kept.
-- Ran the global root override audit with `audit-root-overrides --fail-on-stale`. The report
-  stayed clean on stale pins across the full `307`-entry root viewport inventory, and the only
-  remaining outside-table DOM mismatches are the three accepted Mindmap docs/example residuals.
+- Ran the global root override audit with `audit-root-overrides --fail-on-stale`. At that
+  checkpoint the report stayed clean on stale pins across the full `307`-entry root viewport
+  inventory, and the only remaining outside-table DOM mismatches were the three accepted Mindmap
+  docs/example residuals.
 - Rechecked the narrower Sequence nested frame / rect vertical geometry subfamily and kept those
   pins retained. Focused disabled-root `parity-root` checks for
   `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and

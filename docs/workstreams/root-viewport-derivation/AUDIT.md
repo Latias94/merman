@@ -177,8 +177,9 @@ Follow-up ledger verification found no remaining unchecked workstream TODO items
 The fresh global root override audit also stayed clean on stale pins. Running
 `cargo run -p xtask -- audit-root-overrides --fail-on-stale` wrote
 `target/compare/root_override_global_audit_current.md` and reported `0` stale generated pins
-across the full `307`-entry root viewport inventory. The audit still reports three accepted
-outside-table Mindmap DOM mismatches
+across the full `305`-entry root viewport inventory after the Journey cleanup. The report covers
+`311` fixture keys, `311` retained root-delta keys, and `298` disabled-root DOM mismatches. It
+still reports three accepted outside-table Mindmap DOM mismatches
 (`upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
 `upstream_examples_mindmap_basic_mindmap_001`), so the global retained baseline is stable rather
 than stale.

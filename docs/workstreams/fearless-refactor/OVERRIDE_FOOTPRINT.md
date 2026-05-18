@@ -507,6 +507,11 @@ line as one SVG text run, so the renderer now uses single-run computed text leng
 Cypress fixtures pass focused disabled-root `parity-root`, and the Journey generated root override
 module is deleted.
 
+Post-Journey global audit note: `cargo run -p xtask -- audit-root-overrides --fail-on-stale`
+passes on the current `305` root inventory. The generated root tables cover `311` fixture keys and
+`311` retained root-delta keys, with `298` disabled-root DOM mismatches, `0` stale generated pins,
+and the same three accepted Mindmap outside-table residuals.
+
 State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`
 produced 283 root rows, with 125 non-zero `max-width` deltas and 125 changed viewBox dimensions.
 The largest drift came from right-to-left direction/scale fixtures and dense edge-label fixtures,
