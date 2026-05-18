@@ -628,6 +628,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   remaining profile calibration block count is 5: `mindmap/basic`, the simple docs/package
   `Photograph -> Waterfall` tree, `upstream_decorations_and_descriptions`,
   `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
+- [x] Remove the stale Mindmap `upstream_decorations_and_descriptions` profile calibration.
+  Evidence: the typed rect/rounded shape sizing plus icon and label metric rules already derive the
+  fixture. The old raw tuple (`589.185529642115` x `462.11530275173845`) no longer matches the
+  current natural root (`467.0902368108591` x `383.4868377684121`), and focused SVG position
+  debugging shows only small root-viewBox and node-center drift. Focused `parity-root` and full-DOM
+  checks pass without fixture, glyph, or root lookup data. The remaining profile calibration block
+  count is 4: `mindmap/basic`, the simple docs/package `Photograph -> Waterfall` tree,
+  `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
