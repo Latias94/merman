@@ -636,6 +636,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   checks pass without fixture, glyph, or root lookup data. The remaining profile calibration block
   count is 4: `mindmap/basic`, the simple docs/package `Photograph -> Waterfall` tree,
   `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
+- [x] Remove the stale Mindmap `mindmap/basic` profile calibration.
+  Evidence: the existing default-node shape bounds, plain HTML label metrics, and layout bounds now
+  derive the fixture without the old raw tuple (`293.08423285144113` x `69.24704462177965`)
+  matching current output. After deleting the block, the natural local root is
+  `294.05145288721656` x `54` against upstream `294.05145263671875` x `54`; focused
+  `parity-root` and full-DOM checks pass without fixture, glyph, or root lookup data. The remaining
+  profile calibration block count is 3: the simple docs/package `Photograph -> Waterfall` tree,
+  `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
