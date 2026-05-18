@@ -38,7 +38,11 @@ strict release gates green.
   The narrower text escaping / line-break subfamily is retained too: the focused disabled-root
   slice over the line-break, colon, escaping, wrapped-message, whitespace-semicolon, and note-with-
   br fixtures still shows `6` positive width drifts, `0` negative width drifts, `0` height
-  changes, and one exact match.
+  changes, and one exact match. The narrower nested frame / rect vertical subfamily is retained
+  as well: `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and
+  `stress_nested_rect_par_029` remain height-only root guards, but element probes split the drift
+  across footer placement, nested frame internals, rect/par cursor movement, activation bounds, and
+  note/loop bounds rather than one safe shared vertical boundary rule.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up

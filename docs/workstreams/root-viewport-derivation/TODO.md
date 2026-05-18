@@ -293,6 +293,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   helpers already route these labels through shared measurement and line-splitting code, but the
   remaining drift still splits across message, note, wrapped, and escaping cases, so no new shared
   rule was kept without fixture/text lookup data.
+- [x] Reclassify the Sequence nested frame / rect vertical geometry subfamily as retained.
+  Evidence: focused disabled-root `parity-root` checks for `stress_deep_nested_frames_018`,
+  `stress_nested_frames_001`, and `stress_nested_rect_par_029` still fail only on root height:
+  `850x967 -> 850x983` (`+16`), `850x1045 -> 850x1061` (`+16`), and
+  `650x712 -> 650x742` (`+30`). Element-level SVG probes show the residuals do not share one
+  bottom-padding or frame-boundary rule: `stress_deep_nested_frames_018` has the footer bottom
+  lower locally (`946 -> 962`) while loop/message/activation maxima are higher upstream
+  (`861/841/861` upstream versus `837/827/827` local); `stress_nested_frames_001` shifts the
+  footer and message/frame maxima down locally but not activation height uniformly
+  (`activationBottomMax 939 -> 885`); and `stress_nested_rect_par_029` shifts message,
+  activation, and footer down by `+30` while `loopLineYMax` and note bottoms stay fixed
+  (`552 -> 552`, `542 -> 542`). No fixture, glyph, text, or root lookup data was added.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch
   cross-checking.
   Evidence: `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`

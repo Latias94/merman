@@ -170,6 +170,20 @@ Closeout verification for this documentation-only reclassification passed `git d
 No `nextest` or `parity-root` gate was rerun because this pass changed only workstream evidence
 documents and did not touch Rust source, fixtures, generated tables, or goldens.
 
+The nested frame / rect vertical geometry subfamily also stays retained after a narrower recheck.
+Focused disabled-root `parity-root` checks for `stress_deep_nested_frames_018`,
+`stress_nested_frames_001`, and `stress_nested_rect_par_029` fail only on root height:
+`850x967 -> 850x983`, `850x1045 -> 850x1061`, and `650x712 -> 650x742`. Element-level probes
+show this is not one shared frame-bottom rule. In `stress_deep_nested_frames_018`, the local footer
+bottom is lower (`962` versus upstream `946`) while local loop/message/activation maxima are above
+upstream (`837/827/827` versus `861/841/861`). In `stress_nested_frames_001`, local footer and
+some message/frame coordinates are lower, but activation bottom does not follow the same shift
+(`885` local versus `939` upstream). In `stress_nested_rect_par_029`, message, activation, and
+footer positions move down by `+30`, while the loop line and note bottom remain fixed
+(`552 -> 552` and `542 -> 542`). A single bottom-padding, rect-close, or ordinary `par` frame
+rule would hide mixed mechanisms, so the three generated root pins remain guards until a narrower
+typed vertical cursor model appears.
+
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.
 LR/RL branch labels keep the computed-length rule. A disabled-root audit over the previous

@@ -307,6 +307,13 @@ Progress:
   drifts, `0` height changes, and one exact match. The shared Sequence message/note/wrap helpers
   already cover these paths, but the residual drift still splits across message, note, wrapped,
   and escaping cases, so no new shared rule was kept.
+- Reclassified the narrower Sequence nested frame / rect vertical geometry subfamily as retained.
+  Focused disabled-root `parity-root` checks for `stress_deep_nested_frames_018`,
+  `stress_nested_frames_001`, and `stress_nested_rect_par_029` still show height-only root drift
+  (`+16`, `+16`, and `+30`). Element probes show no one-size shared frame or rect boundary rule:
+  deep nested frames disagree between footer and internal frame/message/activation maxima, ordinary
+  nested frames do not shift activation and footer uniformly, and the rect/par case shifts
+  message/activation/footer while note and loop bounds remain fixed.
 - Derived the Flowchart chained-statement height root by matching Mermaid's split htmlLabels
   semantics: nodes follow root `htmlLabels`, while edge labels, subgraph titles, CSS selectors,
   and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.

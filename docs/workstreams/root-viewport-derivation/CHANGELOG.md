@@ -61,6 +61,15 @@
   `stress_sequence_batch5_whitespace_semicolons_051`, and
   `upstream_docs_sequence_note_with_br` showed `6` positive width drifts, `0` negative width
   drifts, `0` height changes, and one exact match.
+- Rechecked the narrower Sequence nested frame / rect vertical geometry subfamily and kept those
+  pins retained. Focused disabled-root `parity-root` checks for
+  `stress_deep_nested_frames_018`, `stress_nested_frames_001`, and
+  `stress_nested_rect_par_029` still fail only on root height (`+16`, `+16`, and `+30`). Element
+  probes show mixed mechanisms instead of one shared boundary rule: the deep nested frame footer
+  is lower locally while internal loop/message/activation maxima are higher upstream; the nested
+  frames fixture shifts footer/message/frame coordinates without a uniform activation shift; and
+  the rect/par fixture moves message/activation/footer down while loop and note bounds stay fixed.
+  No fixture, glyph, text, or root lookup data was added.
 - Rechecked the current State retained-root bucket and kept all `33` generated State root pins.
   The disabled-root sweep in `target/compare/state_disabled_root_current.md` maps all `33`
   generated keys to exact root-delta rows: `20` positive width drifts, `13` negative width drifts,
