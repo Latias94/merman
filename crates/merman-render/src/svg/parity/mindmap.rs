@@ -826,7 +826,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     let padding = 10.0;
     let viewport_bounds =
         mindmap_viewport_bounds_from_layout(layout, model).or_else(|| layout.bounds.clone());
-    let (vx, vy, mut vw, mut vh) = viewport_bounds
+    let (vx, vy, vw, vh) = viewport_bounds
         .as_ref()
         .map(|b| {
             let w = (b.max_x - b.min_x).max(0.0);
@@ -839,35 +839,6 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             )
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_docs_unclear_indentation` profile.
-    //
-    // Profile: 4 nodes, 3 edges, labels {Root, A, B, C}, all default node shapes and no icons.
-    // The parser already normalizes the uneven indentation into the same hierarchy Mermaid
-    // builds. The remaining mismatch is in rendered SVG geometry: node centers and edge paths
-    // drift slightly after layout, while the root `<svg>` still needs this fixed width/height
-    // residual to match upstream.
-    if model.nodes.len() == 4 && model.edges.len() == 3 {
-        let node_labels = model
-            .nodes
-            .iter()
-            .map(|n| n.label.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
-        let all_default_shapes = model.nodes.iter().all(|n| n.shape == "defaultMindmapNode");
-        let no_icons = model.nodes.iter().all(|n| n.icon.is_none());
-
-        if node_labels == ["A", "B", "C", "Root"].into_iter().collect()
-            && all_default_shapes
-            && no_icons
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 241.95128845087675).abs() <= 1e-9
-            && (vh - 209.94832264052502).abs() <= 1e-9
-        {
-            vw = 242.63980102539062;
-            vh = 210.3271942138672;
-        }
-    }
 
     let mut view_box_attr = format!("{} {} {} {}", fmt(vx), fmt(vy), fmt(vw), fmt(vh));
     let mut max_w_attr = fmt_max_width_px(vw);

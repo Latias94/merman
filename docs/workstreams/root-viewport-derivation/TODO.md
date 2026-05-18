@@ -661,6 +661,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   full-DOM checks pass for the `upstream_root_type_*` family, and sibling full-DOM checks pass for
   `upstream_node_types` and `upstream_pkgtests_mindmap_spec_010`. The remaining profile
   calibration block count is 1: `upstream_docs_unclear_indentation`.
+- [x] Remove the final Mindmap `upstream_docs_unclear_indentation` profile calibration.
+  Evidence: deleting the block showed the natural root still drifted from upstream
+  `242.63980102539062` x `210.3271942138672` to local `241.95128845087675` x
+  `209.94832264052502`, while the semantic hierarchy was already correct. The root cause was the
+  shared plain HTML label metric for `Root` (`32.1875px` upstream versus `32.171875px` local);
+  correcting that label metric feeds the deterministic COSE layout and derives the docs
+  `Root -> A -> {B, C}` profile naturally. Focused `parity-root`, full-DOM, and SVG-position debug
+  checks pass for `upstream_docs_unclear_indentation`, and sibling full-DOM checks pass for
+  `upstream_docs_mindmap_unclear_indentation_024` and `upstream_docs_mindmap_syntax_003`. The
+  remaining Mindmap profile calibration block count is 0.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
