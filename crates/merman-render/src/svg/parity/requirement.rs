@@ -647,6 +647,7 @@ pub(super) fn render_requirement_diagram_svg_model(
         if let Some(req) = req_by_id.get(n.id.as_str()) {
             node_classes = req.classes.iter().map(String::as_str).collect();
             css_styles = &req.css_styles;
+            let style_bold = crate::requirement::requirement_styles_force_bold(css_styles);
 
             let type_display = format!("<<{}>>", req.node_type);
             let type_calc = format!("&lt;&lt;{}&gt;&gt;", req.node_type);
@@ -657,7 +658,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                 &calc_style,
                 &type_display,
                 &type_calc,
-                false,
+                style_bold,
             ) else {
                 return Err(Error::InvalidModel {
                     message: format!("missing requirement type label for {}", req.name),
@@ -713,7 +714,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
@@ -739,7 +740,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
@@ -765,7 +766,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
@@ -791,7 +792,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
@@ -809,6 +810,7 @@ pub(super) fn render_requirement_diagram_svg_model(
         } else if let Some(el) = el_by_id.get(n.id.as_str()) {
             node_classes = el.classes.iter().map(String::as_str).collect();
             css_styles = &el.css_styles;
+            let style_bold = crate::requirement::requirement_styles_force_bold(css_styles);
 
             let type_display = "<<Element>>".to_string();
             let type_calc = "&lt;&lt;Element&gt;&gt;".to_string();
@@ -819,7 +821,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                 &calc_style,
                 &type_display,
                 &type_calc,
-                false,
+                style_bold,
             ) else {
                 return Err(Error::InvalidModel {
                     message: format!("missing element type label for {}", el.name),
@@ -875,7 +877,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,
@@ -901,7 +903,7 @@ pub(super) fn render_requirement_diagram_svg_model(
                     &calc_style,
                     &t,
                     &t,
-                    false,
+                    style_bold,
                 ) {
                     label_lines.push(RequirementNodeLabelLine {
                         display_text: t,

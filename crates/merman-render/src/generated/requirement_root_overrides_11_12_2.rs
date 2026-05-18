@@ -13,15 +13,6 @@ pub fn lookup_requirement_root_viewport_override(
         "upstream_cypress_requirementdiagram_unified_spec_example_007" => {
             Some(("-24.03125 -48 221.796875 434", "221.797"))
         }
-        "upstream_cypress_requirementdiagram_unified_spec_example_012" => {
-            Some(("0 0 179.125 386", "179.125"))
-        }
-        "upstream_cypress_requirementdiagram_unified_spec_example_013" => {
-            Some(("0 0 179.125 386", "179.125"))
-        }
-        "upstream_cypress_requirementdiagram_unified_spec_example_014" => {
-            Some(("0 0 179.125 386", "179.125"))
-        }
         "upstream_cypress_requirementdiagram_unified_spec_example_023" => {
             Some(("0 0 801.421875 224", "801.422"))
         }

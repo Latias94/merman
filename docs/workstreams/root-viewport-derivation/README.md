@@ -51,9 +51,14 @@ strict release gates green.
 - Current Journey root viewport overrides: `0` entries. The remaining long-label Cypress roots now
   derive from Journey actor legend single-run SVG computed text length, floored to the 1/32px
   browser lattice used by the emitted `<text><tspan>line</tspan></text>` labels.
-- The global generated root override audit is currently clean on stale pins after the Journey
-  cleanup. The latest `audit-root-overrides --fail-on-stale` report covers `305` inventory entries,
-  `311` fixture keys, `311` retained root-delta keys, `298` disabled-root DOM mismatches, `0`
+- Current Requirement root viewport overrides: `7` entries after deriving the styled
+  `test_req`/`test_entity` repeated Cypress roots from final CSS `font-weight` label measurement.
+  The remaining Requirement pins still cover mixed root drift: font-size precedence, prototype/
+  frontmatter offsets, long requirement/element name width and height drift, the docs combined
+  `font-weight:bold` 1px browser lattice residual, and the large HTML demo stack.
+- The global generated root override audit is currently clean on stale pins after the Requirement
+  cleanup. The latest `audit-root-overrides --fail-on-stale` report covers `302` inventory entries,
+  `308` fixture keys, `308` retained root-delta keys, `295` disabled-root DOM mismatches, `0`
   stale entries, and the same three accepted Mindmap outside-table DOM residuals, so the current
   baseline is stable rather than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
@@ -84,7 +89,7 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `305` entries.
+- Current root viewport override budget: `302` entries.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

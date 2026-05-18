@@ -168,6 +168,8 @@ outside-table full-strict root residuals in `compare-all-svgs` rather than addin
 or root viewport lookup data. Journey actor legend root bounds then moved the final two Journey
 long-label browser-float guards into single-run SVG computed-length measurement with a 1/32px
 browser lattice, deleting the Journey root override module and tightening the inventory to `305`.
+Requirement then moved the repeated styled-node Cypress root trio into final CSS font-weight label
+measurement, reducing the current inventory to `302` without growing text lookup data.
 The FontAwesome boundary deliberately keeps standard icons as
 nominal inline boxes and the
 unregistered custom-pack example as an empty inline element; it does not add a per-icon glyph
@@ -358,8 +360,8 @@ a classification and evidence pass, not a new exact-parity push.
   Flowchart `91/91`, GitGraph `23/23`, Journey `2/2`, Mindmap `39/39`, Requirement `10/10`,
   Sankey `3/3`, Sequence `59/59`, State `34/34`, and Timeline `9/9`.
   Global result: `358` retained fixture keys, `358` mismatches, `0` stale pins, and `0` missing
-  guards. Later focused derivation passes, including the Journey actor-legend cleanup, are reflected
-  in the current `305`-entry table below.
+  guards. Later focused derivation passes, including the Journey actor-legend cleanup and
+  Requirement styled-node cleanup, are reflected in the current `302`-entry table below.
 - Text lookup overrides remain suspicious by default because many are exact strings. Under the
   parity boundary they are retained only as diagram-owned browser/font measurement facts:
   Block HTML width/height, Class calc/rendered/namespace widths, ER's 3-entry floor, Flowchart
@@ -381,7 +383,7 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `305`.
+Total entries reported by `xtask`: `302`.
 
 | file | entries |
 | --- | ---: |
@@ -391,7 +393,7 @@ Total entries reported by `xtask`: `305`.
 | `flowchart_root_overrides_11_12_2.rs` | 43 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
-| `requirement_root_overrides_11_12_2.rs` | 10 |
+| `requirement_root_overrides_11_12_2.rs` | 7 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
 | `sequence_root_overrides_11_12_2.rs` | 58 |
 | `state_root_overrides_11_12_2.rs` | 33 |
@@ -510,6 +512,16 @@ module is deleted.
 Post-Journey global audit note: `cargo run -p xtask -- audit-root-overrides --fail-on-stale`
 passes on the current `305` root inventory. The generated root tables cover `311` fixture keys and
 `311` retained root-delta keys, with `298` disabled-root DOM mismatches, `0` stale generated pins,
+and the same three accepted Mindmap outside-table residuals.
+
+Requirement note: the direct-style/classDef Cypress trio now derives from final CSS font-weight
+measurement instead of root pins. The remaining seven Requirement roots still guard mixed drift:
+font-size precedence, negative title/root origin, long-name width/height, a 1px docs combined
+styled-label lattice residual, and the large HTML demo stack.
+
+Post-Requirement global audit note: `cargo run -p xtask -- audit-root-overrides --fail-on-stale`
+passes on the current `302` root inventory. The generated root tables cover `308` fixture keys and
+`308` retained root-delta keys, with `295` disabled-root DOM mismatches, `0` stale generated pins,
 and the same three accepted Mindmap outside-table residuals.
 
 State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`

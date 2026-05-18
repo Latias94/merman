@@ -8,6 +8,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Requirement root derivation: honor final CSS `font-weight` when measuring Requirement node labels
+  for layout and emitted bounds, deleting the repeated styled-node root trio and tightening root
+  override inventory to `302` without growing text lookup data.
 - Journey root derivation: measure actor legend lines through single-run SVG computed text length
   and the 1/32px browser lattice, deleting the final Journey root viewport override module and
   tightening the root override inventory to `305` without growing text lookup data.

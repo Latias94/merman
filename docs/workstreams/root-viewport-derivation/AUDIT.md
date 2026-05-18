@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Current-stage complete |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | Current-stage complete; all remaining State roots are documented retained guards |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, three Requirement root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
@@ -54,10 +54,10 @@ passes:
 - C4: `35` entries.
 - ER: `21` entries.
 - Journey: `0` entries.
-- Requirement: `10` entries.
+- Requirement: `7` entries.
 - Sankey: `3` entries.
 - Timeline: `9` entries.
-- Root viewport total: `305` entries.
+- Root viewport total: `302` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -86,6 +86,20 @@ feeding `max_actor_label_width`. Focused disabled-root `parity-root` checks for
 focused disabled-root Journey `parity-root`, full Journey `parity-root`, full Journey normal DOM
 parity, `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, override
 no-growth, and `git diff --check`.
+
+Requirement's repeated styled Cypress roots
+`upstream_cypress_requirementdiagram_unified_spec_example_{012,013,014}` now derive without root
+pins. The shared rule is that Requirement label measurement uses the node's final CSS
+`font-weight` when sizing both layout boxes and emitted label `foreignObject` widths. This replaces
+three fixture-scoped root pins without adding text lookup data. The remaining seven Requirement
+root pins still fail with root overrides disabled: `stress_requirement_font_size_precedence_001`
+drifts from upstream `286x758` to local `583.34375x542`, `_007` still needs the negative title/
+prototype root origin (`-24.03125 -48 221.796875 434` versus local `0 0 173.75 386`), `_023` and
+`_025` keep the long-name height/width roots (`801.421875x224 -> 811.65625x200` and
+`859x224 -> 876.140625x200`), `_026` is a small long-text width guard
+(`582.984375 -> 585.21875`), the docs combined example is now a narrow 1px styled-label lattice
+residual (`430.28125 -> 431.3125`), and the HTML demo stack still differs in both width and
+height (`939.79296875x1466 -> 964.953125x1442`).
 
 The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
 acting as current guards. Crossing `target/compare/state_disabled_root_current.md` with
@@ -177,8 +191,8 @@ Follow-up ledger verification found no remaining unchecked workstream TODO items
 The fresh global root override audit also stayed clean on stale pins. Running
 `cargo run -p xtask -- audit-root-overrides --fail-on-stale` wrote
 `target/compare/root_override_global_audit_current.md` and reported `0` stale generated pins
-across the full `305`-entry root viewport inventory after the Journey cleanup. The report covers
-`311` fixture keys, `311` retained root-delta keys, and `298` disabled-root DOM mismatches. It
+across the full `302`-entry root viewport inventory after the Requirement cleanup. The report covers
+`308` fixture keys, `308` retained root-delta keys, and `295` disabled-root DOM mismatches. It
 still reports three accepted outside-table Mindmap DOM mismatches
 (`upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
 `upstream_examples_mindmap_basic_mindmap_001`), so the global retained baseline is stable rather

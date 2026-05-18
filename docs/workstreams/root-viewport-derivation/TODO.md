@@ -809,6 +809,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `target/compare/root_override_global_audit_current.md` and passes with `305` inventory entries,
   `311` fixture keys, `311` retained root-delta keys, `298` disabled-root DOM mismatches, `0`
   stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
+- [x] Derive the repeated Requirement styled-node root trio from final CSS font-weight label
+  measurement.
+  Evidence: Requirement layout/render measurement now treats node labels as bold when the compiled
+  node CSS contains `font-weight:bold` / `bolder` / numeric weights `>= 600`. Focused disabled-root
+  `parity-root` passes for
+  `upstream_cypress_requirementdiagram_unified_spec_example_{012,013,014}`, those three generated
+  root arms were deleted, and `report-overrides --check-no-growth` reports `302` root entries with
+  `7` Requirement root entries.
+- [x] Refresh the global generated root override audit after deleting the Requirement styled trio.
+  Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
+  `target/compare/root_override_global_audit_current.md` and passes with `302` inventory entries,
+  `308` fixture keys, `308` retained root-delta keys, `295` disabled-root DOM mismatches, `0`
+  stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
 
 ## P3: Release Closeout
 

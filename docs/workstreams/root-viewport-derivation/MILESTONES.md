@@ -404,3 +404,31 @@ Exit criteria:
 - Focused disabled-root Journey `parity-root` passes for the `should_wrap_*` fixture pair.
 - Full Journey `parity-root`, `report-overrides --check-no-growth`, render clippy, and formatting
   gates pass.
+
+## M6: Requirement Styled Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the repeated Requirement styled Cypress root pins when final CSS font weight explains the
+  node label width drift.
+- Keep focused and full Requirement parity modes green.
+- Tighten the root override inventory budget from `305` to `302`.
+
+Progress:
+
+- Requirement label measurement now uses compiled node CSS `font-weight` for layout and emitted
+  label bounds. This covers direct `style ... font-weight:bold` and `classDef ... font-weight:
+  bold`, plus numeric bold weights.
+- The repeated
+  `upstream_cypress_requirementdiagram_unified_spec_example_{012,013,014}` root pins were deleted.
+- The remaining seven Requirement roots were reclassified as mixed retained drift rather than
+  another clean styled-label batch.
+
+Exit criteria:
+
+- Focused disabled-root Requirement `parity-root` passes for the removed fixture trio.
+- Full Requirement normal DOM parity, full Requirement `parity-root`, render clippy,
+  `report-overrides --check-no-growth`, global root override audit, formatting, and `git diff
+  --check` pass.

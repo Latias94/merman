@@ -53,6 +53,30 @@ fn requirement_label_uses_markdown_html(raw: &str) -> bool {
     raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
 }
 
+pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
+    css_styles.iter().any(|raw| {
+        let s = raw.trim().trim_end_matches(';');
+        let Some((key, value)) = s.split_once(':') else {
+            return false;
+        };
+        if !key.trim().eq_ignore_ascii_case("font-weight") {
+            return false;
+        }
+        let value = value
+            .split_once("!important")
+            .map(|(v, _)| v)
+            .unwrap_or(value)
+            .trim()
+            .to_ascii_lowercase();
+        value == "bold"
+            || value == "bolder"
+            || value
+                .parse::<u16>()
+                .map(|weight| weight >= 600)
+                .unwrap_or(false)
+    })
+}
+
 fn measure_requirement_label_metrics(
     measurer: &dyn TextMeasurer,
     html_style: &TextStyle,
@@ -248,21 +272,22 @@ pub fn layout_requirement_diagram_typed(
         }
 
         let type_disp = format!("<<{}>>", r.node_type);
+        let style_bold = requirement_styles_force_bold(&r.css_styles);
         let mut lines: Vec<(String, bool)> = Vec::new();
-        lines.push((type_disp, false));
+        lines.push((type_disp, style_bold));
         lines.push((r.name.clone(), true));
 
         let id_line = prefixed_nonempty_line("ID: ", &r.requirement_id);
-        lines.push((id_line, false));
+        lines.push((id_line, style_bold));
 
         let text_line = prefixed_nonempty_line("Text: ", &r.text);
-        lines.push((text_line, false));
+        lines.push((text_line, style_bold));
 
         let risk_line = prefixed_nonempty_line("Risk: ", &r.risk);
-        lines.push((risk_line, false));
+        lines.push((risk_line, style_bold));
 
         let verify_line = prefixed_nonempty_line("Verification: ", &r.verify_method);
-        lines.push((verify_line, false));
+        lines.push((verify_line, style_bold));
 
         let box_layout = requirement_box_layout(
             text_measurer,
@@ -288,8 +313,9 @@ pub fn layout_requirement_diagram_typed(
         }
 
         let type_disp = "<<Element>>".to_string();
+        let style_bold = requirement_styles_force_bold(&e.css_styles);
         let mut lines: Vec<(String, bool)> = Vec::new();
-        lines.push((type_disp, false));
+        lines.push((type_disp, style_bold));
         lines.push((e.name.clone(), true));
 
         let type_line = e.element_type.trim().to_string();
@@ -298,10 +324,10 @@ pub fn layout_requirement_diagram_typed(
         } else {
             format!("Type: {type_line}")
         };
-        lines.push((type_line, false));
+        lines.push((type_line, style_bold));
 
         let doc_line = prefixed_nonempty_line("Doc Ref: ", &e.doc_ref);
-        lines.push((doc_line, false));
+        lines.push((doc_line, style_bold));
 
         let box_layout = requirement_box_layout(
             text_measurer,
@@ -477,4 +503,22 @@ pub fn layout_requirement_diagram_typed(
         edges: out_edges,
         bounds,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn requirement_styles_detect_bold_font_weight() {
+        assert!(super::requirement_styles_force_bold(&[
+            "fill:#f9f".to_string(),
+            " font-weight:bold".to_string(),
+        ]));
+        assert!(super::requirement_styles_force_bold(&[
+            "font-weight: 700 !important".to_string(),
+        ]));
+        assert!(!super::requirement_styles_force_bold(&[
+            "font-weight: normal".to_string(),
+            "stroke:blue".to_string(),
+        ]));
+    }
 }

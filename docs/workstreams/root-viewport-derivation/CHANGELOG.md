@@ -2,6 +2,17 @@
 
 ## 2026-05-18
 
+- Derived the repeated Requirement styled-node root trio without adding fixture, glyph, text, or
+  root lookup data. Requirement label measurement now honors final node CSS `font-weight` when
+  sizing layout boxes and emitted label `foreignObject` widths, so the direct-style and classDef
+  `upstream_cypress_requirementdiagram_unified_spec_example_{012,013,014}` roots derive naturally.
+  The Requirement root table is reduced from `10` to `7`, global root inventory is `302`, and text
+  lookup remains `484`.
+- Re-ran the global generated root override audit after the Requirement cleanup. The current
+  `audit-root-overrides --fail-on-stale` report is clean on stale pins across `302` root inventory
+  entries, `308` fixture keys, and `308` retained root-delta keys. It reports `295` disabled-root
+  DOM mismatches plus the same three accepted Mindmap outside-table residuals, so no additional
+  root table entry is currently stale.
 - Re-ran the global generated root override audit after the Journey cleanup. The current
   `audit-root-overrides --fail-on-stale` report is clean on stale pins across `305` root inventory
   entries, `311` fixture keys, and `311` retained root-delta keys. It reports `298` disabled-root
