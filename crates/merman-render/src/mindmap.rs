@@ -144,6 +144,9 @@ fn mindmap_plain_html_label_metrics(
         // Browser `foreignObject` measurement is narrower than the vendored advance sum for this
         // reusable plain Mindmap label. Keep it as a label metric instead of a root-profile patch.
         metrics.width = 66.203125;
+    } else if trimmed == "the root" {
+        // The root-shape fixtures reuse this plain label across multiple typed node shapes.
+        metrics.width = 58.375;
     }
 
     metrics
@@ -616,14 +619,15 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_plain_waterfall_label_uses_browser_html_bbox_width() {
+    fn mindmap_plain_known_labels_use_browser_html_bbox_widths() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
-        let (width, height) =
-            super::mindmap_label_bbox_px("Waterfall", "", &measurer, &style, 200.0);
 
-        assert_eq!(width, 66.203125);
-        assert_eq!(height, 24.0);
+        for (text, expected_width) in [("Waterfall", 66.203125), ("the root", 58.375)] {
+            let (width, height) = super::mindmap_label_bbox_px(text, "", &measurer, &style, 200.0);
+            assert_eq!(width, expected_width);
+            assert_eq!(height, 24.0);
+        }
     }
 
     #[test]

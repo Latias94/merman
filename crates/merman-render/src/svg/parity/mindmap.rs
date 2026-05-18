@@ -826,7 +826,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     let padding = 10.0;
     let viewport_bounds =
         mindmap_viewport_bounds_from_layout(layout, model).or_else(|| layout.bounds.clone());
-    let (mut vx, mut vy, mut vw, mut vh) = viewport_bounds
+    let (vx, vy, mut vw, mut vh) = viewport_bounds
         .as_ref()
         .map(|b| {
             let w = (b.max_x - b.min_x).max(0.0);
@@ -866,30 +866,6 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         {
             vw = 242.63980102539062;
             vh = 210.3271942138672;
-        }
-    }
-
-    // Mermaid@11.12.2 parity-root calibration for `upstream_root_type_cloud` profile.
-    //
-    // Profile: single root node, label `the root`, shape `cloud`, no edges and no icons.
-    // Typed cloud rendered-path bbox dimensions now drive the layout center. The retained
-    // calibration covers the remaining browser HTML bbox lattice residual for `the root`
-    // (local 58.359375px vs upstream 58.375px), not a cloud shape/layout offset.
-    if model.nodes.len() == 1 && model.edges.is_empty() {
-        let n = &model.nodes[0];
-        if n.id == "0"
-            && n.label == "the root"
-            && n.shape == "cloud"
-            && n.icon.is_none()
-            && (vx - 6.52099582726181).abs() <= 1e-9
-            && (vy - 6.006549480702507).abs() <= 1e-9
-            && (vw - 111.65335029736411).abs() <= 1e-9
-            && (vh - 86.8571584614812).abs() <= 1e-9
-        {
-            vx = 6.52117919921875;
-            vy = 6.006782531738281;
-            vw = 111.66693878173828;
-            vh = 86.86467742919922;
         }
     }
 

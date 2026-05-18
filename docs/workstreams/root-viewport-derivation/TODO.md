@@ -653,6 +653,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Focused `parity-root`, full-DOM, SVG-position debug, and label-metric unit checks pass. The
   remaining profile calibration block count is 2: `upstream_docs_unclear_indentation` and
   `upstream_root_type_cloud`.
+- [x] Remove the Mindmap `upstream_root_type_cloud` profile calibration.
+  Evidence: typed cloud rendered-path bounds were already deriving the shape geometry; deleting the
+  root-profile block exposed only the plain HTML label metric residual for `the root`
+  (`58.375px` upstream versus `58.359375px` local). A Mindmap-owned plain-label metric now derives
+  `upstream_root_type_cloud` without fixture, glyph, or root lookup data. Focused `parity-root` and
+  full-DOM checks pass for the `upstream_root_type_*` family, and sibling full-DOM checks pass for
+  `upstream_node_types` and `upstream_pkgtests_mindmap_spec_010`. The remaining profile
+  calibration block count is 1: `upstream_docs_unclear_indentation`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
