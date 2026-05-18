@@ -2,6 +2,17 @@
 
 ## 2026-05-18
 
+- Derived the empty Timeline root viewport without adding fixture, glyph, text, or root lookup
+  data. Empty Timeline diagrams now keep `pre_title_box_width` at `0` instead of inventing a
+  synthetic 100px content box, so the activity line ends at `3 * leftMargin` and
+  `upstream_pkgtests_diagram_orchestration_spec_046` naturally derives its upstream `400px` root.
+  The Timeline root table is reduced from `9` to `8`, global root inventory is `301`, and text
+  lookup remains `484`.
+- Re-ran the global generated root override audit after the Timeline empty-root cleanup. The
+  current `audit-root-overrides --fail-on-stale` report is clean on stale pins across `301` root
+  inventory entries, `307` fixture keys, and `307` retained root-delta keys. It reports `294`
+  disabled-root DOM mismatches plus the same three accepted Mindmap outside-table residuals. The
+  remaining eight Timeline roots all still fail with root overrides disabled.
 - Derived the repeated Requirement styled-node root trio without adding fixture, glyph, text, or
   root lookup data. Requirement label measurement now honors final node CSS `font-weight` when
   sizing layout boxes and emitted label `foreignObject` widths, so the direct-style and classDef

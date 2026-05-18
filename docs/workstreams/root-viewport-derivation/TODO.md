@@ -822,6 +822,27 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `target/compare/root_override_global_audit_current.md` and passes with `302` inventory entries,
   `308` fixture keys, `308` retained root-delta keys, `295` disabled-root DOM mismatches, `0`
   stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
+- [x] Derive the empty Timeline root from typed layout bounds.
+  Evidence: empty Timeline diagrams no longer seed pre-title bounds from a synthetic `100x100`
+  content box. `pre_title_box_width` stays `0`, the default activity line ends at `450`
+  (`3 * leftMargin`), and `upstream_pkgtests_diagram_orchestration_spec_046` derives its upstream
+  `100 50 400 100` root without a generated root override. Focused disabled-root Timeline
+  `parity-root` passes for the fixture, and `report-overrides --check-no-growth` reports `301`
+  root entries with `8` Timeline entries.
+- [x] Reclassify the remaining Timeline roots after the empty-root pass.
+  Evidence: the post-delete disabled-root Timeline sweep still has `8` `parity-root` DOM
+  mismatches and no stale Timeline table entry. The retained rows split across browser text
+  measurement families: long unbroken words have small SVG bbox overhang drift, the
+  disable-multicolor / inline-hash / font-size stress fixtures have title or label bbox width
+  drift despite matching emitted text and node geometry, `timeline_stress_unicode_cjk_and_emoji`
+  is height-only CJK/emoji text metric drift, and the Fira Sans medical lifecycle Cypress fixture
+  accumulates text-height and vertical-line drift. No broad width slack, title-width correction, or
+  text-height correction was kept.
+- [x] Refresh the global generated root override audit after deleting the Timeline empty-root pin.
+  Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
+  `target/compare/root_override_global_audit_current.md` and passes with `301` inventory entries,
+  `307` fixture keys, `307` retained root-delta keys, `294` disabled-root DOM mismatches, `0`
+  stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
 
 ## P3: Release Closeout
 

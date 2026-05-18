@@ -432,3 +432,32 @@ Exit criteria:
 - Full Requirement normal DOM parity, full Requirement `parity-root`, render clippy,
   `report-overrides --check-no-growth`, global root override audit, formatting, and `git diff
   --check` pass.
+
+## M7: Timeline Empty Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the empty Timeline orchestration root pin when typed layout bounds explain the activity
+  line and root viewport.
+- Keep focused disabled-root Timeline `parity-root`, full Timeline normal DOM parity, and full
+  Timeline `parity-root` green.
+- Tighten the root override inventory budget from `302` to `301`.
+
+Progress:
+
+- Empty Timeline diagrams now keep `pre_title_box_width` at `0` instead of inventing a synthetic
+  `100x100` pre-title content box.
+- The default empty activity line now spans `150 -> 450`, deriving the upstream
+  `upstream_pkgtests_diagram_orchestration_spec_046` root viewport `100 50 400 100` naturally.
+- The remaining eight Timeline roots were rechecked and stay retained as text bbox width,
+  CJK/emoji height, and Fira Sans vertical-line/text-height residuals rather than stale table debt.
+
+Exit criteria:
+
+- Focused disabled-root Timeline `parity-root` passes for
+  `upstream_pkgtests_diagram_orchestration_spec_046`.
+- Full Timeline normal DOM parity, full Timeline `parity-root`, `report-overrides
+  --check-no-growth`, global root override audit, render clippy, formatting, and `git diff --check`
+  pass.

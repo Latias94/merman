@@ -622,19 +622,26 @@ pub fn layout_timeline_diagram_typed(
         }
     }
 
+    let pre_title_bounds = bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title);
+    let has_pre_title_content = pre_title_bounds.is_some();
     let (mut pre_min_x, mut pre_min_y, mut pre_max_x, mut pre_max_y) =
-        bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title)
-            .unwrap_or((0.0, 0.0, 100.0, 100.0));
-    expand_bounds_for_node_text(
-        &mut pre_min_x,
-        &mut pre_min_y,
-        &mut pre_max_x,
-        &mut pre_max_y,
-        &all_nodes_pre_title,
-        &text_style,
-        measurer,
-    );
-    let pre_title_box_width = (pre_max_x - pre_min_x).max(1.0);
+        pre_title_bounds.unwrap_or((0.0, 0.0, 0.0, 0.0));
+    if has_pre_title_content {
+        expand_bounds_for_node_text(
+            &mut pre_min_x,
+            &mut pre_min_y,
+            &mut pre_max_x,
+            &mut pre_max_y,
+            &all_nodes_pre_title,
+            &text_style,
+            measurer,
+        );
+    }
+    let pre_title_box_width = if has_pre_title_content {
+        (pre_max_x - pre_min_x).max(1.0)
+    } else {
+        0.0
+    };
 
     let title = model
         .title
@@ -785,5 +792,28 @@ mod tests {
             (actual - 920.640625).abs() < 0.0001,
             "expected long-word timeline activity line extent to stay aligned with upstream, got {actual}"
         );
+    }
+
+    #[test]
+    fn empty_timeline_does_not_invent_pre_title_width() {
+        let engine = Engine::new();
+        let parsed =
+            futures::executor::block_on(engine.parse_diagram("timeline", ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        let out =
+            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
+        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
+            panic!("expected TimelineDiagram layout");
+        };
+
+        assert_eq!(layout.pre_title_box_width, 0.0);
+        assert_eq!(layout.activity_line.x1, 150.0);
+        assert_eq!(layout.activity_line.x2, 450.0);
+        let bounds = layout.bounds.expect("bounds");
+        assert_eq!(bounds.min_x, 100.0);
+        assert_eq!(bounds.min_y, 50.0);
+        assert_eq!(bounds.max_x, 500.0);
+        assert_eq!(bounds.max_y, 150.0);
     }
 }

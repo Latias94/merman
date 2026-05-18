@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Timeline root derivation: empty timelines no longer invent a synthetic pre-title content width,
+  so `upstream_pkgtests_diagram_orchestration_spec_046` derives its `400px` root naturally. The
+  Timeline root table is reduced from `9` to `8`, and global root override inventory is now `301`
+  without growing text lookup data.
 - Requirement root derivation: honor final CSS `font-weight` when measuring Requirement node labels
   for layout and emitted bounds, deleting the repeated styled-node root trio and tightening root
   override inventory to `302` without growing text lookup data.

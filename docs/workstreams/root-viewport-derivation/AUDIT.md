@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Current-stage complete |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | Current-stage complete; all remaining State roots are documented retained guards |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, three Requirement root pins, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, three Requirement root pins, one Timeline root pin, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
@@ -56,8 +56,8 @@ passes:
 - Journey: `0` entries.
 - Requirement: `7` entries.
 - Sankey: `3` entries.
-- Timeline: `9` entries.
-- Root viewport total: `302` entries.
+- Timeline: `8` entries.
+- Root viewport total: `301` entries.
 - Text lookup total: `484` entries. This stayed flat because the new long-note/message Sequence
   fact replaced one stale `FRIENDS` row, and the wrapped-leftOf follow-up removed nine more root
   pins without adding lookup rows.
@@ -100,6 +100,25 @@ prototype root origin (`-24.03125 -48 221.796875 434` versus local `0 0 173.75 3
 (`582.984375 -> 585.21875`), the docs combined example is now a narrow 1px styled-label lattice
 residual (`430.28125 -> 431.3125`), and the HTML demo stack still differs in both width and
 height (`939.79296875x1466 -> 964.953125x1442`).
+
+Timeline's empty orchestration fixture `upstream_pkgtests_diagram_orchestration_spec_046` now
+derives without a root pin. The previous layout path treated the absence of pre-title nodes and
+lines as a synthetic `100x100` content box, which pushed the Timeline activity line from upstream
+`x2=450` to local `x2=550` and widened the root from `400px` to `500px`. Empty Timeline diagrams
+now keep `pre_title_box_width` at `0`, so the activity line is based only on the default
+`leftMargin` (`150 -> 450`) and the root viewport naturally resolves to `100 50 400 100`.
+Focused disabled-root `parity-root` passes for that fixture, and the generated Timeline root table
+is reduced from `9` to `8` entries.
+
+The remaining eight Timeline roots still fail with root overrides disabled. They split across
+browser text measurement families rather than one typed layout bug: long unbroken-word roots have
+small SVG text bbox overhang drift, `timeline_stress_disable_multicolor_and_width`,
+`timeline_stress_inline_hashes_and_semicolons`, and `timeline_stress_font_size_precedence` retain
+large title/label bbox width differences while rendered text and node geometry match, the
+CJK/emoji stress fixture differs only in root height (`631.6 -> 629.6`), and the Fira Sans medical
+lifecycle Cypress fixture accumulates text-height/vertical-line drift (`879.4 -> 893.3`). No
+broad width slack, title-width correction, or text-height correction was kept because the retained
+rows mix small and large width drift with height-only drift.
 
 The latest State disabled-root sweep still fails as expected with the 33 retained State root pins
 acting as current guards. Crossing `target/compare/state_disabled_root_current.md` with
@@ -191,8 +210,9 @@ Follow-up ledger verification found no remaining unchecked workstream TODO items
 The fresh global root override audit also stayed clean on stale pins. Running
 `cargo run -p xtask -- audit-root-overrides --fail-on-stale` wrote
 `target/compare/root_override_global_audit_current.md` and reported `0` stale generated pins
-across the full `302`-entry root viewport inventory after the Requirement cleanup. The report covers
-`308` fixture keys, `308` retained root-delta keys, and `295` disabled-root DOM mismatches. It
+across the full `301`-entry root viewport inventory after the Timeline empty-root cleanup. The
+report covers `307` fixture keys, `307` retained root-delta keys, and `294` disabled-root DOM
+mismatches. It
 still reports three accepted outside-table Mindmap DOM mismatches
 (`upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
 `upstream_examples_mindmap_basic_mindmap_001`), so the global retained baseline is stable rather
@@ -750,6 +770,21 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   target/compare/root_override_global_audit_current.md`. The global audit reports `308` root
   inventory entries, `314` fixture keys, `314` retained root-delta keys, `0` stale generated pins,
   and the same three accepted Mindmap outside-table residuals.
+- 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
+  root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
+  not seed bounds from a synthetic `100x100` content box. The layout now keeps
+  `pre_title_box_width` at `0`, which makes the activity line end at `450` (`3 * leftMargin`) and
+  derives the upstream `100 50 400 100` root for
+  `upstream_pkgtests_diagram_orchestration_spec_046`. Focused disabled-root `parity-root` passes
+  for that fixture, full Timeline normal DOM parity and full Timeline `parity-root` pass, and
+  `report-overrides --check-no-growth` reports `301` root entries with `8` Timeline entries.
+  A fresh global audit reports `301` inventory entries, `307` fixture keys, `307` retained
+  root-delta keys, `294` disabled-root DOM mismatches, `0` stale generated pins, and the same three
+  accepted Mindmap outside-table residuals. The remaining eight Timeline pins were rechecked under
+  disabled-root and remain retained: long-word roots still show small SVG text bbox overhang drift,
+  the disable-multicolor/inline-hash/font-size stress roots show title/label browser bbox width
+  drift despite matching emitted text and node geometry, and the Unicode/Fira Sans roots are
+  height/vertical-line text metric residuals rather than stale table debt.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
