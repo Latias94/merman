@@ -671,10 +671,14 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   checks pass for `upstream_docs_unclear_indentation`, and sibling full-DOM checks pass for
   `upstream_docs_mindmap_unclear_indentation_024` and `upstream_docs_mindmap_syntax_003`. The
   remaining Mindmap profile calibration block count is 0.
-- [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
-  the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
-  mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
-  remaining retained pins.
+- [x] Recheck the retained Flowchart root pins for a clean shared browser/font model before doing
+  more table pruning.
+  Evidence: the 2026-05-18 retained-root audit and triage still report `49` root pins, `301`
+  label delta rows, and no removal candidates. All remaining buckets are explicit deferrals:
+  `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (2),
+  `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
+  `defer-font-env` (3). No clean shared text/layout rule appeared, so no fixture/glyph/root lookup
+  table was added and the current Flowchart pins stay retained.
 - [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
   fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
   drift, not another blind GitGraph table-pruning pass.

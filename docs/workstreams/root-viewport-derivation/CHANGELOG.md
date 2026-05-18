@@ -18,6 +18,13 @@
 - Current global root viewport inventory remains `308` entries, Mindmap generated root overrides
   remain `39`, text lookup budget remains `484`, SVG text metric table rows remain `186`, and
   `svg/parity/mindmap.rs` has `0` hand-written `parity-root calibration` profile branches.
+- Rechecked the Flowchart retained-root audit after the Mindmap closeout. The current retained-root
+  triage still reports `49` root pins, `301` label delta rows, no removal candidates, and only
+  documented deferral buckets: `defer-low-noise-text-lattice` (16),
+  `defer-subpixel-text-lattice` (2), `defer-mojibake-font-fallback` (1),
+  `defer-courier-font` (8), `defer-icon-font` (19), and `defer-font-env` (3). No clean shared
+  text/layout rule appeared, so the remaining Flowchart pins stay retained without adding fixture,
+  glyph, or root viewport lookup data.
 
 ## 2026-05-16
 

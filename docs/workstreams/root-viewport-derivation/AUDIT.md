@@ -489,6 +489,26 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   deterministic COSE layout the browser `foreignObject` bbox width. Focused `parity-root`,
   full-DOM, and SVG-position debug checks pass for the affected fixtures, and
   `svg/parity/mindmap.rs` has zero hand-written `parity-root calibration` profile branches.
+- 2026-05-18: Flowchart retained-root recheck found no clean shared browser/font model to delete
+  the next pin batch. The retained-root audit
+  `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --no-root-overrides
+  --report-root-pins-only --report-root-all --report-label-root-pins-only --report-label-all
+  --out target/compare/flowchart_root_pin_label_audit_current.md` passed as a reporting command,
+  and `cargo run -p xtask -- triage-flowchart-root-pins --in
+  target/compare/flowchart_root_pin_label_audit_current.md --out
+  target/compare/flowchart_root_pin_triage_current.md` reports `49` root pins, `301` label delta
+  rows, and no root-pin removal candidates. The remaining buckets are
+  `defer-low-noise-text-lattice` (16), `defer-subpixel-text-lattice` (2),
+  `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
+  `defer-font-env` (3). The sampled low-noise/default labels still have mixed-sign 1/64px lattice
+  drift, SVG Markdown residuals stay subpixel, and the mojibake, Courier, icon, custom-font, and
+  `code_flow` accumulation cases remain font-environment dependent. No fixture, glyph, or root
+  viewport lookup data was added; all current Flowchart pins remain retained. Verification after
+  the documentation update passed with `cargo fmt --all --check`,
+  `cargo run -p xtask -- report-overrides --check-no-growth`, and
+  `cargo run -p xtask -- audit-root-overrides --fail-on-stale`; the global audit still reports
+  `308` inventory entries, `314` retained root-delta keys, `0` stale pins, and the same three
+  accepted Mindmap outside-table residuals.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,
