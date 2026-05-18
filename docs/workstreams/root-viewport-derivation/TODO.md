@@ -280,6 +280,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   sweep in `target/compare/sequence_disabled_root_current.md` still maps all `59` generated keys
   to `parity-root` DOM mismatches with `0` stale entries, so no safe shared message/note/frame rule
   was kept and the bucket remains retained rather than becoming fixture-specific text rows.
+- [x] Reclassify the Sequence text escaping / line-break subfamily as retained.
+  Evidence: a focused disabled-root slice over
+  `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
+  `stress_message_text_with_colons_039`,
+  `upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006`,
+  `stress_html_entities_and_escaping_038`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`,
+  `stress_sequence_batch5_whitespace_semicolons_051`, and
+  `upstream_docs_sequence_note_with_br` shows `6` positive width drifts, `0` negative width
+  drifts, `0` height changes, and one exact match. The existing Sequence message/note/wrap
+  helpers already route these labels through shared measurement and line-splitting code, but the
+  remaining drift still splits across message, note, wrapped, and escaping cases, so no new shared
+  rule was kept without fixture/text lookup data.
 - [x] Remove the first then-stale GitGraph root pins found by disabled-root mismatch
   cross-checking.
   Evidence: `upstream_cypress_gitgraph_spec_88_should_hide_branches_with_tb_orientation_when_showbranches_is_092`

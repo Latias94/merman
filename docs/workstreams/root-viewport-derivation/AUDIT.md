@@ -154,6 +154,21 @@ the earlier TODO item that waited on broad message-width inference before revisi
 Follow-up ledger verification found no remaining unchecked workstream TODO items and passed
 `git diff --check`, `cargo fmt --all --check`, and
 `cargo run -p xtask -- report-overrides --check-no-growth`.
+The narrower text escaping / line-break subfamily stays retained as well: the focused disabled-root
+slice over `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
+`stress_message_text_with_colons_039`,
+`upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006`,
+`stress_html_entities_and_escaping_038`,
+`upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`,
+`stress_sequence_batch5_whitespace_semicolons_051`, and
+`upstream_docs_sequence_note_with_br` showed `6` positive width drifts, `0` negative width
+drifts, `0` height changes, and one exact match. These cases already flow through the shared
+Sequence message/note/wrap helpers, but the remaining drift still splits across message, note,
+wrapped, and escaping cases, so no new shared rule was kept.
+Closeout verification for this documentation-only reclassification passed `git diff --check`,
+`cargo fmt --all --check`, and `cargo run -p xtask -- report-overrides --check-no-growth`.
+No `nextest` or `parity-root` gate was rerun because this pass changed only workstream evidence
+documents and did not touch Rust source, fixtures, generated tables, or goldens.
 
 The latest GitGraph pass measures vertical TB/BT branch labels with the centered SVG bbox path and
 ties-to-even 1/64px quantization, matching Mermaid's `drawText(name).getBBox()` root behavior.

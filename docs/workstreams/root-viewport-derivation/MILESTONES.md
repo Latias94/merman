@@ -296,6 +296,17 @@ Progress:
   participant type/lifecycle height drift, and mixed-sign width cases, so no broad shared
   message/note/frame slack rule is safe to apply. This supersedes the earlier TODO item that
   waited on broad message-width inference before revisiting the bucket.
+- Reclassified the narrower Sequence text escaping / line-break subfamily as retained. A focused
+  disabled-root slice over `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
+  `stress_message_text_with_colons_039`,
+  `upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006`,
+  `stress_html_entities_and_escaping_038`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`,
+  `stress_sequence_batch5_whitespace_semicolons_051`, and
+  `upstream_docs_sequence_note_with_br` still shows `6` positive width drifts, `0` negative width
+  drifts, `0` height changes, and one exact match. The shared Sequence message/note/wrap helpers
+  already cover these paths, but the residual drift still splits across message, note, wrapped,
+  and escaping cases, so no new shared rule was kept.
 - Derived the Flowchart chained-statement height root by matching Mermaid's split htmlLabels
   semantics: nodes follow root `htmlLabels`, while edge labels, subgraph titles, CSS selectors,
   and styled/quoted-string node-height parity follow `flowchart.htmlLabels` with root fallback.

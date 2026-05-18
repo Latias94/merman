@@ -35,6 +35,10 @@ strict release gates green.
   table is split into retained message/note text measurement, nested frame/rect vertical geometry,
   and participant type/lifecycle geometry debt rather than stale table debt. This supersedes the
   earlier pending revisit TODO that waited on message-width inference before reopening the bucket.
+  The narrower text escaping / line-break subfamily is retained too: the focused disabled-root
+  slice over the line-break, colon, escaping, wrapped-message, whitespace-semicolon, and note-with-
+  br fixtures still shows `6` positive width drifts, `0` negative width drifts, `0` height
+  changes, and one exact match.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up

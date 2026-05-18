@@ -51,7 +51,16 @@
   data was added. This supersedes the earlier TODO item that waited on broad message-width
   inference before revisiting the bucket. Follow-up ledger verification found no remaining
   unchecked workstream TODO items and passed `git diff --check`, `cargo fmt --all --check`, and
-  `cargo run -p xtask -- report-overrides --check-no-growth`.
+  `cargo run -p xtask -- report-overrides --check-no-growth`. The narrower text escaping /
+  line-break subfamily also stays retained: a focused disabled-root slice over
+  `upstream_cypress_sequencediagram_spec_should_handle_different_line_breaks_004`,
+  `stress_message_text_with_colons_039`,
+  `upstream_cypress_sequencediagram_spec_should_handle_line_breaks_and_wrap_annotations_006`,
+  `stress_html_entities_and_escaping_038`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`,
+  `stress_sequence_batch5_whitespace_semicolons_051`, and
+  `upstream_docs_sequence_note_with_br` showed `6` positive width drifts, `0` negative width
+  drifts, `0` height changes, and one exact match.
 - Rechecked the current State retained-root bucket and kept all `33` generated State root pins.
   The disabled-root sweep in `target/compare/state_disabled_root_current.md` maps all `33`
   generated keys to exact root-delta rows: `20` positive width drifts, `13` negative width drifts,
