@@ -29,9 +29,9 @@ strict release gates green.
   passes plus the latest stale-pin cross-check.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
-  widths, vertical branch-label centered SVG bbox widths, and upstream seeded auto-id warm-up
-  behavior, then honoring commit/tag label theme-variable styles and pruning the now-derived pins
-  while retaining the remaining table as real
+  widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
+  behavior, and the `BT` + `parallelCommits` compact-axis mirror, then honoring commit/tag label
+  theme-variable styles and pruning the now-derived pins while retaining the remaining table as real
   root-drift guards.
 - Current Flowchart root viewport overrides: `43` inventory entries covering `49` fixture keys
   after deriving imageSquare

@@ -509,6 +509,30 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `cargo run -p xtask -- audit-root-overrides --fail-on-stale`; the global audit still reports
   `308` inventory entries, `314` retained root-delta keys, `0` stale pins, and the same three
   accepted Mindmap outside-table residuals.
+- 2026-05-18: GitGraph `BT` + `parallelCommits` root height drift is now derived by a typed axis
+  rule rather than a root table. The fixture
+  `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`
+  showed a natural disabled-root height of `329px` before the pass even though upstream's compact
+  bottom-to-top graph is `239px` high. The fix lays out parallel commits in sequence order,
+  applies the same parent-axis spacing as the top-to-bottom compact graph, then mirrors commit
+  positions for `BT`; this keeps the branch label baseline at `210px` and aligns the emitted arrow
+  and commit positions with upstream. Focused evidence:
+  `cargo nextest run -p merman-render parallel_bt_commits_use_mirrored_compact_axis`,
+  `cargo run -p xtask -- update-layout-snapshots --diagram gitgraph --filter
+  upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`,
+  and a disabled-root
+  `compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`
+  filter pass for the same fixture. The generated root pin is intentionally retained: exact root
+  attrs still differ by `-0.016px` in width (`331.006591796875px` upstream versus
+  `330.990966796875px` local), matching the known vertical branch-label bbox lattice residual.
+  A full disabled-root GitGraph recheck now has `15` `parity-root` DOM mismatches, with `spec_71`
+  removed from the mismatch list while still present as a high-precision retained root-delta row.
+  Post-change verification passed `cargo fmt --all --check`, full GitGraph normal DOM parity, full
+  GitGraph `parity-root`, `report-overrides --check-no-growth`, and
+  `audit-root-overrides --fail-on-stale`; the global audit reports GitGraph `23` inventory entries,
+  `15` disabled-root DOM mismatches, `0` stale pins, and the same three accepted Mindmap
+  outside-table residuals. The broader layout snapshot test was not green because of pre-existing
+  Mindmap snapshot mismatches unrelated to the GitGraph fixture updated in this pass.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

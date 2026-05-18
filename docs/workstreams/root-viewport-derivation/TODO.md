@@ -679,9 +679,19 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
   `defer-font-env` (3). No clean shared text/layout rule appeared, so no fixture/glyph/root lookup
   table was added and the current Flowchart pins stay retained.
-- [ ] Revisit broader GitGraph branch/merge/tag root bounds after they can be derived without
-  fixture pins. The next useful target is vertical branch/commit-label and cherry-pick/tag bbox
-  drift, not another blind GitGraph table-pruning pass.
+- [x] Derive the GitGraph `BT` + `parallelCommits` compact commit axis without adding lookup data.
+  Evidence: Mermaid lays out the compact parallel commit axis in sequence order and then mirrors it
+  for bottom-to-top rendering. Rust now follows that typed rule instead of treating reversed parse
+  order as a new linear timeline, reducing
+  `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`
+  from a `330.991x329` natural root to `330.991x239`. The focused disabled-root
+  `parity-root` check now passes without the generated root override. The pin remains because the
+  exact root width still differs by `-0.016px` from the vertical branch-label bbox lattice, so it
+  is still a real high-precision guard rather than stale table debt.
+- [ ] Continue broader GitGraph branch/merge/tag root bounds only when a typed measurement rule can
+  explain the remaining exact root drift. The next useful target is the shared branch-label bbox
+  lattice behind the retained vertical branch/commit-label and cherry-pick/tag guards, not another
+  blind GitGraph table-pruning pass.
 
 ## P3: Release Closeout
 

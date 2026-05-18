@@ -244,6 +244,11 @@ Progress:
   Focused disabled-root checks for the commit/tag font-size docs fixtures pass without
   `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, tightening the root budget to
   `382` and leaving `23` GitGraph root entries.
+- Derived the GitGraph `BT` + `parallelCommits` compact axis by placing commits in sequence order
+  and mirroring the axis after parent-based placement. The focused disabled-root check for
+  `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`
+  now matches `parity-root` height naturally, but the root pin remains because exact width still
+  has the retained vertical branch-label bbox lattice residual; GitGraph stays at `23` entries.
 - Removed the stacked-activation Sequence pair after correcting the default message-width fact for
   `Hello Alice, please meet Carol?` from upstream actor spacing. Focused disabled-root checks pass
   for `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040`, full Sequence

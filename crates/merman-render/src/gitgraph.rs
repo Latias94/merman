@@ -650,7 +650,8 @@ pub fn layout_gitgraph_diagram_typed(
     commit_order.sort_by_key(|c| c.seq);
 
     let mut sorted_keys: Vec<&str> = commit_order.iter().map(|c| c.id.as_str()).collect();
-    if direction == "BT" {
+    let mirror_parallel_bt_axis = direction == "BT" && parallel_commits;
+    if direction == "BT" && !mirror_parallel_bt_axis {
         sorted_keys.reverse();
     }
 
@@ -670,7 +671,9 @@ pub fn layout_gitgraph_diagram_typed(
                     find_closest_parent(&commit.parents, &direction, &commit_pos)
                 {
                     if let Some(parent_position) = commit_pos.get(closest_parent) {
-                        if direction == "TB" {
+                        if mirror_parallel_bt_axis {
+                            cur_pos = parent_position.y + COMMIT_STEP + LAYOUT_OFFSET;
+                        } else if direction == "TB" {
                             cur_pos = parent_position.y + COMMIT_STEP;
                         } else if direction == "BT" {
                             let current_position = commit_pos
@@ -722,12 +725,27 @@ pub fn layout_gitgraph_diagram_typed(
             y,
         });
 
-        cur_pos = if direction == "BT" && parallel_commits {
-            cur_pos + COMMIT_STEP
-        } else {
-            cur_pos + COMMIT_STEP + LAYOUT_OFFSET
-        };
+        cur_pos += COMMIT_STEP + LAYOUT_OFFSET;
         max_pos = max_pos.max(cur_pos);
+    }
+
+    if mirror_parallel_bt_axis && !commits.is_empty() {
+        // Mermaid lays out `parallelCommits` in sequence order, then mirrors the commit axis for
+        // bottom-to-top rendering. Doing the mirror after parent placement keeps branch timelines
+        // compact instead of treating the reversed parse order as a new linear timeline.
+        let mirror_axis = max_pos - DEFAULT_POS;
+        max_pos -= 2.0 * LAYOUT_OFFSET;
+
+        for commit in &mut commits {
+            let y = mirror_axis - commit.y;
+            commit.pos = y;
+            commit.pos_with_offset = y;
+            commit.y = y;
+        }
+
+        for position in commit_pos.values_mut() {
+            position.y = mirror_axis - position.y;
+        }
     }
 
     let mut lanes: Vec<f64> = if show_branches {
@@ -934,5 +952,52 @@ mod tests {
         assert_eq!(x_by_id["5-abcdefg"], 10.0);
         assert_eq!(x_by_id["6-abcdefg"], 60.0);
         assert_eq!(layout.max_pos, 100.0);
+    }
+
+    #[test]
+    fn parallel_bt_commits_use_mirrored_compact_axis() {
+        let model = GitGraphRenderModel {
+            diagram_type: "gitGraph".to_string(),
+            branches: ["main", "develop", "feature"]
+                .into_iter()
+                .map(|name| GitGraphBranchRenderModel {
+                    name: name.to_string(),
+                })
+                .collect(),
+            commits: vec![
+                commit("1-abcdefg", 0, &[], "main"),
+                commit("2-abcdefg", 1, &["1-abcdefg"], "main"),
+                commit("3-abcdefg", 2, &["2-abcdefg"], "develop"),
+                commit("4-abcdefg", 3, &["3-abcdefg"], "develop"),
+                commit("5-abcdefg", 4, &["2-abcdefg"], "feature"),
+                commit("6-abcdefg", 5, &["5-abcdefg"], "feature"),
+                commit("7-abcdefg", 6, &["2-abcdefg"], "main"),
+                commit("8-abcdefg", 7, &["7-abcdefg"], "main"),
+            ],
+            current_branch: "main".to_string(),
+            direction: "BT".to_string(),
+            acc_title: None,
+            acc_descr: None,
+            warnings: Vec::new(),
+        };
+        let cfg = json!({ "gitGraph": { "parallelCommits": true } });
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+
+        let y_by_id = layout
+            .commits
+            .iter()
+            .map(|c| (c.id.as_str(), c.y))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(y_by_id["1-abcdefg"], 170.0);
+        assert_eq!(y_by_id["2-abcdefg"], 120.0);
+        assert_eq!(y_by_id["3-abcdefg"], 70.0);
+        assert_eq!(y_by_id["4-abcdefg"], 20.0);
+        assert_eq!(y_by_id["5-abcdefg"], 70.0);
+        assert_eq!(y_by_id["6-abcdefg"], 20.0);
+        assert_eq!(y_by_id["7-abcdefg"], 70.0);
+        assert_eq!(y_by_id["8-abcdefg"], 20.0);
+        assert_eq!(layout.max_pos, 210.0);
     }
 }

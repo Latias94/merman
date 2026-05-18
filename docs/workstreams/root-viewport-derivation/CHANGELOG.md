@@ -25,6 +25,14 @@
   `defer-courier-font` (8), `defer-icon-font` (19), and `defer-font-env` (3). No clean shared
   text/layout rule appeared, so the remaining Flowchart pins stay retained without adding fixture,
   glyph, or root viewport lookup data.
+- Derived the GitGraph `BT` + `parallelCommits` compact axis without adding fixture, glyph, or root
+  lookup data. Bottom-to-top parallel graphs now place commits with the same compact parent-axis
+  spacing as the top-to-bottom pass and mirror the axis after placement, reducing the natural root
+  height for
+  `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`
+  from `329px` to the upstream `239px`. The generated root pin stays retained because exact width
+  parity still depends on the existing `-0.016px` vertical branch-label bbox lattice residual, so
+  GitGraph remains at `23` root entries.
 
 ## 2026-05-16
 
