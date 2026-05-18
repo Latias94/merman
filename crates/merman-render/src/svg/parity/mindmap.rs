@@ -840,39 +840,6 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
-    // Mermaid@11.12.2 parity-root calibration for the simple docs/package tree profile.
-    //
-    // Profile: three default nodes (`root`, `Photograph`, `Waterfall`) in a single chain and no
-    // icons. Calibrate root viewport width for deterministic parity-root output.
-    if model.nodes.len() == 3 && model.edges.len() == 2 {
-        let node_labels = model
-            .nodes
-            .iter()
-            .map(|n| n.label.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
-        let mut edge_pairs = model
-            .edges
-            .iter()
-            .map(|e| format!("{}->{}", e.start, e.end))
-            .collect::<Vec<_>>();
-        edge_pairs.sort();
-        let all_default_shapes = model.nodes.iter().all(|n| n.shape == "defaultMindmapNode");
-        let no_icons = model.nodes.iter().all(|n| n.icon.is_none());
-
-        if node_labels == ["Photograph", "Waterfall", "root"].into_iter().collect()
-            && edge_pairs.as_slice() == ["0->1", "1->2"]
-            && all_default_shapes
-            && no_icons
-            && (vx - 5.0).abs() <= 1e-9
-            && (vy - 5.0).abs() <= 1e-9
-            && (vw - 142.0741676212915).abs() <= 1e-9
-            && (vh - 228.52557325600515).abs() <= 1e-9
-        {
-            vw = 141.62103271484375;
-            vh = 228.52557373046875;
-        }
-    }
-
     // Mermaid@11.12.2 parity-root calibration for `upstream_docs_unclear_indentation` profile.
     //
     // Profile: 4 nodes, 3 edges, labels {Root, A, B, C}, all default node shapes and no icons.

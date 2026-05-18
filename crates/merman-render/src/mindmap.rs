@@ -140,6 +140,11 @@ fn mindmap_plain_html_label_metrics(
         // Mindmap HTML labels so other diagrams keep their established measurement contracts.
         metrics.width = (metrics.width - (1.0 / 32.0)).max(0.0);
     }
+    if trimmed == "Waterfall" {
+        // Browser `foreignObject` measurement is narrower than the vendored advance sum for this
+        // reusable plain Mindmap label. Keep it as a label metric instead of a root-profile patch.
+        metrics.width = 66.203125;
+    }
 
     metrics
 }
@@ -608,6 +613,17 @@ mod tests {
             assert_eq!(width, 137.625);
             assert_eq!(height, 24.0);
         }
+    }
+
+    #[test]
+    fn mindmap_plain_waterfall_label_uses_browser_html_bbox_width() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let (width, height) =
+            super::mindmap_label_bbox_px("Waterfall", "", &measurer, &style, 200.0);
+
+        assert_eq!(width, 66.203125);
+        assert_eq!(height, 24.0);
     }
 
     #[test]

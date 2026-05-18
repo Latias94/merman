@@ -644,6 +644,15 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `parity-root` and full-DOM checks pass without fixture, glyph, or root lookup data. The remaining
   profile calibration block count is 3: the simple docs/package `Photograph -> Waterfall` tree,
   `upstream_docs_unclear_indentation`, and `upstream_root_type_cloud`.
+- [x] Remove the Mindmap simple docs/package `Photograph -> Waterfall` profile calibration.
+  Evidence: deleting the root-profile block exposed that the package fixture drift came from the
+  plain HTML label metric for `Waterfall` (`66.203125px` upstream versus `67.109375px` local), not
+  default-node shape sizing or tidy-tree layout. A Mindmap-owned plain-label metric now derives the
+  `upstream_pkgtests_diagram_orchestration_spec_077` root and full DOM without fixture, glyph, or
+  root lookup data, and the sibling Cypress `Waterfall` fixture still passes full-DOM comparison.
+  Focused `parity-root`, full-DOM, SVG-position debug, and label-metric unit checks pass. The
+  remaining profile calibration block count is 2: `upstream_docs_unclear_indentation` and
+  `upstream_root_type_cloud`.
 - [ ] Continue Flowchart retained-root audit only if a clean shared browser/font model appears for
   the retained low-noise SVG/HTML text lattice, icon-label, courier, mojibake, custom-font, and
   mixed-sign default-font accumulation guards. Do not add fixture/glyph lookup tables to chase the
