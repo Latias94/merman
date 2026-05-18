@@ -356,10 +356,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   separate styles. Focused disabled-root checks for the commit/tag font-size docs fixtures pass
   without `upstream_docs_gitgraph_customizing_commit_label_font_size_032`, so that root pin was
   deleted. Root viewport overrides are now `382` total with `23` GitGraph entries.
-- [ ] Revisit broader GitGraph vertical commit/tag and cherry-pick root drift after a typed
-  measurement rule can explain the remaining disabled-root mismatches. The 23 retained entries are
-  current guards, so the next GitGraph pass should start from root-delta families rather than
-  another blind table deletion.
+- [x] Recheck broader GitGraph branch-label, commit-label, cherry-pick, and tag retained roots
+  before doing more table pruning.
+  Evidence: the current disabled-root GitGraph sweep
+  (`target/compare/gitgraph_disabled_root_current.md`) reports 23 generated root pins, 23
+  high-precision root-delta keys, and 15 `parity-root` DOM mismatches. The remaining 8 generated
+  keys are not stale: they still differ in exact root attrs, but the 0.25px `parity-root` lattice
+  normalizes them at 3 decimals. Representative inspection showed mixed-sign 1/64px drift:
+  `develop`/`feature` vertical branch-label rects are local `-0.015625px`, `newbranch` and
+  `0-a13d8e6` are local `+0.015625px`, the title fixture combines title/root f32 lattice with
+  rotated label height, and the tag guards include small tag polygon height residuals. A probe that
+  raised GitGraph 10px commit/tag bbox height to the observed `11.05078125px` improved
+  `upstream_merges_spec` but introduced many outside-table height mismatches; restricting it to
+  TB/BT no longer fixed the retained LR/RL tag case. No clean shared rule was found without adding
+  fixture, glyph, or root lookup data, so GitGraph stays at `23` entries.
 - [x] Derive the Flowchart imageSquare docs parameters root from layout-time image plus label
   bounds.
   Evidence: `upstream_docs_flowchart_parameters_136` now sizes the Dagre node from the rendered
@@ -688,10 +698,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `parity-root` check now passes without the generated root override. The pin remains because the
   exact root width still differs by `-0.016px` from the vertical branch-label bbox lattice, so it
   is still a real high-precision guard rather than stale table debt.
-- [ ] Continue broader GitGraph branch/merge/tag root bounds only when a typed measurement rule can
-  explain the remaining exact root drift. The next useful target is the shared branch-label bbox
-  lattice behind the retained vertical branch/commit-label and cherry-pick/tag guards, not another
-  blind GitGraph table-pruning pass.
+- [x] Reclassify the remaining GitGraph branch/merge/tag root bounds as retained until a typed
+  browser measurement model can explain the mixed-sign exact root drift.
+  Evidence: after the `BT` + `parallelCommits` axis derivation, a fresh disabled-root full sweep
+  still has 23 high-precision generated root-delta keys but only 15 3-decimal `parity-root` DOM
+  mismatches. The non-mismatch generated keys are `spec_71`, `cherry_pick_from_branch_graph_015`,
+  `cherry_pick_from_main_graph_{017,018}`, `merge_feature_to_advanced_main_graph_007`,
+  `merge_from_main_onto_{developed,undeveloped}_branch_graph_{025,022}`, and
+  `simple_branch_and_merge_graph_001`; each remains an exact root guard. A shared commit/tag height
+  probe regressed outside-table fixtures, confirming the remaining roots are subpixel browser
+  lattice debt rather than a safe table-pruning target.
 
 ## P3: Release Closeout
 

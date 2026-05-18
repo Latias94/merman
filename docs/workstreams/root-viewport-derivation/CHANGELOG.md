@@ -33,6 +33,13 @@
   from `329px` to the upstream `239px`. The generated root pin stays retained because exact width
   parity still depends on the existing `-0.016px` vertical branch-label bbox lattice residual, so
   GitGraph remains at `23` root entries.
+- Rechecked the remaining GitGraph retained roots and kept them retained. A fresh disabled-root
+  sweep reports `23` generated high-precision root-delta keys and `15` 3-decimal `parity-root` DOM
+  mismatches; the other `8` generated keys still differ in exact root attrs but normalize under the
+  snapped root DOM lattice. Representative SVGs show mixed-sign 1/64px branch/commit label drift
+  plus title/root f32 and tag-height residuals. A shared 10px commit/tag bbox-height probe improved
+  `upstream_merges_spec` but caused outside-table height mismatches, so no clean shared rule was
+  kept and no fixture/glyph/root lookup data was added.
 
 ## 2026-05-16
 

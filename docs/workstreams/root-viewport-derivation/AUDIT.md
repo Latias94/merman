@@ -533,6 +533,31 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `15` disabled-root DOM mismatches, `0` stale pins, and the same three accepted Mindmap
   outside-table residuals. The broader layout snapshot test was not green because of pre-existing
   Mindmap snapshot mismatches unrelated to the GitGraph fixture updated in this pass.
+- 2026-05-18: rechecked the remaining GitGraph retained roots for a shared branch-label,
+  commit-label, cherry-pick, or tag measurement rule. The fresh disabled-root sweep
+  `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root
+  --dom-decimals 3 --report-root-all --out target/compare/gitgraph_disabled_root_current.md`
+  still has `23` generated root-delta keys and `15` 3-decimal `parity-root` DOM mismatches.
+  Crossing the generated table with the mismatch list leaves `8` exact-root guards that do not
+  currently fail the snapped DOM signature:
+  `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`,
+  `upstream_html_demos_git_cherry_pick_from_branch_graph_015`,
+  `upstream_html_demos_git_cherry_pick_from_main_graph_017`,
+  `upstream_html_demos_git_cherry_pick_from_main_graph_018`,
+  `upstream_html_demos_git_merge_feature_to_advanced_main_graph_007`,
+  `upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_025`,
+  `upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_022`, and
+  `upstream_html_demos_git_simple_branch_and_merge_graph_001`. Representative SVG inspection
+  shows mixed-sign 1/64px drift rather than one reusable correction:
+  `develop`/`feature` vertical branch-label rects are local `-0.015625px`, while `newbranch` and
+  `0-a13d8e6` in the HTML branch/merge fixture are local `+0.015625px`; title fixtures mix
+  title/root f32 lattice with rotated commit-label height, and tag guards include small tag polygon
+  height residuals. A probe that changed GitGraph 10px commit/tag label bbox height from `15px`
+  to the observed `15.05078125px` rect height fixed `upstream_merges_spec` in isolation but
+  introduced many outside-table 0.25px-height `parity-root` mismatches; restricting the probe to
+  TB/BT preserved LR/RL but no longer fixed the retained tag case. No fixture, glyph, or root
+  viewport lookup data was added, no code change was kept, and the GitGraph table remains at
+  `23` retained exact-root entries.
 - 2026-05-16: Flowchart `low-noise-text` retained roots are now explicitly deferred as
   `defer-low-noise-text-lattice`. Browser probes for the affected plain/default-stack labels
   (`Find elements`, `Leave element`, `outside 1`, `node-X`, `Reject: reason`, `Go shopping 1`,

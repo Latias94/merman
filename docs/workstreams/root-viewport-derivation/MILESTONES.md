@@ -249,6 +249,12 @@ Progress:
   `upstream_cypress_gitgraph_spec_71_should_render_gitgraph_with_parallel_commits_vertical_branch_075`
   now matches `parity-root` height naturally, but the root pin remains because exact width still
   has the retained vertical branch-label bbox lattice residual; GitGraph stays at `23` entries.
+- Rechecked the broader GitGraph branch-label/commit-label/cherry-pick/tag retained roots. The
+  current disabled-root sweep still has `23` generated exact root-delta keys, `15` snapped
+  `parity-root` DOM mismatches, and no stale deletion target. A commit/tag 10px bbox-height probe
+  was rejected because it fixed one retained tag guard while regressing outside-table root heights,
+  so the remaining GitGraph table is documented as mixed-sign subpixel browser lattice debt rather
+  than a safe pruning candidate.
 - Removed the stacked-activation Sequence pair after correcting the default message-width fact for
   `Hello Alice, please meet Carol?` from upstream actor spacing. Focused disabled-root checks pass
   for `activation_stacked` and `upstream_pkgtests_sequencediagram_spec_040`, full Sequence

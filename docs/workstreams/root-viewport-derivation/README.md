@@ -32,7 +32,9 @@ strict release gates green.
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
   behavior, and the `BT` + `parallelCommits` compact-axis mirror, then honoring commit/tag label
   theme-variable styles and pruning the now-derived pins while retaining the remaining table as real
-  root-drift guards.
+  exact root-drift guards. The latest GitGraph retained-root recheck found `23` high-precision
+  generated root-delta keys, `15` snapped `parity-root` DOM mismatches, and no clean shared
+  branch/commit/tag measurement rule to remove another pin without causing outside-table drift.
 - Current Flowchart root viewport overrides: `43` inventory entries covering `49` fixture keys
   after deriving imageSquare
   image-plus-label layout bounds, anchor dot layout bounds, C1 replacement-glyph HTML label
