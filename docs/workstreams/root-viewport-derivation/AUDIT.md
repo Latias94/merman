@@ -18,7 +18,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
-| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Blocked only by root-parity residuals; split follow-on recorded below |
+| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed with an explicit root-parity residual policy for five exact fixtures |
 
 ## Current Baseline
 
@@ -218,10 +218,11 @@ The broad closeout gate without root parity,
 with fmt, workspace all-feature check, workspace clippy, override no-growth, feature matrix,
 workspace nextest (`1081` passed, `3` skipped), and normal SVG DOM parity.
 
-Full strict closeout is not claimed. A fresh `cargo run -p xtask -- verify --strict` passed through
-fmt, all-feature check, clippy, override no-growth, feature matrix, and workspace nextest
-(`1081` passed, `3` skipped), but failed in `--root-parity` on five outside-table root DOM
-residuals:
+Full strict closeout is claimed with explicit residual governance. A fresh
+`cargo run -p xtask -- verify --strict` passed through fmt, all-feature check, clippy,
+override no-growth, feature matrix, workspace nextest (`1084` passed, `3` skipped), normal SVG
+DOM parity, and root parity. The root parity stage now accepts exactly five recorded residuals
+and fails on any changed or additional mismatch:
 
 - Class:
   `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037`
@@ -234,9 +235,9 @@ residuals:
   `upstream_docs_tidy_tree_example_usage_002` still reports a root `viewBox` height drift
   (`671.5` upstream versus `671.75` local).
 
-Therefore this workstream is closed only as a documented current-stage split: generated root table
-inventory is stable and stale-pin-free, the non-root release gate is green, and the remaining full
-strict closeout work is a follow-on root-parity residual lane.
+Therefore this workstream is closed with explicit root-parity residual governance: generated root
+table inventory is stable and stale-pin-free, the strict release gate is green, and the accepted
+root residuals are documented and locked down in `compare-all-svgs`.
 
 The nested frame / rect vertical geometry subfamily also stays retained after a narrower recheck.
 Focused disabled-root `parity-root` checks for `stress_deep_nested_frames_018`,

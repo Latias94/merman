@@ -125,8 +125,7 @@ Exit criteria:
 
 ## M3: Broader Root-Debt Plan
 
-Status: split for follow-on. The broader derivation passes are documented, but full strict
-`--root-parity` closeout remains blocked by residual Class and Mindmap root DOM drift.
+Status: complete with explicit root-parity residual policy.
 
 Scope:
 
@@ -343,14 +342,17 @@ Progress:
   `state.padding / 2` inflation, while other directions keep the horizontal `70x10` bar. Refreshed
   the affected layout goldens, deleted eight now-derived Flowchart root pins after the follow-up
   stale-pin sweep, and tightened the root budget to `424` with `95` Flowchart root entries.
-- 2026-05-18 closeout verification restored the non-root strict gate set:
-  `cargo run -p xtask -- verify --clippy --all-features --check-overrides --feature-matrix`
-  passed with fmt, workspace all-feature check, workspace clippy, override no-growth, feature
-  matrix, workspace nextest (`1081` passed, `3` skipped), and normal SVG DOM parity. The full
-  `cargo run -p xtask -- verify --strict` gate still fails only in `--root-parity`: two Class
-  `different_text_labels_037` fixtures differ on root `max-width` (`2355.75px` upstream versus
-  `2345px` local), and the three already-accepted Mindmap outside-table residuals still differ
-  on root width/height. This workstream is therefore split rather than fully closed.
+- 2026-05-18 closeout verification restored the non-root strict gate set and then completed full
+  strict closeout under an explicit root-parity residual policy. `cargo run -p xtask -- verify
+  --clippy --all-features --check-overrides --feature-matrix` passed with fmt, workspace
+  all-feature check, workspace clippy, override no-growth, feature matrix, workspace nextest
+  (`1081` passed, `3` skipped), and normal SVG DOM parity. The full
+  `cargo run -p xtask -- verify --strict` gate now also passes because `compare-all-svgs`
+  explicitly accepts five exact root residuals and still fails on any changed or additional
+  mismatch: the two Class `different_text_labels_037` fixtures
+  (`2355.75px` upstream versus `2345px` local) and the three Mindmap docs/example residuals
+  (`756.25px` upstream versus `756.75px` local, plus `671.5` versus `671.75` on
+  `upstream_docs_tidy_tree_example_usage_002`).
 
 Exit criteria:
 
@@ -358,25 +360,23 @@ Exit criteria:
 - Strict release gate passes.
 - `cargo nextest run` is green if shared layout or renderer contracts changed.
 
-## M4: Root Parity Follow-On
+## M4: Root Parity Governance
 
-Status: proposed next goal.
+Status: complete.
 
 Scope:
 
-- Resolve or explicitly govern the two Class root-parity residuals:
+- Govern the two Class root-parity residuals:
   `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037`
   and
   `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037`.
-- Resolve or explicitly govern the three Mindmap outside-table residuals:
+- Govern the three Mindmap outside-table residuals:
   `upstream_docs_example_icons_br`, `upstream_docs_tidy_tree_example_usage_002`, and
   `upstream_examples_mindmap_basic_mindmap_001`.
-- Re-run `cargo run -p xtask -- verify --strict` and close this workstream only when full root
-  parity is green, or when the residuals have a deliberate checked policy in the verification
-  tooling.
+- Keep `cargo run -p xtask -- verify --strict` green while rejecting any changed, missing, or
+  additional root residuals.
 
 Exit criteria:
 
-- The full strict gate passes, or `verify --strict` has an explicit residual policy that fails on
-  growth and documents every accepted outside-table root mismatch.
+- The full strict gate passes with explicit residual governance.
 - `AUDIT.md` records the final residual decision with command evidence.

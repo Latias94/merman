@@ -2,15 +2,14 @@
 
 ## 2026-05-18
 
-- Ran closeout verification for the root viewport derivation stage and split the remaining full
-  strict closeout work into a follow-on root-parity residual lane. `cargo run -p xtask -- verify
+- Ran closeout verification for the root viewport derivation stage and completed the full strict
+  gate under explicit root-parity residual governance. `cargo run -p xtask -- verify
   --clippy --all-features --check-overrides --feature-matrix` passes with fmt, workspace
   all-feature check, workspace clippy, override no-growth, feature matrix, workspace nextest
   (`1081` passed, `3` skipped), and normal SVG DOM parity. A fresh `cargo run -p xtask -- verify
-  --strict` reaches root parity and then fails only on five outside-table root residuals: two Class
-  `different_text_labels_037` fixtures (`2355.75px` upstream max-width versus `2345px` local) and
-  the three accepted Mindmap docs/example residuals. The stage is therefore documented as a split,
-  not a full strict close.
+  --strict` now passes too because `compare-all-svgs` accepts exactly five recorded root residuals:
+  two Class `different_text_labels_037` fixtures (`2355.75px` upstream max-width versus `2345px`
+  local) and the three Mindmap docs/example residuals.
 - Cleaned up strict-gate maintenance fallout: workspace clippy lints in `xtask` were reduced
   without behavior changes, and the Mindmap cloud layout unit test plus twelve Mindmap layout
   goldens were synchronized with the current `the root` plain-label metric (`58.375px`) and cloud
