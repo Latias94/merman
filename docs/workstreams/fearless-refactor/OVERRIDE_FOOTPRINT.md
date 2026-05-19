@@ -439,6 +439,13 @@ HTML demo, and multiline demo residuals. The SVG-mode edge-label candidate stays
 a root-font-size/+4px
 label-box probe fixed height but over-expanded width to `561.73046875px` versus upstream
 `544.371826171875px`.
+The follow-up ER generic/markdown audit improved derivation without changing budgets: attribute
+types now use shared Mermaid `parseGenericTypes`, and ER markdown measurement only triggers for
+parsed structural markup. `upstream_html_demos_er_multiline_example_002` shrinks from the older
+natural disabled-root `597.484375px` width to `529.5px`, but upstream is `529.359375px` and
+internal label widths still differ, so the remaining pin is retained rather than replaced by a
+fixture-shaped subpixel fact. The docs layout fixture remains an ELK/layout coordinate residual,
+not a text-width candidate.
 
 Mindmap note: after the single-line delimiter and docs circle plain-label passes, disabling the
 remaining Mindmap root lookup still leaves 47 `parity-root` DOM mismatches. Those entries stay in

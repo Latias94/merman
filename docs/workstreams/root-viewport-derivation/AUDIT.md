@@ -918,6 +918,21 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   `cargo run -p xtask -- report-overrides --check-no-growth`. The disabled-root ER sweep was also
   rerun and now reports exactly the six retained ER mismatches; the error-demo fixture no longer
   appears in that retained list.
+- 2026-05-19: rechecked the remaining six ER root pins with shared generic parsing and narrow
+  markdown semantics. ER attribute type display now reuses shared Mermaid `parseGenericTypes`, and
+  ER label metrics/rendering only treat `*`, `_`, backtick, or HTML markers as markdown when
+  `pulldown-cmark` emits structural markup. This prevents literal `*id` attribute names from
+  taking the markdown measurement path while keeping `last*Name*`, `__phone__`, inline code, and
+  generic-markdown wrappers aligned with Mermaid. Full ER normal DOM parity passes. With
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the full ER `parity-root` sweep still reports exactly
+  the same six retained root mismatches and no new `upstream_attribute_blocks_whitespace_spec`
+  mismatch. `upstream_docs_entityrelationshipdiagram_layout_042` stays retained because it remains
+  an ELK/layout coordinate residual (`4 -48 329.015625 502` upstream versus natural local
+  `0 0 434.0390625 518`). `upstream_html_demos_er_multiline_example_002` improves from the older
+  natural disabled-root width `597.484375` to `529.5`, but upstream remains `529.359375` and
+  internal entity/label widths still differ, so deleting the pin would require a fixture-shaped
+  subpixel text fact rather than a typed/shared root rule. Root budget remains `286`; text lookup
+  budget remains `490`.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

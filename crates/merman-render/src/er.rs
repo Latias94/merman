@@ -40,28 +40,62 @@ fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
-pub(crate) fn parse_generic_types_like_mermaid(text: &str) -> String {
-    // Mermaid `parseGenericTypes` turns `Foo~T~` into `Foo<T>` for display.
-    let mut out = String::with_capacity(text.len());
-    let mut it = text.split('~').peekable();
-    let mut open = false;
-    while let Some(part) = it.next() {
-        out.push_str(part);
-        if it.peek().is_none() {
+pub(crate) fn er_generic_markdown_plain_text(text: &str) -> Option<String> {
+    if !(text.contains('<') || text.contains('>')) {
+        return None;
+    }
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("<br") || lower.contains("<strong") || lower.contains("<em") {
+        return None;
+    }
+    if !(text.contains('*') || text.contains('_') || text.contains('`')) {
+        return None;
+    }
+
+    let mut plain = text.trim().to_string();
+    loop {
+        let next = plain
+            .strip_prefix("**")
+            .and_then(|s| s.strip_suffix("**"))
+            .or_else(|| plain.strip_prefix("__").and_then(|s| s.strip_suffix("__")))
+            .or_else(|| plain.strip_prefix('*').and_then(|s| s.strip_suffix('*')))
+            .or_else(|| plain.strip_prefix('_').and_then(|s| s.strip_suffix('_')))
+            .or_else(|| plain.strip_prefix('`').and_then(|s| s.strip_suffix('`')));
+
+        let Some(next) = next else {
             break;
-        }
-        if !open {
-            out.push('<');
-            open = true;
-        } else {
-            out.push('>');
-            open = false;
-        }
+        };
+        plain = next.trim().to_string();
     }
-    if open {
-        out.push('>');
+
+    if plain.is_empty() || plain == text {
+        None
+    } else {
+        Some(plain)
     }
-    out
+}
+
+pub(crate) fn er_label_has_structural_markdown(text: &str) -> bool {
+    if !(text.contains('*') || text.contains('_') || text.contains('`') || text.contains('<')) {
+        return false;
+    }
+
+    let parser = pulldown_cmark::Parser::new_ext(
+        text,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    );
+    parser.into_iter().any(|ev| {
+        matches!(
+            ev,
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong)
+                | pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis)
+                | pulldown_cmark::Event::Code(_)
+                | pulldown_cmark::Event::Html(_)
+                | pulldown_cmark::Event::InlineHtml(_)
+        )
+    })
 }
 
 pub(crate) fn er_html_label_metrics(
@@ -90,13 +124,27 @@ pub(crate) fn er_html_label_metrics(
         }
     };
 
-    if (text.contains('<') || text.contains('>')) && !has_inline_html {
-        let mut metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    let generic_markdown_plain = er_generic_markdown_plain_text(text);
+    let measure_text = generic_markdown_plain.as_deref().unwrap_or(text);
+
+    if (measure_text.contains('<') || measure_text.contains('>')) && !has_inline_html {
+        let mut metrics = measurer.measure_wrapped(measure_text, style, None, WrapMode::HtmlLike);
         apply_width_override(&mut metrics);
         return metrics;
     }
 
-    let mut metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    let has_markdown = er_label_has_structural_markdown(text);
+    let mut metrics = if has_markdown || has_inline_html {
+        crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            measure_text,
+            style,
+            None,
+            WrapMode::HtmlLike,
+        )
+    } else {
+        measurer.measure_wrapped(measure_text, style, None, WrapMode::HtmlLike)
+    };
     apply_width_override(&mut metrics);
     if text.contains('`') {
         let svg_bbox_w = measurer.measure_svg_simple_text_bbox_width_px(text, style);
@@ -292,7 +340,7 @@ pub(crate) fn measure_entity_box(
     let mut total_rows_h = 0.0;
 
     for a in &entity.attributes {
-        let ty = parse_generic_types_like_mermaid(&a.ty);
+        let ty = merman_core::common::parse_generic_types(&a.ty);
         let type_m = er_html_label_metrics(&ty, measurer, attr_style);
         let name_m = er_html_label_metrics(&a.name, measurer, attr_style);
 
@@ -1019,6 +1067,27 @@ mod tests {
 
         assert_eq!(metrics.width, 57.953125);
         assert_eq!(metrics.height, 24.0);
+    }
+
+    #[test]
+    fn er_label_markdown_detection_requires_structural_markup() {
+        assert!(super::er_label_has_structural_markdown("last*Name*"));
+        assert!(super::er_label_has_structural_markdown("__phone__"));
+        assert!(super::er_label_has_structural_markdown("`code`"));
+        assert!(!super::er_label_has_structural_markdown("*id"));
+        assert!(!super::er_label_has_structural_markdown("driver_license"));
+    }
+
+    #[test]
+    fn er_generic_markdown_plain_text_strips_wrapping_delimiters_only() {
+        assert_eq!(
+            super::er_generic_markdown_plain_text("*string(99)<T<<~>>>*").as_deref(),
+            Some("string(99)<T<<~>>>")
+        );
+        assert_eq!(
+            super::er_generic_markdown_plain_text("string(99)<T<<~>>>"),
+            None
+        );
     }
 
     #[test]

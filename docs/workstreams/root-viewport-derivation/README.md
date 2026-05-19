@@ -69,8 +69,11 @@ strict release gates green.
   entity-label metrics replace fourteen fixture-scoped root pins
   across the package/docs/accessibility, not-so-simple/theme/syntax-reference, and
   relationship-line-break/html-demo/cardinality-alias/markdown-formatting/error-demo variants. The
-  remaining ER pins still cover recursive relationship geometry, edge-label bounds, docs layout,
-  large HTML demo, and multiline demo residuals rather than one safe shared rule.
+  latest generic/markdown audit moved ER attribute type display to the shared Mermaid
+  `parseGenericTypes` implementation and narrowed ER markdown measurement to parsed structural
+  markup, but it did not expose a safe deletion: the remaining ER pins still cover recursive
+  relationship geometry, edge-label bounds, ELK/docs layout, large HTML demo, and multiline demo
+  residuals rather than one safe shared rule.
 - The global generated root override audit is currently clean on stale pins after the ER title and
   entity-label cleanups. The latest `audit-root-overrides --fail-on-stale` report covers `286`
   inventory entries, `292` fixture keys, `292` retained root-delta keys, `279` disabled-root

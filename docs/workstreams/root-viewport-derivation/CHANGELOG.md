@@ -2,6 +2,20 @@
 
 ## 2026-05-19
 
+- Rechecked the remaining six ER root pins with shared generic parsing and structural markdown
+  label detection. ER attribute type display now reuses the shared Mermaid `parseGenericTypes`
+  implementation, and ER label measurement/SVG emission only take the markdown path when
+  `pulldown-cmark` actually emits structural markup. This avoids treating literal `*id` labels as
+  emphasis while letting `last*Name*`, `__phone__`, inline code, and generic-markdown wrappers use
+  the same path as Mermaid. The disabled-root ER sweep still reports exactly the same six retained
+  root mismatches, so root budget stays `286` and text lookup stays `490`.
+- Retained `upstream_docs_entityrelationshipdiagram_layout_042` and
+  `upstream_html_demos_er_multiline_example_002` after focused probes. The docs layout fixture is
+  an ELK/layout coordinate residual (`4 -48 329.015625 502` upstream versus natural local
+  `0 0 434.0390625 518`), not a single label-width issue. The multiline demo improved from the
+  earlier natural root `0 0 597.484375 320.5` to `0 0 529.5 320.5`, but upstream is
+  `0 0 529.359375 320.5`; internal entity/label widths still differ, so deleting the root pin
+  would require a fixture-shaped subpixel fact rather than a typed shared rule.
 - Derived the ER error-demo root by moving the browser `foreignObject` width for `ATLAS-TEAMS`
   into ER-owned HTML label metrics. Upstream emitted the 16px entity label at `94.625px`, while
   the local vendored HTML measurement produced `96.234375px`; that entity-width delta was the

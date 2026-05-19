@@ -983,6 +983,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `upstream_docs_entityrelationshipdiagram_layout_042`,
   `upstream_html_demos_er_example_001`, `upstream_html_demos_er_multiline_example_001`, and
   `upstream_html_demos_er_multiline_example_002`.
+- [x] Recheck the remaining six ER retained roots with shared generic parsing and narrow markdown
+  detection.
+  Evidence: ER attribute type display now reuses shared Mermaid `parseGenericTypes`, and ER label
+  metrics/rendering only treat markdown delimiters as semantic when `pulldown-cmark` emits
+  structural markup. This keeps literal `*id` labels out of the markdown path. A full disabled-root
+  ER sweep still reports exactly the same six root mismatches. `upstream_docs_entityrelationshipdiagram_layout_042`
+  remains an ELK/layout coordinate residual (`4 -48 329.015625 502` upstream versus natural
+  `0 0 434.0390625 518`), and `upstream_html_demos_er_multiline_example_002` improves to natural
+  `0 0 529.5 320.5` but still misses upstream `0 0 529.359375 320.5` with internal label/row
+  width residuals. No root pin or budget changed.
 - [x] Refresh the global generated root override audit after deleting the error-demo ER root pin.
   Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
   `target/compare/root_override_global_audit_current.md` and passes with `286` inventory entries,

@@ -1164,10 +1164,15 @@ pub(super) fn render_er_diagram_svg_model(
             let has_inline_html =
                 lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
             let has_inline_code = text.contains('`');
-            let has_markdown = text.contains('*') || text.contains('_');
+            let has_markdown = crate::er::er_label_has_structural_markdown(text);
 
             // Mermaid's DOM serialization for generics (`type<T>`) avoids nested HTML tags.
+            // When the generic source also used markdown delimiters, the delimiters affect
+            // parsing but are not emitted as literal text.
             if (text.contains('<') || text.contains('>')) && !has_inline_html {
+                if let Some(plain) = crate::er::er_generic_markdown_plain_text(text) {
+                    return escape_xml(&plain);
+                }
                 return escape_xml(text);
             }
 

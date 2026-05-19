@@ -705,3 +705,42 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M15: ER Remaining Root Recheck
+
+Status: complete; retained.
+
+Scope:
+
+- Audit the remaining six ER root pins, focusing on the docs ELK layout fixture, the large HTML
+  demo, and the multiline demo residuals.
+- Reuse shared Mermaid generic parsing and narrow ER markdown detection to real parsed markup.
+- Delete no root pins unless a typed/shared rule explains the natural root.
+
+Progress:
+
+- ER attribute type display now uses the shared `parseGenericTypes` implementation instead of a
+  local simplified parser. This aligns nested/edge-case generic strings such as
+  `List~List~int~~sdfds` and `string(99)~T~~~~~~`.
+- ER HTML label metrics and emitted label content now treat markdown as structural only when
+  `pulldown-cmark` emits emphasis, strong, code, or HTML events. This keeps `*id` literal while
+  preserving real markup such as `last*Name*`, `__phone__`, and inline code.
+- `upstream_docs_entityrelationshipdiagram_layout_042` stays retained. The disabled-root root
+  remains `4 -48 329.015625 502` upstream versus natural local `0 0 434.0390625 518`, with entity
+  coordinates moving by layout-engine scale rather than one text or root-origin correction.
+- `upstream_html_demos_er_multiline_example_002` stays retained. The generic/markdown audit
+  reduces the natural disabled-root width from the previous `597.484375` to `529.5`, close to
+  upstream `529.359375`, but internal entity/label widths still differ and the remaining
+  `0.140625px` root delta is not a safe shared rule.
+- The disabled-root ER sweep still reports exactly six retained mismatches:
+  recursive relationship geometry, SVG-mode edge-label bounds, docs layout, large HTML demo, and
+  the two multiline demo residuals. Root and text budgets remain `286` and `490`.
+
+Exit criteria:
+
+- Focused unit tests cover structural markdown detection and generic-markdown wrapper stripping.
+- Full ER normal DOM parity passes.
+- Disabled-root ER `parity-root` still reports exactly the six retained root mismatches with no
+  new stale or outside-table mismatch.
+- `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.
