@@ -933,6 +933,18 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   internal entity/label widths still differ, so deleting the pin would require a fixture-shaped
   subpixel text fact rather than a typed/shared root rule. Root budget remains `286`; text lookup
   budget remains `490`.
+- 2026-05-19: focused the Flowchart `defer-font-env` styled-label candidate
+  `stress_flowchart_text_style_overrides_076` before deleting any root pin. The disabled-root
+  `parity-root` report at `target/compare/flowchart_text_style_probe.md` still shows root drift
+  from upstream `521.750x88` to natural local `543.433x88`, with label #2 moving from
+  `150.312x33` to `172.480x33`. The upstream and local SVGs both emit the label as literal
+  `<p>Styled via \`style\`</p>` text rather than a `<code>` span, so the residual is not a Markdown
+  code-span parsing issue. The local renderer applies the intended inline `font-family:serif` and
+  `font-size:22px`; the remaining delta comes from the `serif` font environment falling back to the
+  deterministic width model instead of a vendored browser-font metric table. Replacing the root pin
+  with one `Styled via \`style\`` HTML width fact would be fixture-shaped text debt, so this pin
+  stays retained. Root budget remains `286`, Flowchart inventory remains `43`, and text lookup
+  remains `490`.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

@@ -721,6 +721,16 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `defer-mojibake-font-fallback` (1), `defer-courier-font` (8), `defer-icon-font` (19), and
   `defer-font-env` (3). No clean shared text/layout rule appeared, so no fixture/glyph/root lookup
   table was added and the current Flowchart pins stay retained.
+- [x] Focus the Flowchart `defer-font-env` styled-label candidate before deleting any pin.
+  Evidence: `stress_flowchart_text_style_overrides_076` still fails focused disabled-root
+  `parity-root` with root `521.750 -> 543.433` and label #2 `150.312x33 -> 172.480x33`.
+  Upstream and local both emit the label text literally as `<p>Styled via \`style\`</p>` rather
+  than a `<code>` span, so the residual is not a Markdown backtick parsing bug. The local path
+  applies the intended inline `font-family:serif` and `font-size:22px`, but `serif` currently falls
+  back to deterministic measurement instead of a vendored browser-font table. Replacing the pin
+  with one `Styled via \`style\`` HTML width fact would be fixture-shaped text debt, so the root pin
+  remains retained. Root budget stays `286`, Flowchart inventory stays `43`, and text lookup stays
+  `490`.
 - [x] Derive the GitGraph `BT` + `parallelCommits` compact commit axis without adding lookup data.
   Evidence: Mermaid lays out the compact parallel commit axis in sequence order and then mirrors it
   for bottom-to-top rendering. Rust now follows that typed rule instead of treating reversed parse

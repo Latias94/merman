@@ -744,3 +744,37 @@ Exit criteria:
   new stale or outside-table mismatch.
 - `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M16: Flowchart Styled Font-Environment Root Recheck
+
+Status: complete; retained.
+
+Scope:
+
+- Audit the Flowchart `defer-font-env` styled-label candidate
+  `stress_flowchart_text_style_overrides_076` before deleting its root pin.
+- Decide whether the residual is stale table debt, a Markdown parsing issue, a reusable
+  font-environment rule, or fixture-shaped text measurement debt.
+- Keep the root, Flowchart inventory, and text lookup budgets unchanged unless a shared rule
+  explains the natural root.
+
+Progress:
+
+- Focused disabled-root `parity-root` still reports upstream root `521.750x88` versus natural local
+  `543.433x88`.
+- The root drift is driven by label #2: upstream `150.312x33`, local `172.480x33`.
+- Upstream and local SVGs both emit literal `<p>Styled via \`style\`</p>` text, not a `<code>` span,
+  so the retained delta is not caused by Markdown backtick parsing.
+- The local renderer applies the intended inline `font-family:serif` and `font-size:22px`; the
+  remaining drift comes from `serif` using deterministic fallback measurement rather than a
+  vendored browser-font table.
+- A single `Styled via \`style\`` HTML width override would replace a root pin with fixture-shaped
+  text debt, so no code, root table, or text lookup change was kept.
+
+Exit criteria:
+
+- Focused disabled-root Flowchart probe is recorded in
+  `target/compare/flowchart_text_style_probe.md`.
+- TODO, audit, changelog, and README evidence explain why the root pin remains retained.
+- `report-overrides --check-no-growth`, global root override audit, formatting, and
+  `git diff --check` pass.

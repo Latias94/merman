@@ -2,6 +2,15 @@
 
 ## 2026-05-19
 
+- Retained `stress_flowchart_text_style_overrides_076` after a focused disabled-root
+  `parity-root` probe. The root still drifts from upstream `521.750x88` to natural local
+  `543.433x88`, driven by label #2 changing from `150.312x33` to `172.480x33`. Both SVGs emit the
+  styled label as literal `<p>Styled via \`style\`</p>` text rather than a `<code>` span, so this is
+  not a markdown backtick parsing bug. The local path applies `font-family:serif` and
+  `font-size:22px`, but `serif` still uses deterministic fallback measurement instead of a
+  vendored browser-font table. A one-off `Styled via \`style\`` HTML width fact would be
+  fixture-shaped text debt, so the Flowchart pin remains retained and budgets stay `286` roots,
+  `43` Flowchart inventory rows, and `490` text lookups.
 - Rechecked the remaining six ER root pins with shared generic parsing and structural markdown
   label detection. ER attribute type display now reuses the shared Mermaid `parseGenericTypes`
   implementation, and ER label measurement/SVG emission only take the markdown path when
