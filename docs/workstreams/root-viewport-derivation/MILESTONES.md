@@ -481,7 +481,8 @@ Progress:
   4px vertical overhang observed for inherited ER title text.
 - `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`
   now derives its `148.03125x518` root naturally with root overrides disabled.
-- The remaining 20 ER roots were rechecked and stay retained as mixed entity-label, multiline
+- After this pass, the remaining 20 ER roots were rechecked and stayed retained as mixed
+  entity-label, multiline
   attribute-table, relationship-label, recursive-relationship, and ELK/layout residuals.
 
 Exit criteria:
@@ -490,3 +491,36 @@ Exit criteria:
   `upstream_cypress_erdiagram_spec_1433_should_render_a_simple_er_diagram_with_a_title_009`.
 - Full ER normal DOM parity, full ER `parity-root`, `report-overrides --check-no-growth`, global
   root override audit, render clippy, formatting, and `git diff --check` pass.
+
+## M9: ER Delivery Address Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the shared ER `DELIVERY-ADDRESS` entity-label root bucket when a browser label-width fact
+  explains the entity rect and root viewport drift.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `300` to `294` while explicitly raising the text
+  lookup budget from `484` to `485`.
+
+Progress:
+
+- The upstream 16px `DELIVERY-ADDRESS` label `foreignObject` width is `132.578125px`, while the
+  local vendored HTML measurement path produced `135.59375px`; that `3.015625px` difference
+  propagated directly through the entity rect width and root width.
+- ER-owned HTML label metrics now record the upstream `DELIVERY-ADDRESS` width instead of keeping
+  the difference as six fixture-scoped root pins.
+- The docs/accessibility and package variants now derive their root viewports naturally with root
+  overrides disabled.
+- The remaining `14` ER roots were rechecked and stay retained as other entity-label,
+  multiline/attribute-table, recursive-relationship, edge-label, and ELK/layout residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_pkgtests_erdiagram_spec_{302,304,306}`.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

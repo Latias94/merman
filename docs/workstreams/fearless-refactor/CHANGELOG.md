@@ -3,6 +3,13 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-19
+
+- Continued the root viewport derivation cleanup by replacing the ER `DELIVERY-ADDRESS`
+  entity-label root bucket with one ER-owned 16px browser width fact. Six fixture-scoped ER root
+  pins were deleted, full ER parity modes stay green, root viewport no-growth is now `294`, ER
+  root pins are `14`, and text lookup no-growth is explicitly `485`.
+
 ## 2026-05-18
 
 - Synchronized the current-release closeout after the root viewport derivation workstream completed

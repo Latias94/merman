@@ -2,6 +2,17 @@
 
 ## 2026-05-19
 
+- Derived the shared ER `DELIVERY-ADDRESS` entity-label root bucket by moving the browser
+  `foreignObject` width fact into ER-owned HTML label metrics. One 16px text lookup now drives the
+  entity rect width and root bounds for the package and docs/accessibility variants, replacing six
+  fixture-scoped root pins. The ER root table drops from `20` to `14`, global root inventory is
+  `294`, and text lookup increases from `484` to `485`.
+- Rechecked the ER retained-root bucket after the `DELIVERY-ADDRESS` metric. A full disabled-root
+  ER `parity-root` sweep now reports exactly the remaining `14` ER root pins as DOM mismatches,
+  while full ER normal DOM parity and full ER `parity-root` stay green. The retained ER rows still
+  split across other entity-label widths, multiline/attribute-table width drift, recursive
+  relationship and edge-label bounds residuals, and ELK/layout root differences rather than one
+  safe shared rule.
 - Derived the ER simple frontmatter-title root viewport without adding fixture, glyph, text, or
   root lookup data. ER title bounds now inherit the root SVG font-size, floor the browser SVG bbox
   width to the 1/32px lattice, and include Chromium's extra 4px vertical title overhang, so

@@ -865,6 +865,29 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `target/compare/root_override_global_audit_current.md` and passes with `300` inventory entries,
   `306` fixture keys, `306` retained root-delta keys, `293` disabled-root DOM mismatches, `0`
   stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
+- [x] Replace the shared ER `DELIVERY-ADDRESS` entity-label root bucket with an ER-owned browser
+  width fact.
+  Evidence: disabled-root probes for `upstream_pkgtests_erdiagram_spec_{302,304,306}` showed
+  upstream `DELIVERY-ADDRESS` `foreignObject` width `132.578125px` versus local vendored HTML
+  width `135.59375px`; that `3.015625px` drift propagated directly through the entity rect width
+  and root width. Adding one 16px ER HTML label metric for `DELIVERY-ADDRESS` makes those three
+  package fixtures pass focused disabled-root `parity-root` without root pins and also makes the
+  docs/accessibility variants stale.
+- [x] Delete the corresponding stale ER root entries and tighten the override budgets.
+  Evidence: removed
+  `upstream_docs_accessibility_entity_relationship_diagram_009`,
+  `upstream_docs_entityrelationshipdiagram_entity_relationship_diagrams_001`,
+  `upstream_docs_examples_entity_relationship_diagram_exclamation_experimental_syntax_enti_006`,
+  and `upstream_pkgtests_erdiagram_spec_{302,304,306}` from
+  `er_root_overrides_11_12_2.rs`. `report-overrides --check-no-growth` now reports `294` root
+  entries, `14` ER root entries, and `485` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the `DELIVERY-ADDRESS` derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `14` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries. The retained rows still split across other entity-label
+  browser width drift, multiline/attribute-table width drift, recursive relationship and
+  edge-label bounds residuals, and ELK/layout root differences. Full ER normal DOM parity and full
+  ER `parity-root` stay green.
 
 ## P3: Release Closeout
 
