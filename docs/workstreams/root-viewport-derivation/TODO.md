@@ -888,6 +888,27 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   browser width drift, multiline/attribute-table width drift, recursive relationship and
   edge-label bounds residuals, and ELK/layout root differences. Full ER normal DOM parity and full
   ER `parity-root` stay green.
+- [x] Replace the shared ER `PRODUCT-CATEGORY` entity-label root bucket with an ER-owned browser
+  width fact.
+  Evidence: element probes for the not-so-simple/theme/syntax-reference trio showed upstream
+  `PRODUCT-CATEGORY` `foreignObject` width `146.71875px` versus local vendored HTML width
+  `150.890625px`; that `4.171875px` drift propagated through the entity rect, right-side entity
+  column, and root width. Adding one 16px ER HTML label metric for `PRODUCT-CATEGORY` makes
+  `upstream_cypress_erdiagram_spec_should_render_a_not_so_simple_er_diagram_005`,
+  `upstream_cypress_theme_spec_should_render_a_er_diagram_005`, and
+  `upstream_docs_syntax_reference_syntax_structure_001` pass focused disabled-root `parity-root`
+  without root pins.
+- [x] Delete the corresponding stale ER root entries and tighten the override budgets again.
+  Evidence: removed the three product/category trio entries from `er_root_overrides_11_12_2.rs`.
+  `report-overrides --check-no-growth` now reports `291` root entries, `11` ER root entries, and
+  `486` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the `PRODUCT-CATEGORY` derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `11` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries. The retained rows now split across recursive
+  relationship geometry, edge-label bounds, multiline/attribute-table width drift, docs layout,
+  markdown formatting, and error-demo residuals. Full ER normal DOM parity and full ER
+  `parity-root` stay green.
 
 ## P3: Release Closeout
 

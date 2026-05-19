@@ -2,6 +2,19 @@
 
 ## 2026-05-19
 
+- Derived the shared ER `PRODUCT-CATEGORY` entity-label root bucket by moving its browser
+  `foreignObject` width fact into ER-owned HTML label metrics. The upstream 16px width is
+  `146.71875px` versus the local vendored HTML width `150.890625px`; the `4.171875px` label delta
+  propagated through the entity rect, right-side entity column, and root width for the not-so-
+  simple/theme/syntax-reference trio. One text lookup replaces three root pins, reducing ER roots
+  from `14` to `11`, global root inventory from `294` to `291`, and increasing text lookup from
+  `485` to `486`.
+- Rechecked the ER retained-root bucket after the `PRODUCT-CATEGORY` metric. A full disabled-root
+  ER `parity-root` sweep now reports exactly the remaining `11` ER root pins as DOM mismatches,
+  while full ER normal DOM parity and full ER `parity-root` stay green. The retained rows now
+  exclude the simple product/category entity-label bucket and remain split across recursive
+  relationship geometry, edge-label bounds, multiline/attribute-table width drift, docs layout,
+  markdown formatting, and error-demo residuals.
 - Derived the shared ER `DELIVERY-ADDRESS` entity-label root bucket by moving the browser
   `foreignObject` width fact into ER-owned HTML label metrics. One 16px text lookup now drives the
   entity rect width and root bounds for the package and docs/accessibility variants, replacing six

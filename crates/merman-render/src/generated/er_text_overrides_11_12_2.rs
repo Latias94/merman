@@ -18,6 +18,7 @@ fn font_size_key(font_size: f64) -> u16 {
 #[rustfmt::skip]
 static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1600, "DELIVERY-ADDRESS", 132.578125),
+    (1600, "PRODUCT-CATEGORY", 146.71875),
     (1600, "string", 40.375),
     (1600, "varchar(5)", 73.890625),
 ];

@@ -62,16 +62,16 @@ strict release gates green.
   root naturally. The remaining Timeline pins still cover title/label browser bbox width drift,
   CJK/emoji text-height drift, and Fira Sans vertical-line height accumulation rather than a clean
   shared rule.
-- Current ER root viewport overrides: `14` entries after deriving the simple frontmatter-title
-  root from emitted title bounds and moving the shared `DELIVERY-ADDRESS` entity-label browser
-  width into ER-owned HTML label metrics. One 16px `DELIVERY-ADDRESS` metric replaces six
-  fixture-scoped root pins across the package and docs/accessibility variants. The remaining ER
-  pins still cover other entity-label browser width drift, multiline/attribute-table width drift,
-  relationship-label bounds, recursive relationship residuals, and ELK/layout root differences
-  rather than one safe shared rule.
+- Current ER root viewport overrides: `11` entries after deriving the simple frontmatter-title
+  root from emitted title bounds and moving the shared `DELIVERY-ADDRESS` and
+  `PRODUCT-CATEGORY` entity-label browser widths into ER-owned HTML label metrics. The two 16px
+  entity-label metrics replace nine fixture-scoped root pins across the package/docs/accessibility
+  and not-so-simple/theme/syntax-reference variants. The remaining ER pins still cover recursive
+  relationship geometry, edge-label bounds, multiline/attribute-table width drift, docs layout,
+  markdown formatting, and error-demo residuals rather than one safe shared rule.
 - The global generated root override audit is currently clean on stale pins after the ER title and
-  `DELIVERY-ADDRESS` cleanups. The latest `audit-root-overrides --fail-on-stale` report covers
-  `294` inventory entries, `300` fixture keys, `300` retained root-delta keys, `287` disabled-root
+  entity-label cleanups. The latest `audit-root-overrides --fail-on-stale` report covers `291`
+  inventory entries, `297` fixture keys, `297` retained root-delta keys, `284` disabled-root
   DOM mismatches, `0` stale entries, and the same three accepted Mindmap outside-table DOM
   residuals, so the current baseline is stable rather than stale.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
@@ -102,9 +102,9 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `294` entries.
-- Current text metric lookup budget: `485` entries after adding the ER-owned
-  `DELIVERY-ADDRESS` browser width fact.
+- Current root viewport override budget: `291` entries.
+- Current text metric lookup budget: `486` entries after adding the ER-owned
+  `DELIVERY-ADDRESS` and `PRODUCT-CATEGORY` browser width facts.
 - Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence

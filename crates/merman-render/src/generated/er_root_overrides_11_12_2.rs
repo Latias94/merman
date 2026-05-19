@@ -14,9 +14,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
             Some(("0 0 1121.578125 878.75", "1121.58"))
         }
         "upstream_html_demos_er_multiline_example_002" => Some(("0 0 529.359375 320.5", "529.359")),
-        "upstream_cypress_erdiagram_spec_should_render_a_not_so_simple_er_diagram_005" => {
-            Some(("0 0 872.265625 655", "872.266"))
-        }
         "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002" => {
             Some(("0 0 332.73126220703125 470", "332.731"))
         }
@@ -29,17 +26,11 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011" => {
             Some(("0 0 1322.5625 435.75", "1322.56"))
         }
-        "upstream_cypress_theme_spec_should_render_a_er_diagram_005" => {
-            Some(("0 0 872.265625 655", "872.266"))
-        }
         "upstream_docs_entityrelationshipdiagram_layout_042" => {
             Some(("4 -48 329.015625 502", "329.016"))
         }
         "upstream_docs_entityrelationshipdiagram_markdown_formatting_009" => {
             Some(("0 0 179.859375 100", "179.859"))
-        }
-        "upstream_docs_syntax_reference_syntax_structure_001" => {
-            Some(("0 0 872.265625 655", "872.266"))
         }
         "upstream_html_demos_error_example_001" => Some(("0 0 479.921875 470", "479.922")),
         _ => None,

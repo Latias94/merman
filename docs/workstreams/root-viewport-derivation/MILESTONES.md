@@ -524,3 +524,39 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M10: ER Product Category Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the shared ER `PRODUCT-CATEGORY` entity-label root bucket when a browser label-width fact
+  explains the right-side entity column and root viewport drift.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `294` to `291` while explicitly raising the text
+  lookup budget from `485` to `486`.
+
+Progress:
+
+- The upstream 16px `PRODUCT-CATEGORY` label `foreignObject` width is `146.71875px`, while the
+  local vendored HTML measurement path produced `150.890625px`; that `4.171875px` difference
+  propagated through the entity rect, right-side entity column, and root width.
+- ER-owned HTML label metrics now record the upstream `PRODUCT-CATEGORY` width instead of keeping
+  the difference as three fixture-scoped root pins.
+- The not-so-simple, theme, and syntax-reference variants now derive their root viewports
+  naturally with root overrides disabled.
+- The remaining `11` ER roots were rechecked and stay retained as recursive relationship,
+  edge-label, multiline/attribute-table, docs layout, markdown formatting, and error-demo
+  residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_cypress_erdiagram_spec_should_render_a_not_so_simple_er_diagram_005`,
+  `upstream_cypress_theme_spec_should_render_a_er_diagram_005`, and
+  `upstream_docs_syntax_reference_syntax_structure_001`.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

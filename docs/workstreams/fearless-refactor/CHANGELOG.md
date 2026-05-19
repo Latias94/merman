@@ -9,6 +9,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   entity-label root bucket with one ER-owned 16px browser width fact. Six fixture-scoped ER root
   pins were deleted, full ER parity modes stay green, root viewport no-growth is now `294`, ER
   root pins are `14`, and text lookup no-growth is explicitly `485`.
+- Replaced the ER `PRODUCT-CATEGORY` entity-label root bucket with another ER-owned 16px browser
+  width fact. Three more fixture-scoped ER root pins were deleted, full ER parity modes and the
+  global stale-root audit stay green, root viewport no-growth is now `291`, ER root pins are `11`,
+  and text lookup no-growth is explicitly `486`.
 
 ## 2026-05-18
 
