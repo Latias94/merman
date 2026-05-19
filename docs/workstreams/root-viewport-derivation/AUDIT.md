@@ -250,6 +250,19 @@ the shared `872.265625px -> 876.46875px` root width. Recording the upstream 16px
 drops from `14` to `11`, the global root budget drops from `294` to `291`, and the text lookup
 budget increases from `485` to `486`. A full disabled-root ER sweep now reports exactly `11`
 retained ER root DOM mismatches; full ER normal DOM parity and full ER `parity-root` remain green.
+The follow-up `Customer Account Tertiary` entity-label pass applies the same ER-owned browser-fact
+pattern to the relationship-line-break Cypress fixture and the matching HTML demo. Element probes
+showed the two multiline relationship labels were not the root driver: their width drift was
+slightly negative (`33.921875px` upstream to `33.90625px` local). The direct contributor was
+`Customer Account Tertiary`, whose upstream browser `foreignObject` width is `189.78125px` versus
+local `190.078125px`. That `0.296875px` entity-label drift shifted `Customer Account Nth` from x
+`1209.7109375` to `1210.015625` and produced the shared `1322.5625px -> 1322.875px` root width.
+Recording the upstream 16px label width makes
+`upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011` and
+`upstream_html_demos_er_example_006` derive without root pins. The ER root table drops from `11`
+to `9`, the global root budget drops from `291` to `289`, and the text lookup budget increases
+from `486` to `487`. A full disabled-root ER sweep now reports exactly `9` retained ER root DOM
+mismatches; full ER normal DOM parity and full ER `parity-root` remain green.
 The typed participant width/spacing residuals also stay retained after a focused recheck. With
 root overrides disabled, the Cypress typed participant fixtures still drift right by different
 amounts:
@@ -833,6 +846,16 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   root inventory drops to `291`, and text lookup increases to `486`. Full ER normal DOM parity,
   full ER `parity-root`, and a disabled-root ER sweep stay green with exactly `11` retained ER
   root mismatches.
+- 2026-05-19: derived the shared ER `Customer Account Tertiary` entity-label root bucket by moving
+  the upstream 16px browser `foreignObject` width (`189.78125px`) into ER-owned HTML label
+  metrics. The local vendored label path was `190.078125px`; relationship-label probes were
+  slightly smaller locally, so the root drift came from the entity label and right-side entity
+  column rather than the multiline edge labels. This deletes
+  `upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011` and
+  `upstream_html_demos_er_example_006`. The ER root table drops to `9`, global root inventory
+  drops to `289`, and text lookup increases to `487`. Full ER normal DOM parity, full ER
+  `parity-root`, a disabled-root ER sweep, and the global stale-root audit stay green with exactly
+  `9` retained ER root mismatches and `0` stale generated pins.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

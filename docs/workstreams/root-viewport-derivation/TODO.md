@@ -909,6 +909,28 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   relationship geometry, edge-label bounds, multiline/attribute-table width drift, docs layout,
   markdown formatting, and error-demo residuals. Full ER normal DOM parity and full ER
   `parity-root` stay green.
+- [x] Replace the shared ER `Customer Account Tertiary` entity-label root bucket with an ER-owned
+  browser width fact.
+  Evidence: element probes for
+  `upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011` and
+  `upstream_html_demos_er_example_006` showed the multiline relationship labels were not the root
+  driver: their `foreignObject` widths were slightly smaller locally (`33.921875px` upstream to
+  `33.90625px` local). The direct contributor was the `Customer Account Tertiary` entity label:
+  upstream browser width `189.78125px` versus local vendored HTML width `190.078125px`, shifting
+  `Customer Account Nth` from x `1209.7109375` to `1210.015625` and widening the root by
+  `0.3125px`.
+- [x] Delete the corresponding stale ER root entries and tighten the override budgets again.
+  Evidence: removed
+  `upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011` and
+  `upstream_html_demos_er_example_006` from `er_root_overrides_11_12_2.rs`.
+  `report-overrides --check-no-growth` now reports `289` root entries, `9` ER root entries, and
+  `487` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the `Customer Account Tertiary` derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `9` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries. Full ER normal DOM parity, full ER `parity-root`,
+  global stale-root audit, override no-growth, focused render/xtask tests, clippy, formatting, and
+  `git diff --check` stay green.
 
 ## P3: Release Closeout
 

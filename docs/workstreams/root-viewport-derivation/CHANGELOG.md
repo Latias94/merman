@@ -2,6 +2,19 @@
 
 ## 2026-05-19
 
+- Derived the shared ER `Customer Account Tertiary` entity-label root bucket by moving its browser
+  `foreignObject` width fact into ER-owned HTML label metrics. Element probes showed the two
+  multiline relationship labels were not the root driver; their widths were slightly smaller
+  locally, while `Customer Account Tertiary` widened from upstream `189.78125px` to local
+  `190.078125px`, shifting the right-side entity column and root width. One text lookup replaces
+  the relationship-line-break and HTML demo root pins, reducing ER roots from `11` to `9`, global
+  root inventory from `291` to `289`, and increasing text lookup from `486` to `487`.
+- Rechecked the ER retained-root bucket after the `Customer Account Tertiary` metric. A full
+  disabled-root ER `parity-root` sweep now reports exactly the remaining `9` ER root pins as DOM
+  mismatches, while full ER normal DOM parity and full ER `parity-root` stay green. The retained
+  rows remain split across recursive relationship geometry, edge-label bounds,
+  multiline/attribute-table width drift, docs layout, markdown formatting, and error-demo
+  residuals.
 - Derived the shared ER `PRODUCT-CATEGORY` entity-label root bucket by moving its browser
   `foreignObject` width fact into ER-owned HTML label metrics. The upstream 16px width is
   `146.71875px` versus the local vendored HTML width `150.890625px`; the `4.171875px` label delta

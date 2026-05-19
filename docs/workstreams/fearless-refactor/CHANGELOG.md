@@ -13,6 +13,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   width fact. Three more fixture-scoped ER root pins were deleted, full ER parity modes and the
   global stale-root audit stay green, root viewport no-growth is now `291`, ER root pins are `11`,
   and text lookup no-growth is explicitly `486`.
+- Replaced the ER `Customer Account Tertiary` entity-label root bucket with an ER-owned 16px
+  browser width fact. Two more fixture-scoped ER root pins were deleted after probes showed the
+  multiline relationship labels were not the root driver, full ER parity modes and the global
+  stale-root audit stay green, root viewport no-growth is now `289`, ER root pins are `9`, and
+  text lookup no-growth is explicitly `487`.
 
 ## 2026-05-18
 

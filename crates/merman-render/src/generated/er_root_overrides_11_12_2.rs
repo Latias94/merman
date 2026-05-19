@@ -9,7 +9,6 @@
 pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
     match diagram_id {
         "upstream_html_demos_er_example_001" => Some(("0 -48 1635.14453125 1059.5", "1635.14")),
-        "upstream_html_demos_er_example_006" => Some(("0 0 1322.5625 435.75", "1322.56")),
         "upstream_html_demos_er_multiline_example_001" => {
             Some(("0 0 1121.578125 878.75", "1121.58"))
         }
@@ -22,9 +21,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         }
         "upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020" => {
             Some(("0 0 636.6640625 470", "636.664"))
-        }
-        "upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011" => {
-            Some(("0 0 1322.5625 435.75", "1322.56"))
         }
         "upstream_docs_entityrelationshipdiagram_layout_042" => {
             Some(("4 -48 329.015625 502", "329.016"))

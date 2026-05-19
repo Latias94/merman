@@ -560,3 +560,42 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M11: ER Tertiary Account Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the shared ER relationship-line-break / HTML demo root bucket when an entity-label browser
+  width fact explains the right-side entity column and root viewport drift.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `291` to `289` while explicitly raising the text
+  lookup budget from `486` to `487`.
+
+Progress:
+
+- The two multiline relationship labels were not the root-width driver: their upstream/local
+  `foreignObject` width changed from `33.921875px` to `33.90625px`.
+- The upstream 16px `Customer Account Tertiary` label `foreignObject` width is `189.78125px`,
+  while the local vendored HTML measurement path produced `190.078125px`; that `0.296875px`
+  entity-label delta shifted the right-side entity column and produced the shared
+  `1322.5625px -> 1322.875px` root width drift.
+- ER-owned HTML label metrics now record the upstream `Customer Account Tertiary` width instead of
+  keeping the difference as two fixture-scoped root pins.
+- The relationship-line-break Cypress fixture and the matching HTML demo now derive their root
+  viewports naturally with root overrides disabled.
+- The remaining `9` ER roots were rechecked and stay retained as recursive relationship geometry,
+  edge-label bounds, multiline/attribute-table width drift, docs layout, markdown formatting, and
+  error-demo residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011` and
+  `upstream_html_demos_er_example_006`, with the previous product/category bucket rechecked for
+  regression.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

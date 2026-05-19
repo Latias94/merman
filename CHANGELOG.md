@@ -8,6 +8,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- ER root derivation: move the `Customer Account Tertiary` browser `foreignObject` width into
+  ER-owned HTML label metrics, deleting the relationship-line-break and matching HTML demo root
+  pins. ER root overrides are now `9`, global root override inventory is now `289`, and text
+  lookup inventory is now `487`.
+- ER root derivation: move the `DELIVERY-ADDRESS` and `PRODUCT-CATEGORY` browser entity-label
+  widths into ER-owned HTML label metrics, deleting nine fixture-scoped ER root pins and
+  tightening root override inventory to `291` while raising text lookup inventory to `486`.
 - Timeline root derivation: empty timelines no longer invent a synthetic pre-title content width,
   so `upstream_pkgtests_diagram_orchestration_spec_046` derives its `400px` root naturally. The
   Timeline root table is reduced from `9` to `8`, and global root override inventory is now `301`
