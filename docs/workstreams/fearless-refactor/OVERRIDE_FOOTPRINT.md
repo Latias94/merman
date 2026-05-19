@@ -181,6 +181,8 @@ current inventory to `291` while raising text lookup debt by one more reviewed e
 `Customer Account Tertiary` pass applied the same pattern to the relationship-line-break/html-demo
 bucket after probes showed the multiline edge labels were not the root driver, deleting two more
 root pins and reducing the current inventory to `289` while raising text lookup debt by one more
+reviewed entry. A follow-up ER `CATEGORY` pass applied the same pattern to the 1-cardinality-alias
+root pin, reducing the current inventory to `288` while raising text lookup debt by one more
 reviewed entry.
 The FontAwesome boundary deliberately keeps standard icons as
 nominal inline boxes and the
@@ -396,13 +398,13 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `289`.
+Total entries reported by `xtask`: `288`.
 
 | file | entries |
 | --- | ---: |
 | `architecture_root_overrides_11_12_2.rs` | 31 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
-| `er_root_overrides_11_12_2.rs` | 9 |
+| `er_root_overrides_11_12_2.rs` | 8 |
 | `flowchart_root_overrides_11_12_2.rs` | 43 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
@@ -425,10 +427,13 @@ Timeline's empty orchestration fixture is now also derived by typed layout bound
 Timeline entries that still guard text bbox width, CJK/emoji height, and Fira Sans vertical-line
 height residuals.
 ER's simple frontmatter-title fixture is now also derived by emitted title bounds. The shared
-`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, and `Customer Account Tertiary` entity-label widths are
-now ER-owned 16px browser text facts instead of eleven root pins. The remaining 9 ER entries still
-fail with root overrides disabled and split across recursive relationship geometry, edge-label bounds,
-multiline/attribute-table width drift, docs layout, markdown formatting, and error-demo residuals.
+`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, and `CATEGORY` entity-label
+widths are now ER-owned 16px browser text facts instead of twelve root pins. The remaining 8 ER
+entries still fail with root overrides disabled and split across recursive relationship geometry,
+edge-label bounds, multiline/attribute-table width drift, docs layout, markdown formatting, and
+error-demo residuals. The SVG-mode edge-label candidate stays retained because a root-font-size/+4px
+label-box probe fixed height but over-expanded width to `561.73046875px` versus upstream
+`544.371826171875px`.
 
 Mindmap note: after the single-line delimiter and docs circle plain-label passes, disabling the
 remaining Mindmap root lookup still leaves 47 `parity-root` DOM mismatches. Those entries stay in
@@ -563,8 +568,9 @@ entries are still real drift rather than stale table debt. A follow-up ER `DELIV
 replaces six of those root pins with one ER-owned browser label-width lookup. A follow-up
 `PRODUCT-CATEGORY` pass replaces three more with the same owner-scoped pattern. A follow-up
 `Customer Account Tertiary` pass replaces two more after proving the drift came from an entity
-label rather than multiline relationship labels. The latest global audit reports `289` root
-inventory entries, `295` fixture keys, `295` retained root-delta keys, `282` disabled-root DOM
+label rather than multiline relationship labels. A follow-up `CATEGORY` pass replaces one more
+cardinality-alias root pin with an ER-owned browser width fact. The latest global audit reports
+`288` root inventory entries, `294` fixture keys, `294` retained root-delta keys, `281` disabled-root DOM
 mismatches, and `0` stale generated pins.
 
 State root note: after the empty-diagram cleanup, a disabled-root audit with `--report-root-all`
@@ -585,13 +591,13 @@ Largest root-viewport buckets:
 
 ### Text Metric Lookup Overrides
 
-Total lookup entries reported by `xtask`: `487`.
+Total lookup entries reported by `xtask`: `488`.
 
 | file | lookup entries |
 | --- | ---: |
 | `block_text_overrides_11_12_2.rs` | 123 |
 | `class_text_overrides_11_12_2.rs` | 277 |
-| `er_text_overrides_11_12_2.rs` | 6 |
+| `er_text_overrides_11_12_2.rs` | 7 |
 | `flowchart_text_overrides_11_12_2.rs` | 45 |
 | `requirement_text_overrides_11_12_2.rs` | 6 |
 | `state_text_overrides_11_12_2.rs` | 29 |
@@ -649,7 +655,7 @@ The `manages` rendered width entry also stays pinned for the same geometry reaso
 breaks `class_svg_namespaces_and_relation_labels_keep_upstream_geometry` on the `Company.Project`
 cluster geometry during strict verification.
 
-ER note: the remaining ER text lookup entries are the `Customer Account Tertiary`,
+ER note: the remaining ER text lookup entries are the `Customer Account Tertiary`, `CATEGORY`,
 `DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `string`, and `varchar(5)` width lookups plus the `DRIVER`
 drawRect clamp guard.
 `Customer Account Tertiary` is retained because the upstream 16px browser `foreignObject` width is
@@ -657,11 +663,12 @@ drawRect clamp guard.
 two former root pins.
 `DELIVERY-ADDRESS` is retained because the upstream 16px browser `foreignObject` width is
 `132.578125px` versus the local vendored HTML width `135.59375px`, and the delta directly explains
-six former root pins. `PRODUCT-CATEGORY` is retained because the upstream width is `146.71875px`
-versus local `150.890625px`, directly explaining three former root pins. The `string`,
+six former root pins. `CATEGORY` is retained because the upstream width is `74.328125px` and
+directly explains one former cardinality-alias root pin. `PRODUCT-CATEGORY` is retained because
+the upstream width is `146.71875px` versus local `150.890625px`, directly explaining three former root pins. The `string`,
 `varchar(5)`, and `DRIVER` entries were rechecked after the latest cleanup; individual removal
 attempts still failed `compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`, so
-the 6-entry ER floor stays in place.
+the 7-entry ER floor stays in place.
 
 State note: the single diagram-title bbox lookup for `Simple sample` was rechecked by disabling
 the lookup. Standard State DOM parity stayed green, but `parity-root` dropped the root `max-width`

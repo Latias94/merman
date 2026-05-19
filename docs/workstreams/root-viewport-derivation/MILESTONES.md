@@ -599,3 +599,39 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M12: ER Category Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the ER 1-cardinality-alias root pin when an entity-label browser width fact explains the
+  right-side entity width and root viewport drift.
+- Recheck the adjacent SVG-mode edge-label candidate and retain it if the drift does not collapse
+  to a safe shared measurement rule.
+- Tighten the root override inventory budget from `289` to `288` while explicitly raising the text
+  lookup budget from `487` to `488`.
+
+Progress:
+
+- The upstream 16px `CATEGORY` label `foreignObject` width is `74.328125px`.
+- ER-owned HTML label metrics now record the upstream `CATEGORY` width instead of keeping the
+  difference as a fixture-scoped root pin.
+- `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`
+  now derives its root viewport naturally with root overrides disabled.
+- The adjacent `flowchart.htmlLabels: false` edge-label candidate stays retained. A naive
+  SVG-mode label metric rule fixed its height from local `462` to upstream `474`, but expanded the
+  root width to `561.73046875px` versus upstream `544.371826171875px`, so the residual is not a
+  safe single text-width or label-box rule.
+- The remaining `8` ER roots were rechecked and stay retained as recursive relationship geometry,
+  edge-label bounds, multiline/attribute-table width drift, docs layout, markdown formatting, and
+  error-demo residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

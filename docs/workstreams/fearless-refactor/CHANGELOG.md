@@ -18,6 +18,11 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   multiline relationship labels were not the root driver, full ER parity modes and the global
   stale-root audit stay green, root viewport no-growth is now `289`, ER root pins are `9`, and
   text lookup no-growth is explicitly `487`.
+- Replaced the ER `CATEGORY` entity-label root bucket with an ER-owned 16px browser width fact.
+  One more fixture-scoped ER root pin was deleted for the 1-cardinality-alias fixture. The adjacent
+  SVG-mode edge-label candidate remains retained after a root-font-size/+4px label-box probe fixed
+  height but over-expanded width. Root viewport no-growth is now `288`, ER root pins are `8`, and
+  text lookup no-growth is explicitly `488`.
 
 ## 2026-05-18
 

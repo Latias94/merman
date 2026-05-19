@@ -931,6 +931,24 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `er_root_overrides_11_12_2.rs` entries. Full ER normal DOM parity, full ER `parity-root`,
   global stale-root audit, override no-growth, focused render/xtask tests, clippy, formatting, and
   `git diff --check` stay green.
+- [x] Replace the shared ER `CATEGORY` entity-label root bucket with an ER-owned browser width
+  fact.
+  Evidence: the cardinality-alias fixture root was driven by the `CATEGORY` entity label. Adding
+  the upstream 16px browser `foreignObject` width `74.328125px` to ER-owned HTML label metrics
+  makes
+  `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`
+  pass focused disabled-root `parity-root` without a root pin.
+- [x] Delete the corresponding stale ER root entry and tighten the override budgets again.
+  Evidence: removed
+  `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`
+  from `er_root_overrides_11_12_2.rs`. `report-overrides --check-no-growth` now reports `288`
+  root entries, `8` ER root entries, and `488` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the `CATEGORY` derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `8` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries. The edge-label SVG-mode candidate remains retained
+  because a naive root-font-size/+4px label-box rule fixed the height but over-expanded the root
+  width to `561.73046875px` versus upstream `544.371826171875px`.
 
 ## P3: Release Closeout
 

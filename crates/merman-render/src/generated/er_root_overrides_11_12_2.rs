@@ -19,9 +19,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019" => {
             Some(("0 0 544.371826171875 474", "544.372"))
         }
-        "upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020" => {
-            Some(("0 0 636.6640625 470", "636.664"))
-        }
         "upstream_docs_entityrelationshipdiagram_layout_042" => {
             Some(("4 -48 329.015625 502", "329.016"))
         }

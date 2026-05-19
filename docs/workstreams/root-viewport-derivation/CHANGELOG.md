@@ -2,6 +2,18 @@
 
 ## 2026-05-19
 
+- Derived the shared ER `CATEGORY` entity-label root bucket by moving its browser
+  `foreignObject` width fact into ER-owned HTML label metrics. The upstream 16px width is
+  `74.328125px`, and recording it makes
+  `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`
+  derive its root naturally with root overrides disabled. One text lookup replaces one root pin,
+  reducing ER roots from `9` to `8`, global root inventory from `289` to `288`, and increasing
+  text lookup from `487` to `488`.
+- Rechecked the ER retained-root bucket after the `CATEGORY` metric. A full disabled-root ER
+  `parity-root` sweep now reports exactly the remaining `8` ER root pins as DOM mismatches. The
+  edge-label SVG-mode candidate stays retained: a naive root-font-size/+4px label-box rule fixed
+  the edge-label fixture height but widened its root to `561.73046875px` versus upstream
+  `544.371826171875px`, so the residual is not a safe shared text-width rule.
 - Derived the shared ER `Customer Account Tertiary` entity-label root bucket by moving its browser
   `foreignObject` width fact into ER-owned HTML label metrics. Element probes showed the two
   multiline relationship labels were not the root driver; their widths were slightly smaller

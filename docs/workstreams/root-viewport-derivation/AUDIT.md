@@ -44,7 +44,8 @@ quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome la
 cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
 metric refresh, root-pin-only Flowchart audit tooling, the global ER/State stale-pin audit passes,
 the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontmatter-title,
-`DELIVERY-ADDRESS`, and `PRODUCT-CATEGORY` entity-label passes:
+`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, and `CATEGORY` entity-label
+passes:
 
 - State: `33` entries.
 - Mindmap: `39` entries.
@@ -53,16 +54,16 @@ the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontma
 - Flowchart: `43` inventory entries covering `49` fixture keys.
 - Architecture: `31` entries.
 - C4: `35` entries.
-- ER: `11` entries.
+- ER: `8` entries.
 - Journey: `0` entries.
 - Requirement: `7` entries.
 - Sankey: `3` entries.
 - Timeline: `8` entries.
-- Root viewport total: `291` entries.
-- Text lookup total: `486` entries. This includes ER-owned `DELIVERY-ADDRESS` and
-  `PRODUCT-CATEGORY` browser width facts that replaced nine fixture-scoped root pins; earlier
-  Sequence long-note/message work kept the SVG metric budget flat by replacing one stale
-  `FRIENDS` row.
+- Root viewport total: `288` entries.
+- Text lookup total: `488` entries. This includes ER-owned `DELIVERY-ADDRESS`,
+  `PRODUCT-CATEGORY`, `Customer Account Tertiary`, and `CATEGORY` browser width facts that
+  replaced twelve fixture-scoped root pins; earlier Sequence long-note/message work kept the SVG
+  metric budget flat by replacing one stale `FRIENDS` row.
 - SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
   the stale row cleanup.
 - Font metric table total: `3774` rows.
@@ -263,6 +264,16 @@ Recording the upstream 16px label width makes
 to `9`, the global root budget drops from `291` to `289`, and the text lookup budget increases
 from `486` to `487`. A full disabled-root ER sweep now reports exactly `9` retained ER root DOM
 mismatches; full ER normal DOM parity and full ER `parity-root` remain green.
+The follow-up `CATEGORY` entity-label pass applies the same ER-owned browser-fact pattern to the
+1-cardinality-alias Cypress fixture. Recording the upstream 16px `CATEGORY` `foreignObject` width
+of `74.328125px` makes
+`upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`
+derive without a root pin. The ER root table drops from `9` to `8`, the global root budget drops
+from `289` to `288`, and the text lookup budget increases from `487` to `488`. A full disabled-root
+ER sweep now reports exactly `8` retained ER root DOM mismatches. The adjacent SVG-mode edge-label
+fixture remains retained: a root-font-size/+4px label-box probe fixed its height but widened the
+root to `561.73046875px` versus upstream `544.371826171875px`, so the residual is not a safe
+single shared measurement rule.
 The typed participant width/spacing residuals also stay retained after a focused recheck. With
 root overrides disabled, the Cypress typed participant fixtures still drift right by different
 amounts:
@@ -856,6 +867,15 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   drops to `289`, and text lookup increases to `487`. Full ER normal DOM parity, full ER
   `parity-root`, a disabled-root ER sweep, and the global stale-root audit stay green with exactly
   `9` retained ER root mismatches and `0` stale generated pins.
+- 2026-05-19: derived the shared ER `CATEGORY` entity-label root bucket by moving the upstream
+  16px browser `foreignObject` width (`74.328125px`) into ER-owned HTML label metrics. This
+  deletes
+  `upstream_cypress_erdiagram_spec_should_render_er_diagram_with_1_cardinality_alias_before_relatio_020`.
+  The ER root table drops to `8`, global root inventory drops to `288`, and text lookup increases
+  to `488`. The adjacent SVG-mode edge-label root stays retained because a root-font-size/+4px
+  label-box probe fixed height but over-expanded width to `561.73046875px` versus upstream
+  `544.371826171875px`. Full ER normal DOM parity, full ER `parity-root`, and a disabled-root ER
+  sweep stay green with exactly `8` retained ER root mismatches.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps
