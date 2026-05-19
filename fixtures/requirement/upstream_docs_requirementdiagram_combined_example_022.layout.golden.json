@@ -15,7 +15,7 @@
           "id": "test_entity",
           "x": 257.2,
           "y": 44.0,
-          "width": 138.094,
+          "width": 129.12,
           "height": 112.0,
           "is_cluster": false
         }
@@ -24,7 +24,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 395.294,
+        "max_x": 386.32,
         "max_y": 192.0
       }
     }
