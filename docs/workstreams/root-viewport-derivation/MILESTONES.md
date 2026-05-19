@@ -670,3 +670,38 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M14: ER ATLAS Team Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the ER error-demo root pin when a browser entity-label width fact explains the small
+  residual root viewport drift.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `287` to `286` while explicitly raising the text
+  lookup budget from `489` to `490`.
+
+Progress:
+
+- The upstream 16px `ATLAS-TEAMS` label `foreignObject` width is `94.625px`, while the local
+  vendored HTML measurement path produced `96.234375px`.
+- A single ER-owned HTML label metric for `ATLAS-TEAMS` was enough to remove
+  `upstream_html_demos_error_example_001`; adding multiple `ATLAS-*` facts would have been
+  fixture-shaped because those labels only appear in this error-demo fixture and its upstream
+  golden SVG.
+- The focused disabled-root `parity-root` report for the error-demo fixture passed and recorded
+  upstream root `0 0 479.921875 470` with natural local root `0 0 479.984375 470`.
+- The remaining `6` ER roots were rechecked and stay retained as recursive relationship geometry,
+  SVG-mode edge-label bounds, docs layout, large HTML demo, and multiline demo residuals.
+- The refreshed global root override audit is clean on stale pins with `286` inventory entries,
+  `292` fixture keys, `292` retained root-delta keys, and `279` disabled-root DOM mismatches.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for `upstream_html_demos_error_example_001`.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

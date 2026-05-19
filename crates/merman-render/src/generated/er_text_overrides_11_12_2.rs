@@ -17,6 +17,7 @@ fn font_size_key(font_size: f64) -> u16 {
 
 #[rustfmt::skip]
 static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
+    (1600, "ATLAS-TEAMS", 94.625),
     (1600, "CATEGORY", 74.328125),
     (1600, "Customer Account Tertiary", 189.78125),
     (1600, "DELIVERY-ADDRESS", 132.578125),

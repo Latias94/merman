@@ -22,7 +22,6 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_docs_entityrelationshipdiagram_layout_042" => {
             Some(("4 -48 329.015625 502", "329.016"))
         }
-        "upstream_html_demos_error_example_001" => Some(("0 0 479.921875 470", "479.922")),
         _ => None,
     }
 }

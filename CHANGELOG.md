@@ -8,6 +8,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- ER root derivation: move the `ATLAS-TEAMS` browser `foreignObject` width into ER-owned HTML
+  label metrics, deleting the error-demo root pin. ER root overrides are now `6`, global root
+  override inventory is now `286`, and text lookup inventory is now `490`.
 - ER root derivation: move the markdown entity label browser `foreignObject` width for
   `This **is** _Markdown_` into ER-owned HTML label metrics, deleting the docs markdown-formatting
   root pin. ER root overrides are now `7`, global root override inventory is now `287`, and text

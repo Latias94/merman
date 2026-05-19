@@ -2,6 +2,19 @@
 
 ## 2026-05-19
 
+- Derived the ER error-demo root by moving the browser `foreignObject` width for `ATLAS-TEAMS`
+  into ER-owned HTML label metrics. Upstream emitted the 16px entity label at `94.625px`, while
+  the local vendored HTML measurement produced `96.234375px`; that entity-width delta was the
+  remaining small-width root driver for `upstream_html_demos_error_example_001`. One text lookup
+  replaces the root pin, reducing ER roots from `7` to `6`, global root inventory from `287` to
+  `286`, and increasing text lookup from `489` to `490`.
+- Rechecked the ER retained-root bucket after the `ATLAS-TEAMS` metric. A full disabled-root ER
+  `parity-root` sweep now reports exactly the remaining `6` ER root pins as DOM mismatches:
+  recursive relationship, SVG-mode edge-label, docs layout, large HTML demo, and the two multiline
+  demo residuals. The global `audit-root-overrides --fail-on-stale` report is also clean with
+  `286` inventory entries, `292` fixture keys, `292` retained root-delta keys, `279`
+  disabled-root DOM mismatches, `0` stale generated pins, and the same three accepted Mindmap
+  outside-table DOM residuals.
 - Derived the ER docs markdown-formatting root by moving the browser `foreignObject` width for
   `This **is** _Markdown_` into ER-owned HTML label metrics. Upstream emitted the markdown entity
   with a `123.859375px` label width and `163.859375px` rect width, while the local vendored

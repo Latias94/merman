@@ -14,7 +14,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Track work in `docs/workstreams/root-viewport-derivation/` | This directory and its documents | Current-stage complete |
 | Start with State | `TODO.md`, `MILESTONES.md`, State override audit | Current-stage complete; all remaining State roots are documented retained guards |
 | Include Mindmap | `TODO.md`, `MILESTONES.md`, Mindmap override audit | Mindmap first pass complete; hand-written profile calibration branches are gone |
-| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, two Journey root pins, three Requirement root pins, one Timeline root pin, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
+| Replace fixture-scoped overrides where practical | Code changes plus generated table deletion, table compression, or shared measurement derivation | Current-stage complete: eleven State root pins, thirteen Mindmap root pins, fifty-five Sequence root pins, fifteen ER root pins, two Journey root pins, three Requirement root pins, one Timeline root pin, two hundred four net GitGraph root pins, and thirty-two Flowchart root pins removed; the Mindmap hand-written profile calibration block is now eliminated through shared label metrics |
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
@@ -44,8 +44,8 @@ quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome la
 cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
 metric refresh, root-pin-only Flowchart audit tooling, the global ER/State stale-pin audit passes,
 the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontmatter-title,
-`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, and
-`This **is** _Markdown_` entity-label passes:
+`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`,
+`This **is** _Markdown_`, and `ATLAS-TEAMS` entity-label passes:
 
 - State: `33` entries.
 - Mindmap: `39` entries.
@@ -54,15 +54,15 @@ the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontma
 - Flowchart: `43` inventory entries covering `49` fixture keys.
 - Architecture: `31` entries.
 - C4: `35` entries.
-- ER: `7` entries.
+- ER: `6` entries.
 - Journey: `0` entries.
 - Requirement: `7` entries.
 - Sankey: `3` entries.
 - Timeline: `8` entries.
-- Root viewport total: `287` entries.
-- Text lookup total: `489` entries. This includes ER-owned `DELIVERY-ADDRESS`,
-  `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, and `This **is** _Markdown_`
-  browser width facts that replaced thirteen fixture-scoped root pins; earlier Sequence long-note/message work kept the SVG
+- Root viewport total: `286` entries.
+- Text lookup total: `490` entries. This includes ER-owned `DELIVERY-ADDRESS`,
+  `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, `This **is** _Markdown_`, and
+  `ATLAS-TEAMS` browser width facts that replaced fourteen fixture-scoped root pins; earlier Sequence long-note/message work kept the SVG
   metric budget flat by replacing one stale `FRIENDS` row.
 - SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
   the stale row cleanup.
@@ -282,6 +282,15 @@ The follow-up docs markdown-formatting pass applies the same ER-owned browser-fa
 ER root table drops from `8` to `7`, the global root budget drops from `288` to `287`, and the text
 lookup budget increases from `488` to `489`. A full disabled-root ER sweep now reports exactly `7`
 retained ER root DOM mismatches.
+The follow-up `ATLAS-TEAMS` entity-label pass applies the same ER-owned browser-fact pattern to the
+HTML error demo. The upstream 16px `ATLAS-TEAMS` `foreignObject` width is `94.625px`, while the
+local vendored path produced `96.234375px`; that small entity-label drift was enough to explain the
+error-demo root width residual. Recording the upstream label width makes
+`upstream_html_demos_error_example_001` derive without a root pin. The ER root table drops from
+`7` to `6`, the global root budget drops from `287` to `286`, and the text lookup budget increases
+from `489` to `490`. A full disabled-root ER sweep now reports exactly `6` retained ER root DOM
+mismatches, and the refreshed global audit reports `286` inventory entries, `292` fixture keys,
+`292` retained root-delta keys, `279` disabled-root DOM mismatches, and `0` stale generated pins.
 The typed participant width/spacing residuals also stay retained after a focused recheck. With
 root overrides disabled, the Cypress typed participant fixtures still drift right by different
 amounts:
@@ -891,6 +900,24 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   The ER root table drops to `7`, global root inventory drops to `287`, and text lookup increases
   to `489`. Full ER normal DOM parity, full ER `parity-root`, and a disabled-root ER sweep stay
   green with exactly `7` retained ER root mismatches.
+- 2026-05-19: derived the ER error-demo root by moving the upstream 16px browser `foreignObject`
+  width for `ATLAS-TEAMS` (`94.625px`) into ER-owned HTML label metrics. The local vendored path
+  produced `96.234375px`, and a single text fact made
+  `upstream_html_demos_error_example_001` pass focused disabled-root `parity-root` without adding
+  fixture-shaped facts for the other one-off `ATLAS-*` labels. The ER root table drops to `6`,
+  global root inventory drops to `286`, and text lookup increases to `490`. Full ER normal DOM
+  parity, full ER `parity-root`, the global stale-root audit, and a disabled-root ER sweep stay
+  green with exactly `6` retained ER root mismatches.
+- 2026-05-19: closeout validation for the `ATLAS-TEAMS` pass is green. Commands run:
+  `cargo fmt --all --check`, `git diff --check`, `cargo test -p xtask cmd::overrides::report::tests`,
+  `cargo test -p merman-render er_html_label_metrics_use_er_owned_width_overrides`,
+  `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3 --out target/compare/er_parity_atlas_teams.md`,
+  `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/er_parity_root_atlas_teams.md`,
+  `cargo nextest run -p merman-render --test er_svg_test --test er_layout_test`,
+  `cargo clippy -p merman-render --all-targets --all-features -- -D warnings`, and
+  `cargo run -p xtask -- report-overrides --check-no-growth`. The disabled-root ER sweep was also
+  rerun and now reports exactly the six retained ER mismatches; the error-demo fixture no longer
+  appears in that retained list.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

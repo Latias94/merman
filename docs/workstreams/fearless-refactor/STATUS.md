@@ -20,11 +20,11 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is now `287` according to
+- Root viewport override no-growth is now `286` according to
   `cargo run -p xtask -- report-overrides --check-no-growth`. The root-viewport derivation
   workstream removed additional generated pins, most recently replacing the ER
-  `DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, and
-  `This **is** _Markdown_` root buckets with
+  `DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`,
+  `This **is** _Markdown_`, and `ATLAS-TEAMS` root buckets with
   ER-owned browser label-width facts, and now governs the five remaining full-strict outside-table
   root residuals with an exact
   `compare-all-svgs` policy instead of silent debt.
@@ -68,9 +68,9 @@ It is mostly evidence-driven debt reduction:
 Largest remaining buckets:
 
 - root viewport: `sequence` 58, `flowchart` 43 inventory entries / 49 fixture keys, `mindmap` 39,
-  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `er` 7, `requirement` 7,
+  `c4` 35, `state` 33, `architecture` 31, `gitgraph` 23, `requirement` 7, `er` 6,
   `timeline` 8, `sankey` 3
-- text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29, `er` 8
+- text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29, `er` 9
 
 ## Next Practical Slices
 

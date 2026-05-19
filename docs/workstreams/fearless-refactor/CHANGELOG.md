@@ -27,6 +27,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   `This **is** _Markdown_`. The fixture now derives naturally with root overrides disabled; root
   viewport no-growth is now `287`, ER root pins are `7`, and text lookup no-growth is explicitly
   `489`.
+- Replaced the ER error-demo root bucket with an ER-owned 16px browser width fact for
+  `ATLAS-TEAMS`. The fixture now derives naturally with root overrides disabled; the global
+  stale-root audit stays green, root viewport no-growth is now `286`, ER root pins are `6`, and
+  text lookup no-growth is explicitly `490`.
 
 ## 2026-05-18
 

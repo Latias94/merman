@@ -963,6 +963,39 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
   reports exactly `7` ER `parity-root` DOM mismatches, matching the remaining
   `er_root_overrides_11_12_2.rs` entries.
+- [x] Replace the ER error-demo `ATLAS-TEAMS` root bucket with an ER-owned browser width fact.
+  Evidence: disabled-root probes for `upstream_html_demos_error_example_001` showed the residual
+  width drift was driven by the `ATLAS-TEAMS` entity label. Upstream emitted the 16px browser
+  `foreignObject` width `94.625px`, while the local vendored HTML measurement produced
+  `96.234375px`. Adding that width to ER-owned HTML label metrics makes the fixture pass focused
+  disabled-root `parity-root` without a root pin; the focused report recorded upstream root
+  `0 0 479.921875 470` and natural local root `0 0 479.984375 470` with DOM parity accepted.
+- [x] Delete the corresponding stale ER root entry and tighten the override budgets again.
+  Evidence: removed `upstream_html_demos_error_example_001` from
+  `er_root_overrides_11_12_2.rs`. `report-overrides --check-no-growth` now reports `286` root
+  entries, `6` ER root entries, and `490` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the `ATLAS-TEAMS` derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `6` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries:
+  `upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002`,
+  `upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019`,
+  `upstream_docs_entityrelationshipdiagram_layout_042`,
+  `upstream_html_demos_er_example_001`, `upstream_html_demos_er_multiline_example_001`, and
+  `upstream_html_demos_er_multiline_example_002`.
+- [x] Refresh the global generated root override audit after deleting the error-demo ER root pin.
+  Evidence: `cargo run -p xtask -- audit-root-overrides --fail-on-stale` writes
+  `target/compare/root_override_global_audit_current.md` and passes with `286` inventory entries,
+  `292` fixture keys, `292` retained root-delta keys, `279` disabled-root DOM mismatches, `0`
+  stale generated pins, and the same three accepted Mindmap outside-table DOM residuals.
+- [x] Run closeout validation for the `ATLAS-TEAMS` ER pass.
+  Evidence: `cargo fmt --all --check`, `git diff --check`,
+  `cargo test -p xtask cmd::overrides::report::tests`,
+  `cargo test -p merman-render er_html_label_metrics_use_er_owned_width_overrides`, full ER normal
+  DOM parity, full ER `parity-root`, ER `er_svg_test` / `er_layout_test` nextest, render clippy,
+  and `cargo run -p xtask -- report-overrides --check-no-growth` passed. The disabled-root ER sweep
+  now reports the expected six retained mismatches and excludes
+  `upstream_html_demos_error_example_001`.
 
 ## P3: Release Closeout
 
