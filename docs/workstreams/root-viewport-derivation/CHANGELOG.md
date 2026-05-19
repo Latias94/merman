@@ -2,6 +2,15 @@
 
 ## 2026-05-19
 
+- Retained `stress_flowchart_icons_subgraph_mixed_061` after a focused disabled-root
+  `parity-root` probe of the `defer-icon-font` bucket. The root still drifts from upstream
+  `353.750x274` to natural local `361.766x274`. Its icon labels need mixed per-icon advances:
+  `fa-play start` and `fa-stop stop` are about `+4px` local-wide, `fa-layer-group` and
+  `fa-boxes-stacked` are `-2px` local-narrow, and `fa-gear config` is only `+0.016px`. A single
+  nominal inline-box rule cannot explain both signs, and `PARITY_BOUNDARY.md` rules out
+  hand-written per-icon width tables or widths derived from root deltas. The pin remains retained
+  until a generated FontAwesome metrics table exists; budgets stay `286` roots, `43` Flowchart
+  inventory rows, and `490` text lookups.
 - Retained `stress_flowchart_text_style_overrides_076` after a focused disabled-root
   `parity-root` probe. The root still drifts from upstream `521.750x88` to natural local
   `543.433x88`, driven by label #2 changing from `150.312x33` to `172.480x33`. Both SVGs emit the

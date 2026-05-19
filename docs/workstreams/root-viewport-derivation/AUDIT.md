@@ -945,6 +945,19 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   with one `Styled via \`style\`` HTML width fact would be fixture-shaped text debt, so this pin
   stays retained. Root budget remains `286`, Flowchart inventory remains `43`, and text lookup
   remains `490`.
+- 2026-05-19: focused the Flowchart `defer-icon-font` subgraph/icon representative
+  `stress_flowchart_icons_subgraph_mixed_061` before adding any icon glyph data. The focused
+  disabled-root `parity-root` report at `target/compare/flowchart_icon_subgraph_probe.md` still
+  shows root drift from upstream `353.750x274` to natural local `361.766x274`. The label deltas are
+  mixed inside this one small fixture: `fa-play start` is `50.609x24 -> 54.625x24`, `fa-stop stop`
+  is `47.141x24 -> 51.141x24`, `Other fa-boxes-stacked` is `63.641x24 -> 61.641x24`,
+  `Group fa-layer-group` is `66.109x24 -> 64.109x24`, and `fa-gear config` is effectively matched
+  at `64.578x24 -> 64.594x24`. The current renderer intentionally models registered FontAwesome
+  icons as one nominal `1em` inline run, while `PARITY_BOUNDARY.md` allows retained root guards and
+  rejects hand-written per-icon width tables or glyph widths derived from root deltas. A single
+  shared inline-box constant cannot explain both the `+4px` and `-2px` families, so this pin stays
+  retained until exact FontAwesome layout is generated from pinned Mermaid assets. Root budget
+  remains `286`, Flowchart inventory remains `43`, and text lookup remains `490`.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

@@ -778,3 +778,36 @@ Exit criteria:
 - TODO, audit, changelog, and README evidence explain why the root pin remains retained.
 - `report-overrides --check-no-growth`, global root override audit, formatting, and
   `git diff --check` pass.
+
+## M17: Flowchart Icon Font Root Recheck
+
+Status: complete; retained.
+
+Scope:
+
+- Audit a representative Flowchart `defer-icon-font` root before adding any icon glyph data.
+- Decide whether a shared icon inline-box, edge-label, or cluster measurement rule can replace the
+  root pin.
+- Keep the root, Flowchart inventory, and text lookup budgets unchanged unless a generated or
+  typed rule explains the natural root.
+
+Progress:
+
+- Focused disabled-root `parity-root` for `stress_flowchart_icons_subgraph_mixed_061` still reports
+  upstream root `353.750x274` versus natural local `361.766x274`.
+- The fixture has mixed per-icon width residuals in one small graph: `fa-play` and `fa-stop` are
+  local-wide by about `+4px`, `fa-layer-group` and `fa-boxes-stacked` are local-narrow by `-2px`,
+  and `fa-gear` is effectively matched.
+- The current renderer intentionally models registered FontAwesome icons as a clean nominal `1em`
+  inline run. `PARITY_BOUNDARY.md` allows retaining exact-root guards here and rejects hand-written
+  per-icon width tables or widths inferred from root deltas.
+- A single shared inline-box constant cannot explain both signs, so no code, root table, or text
+  lookup change was kept.
+
+Exit criteria:
+
+- Focused disabled-root Flowchart probe is recorded in
+  `target/compare/flowchart_icon_subgraph_probe.md`.
+- TODO, audit, changelog, and README evidence explain why the root pin remains retained.
+- `report-overrides --check-no-growth`, global root override audit, formatting, and
+  `git diff --check` pass.

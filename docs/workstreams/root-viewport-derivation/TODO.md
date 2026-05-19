@@ -731,6 +731,18 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   with one `Styled via \`style\`` HTML width fact would be fixture-shaped text debt, so the root pin
   remains retained. Root budget stays `286`, Flowchart inventory stays `43`, and text lookup stays
   `490`.
+- [x] Focus a representative Flowchart `defer-icon-font` subgraph/icon candidate before adding any
+  glyph data.
+  Evidence: `stress_flowchart_icons_subgraph_mixed_061` still fails focused disabled-root
+  `parity-root` with root `353.750 -> 361.766`. Label deltas are mixed within one small fixture:
+  `fa-play start` and `fa-stop stop` are local-wide by about `+4px`, `fa-layer-group` and
+  `fa-boxes-stacked` are local-narrow by `-2px`, and `fa-gear config` is effectively matched
+  (`+0.016px`). The current renderer intentionally uses one nominal `1em` inline width for
+  registered FontAwesome icons, while `PARITY_BOUNDARY.md` forbids hand-written per-icon width
+  tables or deriving glyph widths from root deltas. A shared inline-box constant cannot explain
+  both signs, and the correct future path is a generated FontAwesome metrics table from pinned
+  Mermaid assets, not a fixture-shaped root/text replacement. The root pin remains retained. Root
+  budget stays `286`, Flowchart inventory stays `43`, and text lookup stays `490`.
 - [x] Derive the GitGraph `BT` + `parallelCommits` compact commit axis without adding lookup data.
   Evidence: Mermaid lays out the compact parallel commit axis in sequence order and then mirrors it
   for bottom-to-top rendering. Rust now follows that typed rule instead of treating reversed parse

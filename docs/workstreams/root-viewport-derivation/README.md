@@ -104,6 +104,9 @@ strict release gates green.
   The latest FontAwesome boundary pass derives `stress_flowchart_icons_unicode_and_wrap_056`
   without adding per-icon glyph-width data; the remaining icon root guards stay retained because
   exact parity would require real FontAwesome per-icon advance widths.
+  The latest icon-font probe keeps `stress_flowchart_icons_subgraph_mixed_061` retained: one small
+  fixture already needs mixed `fa-play`/`fa-stop`/`fa-layer-group`/`fa-boxes-stacked` advances, so a
+  single shared inline-box constant would trade one retained pin for glyph-shaped debt.
   The latest styled-label probe keeps `stress_flowchart_text_style_overrides_076` retained: the
   residual is a `serif` font-environment measurement gap for literal
   `Styled via \`style\`` HTML text, not stale table debt or a Markdown code-span parsing issue.
