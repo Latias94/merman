@@ -23,6 +23,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   SVG-mode edge-label candidate remains retained after a root-font-size/+4px label-box probe fixed
   height but over-expanded width. Root viewport no-growth is now `288`, ER root pins are `8`, and
   text lookup no-growth is explicitly `488`.
+- Replaced the ER docs markdown-formatting root bucket with an ER-owned 16px browser width fact for
+  `This **is** _Markdown_`. The fixture now derives naturally with root overrides disabled; root
+  viewport no-growth is now `287`, ER root pins are `7`, and text lookup no-growth is explicitly
+  `489`.
 
 ## 2026-05-18
 

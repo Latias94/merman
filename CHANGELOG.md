@@ -8,6 +8,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- ER root derivation: move the markdown entity label browser `foreignObject` width for
+  `This **is** _Markdown_` into ER-owned HTML label metrics, deleting the docs markdown-formatting
+  root pin. ER root overrides are now `7`, global root override inventory is now `287`, and text
+  lookup inventory is now `489`.
 - ER root derivation: move the `CATEGORY` browser `foreignObject` width into ER-owned HTML label
   metrics, deleting the 1-cardinality-alias root pin. ER root overrides are now `8`, global root
   override inventory is now `288`, and text lookup inventory is now `488`.

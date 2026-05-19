@@ -44,8 +44,8 @@ quoted-numeric rankSpacing, chained-statement split `htmlLabels`, FontAwesome la
 cluster external-flag preservation, recursive title-padding stale-pin cleanup, plain HTML text
 metric refresh, root-pin-only Flowchart audit tooling, the global ER/State stale-pin audit passes,
 the Journey, Requirement, and Timeline cleanup passes, and the ER simple frontmatter-title,
-`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, and `CATEGORY` entity-label
-passes:
+`DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, and
+`This **is** _Markdown_` entity-label passes:
 
 - State: `33` entries.
 - Mindmap: `39` entries.
@@ -54,15 +54,15 @@ passes:
 - Flowchart: `43` inventory entries covering `49` fixture keys.
 - Architecture: `31` entries.
 - C4: `35` entries.
-- ER: `8` entries.
+- ER: `7` entries.
 - Journey: `0` entries.
 - Requirement: `7` entries.
 - Sankey: `3` entries.
 - Timeline: `8` entries.
-- Root viewport total: `288` entries.
-- Text lookup total: `488` entries. This includes ER-owned `DELIVERY-ADDRESS`,
-  `PRODUCT-CATEGORY`, `Customer Account Tertiary`, and `CATEGORY` browser width facts that
-  replaced twelve fixture-scoped root pins; earlier Sequence long-note/message work kept the SVG
+- Root viewport total: `287` entries.
+- Text lookup total: `489` entries. This includes ER-owned `DELIVERY-ADDRESS`,
+  `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`, and `This **is** _Markdown_`
+  browser width facts that replaced thirteen fixture-scoped root pins; earlier Sequence long-note/message work kept the SVG
   metric budget flat by replacing one stale `FRIENDS` row.
 - SVG text metric table total: `186` rows. The long-note/message fact kept the budget flat after
   the stale row cleanup.
@@ -274,6 +274,14 @@ ER sweep now reports exactly `8` retained ER root DOM mismatches. The adjacent S
 fixture remains retained: a root-font-size/+4px label-box probe fixed its height but widened the
 root to `561.73046875px` versus upstream `544.371826171875px`, so the residual is not a safe
 single shared measurement rule.
+The follow-up docs markdown-formatting pass applies the same ER-owned browser-fact pattern to
+`This **is** _Markdown_`. Upstream emitted the markdown entity label as a `123.859375px`
+`foreignObject` and `163.859375px` rect, while the local vendored path produced `162.25px` and
+`202.25px`. Recording the upstream 16px label width makes
+`upstream_docs_entityrelationshipdiagram_markdown_formatting_009` derive without a root pin. The
+ER root table drops from `8` to `7`, the global root budget drops from `288` to `287`, and the text
+lookup budget increases from `488` to `489`. A full disabled-root ER sweep now reports exactly `7`
+retained ER root DOM mismatches.
 The typed participant width/spacing residuals also stay retained after a focused recheck. With
 root overrides disabled, the Cypress typed participant fixtures still drift right by different
 amounts:
@@ -876,6 +884,13 @@ Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
   label-box probe fixed height but over-expanded width to `561.73046875px` versus upstream
   `544.371826171875px`. Full ER normal DOM parity, full ER `parity-root`, and a disabled-root ER
   sweep stay green with exactly `8` retained ER root mismatches.
+- 2026-05-19: derived the ER docs markdown-formatting root by moving the upstream 16px browser
+  `foreignObject` width for `This **is** _Markdown_` (`123.859375px`) into ER-owned HTML label
+  metrics. The local vendored path produced `162.25px`, which directly widened the entity rect and
+  root viewport. This deletes `upstream_docs_entityrelationshipdiagram_markdown_formatting_009`.
+  The ER root table drops to `7`, global root inventory drops to `287`, and text lookup increases
+  to `489`. Full ER normal DOM parity, full ER `parity-root`, and a disabled-root ER sweep stay
+  green with exactly `7` retained ER root mismatches.
 - 2026-05-18: derived the empty Timeline root viewport without adding fixture, glyph, text, or
   root lookup data. The empty `timeline` render model has no pre-title nodes or lines, so it should
   not seed bounds from a synthetic `100x100` content box. The layout now keeps

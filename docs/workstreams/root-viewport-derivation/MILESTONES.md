@@ -635,3 +635,38 @@ Exit criteria:
 - Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
   `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
   formatting, and `git diff --check` pass.
+
+## M13: ER Markdown Label Root Derivation
+
+Status: complete.
+
+Scope:
+
+- Remove the docs ER markdown-formatting root pin when a markdown entity-label browser width fact
+  explains the entity rect and root viewport drift.
+- Keep focused disabled-root ER `parity-root`, full ER normal DOM parity, and full ER
+  `parity-root` green.
+- Tighten the root override inventory budget from `288` to `287` while explicitly raising the text
+  lookup budget from `488` to `489`.
+
+Progress:
+
+- The upstream markdown entity label `This **is** _Markdown_` emits a `123.859375px`
+  `foreignObject` width and a `163.859375px` entity rect.
+- The local vendored HTML/markdown measurement path produced a `162.25px` `foreignObject` and a
+  `202.25px` rect, directly causing the disabled-root `218.25px` root width.
+- ER-owned HTML label metrics now record the upstream markdown label width instead of keeping the
+  difference as a fixture-scoped root pin.
+- `upstream_docs_entityrelationshipdiagram_markdown_formatting_009` now derives its root viewport
+  naturally with root overrides disabled.
+- The remaining `7` ER roots were rechecked and stay retained as recursive relationship geometry,
+  SVG-mode edge-label bounds, docs layout, large HTML demo, multiline demo, and error-demo
+  residuals.
+
+Exit criteria:
+
+- Focused disabled-root ER `parity-root` passes for
+  `upstream_docs_entityrelationshipdiagram_markdown_formatting_009`.
+- Full ER normal DOM parity, full ER `parity-root`, disabled-root ER sweep,
+  `report-overrides --check-no-growth`, global root override audit, render clippy, nextest,
+  formatting, and `git diff --check` pass.

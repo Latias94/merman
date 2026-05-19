@@ -21,6 +21,7 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (1600, "Customer Account Tertiary", 189.78125),
     (1600, "DELIVERY-ADDRESS", 132.578125),
     (1600, "PRODUCT-CATEGORY", 146.71875),
+    (1600, "This **is** _Markdown_", 123.859375),
     (1600, "string", 40.375),
     (1600, "varchar(5)", 73.890625),
 ];

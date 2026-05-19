@@ -949,6 +949,20 @@ when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `ma
   `er_root_overrides_11_12_2.rs` entries. The edge-label SVG-mode candidate remains retained
   because a naive root-font-size/+4px label-box rule fixed the height but over-expanded the root
   width to `561.73046875px` versus upstream `544.371826171875px`.
+- [x] Replace the ER docs markdown-formatting root bucket with an ER-owned browser width fact.
+  Evidence: upstream emits `This **is** _Markdown_` with `foreignObject width="123.859375"` and
+  entity rect width `163.859375`, while the local vendored markdown measurement produced
+  `162.25` and `202.25`. Adding the upstream 16px browser width to ER-owned HTML label metrics
+  makes `upstream_docs_entityrelationshipdiagram_markdown_formatting_009` pass focused
+  disabled-root `parity-root` without a root pin.
+- [x] Delete the corresponding stale ER root entry and tighten the override budgets again.
+  Evidence: removed `upstream_docs_entityrelationshipdiagram_markdown_formatting_009` from
+  `er_root_overrides_11_12_2.rs`. `report-overrides --check-no-growth` now reports `287` root
+  entries, `7` ER root entries, and `489` text lookup entries.
+- [x] Reclassify the remaining ER retained roots after the markdown derivation.
+  Evidence: a full disabled-root ER sweep under `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` now
+  reports exactly `7` ER `parity-root` DOM mismatches, matching the remaining
+  `er_root_overrides_11_12_2.rs` entries.
 
 ## P3: Release Closeout
 

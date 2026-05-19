@@ -2,6 +2,16 @@
 
 ## 2026-05-19
 
+- Derived the ER docs markdown-formatting root by moving the browser `foreignObject` width for
+  `This **is** _Markdown_` into ER-owned HTML label metrics. Upstream emitted the markdown entity
+  with a `123.859375px` label width and `163.859375px` rect width, while the local vendored
+  measurement produced `162.25px` and `202.25px`. One text lookup replaces the root pin, reducing
+  ER roots from `8` to `7`, global root inventory from `288` to `287`, and increasing text lookup
+  from `488` to `489`.
+- Rechecked the ER retained-root bucket after the markdown metric. A full disabled-root ER
+  `parity-root` sweep now reports exactly the remaining `7` ER root pins as DOM mismatches; the
+  retained rows are the recursive relationship, SVG-mode edge-label, docs layout, large HTML demo,
+  multiline demo, and error-demo residuals.
 - Derived the shared ER `CATEGORY` entity-label root bucket by moving its browser
   `foreignObject` width fact into ER-owned HTML label metrics. The upstream 16px width is
   `74.328125px`, and recording it makes
