@@ -26,6 +26,9 @@ LICENSE-*      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
 
+# ASCII/Unicode golden fixtures intentionally preserve trailing character cells.
+crates/merman-ascii/tests/testdata/mermaid-ascii/**/*.txt text eol=lf whitespace=-blank-at-eol
+
 # Script formats
 *.ps1 text eol=lf
 *.cmd text eol=crlf

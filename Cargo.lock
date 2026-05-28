@@ -1648,6 +1648,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-ascii"
+version = "0.6.0"
+dependencies = [
+ "merman-core",
+ "thiserror 2.0.18",
+ "unicode-width",
+]
+
+[[package]]
 name = "merman-cli"
 version = "0.6.0"
 dependencies = [

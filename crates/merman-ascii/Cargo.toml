@@ -1,0 +1,19 @@
+[package]
+name = "merman-ascii"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Terminal-friendly ASCII and Unicode renderer for Mermaid typed models."
+documentation = "https://docs.rs/merman-ascii"
+readme = "README.md"
+keywords = ["mermaid", "diagrams", "ascii", "unicode", "headless"]
+categories = ["visualization", "command-line-utilities"]
+
+[dependencies]
+merman-core.workspace = true
+thiserror.workspace = true
+unicode-width.workspace = true

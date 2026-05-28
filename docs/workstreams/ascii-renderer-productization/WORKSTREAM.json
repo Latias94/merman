@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-renderer-productization",
+  "title": "ASCII Renderer Productization",
+  "status": "active",
+  "updated": "2026-05-28",
+  "scope_kind": "architecture",
+  "problem": "merman needs product-grade ASCII/Unicode rendering without duplicating Mermaid parsing or relying on gitignored reference sources.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-renderer-productization/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-renderer-productization/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-renderer-productization/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-renderer-productization/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-renderer-productization/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo check -p merman-ascii",
+    "cargo nextest run -p merman-ascii",
+    "cargo check -p merman --features ascii",
+    "cargo nextest run -p merman --features ascii",
+    "cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/ascii-renderer-productization/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "ARP-070",
+    "notes": "Continue with ARP-070: expose ASCII rendering through a stable top-level merman library feature, add API examples/tests, and keep CLI integration split unless the public API surface is already stable."
+  }
+}

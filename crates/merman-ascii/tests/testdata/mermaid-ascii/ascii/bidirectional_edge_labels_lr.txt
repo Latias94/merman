@@ -1,0 +1,11 @@
+graph LR
+A -->|workload exits| B
+B -->|run| A
+---
++---+                +---+
+|   |                |   |
+| A |workload-exits->| B |
+|   |                |   |
++---+                +---+
+  ^                    |  
+  +--------run---------+  

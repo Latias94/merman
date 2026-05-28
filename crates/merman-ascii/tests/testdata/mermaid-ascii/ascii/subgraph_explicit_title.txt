@@ -1,0 +1,16 @@
+graph LR
+subgraph frontend [Frontend Services]
+    A --> B
+end
+---
++-----------------+
+|Frontend Services|
+|                 |
+|                 |
+| +---+     +---+ |
+| |   |     |   | |
+| | A |---->| B | |
+| |   |     |   | |
+| +---+     +---+ |
+|                 |
++-----------------+

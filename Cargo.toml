@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/merman",
   "crates/merman-core",
+  "crates/merman-ascii",
   "crates/merman-cli",
   "crates/merman-render",
   "crates/dugong",
@@ -62,6 +63,7 @@ unicode-width = "0.2.2"
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
 merman = { path = "crates/merman", version = "0.6.0" }
+merman-ascii = { path = "crates/merman-ascii", version = "0.6.0" }
 merman-core = { path = "crates/merman-core", version = "0.6.0" }
 merman-render = { path = "crates/merman-render", version = "0.6.0" }
 merman-cli = { path = "crates/merman-cli", version = "0.6.0" }
