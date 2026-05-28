@@ -49,7 +49,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ARP-070",
-    "notes": "Continue with ARP-070: expose ASCII rendering through a stable top-level merman library feature, add API examples/tests, and keep CLI integration split unless the public API surface is already stable."
+    "next_task": "ARP-080",
+    "notes": "Continue with ARP-080: either add CLI ascii/unicode output support with tests or explicitly split CLI integration into a follow-on if the library API needs another stabilization pass."
   }
 }

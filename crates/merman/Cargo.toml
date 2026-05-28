@@ -14,11 +14,12 @@ keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 
 [package.metadata.docs.rs]
-features = ["render"]
+features = ["render", "ascii"]
 
 [features]
 default = []
 render = ["dep:merman-render", "dep:thiserror"]
+ascii = ["dep:merman-ascii", "dep:thiserror"]
 raster = [
     "render",
     "dep:image",
@@ -30,6 +31,7 @@ raster = [
 
 [dependencies]
 merman-core.workspace = true
+merman-ascii = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
@@ -75,3 +77,7 @@ required-features = ["render"]
 [[example]]
 name = "svg_pipeline"
 required-features = ["render"]
+
+[[example]]
+name = "ascii_output"
+required-features = ["ascii"]

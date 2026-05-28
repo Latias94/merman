@@ -8,10 +8,14 @@
 //!
 //! # Features
 //!
+//! - `ascii`: enable terminal/text rendering (`merman::ascii`)
 //! - `render`: enable layout + SVG rendering (`merman::render`)
 //! - `raster`: enable PNG/JPG/PDF output via pure-Rust SVG rasterization/conversion
 
 pub use merman_core::*;
+
+#[cfg(feature = "ascii")]
+pub mod ascii;
 
 #[cfg(feature = "render")]
 pub mod render;

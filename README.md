@@ -13,7 +13,8 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 ## TL;DR
 
 - Want an executable? Use [`merman-cli`](crates/merman-cli) (render SVG/PNG/JPG/PDF).
-- Want a library? Use [`merman`](crates/merman) (`render` for SVG; `raster` for PNG/JPG/PDF).
+- Want a library? Use [`merman`](crates/merman) (`render` for SVG; `ascii` for text;
+  `raster` for PNG/JPG/PDF).
 - Only need parsing / semantic JSON? Use [`merman-core`](crates/merman-core).
 - Quality gate: `cargo run -p xtask -- verify` (fmt + nextest + DOM parity sweep).
 
@@ -46,6 +47,7 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 - Parse Mermaid into a semantic JSON model (headless)
 - Compute headless layout (geometry + routes) as JSON
 - Render SVG (parity-focused DOM)
+- Render ASCII/Unicode text for terminals, logs, and documentation snippets
 - Render PNG (SVG rasterization via `resvg`)
 - Render JPG (SVG rasterization via `resvg`)
 - Render PDF (SVG → PDF conversion via `svg2pdf`)
@@ -68,6 +70,9 @@ cargo install merman-cli
 
 # Library (SVG)
 cargo add merman --features render
+
+# Library (ASCII/Unicode text)
+cargo add merman --features ascii
 
 # Library (SVG + PNG/JPG/PDF)
 cargo add merman --features raster
@@ -123,9 +128,10 @@ merman-cli render example.mmd --out example.svg
 ## Quickstart (library)
 
 The [`merman`](crates/merman) crate is a convenience wrapper around [`merman-core`](crates/merman-core) (parsing)
-and [`merman-render`](crates/merman-render) (layout + SVG).
-Enable the `render` feature when you want layout + SVG. Enable `raster` when you also need
-PNG/JPG/PDF from Rust (no CLI required).
+and output crates such as [`merman-render`](crates/merman-render) (layout + SVG) and
+[`merman-ascii`](crates/merman-ascii) (ASCII/Unicode text). Enable the `render` feature when you
+want layout + SVG, `ascii` when you want text output, and `raster` when you also need PNG/JPG/PDF
+from Rust (no CLI required).
 
 ```rust
 use merman_core::{Engine, ParseOptions};
@@ -214,6 +220,33 @@ Runnable example:
 
 ```bash
 cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+```
+
+### ASCII/Unicode text output
+
+Enable the `ascii` feature when you want terminal-friendly text instead of SVG:
+
+```rust
+use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = HeadlessAsciiRenderer::new()
+        .with_strict_parsing()
+        .with_ascii_options(AsciiRenderOptions::unicode());
+    let text = renderer
+        .render_ascii_sync("sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello")?
+        .unwrap();
+
+    println!("{text}");
+    Ok(())
+}
+```
+
+Runnable examples:
+
+```bash
+cargo run -p merman --features ascii --example ascii_output
+cargo run -p merman --features ascii --example ascii_output -- --ascii
 ```
 
 ## Showcase

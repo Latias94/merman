@@ -128,6 +128,22 @@ output.
     wrapped messages, control messages, unknown actors, and unsupported message types.
   - Golden comparison for copied sequence fixtures intentionally follows upstream normalized
     whitespace behavior: trailing spaces are not product-significant for those fixtures.
+- 2026-05-28: ARP-070 public API and host integration gates:
+  - `cargo run -p merman --features ascii --example ascii_output` passed and printed the default
+    Unicode sequence example.
+  - `cargo run -p merman --features ascii --example ascii_output -- --ascii` passed and printed
+    the same example with pure ASCII characters.
+  - `cargo check -p merman --features ascii` passed.
+  - `cargo nextest run -p merman-ascii` passed: 37 tests.
+  - `cargo nextest run -p merman --features ascii` passed: 3 tests.
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+    passed.
+  - `cargo test -p merman --doc --features ascii` passed: 0 doctests.
+  - `cargo fmt --all --check` passed.
+  - `git diff --check` passed.
+  - Top-level `merman` now exposes an opt-in `ascii` feature, `merman::ascii` module, synchronous
+    and async render helpers, `HeadlessAsciiRenderer`, re-exported `merman-ascii` option/error
+    types, API tests, and `ascii_output` example commands in the README.
 
 ## Notes
 

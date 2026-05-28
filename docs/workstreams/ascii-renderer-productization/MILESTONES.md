@@ -64,6 +64,8 @@ Primary gates:
 
 ## M4 - Public API And Host Integration
 
+Status: Library API met on 2026-05-28 by ARP-070; CLI decision remains in ARP-080.
+
 Exit criteria:
 
 - Top-level `merman` exposes ASCII output behind an opt-in feature.

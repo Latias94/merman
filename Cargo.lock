@@ -1637,6 +1637,7 @@ version = "0.6.0"
 dependencies = [
  "criterion",
  "image",
+ "merman-ascii",
  "merman-core",
  "merman-render",
  "resvg 0.46.0",

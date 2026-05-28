@@ -5,27 +5,30 @@ Last updated: 2026-05-28
 
 ## Current State
 
-The ASCII renderer productization lane is active. ARP-020 through ARP-060 are complete:
+The ASCII renderer productization lane is active. ARP-020 through ARP-070 are complete:
 `merman-ascii` has its crate/API foundation, tracked `mermaid-ascii` attribution, copied golden
 fixtures, text/canvas primitives, the first graph rendering slice, parser/model-level flowchart
 tests, a documented flowchart support matrix, and the first sequence rendering slice. Basic
 flowcharts with boxed nodes and direct left-to-right or top-down edges can render through
 `render_flowchart`. Basic sequence diagrams with participant boxes, lifelines, solid/dotted
 messages, reverse messages, self messages, labels, and visible autonumber can render through
-`render_sequence` or `render_model`.
+`render_sequence` or `render_model`. The top-level `merman` crate now exposes these capabilities
+behind the opt-in `ascii` feature through `merman::ascii`, including `render_ascii_sync`,
+`HeadlessAsciiRenderer`, public option/error re-exports, integration tests, and a runnable
+`ascii_output` example.
 
 ## Active Task
 
-- Task ID: ARP-070
+- Task ID: ARP-080
 - Owner: unassigned
-- Files: `crates/merman-ascii`, `crates/merman`
+- Files: `crates/merman-cli`, `README.md`, `CHANGELOG.md`
 - Validation:
-  - `cargo check -p merman --features ascii`
-  - `cargo nextest run -p merman-ascii`
-  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli`
+  - `cargo check -p merman-cli --features ascii`
+  - `git diff --check`
 - Status: READY
 - Review: Run `review-workstream` before accepting completion.
-- Evidence: future public API tests and README examples.
+- Evidence: future CLI tests and docs.
 
 ## Decisions Since Last Update
 
@@ -45,13 +48,16 @@ messages, reverse messages, self messages, labels, and visible autonumber can re
 - ARP-060 ported the initial sequence layout/drawing algorithm from the copied
   `mermaid-ascii` fixture subset, documented `crates/merman-ascii/SEQUENCE_SUPPORT.md`, and added
   explicit unsupported-feature diagnostics for non-basic sequence semantics.
+- ARP-070 exposed the ASCII renderer through `merman --features ascii`, added
+  `merman::ascii::{render_ascii_sync, HeadlessAsciiRenderer}`, public API tests, docs.rs feature
+  coverage, README examples, and a runnable `ascii_output` example.
 
 ## Blockers
 
-- None for ARP-070.
+- None for ARP-080.
 
 ## Next Recommended Action
 
-- Execute ARP-070 with `run-workstream-task`: expose the ASCII renderer through a stable top-level
-  library feature, add API examples/tests, and keep CLI integration split unless the public API
-  surface is already stable.
+- Execute ARP-080 with `run-workstream-task`: either add CLI `ascii`/`unicode` output support with
+  tests or explicitly split CLI integration into a follow-on if the library API needs another
+  stabilization pass.

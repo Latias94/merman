@@ -75,7 +75,7 @@ Last updated: 2026-05-28
 
 ## M4 - Public API And Host Integration
 
-- [ ] ARP-070 [owner=unassigned] [deps=ARP-050,ARP-060] [scope=crates/merman-ascii,crates/merman]
+- [x] ARP-070 [owner=codex] [deps=ARP-050,ARP-060] [scope=crates/merman-ascii,crates/merman,README.md]
   Goal: Expose ASCII rendering through a stable library API and opt-in `merman` feature.
   Validation:
   - `cargo check -p merman --features ascii`
@@ -83,7 +83,7 @@ Last updated: 2026-05-28
   - `cargo nextest run -p merman --features ascii`
   Review: Public API review for semver stability, error shape, and unsupported-feature reporting.
   Evidence: API tests and README examples.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE.
 
 - [ ] ARP-080 [owner=unassigned] [deps=ARP-070] [scope=crates/merman-cli,README.md,CHANGELOG.md]
   Goal: Add CLI output support or explicitly split CLI integration into a follow-on if library API
