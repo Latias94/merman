@@ -15,6 +15,7 @@ This release adds an opt-in SVG output pipeline for applications that need Merma
 - Added `SvgPipeline::readable()` and `SvgPipeline::resvg_safe()` for callers that need fallback text, rasterizer-friendly SVG, or cleanup without changing default `render_svg_sync` output.
 - Added host styling extension points: `SvgPostprocessor` for custom passes, `ScopedCssPostprocessor` for CSS injection, and `CssOverridePolicy::StripExistingImportant` for callers that want app styles to override Mermaid defaults. Postprocessors can read the diagram type, title, and root SVG id from `SvgPostprocessContext`.
 - Expanded Zed-derived regression coverage for Sequence, Flowchart, ER, Gantt, Class, and raster fallback cases.
+- Added crate-specific README pages for `merman-core`, `merman-render`, and `merman-cli`, including focused parsing, rendering, and CLI examples for docs.rs/crates.io users.
 - Added a rendering guide in `docs/rendering/SVG_OUTPUT_PIPELINE.md` and a runnable `svg_pipeline` example:
 
   ```bash

@@ -1,18 +1,71 @@
 # merman-render
 
-Headless layout + SVG renderer for Mermaid.
+`merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes `merman-core` parse results and produces layout JSON or Mermaid-like SVG.
 
-Baseline: Mermaid `@11.12.3` (upstream Mermaid is treated as the spec).
+Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use `merman-render` directly when you need lower-level control over layout, text measurement, SVG options, or SVG postprocessing.
 
-This crate provides:
+## What It Provides
 
-- Layout (geometry + routes) on top of the semantic model from `merman-core`
-- SVG output with parity-oriented DOM comparison against upstream baselines
+- Headless layout for parsed Mermaid diagrams.
+- Mermaid-parity SVG emission.
+- `LayoutOptions::headless_svg_defaults()` for editor/export use cases.
+- Text measurement hooks through `TextMeasurer`.
+- Math rendering hooks through `MathRenderer`.
+- `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.
 
-If you want a single ergonomic API surface, use the `merman` crate with the `render` feature.
+## Direct Rendering Example
 
-Note: upstream Mermaid renders `$$...$$` fragments via KaTeX (JS) and measures the resulting HTML
-in a browser DOM. merman is pure-Rust by default, so optional math rendering is exposed as a
-pluggable interface (`merman_render::math::MathRenderer`), with a no-op default.
+```rust
+use merman_core::{Engine, ParseOptions};
+use merman_render::{layout_parsed_render_layout_only, LayoutOptions};
+use merman_render::svg::{
+    render_layout_svg_parts_for_render_model_with_config, SvgPipeline, SvgRenderOptions,
+};
 
-Parity dashboards and automation live in `docs/alignment/STATUS.md` in the repository.
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nA[API] --> B[DB]",
+            ParseOptions::strict(),
+        )?
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let layout = layout_parsed_render_layout_only(&parsed, &layout_options)?;
+
+    let svg_options = SvgRenderOptions {
+        diagram_id: Some("example-diagram".to_string()),
+        ..SvgRenderOptions::default()
+    };
+
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &svg_options,
+    )?;
+
+    let svg = SvgPipeline::resvg_safe().process_to_string(&svg)?;
+    println!("{svg}");
+
+    Ok(())
+}
+```
+
+## SVG Output Pipelines
+
+The default SVG renderer aims for Mermaid DOM parity. Host applications can opt into an output pipeline after rendering:
+
+- `SvgPipeline::parity()` leaves the SVG unchanged.
+- `SvgPipeline::readable()` keeps fallback text for `<foreignObject>` labels.
+- `SvgPipeline::resvg_safe()` prepares SVG for common `usvg` / `resvg` rasterization paths.
+- `ScopedCssPostprocessor`, `CssOverridePostprocessor`, and custom `SvgPostprocessor` implementations let applications inject host-specific styling without forking the renderer.
+
+See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md) for the higher-level integration guide.
+
+## Relationship To merman
+
+`merman` re-exports the common render APIs behind its `render` feature and adds `HeadlessRenderer`, SVG id sanitization helpers, and optional raster helpers. Direct `merman-render` users get the same layout/SVG engine with less convenience wrapping and more explicit control over each phase.
