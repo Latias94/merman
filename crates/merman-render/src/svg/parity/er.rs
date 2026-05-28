@@ -124,12 +124,7 @@ pub(super) fn render_er_diagram_debug_svg(
                     let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml_display(m));
                 }
                 out.push_str(r#" points=""#);
-                for (idx, p) in e.points.iter().enumerate() {
-                    if idx > 0 {
-                        out.push(' ');
-                    }
-                    let _ = write!(&mut out, "{},{}", fmt_display(p.x), fmt_display(p.y));
-                }
+                push_points_attr(&mut out, &e.points);
                 out.push_str(r#"" />"#);
             }
 

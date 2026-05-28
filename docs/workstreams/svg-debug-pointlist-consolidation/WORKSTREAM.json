@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "slug": "svg-debug-pointlist-consolidation",
+  "title": "SVG Debug Point-List Consolidation",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Debug SVG renderers repeat low-level point-list string building even though svg::parity::util now owns shared LayoutPoint formatting.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/svg-debug-pointlist-consolidation/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/svg-debug-pointlist-consolidation/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/svg-debug-pointlist-consolidation/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/svg-debug-pointlist-consolidation/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render fmt_points",
+    "cargo nextest run -p merman-render debug_svg",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/svg-debug-pointlist-consolidation/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Debug polyline adopters passed package gates. Future adopters should be split separately."
+  }
+}

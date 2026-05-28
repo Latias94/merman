@@ -1,6 +1,8 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_sequence_diagram_svg};
+use merman_render::model::{LayoutDiagram, LayoutEdge, LayoutPoint, SequenceDiagramLayout};
+use merman_render::svg::{
+    SvgRenderOptions, render_sequence_diagram_debug_svg, render_sequence_diagram_svg,
+};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
 
@@ -61,6 +63,42 @@ fn render_sequence_svg_from_fixture(fixture: &str) -> String {
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+#[test]
+fn sequence_debug_svg_renders_generic_polyline_points() {
+    let layout = SequenceDiagramLayout {
+        nodes: Vec::new(),
+        clusters: Vec::new(),
+        bounds: None,
+        edges: vec![LayoutEdge {
+            id: "generic-edge".to_string(),
+            from: "a".to_string(),
+            to: "b".to_string(),
+            from_cluster: None,
+            to_cluster: None,
+            points: vec![
+                LayoutPoint { x: -0.0, y: 0.0 },
+                LayoutPoint { x: 1.5, y: -2.0 },
+                LayoutPoint { x: 3.25, y: 4.5 },
+            ],
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }],
+    };
+
+    let svg = render_sequence_diagram_debug_svg(&layout, &SvgRenderOptions::default());
+
+    assert!(
+        svg.contains(r#"<polyline class="edge" points="0,0 1.5,-2 3.25,4.5" />"#),
+        "expected generic sequence debug edges to render a shared-helper point list"
+    );
 }
 
 #[test]

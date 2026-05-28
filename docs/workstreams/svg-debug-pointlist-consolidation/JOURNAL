@@ -1,0 +1,2 @@
+2026-05-28T00:00:00Z opened bounded follow-on for debug SVG point-list helper adoption.
+2026-05-28T00:00:00Z adopted push_points_attr in ER, flowchart, class, state, and sequence debug polyline emitters; package gates passed.
