@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "slug": "host-styling-svg-postprocessors",
+  "title": "Host Styling SVG Postprocessors",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "architecture",
+  "problem": "Downstream hosts need product-neutral SVG styling extension points such as scoped CSS injection, opt-in CSS override behavior, fallback style propagation, and metadata-aware postprocess context without changing Mermaid-parity SVG defaults.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0064-host-styling-svg-postprocessors.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/host-styling-svg-postprocessors/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/host-styling-svg-postprocessors/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/host-styling-svg-postprocessors/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/host-styling-svg-postprocessors/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt -p merman-render -p merman -p merman-cli -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo nextest run -p merman --features raster",
+    "cargo nextest run -p merman-cli",
+    "cargo clippy -p merman-render -p merman --features raster --all-targets -- -D warnings",
+    "cargo clippy -p merman-cli --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/host-styling-svg-postprocessors/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0064-host-styling-svg-postprocessors.md"
+  ],
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Host styling SVG postprocessors, metadata context, scoped CSS/override built-ins, fallback style propagation, docs, example, and gates are complete. Split structured XML/CSS parsing or advanced insertion-point support into a new workstream if real downstream evidence requires it."
+  }
+}

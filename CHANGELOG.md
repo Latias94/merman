@@ -10,8 +10,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
   string/Cow `SvgPostprocessor` extension point for host-provided SVG cleanup.
+- Added metadata-aware SVG postprocessing context (`diagram_type`, `diagram_title`, and `svg_id`)
+  plus product-neutral host styling blocks: `ScopedCssPostprocessor`, `CssOverridePostprocessor`,
+  and `CssOverridePolicy`.
 - Added a runnable `svg_pipeline` example showing `SvgPipeline::resvg_safe()` with a custom
-  postprocessor:
+  postprocessor and scoped host CSS:
 
   ```bash
   cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
@@ -20,14 +23,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Library integrations can use the same pipeline directly:
 
   ```rust
-  use merman::render::{HeadlessRenderer, SvgPipeline};
+  use merman::render::{
+      CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
+  };
 
-  let renderer = HeadlessRenderer::new();
+  let renderer = HeadlessRenderer::new().with_diagram_id("example-diagram");
+  let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
+      ScopedCssPostprocessor::new(".node rect { stroke: var(--host-accent); }")
+          .with_override_policy(CssOverridePolicy::StripExistingImportant),
+  );
   let svg = renderer
-      .render_svg_with_pipeline_sync(
-          "flowchart TD; A[Layer 7\\nHTTP]-->B;",
-          &SvgPipeline::resvg_safe(),
-      )?
+      .render_svg_with_pipeline_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &pipeline)?
       .unwrap();
   # let _ = svg;
   # Ok::<(), Box<dyn std::error::Error>>(())
@@ -38,11 +44,16 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Routed readable SVG helpers, raster render helpers, and CLI raster export through the shared
   SVG pipeline. The default `render_svg_sync` path remains Mermaid-parity output and does not
   apply consumer cleanup by default.
+- Split the SVG pipeline implementation into public API, context, preset composition, and built-in
+  postprocessor modules so future host styling work can evolve without growing a monolithic
+  cleanup file.
 
 ### Fixed
 
 - Fixed readable/raster `<foreignObject>` fallback text extraction so labels containing literal
   `\n` are split into separate overlay text lines.
+- Improved readable/raster `<foreignObject>` fallback overlays so generated SVG text keeps useful
+  class, fill, and font context for host CSS.
 - Fixed raster-oriented SVG cleanup for common `usvg` / `resvg` hazards by stripping
   `<foreignObject>` after fallback insertion, unsupported CSS blocks, animation declarations,
   empty/invalid visual attributes, CSS `deg` units, and non-finite values such as `NaN`.

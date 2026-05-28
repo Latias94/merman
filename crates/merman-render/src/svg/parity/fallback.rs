@@ -14,6 +14,11 @@ struct Translate {
 struct GFrame {
     translate: Translate,
     class_tokens: Vec<String>,
+    fill: Option<String>,
+    font_size: Option<String>,
+    font_family: Option<String>,
+    font_weight: Option<String>,
+    font_style: Option<String>,
 }
 
 fn parse_attr_str<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
@@ -83,6 +88,21 @@ fn escape_xml_text(s: &str) -> String {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn escape_xml_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
             _ => out.push(ch),
         }
     }
@@ -167,22 +187,35 @@ fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String
     None
 }
 
-fn extract_inline_html_color(html: &str) -> Option<String> {
-    // Look for `style="...color: <value> ..."` inside the foreignObject HTML fragment.
-    let lower = html.to_ascii_lowercase();
-    let style_i = lower.find("style=\"")?;
-    let after = &html[style_i + "style=\"".len()..];
-    let end_quote = after.find('"')?;
-    let style = &after[..end_quote];
-    let lower_style = style.to_ascii_lowercase();
-    let color_i = lower_style.find("color:")?;
-    let after_color = &style[color_i + "color:".len()..];
-    let end = after_color.find(';').unwrap_or(after_color.len());
-    let mut value = after_color[..end].trim().to_string();
+fn extract_style_property(style: &str, property: &str) -> Option<String> {
+    for decl in style.split(';') {
+        let Some((name, value)) = decl.split_once(':') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case(property) {
+            let value = strip_important(value.trim());
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+fn strip_important(value: &str) -> String {
+    let mut value = value.trim().to_string();
     if let Some(v) = value.strip_suffix("!important") {
         value = v.trim().to_string();
     }
-    if value.is_empty() { None } else { Some(value) }
+    value
+}
+
+fn extract_inline_html_style_property(html: &str, property: &str) -> Option<String> {
+    parse_attr_str(html, "style").and_then(|style| extract_style_property(style, property))
+}
+
+fn extract_inline_html_color(html: &str) -> Option<String> {
+    extract_inline_html_style_property(html, "color")
 }
 
 fn parse_class_tokens(tag: &str) -> Vec<String> {
@@ -200,8 +233,54 @@ fn extract_svg_text_fill_from_ancestors(svg: &str, g_stack: &[GFrame]) -> Option
                 return Some(fill);
             }
         }
+        if let Some(fill) = &frame.fill {
+            return Some(fill.clone());
+        }
     }
     None
+}
+
+fn extract_svg_font_style_from_ancestors(g_stack: &[GFrame], property: &str) -> Option<String> {
+    for frame in g_stack.iter().rev() {
+        let value = match property {
+            "font-size" => &frame.font_size,
+            "font-family" => &frame.font_family,
+            "font-weight" => &frame.font_weight,
+            "font-style" => &frame.font_style,
+            _ => return None,
+        };
+        if let Some(value) = value {
+            return Some(value.clone());
+        }
+    }
+    None
+}
+
+fn class_attr_tokens(g_stack: &[GFrame], inner: &str, base_class: &str) -> String {
+    let mut tokens = vec![base_class.to_string()];
+    for frame in g_stack {
+        for token in &frame.class_tokens {
+            if !tokens.iter().any(|existing| existing == token) {
+                tokens.push(token.clone());
+            }
+        }
+    }
+    for token in parse_class_tokens(inner) {
+        if !tokens.iter().any(|existing| existing == &token) {
+            tokens.push(token);
+        }
+    }
+    escape_xml_attr(&tokens.join(" "))
+}
+
+fn parse_css_px(value: &str, fallback: f64) -> f64 {
+    let trimmed = value.trim();
+    let number = trimmed.strip_suffix("px").unwrap_or(trimmed).trim();
+    number
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(fallback)
 }
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
@@ -258,10 +337,23 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                 .map(parse_translate)
                 .unwrap_or_default();
             let class_tokens = parse_class_tokens(tag);
+            let style = parse_attr_str(tag, "style");
+            let fill = parse_attr_str(tag, "fill")
+                .map(ToOwned::to_owned)
+                .or_else(|| style.and_then(|style| extract_style_property(style, "fill")));
+            let font_size = style.and_then(|style| extract_style_property(style, "font-size"));
+            let font_family = style.and_then(|style| extract_style_property(style, "font-family"));
+            let font_weight = style.and_then(|style| extract_style_property(style, "font-weight"));
+            let font_style = style.and_then(|style| extract_style_property(style, "font-style"));
             if !is_self_closing(tag) {
                 g_stack.push(GFrame {
                     translate: t,
                     class_tokens,
+                    fill,
+                    font_size,
+                    font_family,
+                    font_weight,
+                    font_style,
                 });
             }
             out.push_str(tag);
@@ -301,33 +393,67 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
 
                 let lines = htmlish_to_text_lines(inner);
                 if !lines.is_empty() {
-                    overlays.push_str(r#"<g data-merman-foreignobject="fallback">"#);
+                    overlays.push_str(&format!(
+                        r#"<g data-merman-foreignobject="fallback" class="{}">"#,
+                        class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback")
+                    ));
 
                     let wants_label_bkg = inner.contains("labelBkg");
                     if wants_label_bkg {
                         overlays.push_str(&format!(
                             r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                            abs_x, abs_y, width, height, label_bkg
+                            abs_x,
+                            abs_y,
+                            width,
+                            height,
+                            escape_xml_attr(&label_bkg)
                         ));
                     }
 
-                    let font_size = 16.0_f64;
+                    let font_size_value = extract_inline_html_style_property(inner, "font-size")
+                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-size"))
+                        .unwrap_or_else(|| "16px".to_string());
+                    let font_size = parse_css_px(&font_size_value, 16.0);
                     let line_height = font_size * 1.5;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
                     let fill = extract_inline_html_color(inner)
                         .or_else(|| extract_svg_text_fill_from_ancestors(svg, &g_stack))
                         .unwrap_or_else(|| "#333".to_string());
-                    // Avoid quoting font families inside an XML attribute that is already quoted.
-                    // Rasterizers can be strict about unescaped quotes in `style="..."`.
-                    let font_family = "trebuchet ms,verdana,arial,sans-serif";
+                    let font_family = extract_inline_html_style_property(inner, "font-family")
+                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-family"))
+                        .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string());
+                    let font_weight = extract_inline_html_style_property(inner, "font-weight")
+                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-weight"));
+                    let font_style = extract_inline_html_style_property(inner, "font-style")
+                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-style"));
+                    let mut text_style = format!(
+                        "text-anchor: {anchor}; font-size: {font_size_value}; font-family: {font_family};"
+                    );
+                    if let Some(font_weight) = font_weight {
+                        text_style.push_str(" font-weight: ");
+                        text_style.push_str(&font_weight);
+                        text_style.push(';');
+                    }
+                    if let Some(font_style) = font_style {
+                        text_style.push_str(" font-style: ");
+                        text_style.push_str(&font_style);
+                        text_style.push(';');
+                    }
+                    let text_class =
+                        class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback-text");
 
                     for (idx, line) in lines.iter().enumerate() {
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text(line);
                         overlays.push_str(&format!(
-                            r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" style="text-anchor: {}; font-size: {}px; font-family: {};">{}</text>"##,
-                            text_x, y_line, fill, anchor, font_size, font_family, text
+                            r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="{}" style="{}">{}</text>"##,
+                            text_x,
+                            y_line,
+                            escape_xml_attr(&fill),
+                            text_class,
+                            escape_xml_attr(&text_style),
+                            text
                         ));
                     }
 
@@ -407,6 +533,36 @@ mod tests {
         assert!(
             !out.contains(">Layer 7\\nHTTP</text>"),
             "literal backslash-n should not remain in fallback text overlay: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_propagates_style_context() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><g class="node selected" fill="#112233" style="font-size: 14px; font-family: Inter; font-weight: 600;"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg host-label" style="color: #abcdef; font-style: italic;"><p>Hello</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(
+                r#"class="merman-foreignobject-fallback node selected labelBkg host-label""#
+            ),
+            "expected fallback group to keep host-relevant classes: {out}"
+        );
+        assert!(
+            out.contains(
+                r#"class="merman-foreignobject-fallback-text node selected labelBkg host-label""#
+            ),
+            "expected fallback text to keep host-relevant classes: {out}"
+        );
+        assert!(
+            out.contains(r##"fill="#abcdef""##),
+            "expected inline HTML color to drive fallback fill: {out}"
+        );
+        assert!(
+            out.contains("font-size: 14px")
+                && out.contains("font-family: Inter")
+                && out.contains("font-weight: 600")
+                && out.contains("font-style: italic"),
+            "expected font context to propagate: {out}"
         );
     }
 }

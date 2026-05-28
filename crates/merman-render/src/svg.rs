@@ -12,5 +12,8 @@ mod pipeline;
 
 pub use parity::*;
 pub use pipeline::{
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor, resvg_safe_svg,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
+    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
+    StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, resvg_safe_svg,
 };

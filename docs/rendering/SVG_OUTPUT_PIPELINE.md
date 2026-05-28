@@ -48,7 +48,8 @@ The compatibility helpers are wrappers around the same pipeline:
 
 ## Host Postprocessors
 
-Applications can append product-specific passes after a built-in preset:
+Applications can append product-specific passes after a built-in preset. The postprocess context
+includes preset, pass ordering, diagram type, diagram title, and root SVG id:
 
 ```rust
 use merman::render::{
@@ -66,9 +67,13 @@ impl SvgPostprocessor for AddComment {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> RenderResult<Cow<'a, str>> {
-        Ok(Cow::Owned(format!("{svg}<!-- processed -->")))
+        Ok(Cow::Owned(format!(
+            "{svg}<!-- type={} id={} -->",
+            ctx.diagram_type().unwrap_or("unknown"),
+            ctx.svg_id().unwrap_or("unknown"),
+        )))
     }
 }
 
@@ -78,3 +83,44 @@ let pipeline = SvgPipeline::resvg_safe().with_postprocessor(AddComment);
 
 Built-in passes always run before custom postprocessors, and custom postprocessors run in insertion
 order. Custom pass errors are surfaced as render errors with the pass name attached.
+
+## Built-In Host Styling Blocks
+
+Host styling should use product-neutral postprocessors rather than modifying `resvg_safe` itself:
+
+```rust
+use merman::render::{
+    CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
+};
+
+let renderer = HeadlessRenderer::new().with_diagram_id("host-diagram");
+let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
+    ScopedCssPostprocessor::new(
+        r#"
+.node rect {
+  stroke: var(--host-accent);
+  stroke-width: 2px;
+}
+.merman-foreignobject-fallback-text {
+  fill: var(--host-fg);
+}
+"#,
+    )
+    .with_override_policy(CssOverridePolicy::StripExistingImportant),
+);
+
+let svg = renderer
+    .render_svg_with_pipeline_sync("flowchart TD; A-->B;", &pipeline)?
+    .unwrap();
+# let _ = svg;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+`ScopedCssPostprocessor` injects a `<style>` element under the root `<svg>` tag and prefixes normal
+selectors with the root SVG id. `CssOverridePolicy::StripExistingImportant` is opt-in because it
+changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful classes and inline
+font/fill hints so host CSS can target readable fallback output.
+
+Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
+theme color selection, and diagram-family-specific color semantics should be implemented as custom
+`SvgPostprocessor` passes layered after these generic blocks.

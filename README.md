@@ -174,20 +174,23 @@ overlay extracted from Mermaid labels.
 use an explicit SVG pipeline:
 
 ```rust
-use merman::render::{HeadlessRenderer, SvgPipeline};
+use merman::render::{
+    CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
+};
 
-let renderer = HeadlessRenderer::new();
+let renderer = HeadlessRenderer::new().with_diagram_id("readme-diagram");
+let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
+    ScopedCssPostprocessor::new(".node rect { stroke: var(--host-accent); }")
+        .with_override_policy(CssOverridePolicy::StripExistingImportant),
+);
 let svg = renderer
-    .render_svg_with_pipeline_sync(
-        "flowchart TD; A[Layer 7\\nHTTP]-->B;",
-        &SvgPipeline::resvg_safe(),
-    )?
+    .render_svg_with_pipeline_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &pipeline)?
     .unwrap();
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
-behavior and host postprocessor extension points.
+behavior, metadata-aware host postprocessor extension points, and scoped CSS examples.
 
 Runnable example:
 

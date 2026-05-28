@@ -1,5 +1,6 @@
 use merman::render::{
-    HeadlessRenderer, RenderResult, SvgPipeline, SvgPostprocessContext, SvgPostprocessor,
+    CssOverridePolicy, HeadlessRenderer, RenderResult, ScopedCssPostprocessor, SvgPipeline,
+    SvgPostprocessContext, SvgPostprocessor,
 };
 use std::borrow::Cow;
 use std::io::Read;
@@ -17,8 +18,11 @@ impl SvgPostprocessor for AddExampleMetadata {
         ctx: &SvgPostprocessContext<'_>,
     ) -> RenderResult<Cow<'a, str>> {
         let metadata = format!(
-            r#"<metadata data-merman-example="svg_pipeline" data-preset="{:?}"/>"#,
-            ctx.preset()
+            r#"<metadata data-merman-example="svg_pipeline" data-preset="{:?}" data-diagram-type="{}" data-title="{}" data-svg-id="{}"/>"#,
+            ctx.preset(),
+            escape_attr(ctx.diagram_type().unwrap_or("")),
+            escape_attr(ctx.diagram_title().unwrap_or("")),
+            escape_attr(ctx.svg_id().unwrap_or(""))
         );
 
         let Some(idx) = svg.rfind("</svg>") else {
@@ -34,6 +38,14 @@ impl SvgPostprocessor for AddExampleMetadata {
     }
 }
 
+fn escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
@@ -46,8 +58,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_string();
     }
 
-    let renderer = HeadlessRenderer::new();
-    let pipeline = SvgPipeline::resvg_safe().with_postprocessor(AddExampleMetadata);
+    let renderer = HeadlessRenderer::new().with_diagram_id("svg-pipeline-example");
+    let host_css = r#"
+.node rect {
+  stroke: #2563eb;
+  stroke-width: 2px;
+}
+.merman-foreignobject-fallback-text {
+  fill: #111827;
+}
+"#;
+    let pipeline = SvgPipeline::resvg_safe()
+        .with_postprocessor(
+            ScopedCssPostprocessor::new(host_css)
+                .with_override_policy(CssOverridePolicy::StripExistingImportant),
+        )
+        .with_postprocessor(AddExampleMetadata);
     let Some(svg) = renderer.render_svg_with_pipeline_sync(&input, &pipeline)? else {
         return Err("no Mermaid diagram detected".into());
     };

@@ -18,7 +18,10 @@ pub mod render {
     pub use merman_render::math::{MathRenderer, NoopMathRenderer};
     pub use merman_render::model::LayoutedDiagram;
     pub use merman_render::svg::{
-        SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor, SvgRenderOptions,
+        CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
+        SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
+        StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+        SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
         foreign_object_label_fallback_svg_text, resvg_safe_svg,
     };
     pub use merman_render::text::{
@@ -223,6 +226,14 @@ pub mod render {
         Ok(pipeline.process_to_string(svg)?)
     }
 
+    pub fn apply_svg_pipeline_with_metadata(
+        svg: &str,
+        pipeline: &SvgPipeline,
+        metadata: &SvgPostprocessMetadata,
+    ) -> Result<String> {
+        Ok(pipeline.process_to_string_with_metadata(svg, metadata)?)
+    }
+
     pub fn svg_readable(svg: &str) -> Result<String> {
         apply_svg_pipeline(svg, &SvgPipeline::readable())
     }
@@ -239,11 +250,26 @@ pub mod render {
         svg_options: &SvgRenderOptions,
         pipeline: &SvgPipeline,
     ) -> Result<Option<String>> {
-        let Some(svg) = render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
-        else {
+        let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
             return Ok(None);
         };
-        Ok(Some(apply_svg_pipeline(&svg, pipeline)?))
+
+        let layout = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
+        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
+            &layout,
+            &parsed.model,
+            &parsed.meta.effective_config,
+            parsed.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            svg_options,
+        )?;
+        let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_diagram_type(parsed.meta.diagram_type)
+            .with_optional_diagram_title(parsed.meta.title);
+
+        Ok(Some(apply_svg_pipeline_with_metadata(
+            &svg, pipeline, &metadata,
+        )?))
     }
 
     /// Synchronous SVG render helper that applies a best-effort readability fallback for
@@ -344,6 +370,7 @@ pub mod render {
     #[cfg(test)]
     mod svg_pipeline_tests {
         use super::*;
+        use std::borrow::Cow;
 
         #[test]
         fn readable_helper_routes_through_readable_pipeline() {
@@ -414,6 +441,44 @@ pub mod render {
 
             assert_eq!(default_svg, parity_pipeline);
             assert_ne!(default_svg, readable);
+        }
+
+        struct MetadataComment;
+
+        impl SvgPostprocessor for MetadataComment {
+            fn name(&self) -> &'static str {
+                "metadata-comment"
+            }
+
+            fn process<'a>(
+                &self,
+                svg: Cow<'a, str>,
+                ctx: &SvgPostprocessContext<'_>,
+            ) -> RenderResult<Cow<'a, str>> {
+                Ok(Cow::Owned(format!(
+                    "{}<!--type={};title={};id={}-->",
+                    svg,
+                    ctx.diagram_type().unwrap_or(""),
+                    ctx.diagram_title().unwrap_or(""),
+                    ctx.svg_id().unwrap_or("")
+                )))
+            }
+        }
+
+        #[test]
+        fn render_svg_with_pipeline_passes_parsed_metadata() {
+            let renderer = HeadlessRenderer::new().with_diagram_id("host-style");
+            let source = "---\ntitle: Host Pipeline\n---\nflowchart TD\nA --> B";
+            let pipeline = SvgPipeline::parity().with_postprocessor(MetadataComment);
+
+            let svg = renderer
+                .render_svg_with_pipeline_sync(source, &pipeline)
+                .unwrap()
+                .unwrap();
+
+            assert!(svg.contains("type=flowchart"));
+            assert!(svg.contains("title=Host Pipeline"));
+            assert!(svg.contains("id=host-style"));
         }
     }
 
