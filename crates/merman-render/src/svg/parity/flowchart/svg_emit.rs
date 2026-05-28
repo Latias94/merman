@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use super::defs::prepare_flowchart_defs;
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::render::node::geom::{generate_circle_points, generate_full_sine_wave_points};
+use super::render_input::{FlowchartRenderInputs, prepare_flowchart_render_inputs};
 use super::*;
 
 pub(super) fn render_flowchart_v2_svg(
@@ -63,91 +64,6 @@ fn rough_stroke_svg_path_bounds(
             path_data, "#000", 1.3, "0 0", 0,
         )?;
     crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
-}
-
-fn prepare_render_edges_and_extra_nodes<'a>(
-    model: &'a crate::flowchart::FlowchartV2Model,
-) -> (
-    Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>>,
-    Vec<crate::flowchart::FlowNode>,
-) {
-    // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
-    // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
-    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
-    let mut render_edges: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> =
-        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
-    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-    for e in &model.edges {
-        if e.from != e.to {
-            render_edges.push(std::borrow::Cow::Borrowed(e));
-            continue;
-        }
-
-        let helper_edges = crate::flowchart::flowchart_self_loop_helper_edges(
-            e,
-            crate::flowchart::FlowchartSelfLoopEdgeOptions::svg_render(),
-        );
-        self_loop_label_node_ids.insert(helper_edges.special_id_1.clone());
-        self_loop_label_node_ids.insert(helper_edges.special_id_2.clone());
-
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge1));
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge_mid));
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge2));
-    }
-
-    // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
-    // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
-    // visible side-effect: those edges end up later in `graph.edges()` insertion order, so the
-    // DOM emitted under `.edgePaths` / `.edgeLabels` matches that stable partition.
-    let cluster_ids_with_children: FxHashSet<&str> = model
-        .subgraphs
-        .iter()
-        .filter(|sg| !sg.nodes.is_empty())
-        .map(|sg| sg.id.as_str())
-        .collect();
-    if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
-        let mut normal: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> =
-            Vec::with_capacity(render_edges.len());
-        let mut cluster: Vec<std::borrow::Cow<'a, crate::flowchart::FlowEdge>> = Vec::new();
-        for e in render_edges {
-            let edge = e.as_ref();
-            if cluster_ids_with_children.contains(edge.from.as_str())
-                || cluster_ids_with_children.contains(edge.to.as_str())
-            {
-                cluster.push(e);
-            } else {
-                normal.push(e);
-            }
-        }
-        normal.extend(cluster);
-        render_edges = normal;
-    }
-
-    let mut extra_nodes: Vec<crate::flowchart::FlowNode> =
-        Vec::with_capacity(self_loop_label_node_ids.len());
-    for id in &self_loop_label_node_ids {
-        extra_nodes.push(crate::flowchart::FlowNode {
-            id: id.clone(),
-            label: Some(String::new()),
-            label_type: None,
-            layout_shape: None,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            have_callback: false,
-            link: None,
-            link_target: None,
-        });
-    }
-
-    (render_edges, extra_nodes)
 }
 
 pub(super) fn render_flowchart_v2_svg_model_with_config(
@@ -235,7 +151,10 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
 
-    let (render_edges, extra_nodes) = prepare_render_edges_and_extra_nodes(model);
+    let FlowchartRenderInputs {
+        render_edges,
+        extra_nodes,
+    } = prepare_flowchart_render_inputs(model);
 
     fn parse_font_size_px(v: &serde_json::Value) -> Option<f64> {
         if let Some(n) = v.as_f64() {

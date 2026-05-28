@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "slug": "flowchart-render-input-extraction",
+  "title": "Flowchart Render Input Extraction",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Flowchart svg_emit.rs owns render edge/helper-node preparation, including self-loop expansion and cluster-edge DOM order partitioning.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/flowchart-render-input-extraction/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/flowchart-render-input-extraction/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/flowchart-render-input-extraction/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/flowchart-render-input-extraction/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render flowchart",
+    "cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --text-measurer vendored",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/flowchart-render-input-extraction/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Render input extraction passed flowchart and package gates."
+  }
+}

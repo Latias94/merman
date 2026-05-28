@@ -58,6 +58,9 @@ Related docs:
       - 2026-05-28: viewBox bounds code now reuses shared node geometry helpers via
         `docs/workstreams/flowchart-geometry-helper-consolidation/`; broader viewBox extraction
         remains open.
+      - 2026-05-28: render-time self-loop expansion and cluster-edge DOM ordering moved to
+        `svg/parity/flowchart/render_input.rs` via
+        `docs/workstreams/flowchart-render-input-extraction/`. Broader split remains open.
 - [ ] Split the class renderer into submodules (in progress: moved to `svg/parity/class/*`, extracted `debug_svg`, `defs`, `label`, `rough`, `render`).
 - [ ] Split the state renderer into submodules (in progress: extracted `svg/parity/state/render.rs`;
       2026-05-28 edge path/label rendering moved to `svg/parity/state/edge.rs` via
