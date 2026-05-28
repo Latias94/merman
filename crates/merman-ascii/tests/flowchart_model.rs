@@ -109,26 +109,7 @@ fn flowchart_parser_simple_subgraph_renders_group_box() {
 
     assert_eq!(
         rendered,
-        concat!(
-            "+- one -+\n",
-            "|       |\n",
-            "| +---+ |\n",
-            "| |   | |\n",
-            "| | A | |\n",
-            "| |   | |\n",
-            "| +---+ |\n",
-            "|   |   |\n",
-            "|   |   |\n",
-            "|   |   |\n",
-            "|   |   |\n",
-            "|   v   |\n",
-            "| +---+ |\n",
-            "| |   | |\n",
-            "| | B | |\n",
-            "| |   | |\n",
-            "| +---+ |\n",
-            "+-------+\n",
-        )
+        fixture_expected("ascii", "graph_tb_direction.txt")
     );
 }
 

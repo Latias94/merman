@@ -67,15 +67,20 @@ Last updated: 2026-05-29
 
 ## M4 - Subgraph Routing Hardening
 
-- [ ] AGR-050 [owner=codex] [deps=AGR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests,crates/merman-ascii/FLOWCHART_SUPPORT.md]
+- [x] AGR-050 [owner=codex] [deps=AGR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Harden multiple/nested subgraph layout where feasible, and document remaining complex
   cases.
   Validation:
-  - `cargo nextest run -p merman-ascii graph_fixture`
-  - `cargo nextest run -p merman-ascii flowchart`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS 2026-05-29: `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Complex nested/external-edge cases may be split if they threaten routing stability.
-  Evidence: Subgraph fixture allowlist and support matrix updates.
-  Handoff: Pending.
+  Evidence: Upstream-style simple subgraph title rows and empty-subgraph offset handling moved
+  seven more ASCII fixtures into the allowlist, raising graph fixture parity from 37 to 44 exact
+  matches.
+  Handoff: AGR-060 is next.
 
 ## M5 - Closeout
 

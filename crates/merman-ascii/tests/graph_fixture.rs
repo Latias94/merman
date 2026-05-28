@@ -50,6 +50,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "graph_tb_direction.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "single_node_longer_name.txt",
     },
     GraphFixture {
@@ -63,6 +67,30 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "self_reference_with_edge.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_empty.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_multiple_edges.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_multiple_nodes.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_single_node.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_td_direction.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_two_separate.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -217,10 +245,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
-        name: "graph_tb_direction.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "multiline_single_node.txt",
     },
     GraphFixture {
@@ -237,10 +261,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
-        name: "subgraph_empty.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "subgraph_explicit_title.txt",
     },
     GraphFixture {
@@ -250,14 +270,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "subgraph_mixed_nodes.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_multiple_edges.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_multiple_nodes.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -273,15 +285,7 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
-        name: "subgraph_single_node.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "subgraph_standalone_labeled_node.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_td_direction.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -298,10 +302,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "subgraph_three_separate.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_two_separate.txt",
     },
     GraphFixture {
         directory: "ascii",

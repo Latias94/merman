@@ -1,6 +1,6 @@
 # Flowchart ASCII Support
 
-Status: V1.1 compatibility expansion in progress
+Status: ASCII graph routing parity expansion in progress
 
 This document describes the current `merman-ascii` flowchart support boundary. The renderer consumes
 `merman-core` `FlowchartV2Model` values; it does not parse Mermaid text itself.
@@ -14,8 +14,8 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Single-line text labels. Missing labels fall back to node ids. |
 | Edges | Supported subset | Directed point arrows, open edges, dotted edges, edge labels, and deterministic length spacing for simple LR/TD edges. |
-| Subgraphs | Supported subset | Simple subgraphs render as titled group boxes around supported member nodes. |
-| Layout | Supported subset | Linear node order using the model's node order. |
+| Subgraphs | Supported subset | Simple titled group boxes render around supported member nodes with upstream-style title rows. |
+| Layout | Supported subset | LR roots, child levels, multi-root graphs, basic fan-out/fan-in, self-loops, same-row back edges, and simple subgraphs use a deterministic grid layout. TD remains a simpler vertical layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | Safety limit | Supported | `AsciiRenderOptions::max_grid_cells` prevents unexpectedly large character grids. |
 
@@ -35,7 +35,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Diamond/decision shapes | Supported approximation. | Rendered with a decision-like terminal outline using `< label >` on the center row. |
 | Subroutine shapes | Supported approximation. | Rendered as boxes with inner vertical rails. |
 | Cylinder/database shapes | Supported approximation. | Rendered as rounded boxes with an inner top separator. |
-| Subgraphs | Supported subset. | Simple titled group boxes render around supported member nodes; complex nested routing may remain a follow-on. |
+| Subgraphs | Supported subset. | Simple titled group boxes render around supported member nodes; complex nested/external-edge routing remains a follow-on. |
 
 ## Explicitly Unsupported
 
@@ -54,9 +54,12 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 ## Known Limitations
 
-- The current layout is a tracer-bullet linear layout, not the full upstream routing algorithm.
-- Multi-root graphs, branches, back-edges, and non-adjacent routing are not product-supported yet.
-- Complex nested subgraph routing is not product-supported yet.
+- The current layout is a growing grid-based parity implementation, not the full upstream routing
+  algorithm.
+- Crossing junction merging, duplicate/bidirectional label separation, and TD back-edge labels are
+  not product-supported yet.
+- Complex nested subgraph routing and external-edge routing through subgraphs are not product-
+  supported yet.
 - Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
   follow-up coverage before being listed as supported.
@@ -67,6 +70,8 @@ The support boundary is covered by:
 
 - `cargo nextest run -p merman-ascii graph::`
 - `cargo nextest run -p merman-ascii graph_golden`
+- `cargo nextest run -p merman-ascii graph_fixture`
 - `cargo nextest run -p merman-ascii flowchart`
 
-Golden tests compare against copied `mermaid-ascii` fixtures for the initial supported subset.
+Golden tests compare against copied `mermaid-ascii` fixtures for the supported subset. The current
+graph fixture allowlist covers 44 exact graph matches: 26 ASCII and 18 Unicode.

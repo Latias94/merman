@@ -38,15 +38,22 @@ AGR-040 is implemented and verified:
 - Remaining high-value gaps are crossing junction merging, TD back-edge labels, duplicate and
   bidirectional label separation, padding directives, and subgraph exact layout parity.
 
+AGR-050 is implemented and verified:
+
+- Simple subgraphs use upstream-style title rows inside the group box.
+- Empty subgraphs no longer offset otherwise ordinary graph layouts.
+- Seven more ASCII subgraph fixtures moved into the exact allowlist.
+- The allowlist currently has 44 exact matches: 26 ASCII and 18 Unicode.
+- Remaining subgraph gaps are complex nested/external-edge layouts and multi-subgraph spacing.
+
 ## Next Task
 
-Run AGR-050:
+Run AGR-060:
 
-- Harden subgraph layout where feasible.
-- Start by comparing `subgraph_single_node.txt`, `subgraph_multiple_nodes.txt`,
-  `subgraph_td_direction.txt`, and `graph_tb_direction.txt`.
-- Move fixtures from `GRAPH_FIXTURE_GAPS` to `GRAPH_FIXTURE_ALLOWLIST` only after exact-output
-  parity is verified.
+- Run closeout gates.
+- Update final support docs/changelog if desired.
+- Decide whether remaining crossing junctions, labels, padding directives, and nested subgraphs
+  should be a follow-on workstream or continue in this lane.
 
 ## Constraints
 

@@ -284,8 +284,9 @@ fn layout_left_right_grid_nodes(
         set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
     }
 
-    let group_offset_x = usize::from(!graph.groups.is_empty()) * 2;
-    let group_offset_y = usize::from(!graph.groups.is_empty()) * 2;
+    let has_groups = has_non_empty_group(graph);
+    let group_offset_x = usize::from(has_groups) * 2;
+    let group_offset_y = usize::from(has_groups) * 4;
     let label_y_offset = usize::from(graph.edges.iter().any(|edge| edge.label.is_some()));
 
     placements
@@ -438,8 +439,9 @@ fn layout_top_down_linear_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
 ) -> Vec<NodeLayout> {
-    let group_offset_x = usize::from(!graph.groups.is_empty()) * 2;
-    let group_offset_y = usize::from(!graph.groups.is_empty()) * 2;
+    let has_groups = has_non_empty_group(graph);
+    let group_offset_x = usize::from(has_groups) * 2;
+    let group_offset_y = usize::from(has_groups) * 4;
     let measured = graph
         .nodes
         .iter()
@@ -503,6 +505,15 @@ fn node_height(options: &AsciiRenderOptions) -> usize {
     1 + options.box_border_padding * 2 + 2
 }
 
+fn has_non_empty_group(graph: &AsciiGraph) -> bool {
+    graph.groups.iter().any(|group| {
+        group
+            .nodes
+            .iter()
+            .any(|group_node| graph.nodes.iter().any(|node| node.id == *group_node))
+    })
+}
+
 fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
     graph
         .groups
@@ -529,9 +540,9 @@ fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout>
                 .max()
                 .unwrap_or(0);
             let x = min_x.saturating_sub(2);
-            let y = min_y.saturating_sub(2);
+            let y = min_y.saturating_sub(4);
             let right = max_right + 2;
-            let bottom = max_bottom + 1;
+            let bottom = max_bottom + 2;
             let min_width = display_width(&group.title) + 4;
             let width = (right - x + 1).max(min_width);
             let height = bottom - y + 1;
@@ -590,9 +601,11 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
         canvas.set(right, y, charset.vertical);
     }
 
-    let title = format!(" {} ", group.title);
-    if display_width(&title) + 2 < group.width {
-        canvas.write_text(group.x + 2, group.y, &title);
+    let title_width = display_width(&group.title);
+    if title_width + 2 < group.width {
+        let inner_width = group.width.saturating_sub(2);
+        let title_x = group.x + 1 + inner_width.saturating_sub(title_width) / 2;
+        canvas.write_text(title_x, group.y + 1, &group.title);
     }
 }
 

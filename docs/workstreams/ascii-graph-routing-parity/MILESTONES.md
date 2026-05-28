@@ -38,6 +38,8 @@ Exit criteria:
 
 ## M4 - Subgraph Routing Hardening
 
+Status: Complete for the current lane slice.
+
 Exit criteria:
 
 - At least one multiple/nested subgraph fixture is supported, or the lane records a follow-on with

@@ -14,10 +14,17 @@ ASCII:
 - `back_reference_from_child.txt`
 - `backlink_from_bottom.txt`
 - `flowchart_tb_simple.txt`
+- `graph_tb_direction.txt`
 - `self_reference_with_edge.txt`
 - `self_reference.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
+- `subgraph_empty.txt`
+- `subgraph_multiple_edges.txt`
+- `subgraph_multiple_nodes.txt`
+- `subgraph_single_node.txt`
+- `subgraph_td_direction.txt`
+- `subgraph_two_separate.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
 - `two_layer_single_graph_longer_names.txt`
@@ -63,28 +70,21 @@ ASCII:
 - `custom_padding.txt`
 - `duplicate_edge_labels.txt`
 - `explicit_label_after_bare_reference.txt`
-- `graph_tb_direction.txt`
 - `multiline_single_node.txt`
 - `preserve_order_of_definition.txt`
 - `subgraph_complex_mixed.txt`
 - `subgraph_complex_nested.txt`
-- `subgraph_empty.txt`
 - `subgraph_explicit_title.txt`
 - `subgraph_mixed_nodes_td.txt`
 - `subgraph_mixed_nodes.txt`
-- `subgraph_multiple_edges.txt`
-- `subgraph_multiple_nodes.txt`
 - `subgraph_nested_with_external.txt`
 - `subgraph_nested.txt`
 - `subgraph_node_outside_lr.txt`
-- `subgraph_single_node.txt`
 - `subgraph_standalone_labeled_node.txt`
-- `subgraph_td_direction.txt`
 - `subgraph_td_multiple_paddingy.txt`
 - `subgraph_td_multiple.txt`
 - `subgraph_three_levels_nested.txt`
 - `subgraph_three_separate.txt`
-- `subgraph_two_separate.txt`
 - `subgraph_with_labels.txt`
 
 Unicode:

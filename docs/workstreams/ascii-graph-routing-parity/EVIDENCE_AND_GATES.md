@@ -60,3 +60,14 @@ Last updated: 2026-05-29
   - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
   - PASS `cargo nextest run -p merman-ascii` (43 passed)
   - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`
+- 2026-05-29 AGR-050: Updated simple subgraph layout to use upstream-style title rows inside the
+  group box, removed empty-subgraph layout offsets, and documented the remaining complex subgraph
+  boundary. Exact graph fixture matches increased from 37 to 44:
+  - ASCII: 26 exact matches, 26 named gaps.
+  - Unicode: 18 exact matches, 5 named gaps.
+- 2026-05-29 AGR-050 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`
