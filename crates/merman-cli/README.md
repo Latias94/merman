@@ -21,6 +21,8 @@ merman-cli detect path/to/diagram.mmd
 merman-cli parse --pretty --meta path/to/diagram.mmd
 merman-cli layout --pretty path/to/diagram.mmd
 merman-cli render path/to/diagram.mmd --out out.svg
+merman-cli render --format unicode path/to/diagram.mmd
+merman-cli render --format ascii path/to/diagram.mmd
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
@@ -34,7 +36,7 @@ printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli render --out out.svg
 
 ## Rendering Options
 
-`render` writes SVG to stdout by default. Use `--out` for files and `--format png|jpg|pdf` for raster or PDF export.
+`render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 
 Useful flags:
 
@@ -45,6 +47,12 @@ Useful flags:
 - `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 - `--viewport-width <w>` and `--viewport-height <h>` configure viewport-sensitive layouts.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
+
+ASCII/Unicode output is feature-gated in the Rust package:
+
+```sh
+printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
+```
 
 ## SVG Input Rasterization
 

@@ -1,63 +1,56 @@
 # ASCII Renderer Productization - Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## Current State
 
-The ASCII renderer productization lane is active. ARP-020 through ARP-070 are complete:
-`merman-ascii` has its crate/API foundation, tracked `mermaid-ascii` attribution, copied golden
-fixtures, text/canvas primitives, the first graph rendering slice, parser/model-level flowchart
-tests, a documented flowchart support matrix, and the first sequence rendering slice. Basic
-flowcharts with boxed nodes and direct left-to-right or top-down edges can render through
-`render_flowchart`. Basic sequence diagrams with participant boxes, lifelines, solid/dotted
-messages, reverse messages, self messages, labels, and visible autonumber can render through
-`render_sequence` or `render_model`. The top-level `merman` crate now exposes these capabilities
-behind the opt-in `ascii` feature through `merman::ascii`, including `render_ascii_sync`,
-`HeadlessAsciiRenderer`, public option/error re-exports, integration tests, and a runnable
-`ascii_output` example.
+The ASCII renderer productization lane is implemented and verified. It shipped:
 
-## Active Task
+- `crates/merman-ascii` as the terminal/text rendering crate.
+- Tracked `mermaid-ascii` MIT license attribution and copied fixture provenance.
+- Initial flowchart ASCII/Unicode rendering for boxed nodes and direct LR/TD edges.
+- Initial sequence ASCII/Unicode rendering for participants, lifelines, solid/dotted messages,
+  reverse messages, self messages, labels, and visible autonumber.
+- Explicit unsupported-feature diagnostics and support matrices for flowchart and sequence output.
+- Top-level `merman --features ascii` APIs under `merman::ascii`.
+- `merman-cli render --format ascii|unicode` behind the CLI `ascii` feature.
+- README, crate docs, CLI docs, changelog notes, tests, and closeout evidence.
 
-- Task ID: ARP-080
-- Owner: unassigned
-- Files: `crates/merman-cli`, `README.md`, `CHANGELOG.md`
+## Final Task
+
+- Task ID: ARP-090
+- Owner: codex
+- Goal: Close verified ASCII renderer lane.
 - Validation:
+  - `cargo fmt --all --check`
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
   - `cargo nextest run -p merman-cli`
-  - `cargo check -p merman-cli --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`
+  - `cargo package -p merman-ascii --list --allow-dirty`
   - `git diff --check`
-- Status: READY
-- Review: Run `review-workstream` before accepting completion.
-- Evidence: future CLI tests and docs.
+- Status: DONE
 
-## Decisions Since Last Update
+## Decisions
 
-- ASCII output should live in a new `merman-ascii` crate.
-- The crate should consume `merman-core` typed models instead of parsing Mermaid text.
-- `repo-ref/mermaid-ascii` is an algorithm and fixture reference, not an authoritative dependency.
-- Third-party MIT license text and source commit provenance must be tracked before derived code or
-  copied fixtures ship.
-- Flowchart should be the first substantial rendering slice, followed by sequence.
-- ARP-020/030 established a temporary explicit unsupported-feature boundary so the public API can
-  compile before graph and sequence algorithms are ported.
-- ARP-040 introduced a minimal `FlowchartV2Model` bridge only to route simple public
-  `render_flowchart` calls through the graph primitives. ARP-050 should harden that adapter,
-  document the supported feature matrix, and add model-level tests.
-- ARP-050 hardened the parser/model-level flowchart path and documented
-  `crates/merman-ascii/FLOWCHART_SUPPORT.md`.
-- ARP-060 ported the initial sequence layout/drawing algorithm from the copied
-  `mermaid-ascii` fixture subset, documented `crates/merman-ascii/SEQUENCE_SUPPORT.md`, and added
-  explicit unsupported-feature diagnostics for non-basic sequence semantics.
-- ARP-070 exposed the ASCII renderer through `merman --features ascii`, added
-  `merman::ascii::{render_ascii_sync, HeadlessAsciiRenderer}`, public API tests, docs.rs feature
-  coverage, README examples, and a runnable `ascii_output` example.
+- ASCII rendering lives in `merman-ascii`, not `merman-render`, because it owns character-cell
+  layout and output stability rather than SVG/DOM parity.
+- The crate consumes `merman-core` typed render models and does not port the Go parser.
+- Output support is intentionally subset-first with explicit unsupported-feature errors.
+- Upstream `repo-ref/mermaid-ascii` remains a gitignored research reference; build/release
+  evidence uses tracked fixtures and license files only.
+- CLI support is opt-in through the `ascii` feature and `render --format ascii|unicode`.
 
-## Blockers
+## Follow-Ups
 
-- None for ARP-080.
+No required next task remains in this workstream. Follow-up candidates, if prioritized:
 
-## Next Recommended Action
-
-- Execute ARP-080 with `run-workstream-task`: either add CLI `ascii`/`unicode` output support with
-  tests or explicitly split CLI integration into a follow-on if the library API needs another
-  stabilization pass.
+- Broaden flowchart support for subgraphs, labels, non-rect shapes, and more complex routing.
+- Broaden sequence support for notes, boxes, activations, create/destroy, actor shapes, wrapping,
+  and rich actor metadata.
+- Add CJK/emoji placement coverage beyond current width-based sizing.
+- Decide release packaging strategy for how many copied fixtures should ship in the published
+  crate once output compatibility stabilizes further.

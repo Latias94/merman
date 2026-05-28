@@ -15,6 +15,8 @@ enum CliError {
     Io(std::io::Error),
     Mermaid(merman::Error),
     Headless(merman::render::HeadlessError),
+    #[cfg(feature = "ascii")]
+    Ascii(merman::ascii::HeadlessAsciiError),
     Raster(merman::render::raster::RasterError),
     Json(serde_json::Error),
     NoDiagram,
@@ -27,6 +29,8 @@ impl std::fmt::Display for CliError {
             CliError::Io(err) => write!(f, "I/O error: {err}"),
             CliError::Mermaid(err) => write!(f, "{err}"),
             CliError::Headless(err) => write!(f, "{err}"),
+            #[cfg(feature = "ascii")]
+            CliError::Ascii(err) => write!(f, "{err}"),
             CliError::Raster(err) => write!(f, "{err}"),
             CliError::Json(err) => write!(f, "JSON error: {err}"),
             CliError::NoDiagram => write!(f, "No Mermaid diagram detected"),
@@ -49,6 +53,13 @@ impl From<merman::Error> for CliError {
 impl From<merman::render::HeadlessError> for CliError {
     fn from(value: merman::render::HeadlessError) -> Self {
         Self::Headless(value)
+    }
+}
+
+#[cfg(feature = "ascii")]
+impl From<merman::ascii::HeadlessAsciiError> for CliError {
+    fn from(value: merman::ascii::HeadlessAsciiError) -> Self {
+        Self::Ascii(value)
     }
 }
 
@@ -84,6 +95,8 @@ enum TextMeasurerKind {
 enum RenderFormat {
     #[default]
     Svg,
+    Ascii,
+    Unicode,
     Png,
     Jpeg,
     Pdf,
@@ -95,6 +108,8 @@ impl FromStr for RenderFormat {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
             "svg" => Ok(Self::Svg),
+            "ascii" => Ok(Self::Ascii),
+            "unicode" => Ok(Self::Unicode),
             "png" => Ok(Self::Png),
             "jpg" | "jpeg" => Ok(Self::Jpeg),
             "pdf" => Ok(Self::Pdf),
@@ -106,7 +121,7 @@ impl FromStr for RenderFormat {
 impl RenderFormat {
     fn raster_extension(self) -> Option<&'static str> {
         match self {
-            RenderFormat::Svg => None,
+            RenderFormat::Svg | RenderFormat::Ascii | RenderFormat::Unicode => None,
             RenderFormat::Png => Some("png"),
             RenderFormat::Jpeg => Some("jpg"),
             RenderFormat::Pdf => Some("pdf"),
@@ -114,7 +129,14 @@ impl RenderFormat {
     }
 
     fn is_raster(self) -> bool {
-        !matches!(self, RenderFormat::Svg)
+        matches!(
+            self,
+            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf
+        )
+    }
+
+    fn is_text(self) -> bool {
+        matches!(self, RenderFormat::Ascii | RenderFormat::Unicode)
     }
 }
 
@@ -168,12 +190,13 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--format svg|png|jpg|pdf] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png|jpg|pdf|ascii|unicode] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
+  - render --format ascii|unicode prints terminal-friendly text output.\n\
   - render can also rasterize SVG input when --format is png/jpg/pdf (input starts with '<svg').\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
   - JPG output defaults to writing next to the input file (or ./out.jpg for stdin).\n\
@@ -268,6 +291,7 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                 args.hand_drawn_seed =
                     Some(seed.parse::<u64>().map_err(|_| CliError::Usage(usage()))?);
             }
+            "-" => args.input = Some(a.to_string()),
             s if s.starts_with('-') => return Err(CliError::Usage(usage())),
             _ => {
                 // Positional: input path
@@ -440,6 +464,10 @@ impl<'a> RenderRequest<'a> {
     }
 
     fn render(&self, text: &str) -> Result<(), CliError> {
+        if self.args.render_format.is_text() {
+            return self.render_text(text);
+        }
+
         if text.trim_start().starts_with("<svg") && self.args.render_format.is_raster() {
             return RasterRequest {
                 args: self.args,
@@ -466,12 +494,35 @@ impl<'a> RenderRequest<'a> {
                 let out = self.args.out.as_deref();
                 write_output(out, svg.as_bytes())
             }
+            RenderFormat::Ascii | RenderFormat::Unicode => unreachable!("handled above"),
             RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => RasterRequest {
                 args: self.args,
                 svg: &svg,
             }
             .write(),
         }
+    }
+
+    #[cfg(feature = "ascii")]
+    fn render_text(&self, text: &str) -> Result<(), CliError> {
+        let options = match self.args.render_format {
+            RenderFormat::Ascii => merman::ascii::AsciiRenderOptions::ascii(),
+            RenderFormat::Unicode => merman::ascii::AsciiRenderOptions::unicode(),
+            _ => return Err(CliError::Usage(usage())),
+        };
+        let Some(rendered) =
+            merman::ascii::render_ascii_sync(self.engine, text, self.parse_options, &options)?
+        else {
+            return Err(CliError::NoDiagram);
+        };
+        write_output(self.args.out.as_deref(), rendered.as_bytes())
+    }
+
+    #[cfg(not(feature = "ascii"))]
+    fn render_text(&self, _text: &str) -> Result<(), CliError> {
+        Err(CliError::Usage(
+            "ASCII/Unicode output requires building merman-cli with --features ascii.",
+        ))
     }
 }
 
@@ -487,7 +538,9 @@ impl<'a> RasterRequest<'a> {
     fn rasterize(&self) -> Result<Vec<u8>, CliError> {
         let svg = merman::render::svg_resvg_safe(self.svg)?;
         match self.args.render_format {
-            RenderFormat::Svg => Err(CliError::Usage(usage())),
+            RenderFormat::Svg | RenderFormat::Ascii | RenderFormat::Unicode => {
+                Err(CliError::Usage(usage()))
+            }
             RenderFormat::Png => Ok(merman::render::raster::svg_to_png(
                 &svg,
                 &self.raster_options(),

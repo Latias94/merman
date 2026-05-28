@@ -1,6 +1,6 @@
 # ASCII Renderer Productization - TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## M0 - Scope And Evidence Freeze
@@ -85,7 +85,7 @@ Last updated: 2026-05-28
   Evidence: API tests and README examples.
   Handoff: DONE.
 
-- [ ] ARP-080 [owner=unassigned] [deps=ARP-070] [scope=crates/merman-cli,README.md,CHANGELOG.md]
+- [x] ARP-080 [owner=codex] [deps=ARP-070] [scope=crates/merman-cli,README.md,CHANGELOG.md]
   Goal: Add CLI output support or explicitly split CLI integration into a follow-on if library API
   stabilization needs more time.
   Validation:
@@ -94,11 +94,11 @@ Last updated: 2026-05-28
   - `git diff --check`
   Review: CLI behavior must not change existing SVG/raster defaults.
   Evidence: CLI tests and docs.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE.
 
 ## M5 - Verification And Closeout
 
-- [ ] ARP-090 [owner=planner] [deps=ARP-070] [scope=docs/workstreams/ascii-renderer-productization]
+- [x] ARP-090 [owner=codex] [deps=ARP-070,ARP-080] [scope=docs/workstreams/ascii-renderer-productization]
   Goal: Run fresh focused gates, record evidence, and close this lane or split remaining unsupported
   Mermaid features into follow-ons.
   Validation:
@@ -109,4 +109,4 @@ Last updated: 2026-05-28
   - `git diff --check`
   Review: `verify-rust-workstream` followed by `close-workstream`.
   Evidence: `docs/workstreams/ascii-renderer-productization/EVIDENCE_AND_GATES.md`.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE.

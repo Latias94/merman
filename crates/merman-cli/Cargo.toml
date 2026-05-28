@@ -13,6 +13,10 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
 
+[features]
+default = []
+ascii = ["merman/ascii"]
+
 [dependencies]
 merman = { workspace = true, features = ["raster"] }
 serde.workspace = true

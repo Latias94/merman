@@ -12,7 +12,8 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 
 ## TL;DR
 
-- Want an executable? Use [`merman-cli`](crates/merman-cli) (render SVG/PNG/JPG/PDF).
+- Want an executable? Use [`merman-cli`](crates/merman-cli) (render SVG/PNG/JPG/PDF and
+  ASCII/Unicode text).
 - Want a library? Use [`merman`](crates/merman) (`render` for SVG; `ascii` for text;
   `raster` for PNG/JPG/PDF).
 - Only need parsing / semantic JSON? Use [`merman-core`](crates/merman-core).
@@ -94,6 +95,10 @@ merman-cli layout path/to/diagram.mmd --pretty
 
 # Render SVG
 merman-cli render path/to/diagram.mmd --out out.svg
+
+# Render terminal text output
+merman-cli render --format unicode path/to/diagram.mmd
+merman-cli render --format ascii path/to/diagram.mmd
 
 # Render raster formats
 merman-cli render --format png --out out.png path/to/diagram.mmd
@@ -247,6 +252,7 @@ Runnable examples:
 ```bash
 cargo run -p merman --features ascii --example ascii_output
 cargo run -p merman --features ascii --example ascii_output -- --ascii
+printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
 ```
 
 ## Showcase

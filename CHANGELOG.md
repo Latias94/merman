@@ -6,6 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Added productized ASCII/Unicode text rendering via the new `merman-ascii` crate, the opt-in
+  `merman` `ascii` feature, `merman::ascii` public helpers, and `merman-cli render --format
+  ascii|unicode` behind the CLI `ascii` feature.
+
 ## [0.6.0] - 2026-05-28
 
 This release adds an opt-in SVG output pipeline for applications that need Mermaid-parity SVG by default but also need cleaner output for in-app previews, PNG/PDF export, or host-specific theming. Use `render_svg_sync` for parity snapshots, `SvgPipeline::readable()` when the SVG will be inlined and should keep readable fallback text, and `SvgPipeline::resvg_safe()` before rasterizing through `resvg` / `usvg`.

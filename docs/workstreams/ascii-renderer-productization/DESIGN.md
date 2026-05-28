@@ -1,6 +1,6 @@
 # ASCII Renderer Productization
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## Why This Lane Exists
@@ -139,3 +139,8 @@ This lane can close when flowchart and sequence ASCII/Unicode rendering are avai
 library API, CLI integration is either shipped or split into a narrower follow-on, tracked license
 and fixture provenance are complete, docs describe supported behavior, and all closeout gates have
 fresh evidence.
+
+Closeout status: satisfied on 2026-05-28. The lane shipped `merman-ascii`, top-level
+`merman --features ascii` APIs, `merman-cli render --format ascii|unicode`, tracked upstream
+license/fixture provenance, support matrices, README/CHANGELOG entries, and fresh closeout gate
+evidence.

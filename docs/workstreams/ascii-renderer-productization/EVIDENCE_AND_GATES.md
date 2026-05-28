@@ -1,6 +1,6 @@
 # ASCII Renderer Productization - Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## Planned Gates
@@ -144,6 +144,30 @@ output.
   - Top-level `merman` now exposes an opt-in `ascii` feature, `merman::ascii` module, synchronous
     and async render helpers, `HeadlessAsciiRenderer`, re-exported `merman-ascii` option/error
     types, API tests, and `ascii_output` example commands in the README.
+- 2026-05-28: ARP-080 CLI ASCII/Unicode output gates:
+  - `cargo nextest run -p merman-cli --features ascii ascii` passed: 2 tests.
+  - `cargo nextest run -p merman-cli` passed: 8 tests.
+  - `cargo check -p merman-cli --features ascii` passed.
+  - `cargo nextest run -p merman-cli --features ascii` passed: 10 tests.
+  - `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` passed.
+  - `@'\nflowchart LR\nA --> B\n'@ | cargo run -p merman-cli --features ascii -- render --format ascii -`
+    passed and printed a pure ASCII flowchart.
+  - CLI `render --format ascii|unicode` now routes Mermaid text through `merman::ascii`; SVG,
+    PNG, JPG, and PDF behavior is unchanged.
+  - CLI stdin `-` is now accepted as documented, fixing a pre-existing parser mismatch that the
+    ASCII stdin smoke tests exposed.
+- 2026-05-28: ARP-090 closeout gates:
+  - `cargo package -p merman-ascii --list --allow-dirty` passed and listed the crate README,
+    support matrices, upstream MIT license copy, source files, and copied fixture inventory.
+  - `cargo fmt --all --check` passed.
+  - `cargo nextest run -p merman-ascii` passed: 37 tests.
+  - `cargo nextest run -p merman --features ascii` passed: 3 tests.
+  - `cargo nextest run -p merman-cli` passed: 8 tests.
+  - `cargo nextest run -p merman-cli --features ascii` passed: 10 tests.
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+    passed.
+  - `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` passed.
+  - `git diff --check` passed.
 
 ## Notes
 

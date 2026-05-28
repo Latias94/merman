@@ -1,6 +1,6 @@
 # ASCII Renderer Productization - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## M0 - Scope And Evidence Freeze
@@ -64,7 +64,7 @@ Primary gates:
 
 ## M4 - Public API And Host Integration
 
-Status: Library API met on 2026-05-28 by ARP-070; CLI decision remains in ARP-080.
+Status: Done. Library API met by ARP-070; CLI text output shipped by ARP-080.
 
 Exit criteria:
 
@@ -80,6 +80,8 @@ Primary gates:
 - `cargo nextest run -p merman-cli`
 
 ## M5 - Verification And Closeout
+
+Status: Done.
 
 Exit criteria:
 

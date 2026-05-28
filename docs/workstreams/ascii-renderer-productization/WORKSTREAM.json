@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-renderer-productization",
   "title": "ASCII Renderer Productization",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-28",
   "scope_kind": "architecture",
   "problem": "merman needs product-grade ASCII/Unicode rendering without duplicating Mermaid parsing or relying on gitignored reference sources.",
@@ -48,8 +48,8 @@
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "ARP-080",
-    "notes": "Continue with ARP-080: either add CLI ascii/unicode output support with tests or explicitly split CLI integration into a follow-on if the library API needs another stabilization pass."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "ASCII renderer productization is complete: merman-ascii, top-level merman ascii APIs, CLI ascii/unicode output, support matrices, provenance, and closeout gates are done. Split broader diagram feature coverage into future workstreams if needed."
   }
 }
