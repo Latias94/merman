@@ -1,0 +1,2 @@
+2026-05-28T00:00:00Z opened bounded lane for state node renderer extraction.
+2026-05-28T00:00:00Z extracted state leaf-node rendering into state/node.rs; state and package gates passed.

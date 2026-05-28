@@ -6,6 +6,7 @@ mod debug_svg;
 mod edge;
 mod emitted_bounds;
 mod links;
+mod node;
 mod rough_cache;
 pub(in crate::svg::parity) mod roughjs;
 mod style;
@@ -30,6 +31,7 @@ use roughjs::{
 use context::*;
 use edge::*;
 use links::*;
+use node::*;
 use rough_cache::*;
 use style::*;
 use viewport::*;
