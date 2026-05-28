@@ -1,0 +1,123 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "History of Web Development Frameworks",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "2000s",
+      "2010s",
+      "2020s"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "2000s",
+        "type": "2000s",
+        "task": "2004 ",
+        "score": 0,
+        "events": [
+          "Ruby on Rails released",
+          "Catalyst (Perl)"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "2000s",
+        "type": "2000s",
+        "task": "2005 ",
+        "score": 0,
+        "events": [
+          "Django (Python)",
+          "Spring MVC gains traction"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "2000s",
+        "type": "2000s",
+        "task": "2006 ",
+        "score": 0,
+        "events": [
+          "jQuery simplifies DOM"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "2010s",
+        "type": "2010s",
+        "task": "2010 ",
+        "score": 0,
+        "events": [
+          "AngularJS by Google",
+          "Backbone.js"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "2010s",
+        "type": "2010s",
+        "task": "2013 ",
+        "score": 0,
+        "events": [
+          "React by Facebook"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "2010s",
+        "type": "2010s",
+        "task": "2014 ",
+        "score": 0,
+        "events": [
+          "Vue.js by Evan You"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "2010s",
+        "type": "2010s",
+        "task": "2016 ",
+        "score": 0,
+        "events": [
+          "Angular 2 rewrite",
+          "Next.js for SSR React"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "2020s",
+        "type": "2020s",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "Svelte 3 momentum",
+          "Tailwind CSS adoption"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "2020s",
+        "type": "2020s",
+        "task": "2022 ",
+        "score": 0,
+        "events": [
+          "React Server Components",
+          "Astro 1.0"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "2020s",
+        "type": "2020s",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "AI-assisted development",
+          "Edge-first frameworks"
+        ]
+      }
+    ]
+  }
+}

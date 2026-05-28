@@ -1,0 +1,450 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Vehicle": {
+        "id": "Vehicle",
+        "type": "",
+        "label": "Vehicle",
+        "text": "Vehicle",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "start",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+start() : bool",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "stop",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+stop() : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "fuelLevel",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "float",
+            "displayText": "+fuelLevel() : float",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "String vin",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-String vin",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "#",
+            "id": "int year",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#int year",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String make",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String make",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String model",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String model",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "abstract"
+        ],
+        "styles": [],
+        "domId": "classId-Vehicle-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Car": {
+        "id": "Car",
+        "type": "",
+        "label": "Car",
+        "text": "Car",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "openTrunk",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+openTrunk() : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "setSeatPosition",
+            "classifier": "",
+            "parameters": "int pos",
+            "returnType": "void",
+            "displayText": "+setSeatPosition(int pos) : void",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "int numDoors",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-int numDoors",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "bool sunroof",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-bool sunroof",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Car-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Truck": {
+        "id": "Truck",
+        "type": "",
+        "label": "Truck",
+        "text": "Truck",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "lowerTailgate",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+lowerTailgate() : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "towingCapacity",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "float",
+            "displayText": "+towingCapacity() : float",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "float payloadCapacity",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-float payloadCapacity",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "bool fourWheelDrive",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-bool fourWheelDrive",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Truck-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Engine": {
+        "id": "Engine",
+        "type": "",
+        "label": "Engine",
+        "text": "Engine",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "ignite",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+ignite() : bool",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "shutdown",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "void",
+            "displayText": "+shutdown() : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "rpm",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "int",
+            "displayText": "+rpm() : int",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "float displacement",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-float displacement",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "int horsepower",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-int horsepower",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "String fuelType",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-String fuelType",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Engine-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Fleet": {
+        "id": "Fleet",
+        "type": "",
+        "label": "Fleet",
+        "text": "Fleet",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "addVehicle",
+            "classifier": "",
+            "parameters": "Vehicle v",
+            "returnType": "void",
+            "displayText": "+addVehicle(Vehicle v) : void",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "removeVehicle",
+            "classifier": "",
+            "parameters": "String vin",
+            "returnType": "bool",
+            "displayText": "+removeVehicle(String vin) : bool",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "totalVehicles",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "int",
+            "displayText": "+totalVehicles() : int",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "String companyName",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-String companyName",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "List~Vehicle~ vehicles",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-List<Vehicle> vehicles",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Fleet-4",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Vehicle",
+        "id2": "Car",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "extends",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Vehicle",
+        "id2": "Truck",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "extends",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "Vehicle",
+        "id2": "Engine",
+        "relationTitle1": "1",
+        "relationTitle2": "1",
+        "title": "has",
+        "relation": {
+          "type1": 2,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "3",
+        "id1": "Fleet",
+        "id2": "Vehicle",
+        "relationTitle1": "1",
+        "relationTitle2": "0..*",
+        "title": "manages",
+        "relation": {
+          "type1": 0,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

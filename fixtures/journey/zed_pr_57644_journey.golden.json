@@ -1,0 +1,133 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": "Online Grocery Shopping Experience",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Browsing & Selection",
+      "Checkout & Delivery"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          "Customer"
+        ],
+        "section": "Browsing & Selection",
+        "type": "Browsing & Selection",
+        "task": "        Visit homepage"
+      },
+      {
+        "score": 4,
+        "people": [
+          "Customer"
+        ],
+        "section": "Browsing & Selection",
+        "type": "Browsing & Selection",
+        "task": "        Search for items"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Customer"
+        ],
+        "section": "Browsing & Selection",
+        "type": "Browsing & Selection",
+        "task": "        Browse recommendations"
+      },
+      {
+        "score": 4,
+        "people": [
+          "Customer"
+        ],
+        "section": "Browsing & Selection",
+        "type": "Browsing & Selection",
+        "task": "        Add items to cart"
+      },
+      {
+        "score": 2,
+        "people": [
+          "Customer"
+        ],
+        "section": "Browsing & Selection",
+        "type": "Browsing & Selection",
+        "task": "        Check substitution options"
+      },
+      {
+        "score": 4,
+        "people": [
+          "Customer"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Review cart"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Customer",
+          "System"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Apply coupon code"
+      },
+      {
+        "score": 2,
+        "people": [
+          "Customer"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Choose delivery slot"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Customer",
+          "System"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Enter payment info"
+      },
+      {
+        "score": 5,
+        "people": [
+          "Customer",
+          "System"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Receive confirmation"
+      },
+      {
+        "score": 4,
+        "people": [
+          "Customer",
+          "Driver"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Track delivery"
+      },
+      {
+        "score": 5,
+        "people": [
+          "Customer",
+          "Driver"
+        ],
+        "section": "Checkout & Delivery",
+        "type": "Checkout & Delivery",
+        "task": "        Receive groceries"
+      }
+    ],
+    "actors": [
+      "Customer",
+      "Driver",
+      "System"
+    ]
+  }
+}

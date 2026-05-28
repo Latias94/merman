@@ -1,0 +1,132 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Feature Prioritization Matrix",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "Plan carefully",
+      "quadrant2Text": "Do first",
+      "quadrant3Text": "Delegate",
+      "quadrant4Text": "Eliminate"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Effort",
+      "xAxisRightText": "High Effort",
+      "yAxisBottomText": "Low Impact",
+      "yAxisTopText": "High Impact"
+    },
+    "points": [
+      {
+        "text": "Emoji reactions",
+        "x": 0.22,
+        "y": 0.15,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Audit logging",
+        "x": 0.65,
+        "y": 0.85,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Keyboard shortcuts",
+        "x": 0.12,
+        "y": 0.68,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Real-time collab",
+        "x": 0.88,
+        "y": 0.75,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Email notifications",
+        "x": 0.18,
+        "y": 0.45,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Custom themes",
+        "x": 0.52,
+        "y": 0.32,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Export to PDF",
+        "x": 0.35,
+        "y": 0.58,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "SSO integration",
+        "x": 0.78,
+        "y": 0.91,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Dark mode support",
+        "x": 0.25,
+        "y": 0.82,
+        "className": null,
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {}
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accTitle": null,
+    "accDescr": null,
+    "direction": "TB",
+    "classes": {},
+    "entities": {
+      "CUSTOMER": {
+        "id": "entity-CUSTOMER-0",
+        "label": "CUSTOMER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [
+              "UK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "date",
+            "name": "created_at",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ORDER": {
+        "id": "entity-ORDER-1",
+        "label": "ORDER",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "customer_id",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "date",
+            "name": "order_date",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "status",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "float",
+            "name": "total_amount",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ORDER_ITEM": {
+        "id": "entity-ORDER_ITEM-2",
+        "label": "ORDER_ITEM",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "order_id",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "product_id",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "quantity",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "float",
+            "name": "unit_price",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PRODUCT": {
+        "id": "entity-PRODUCT-3",
+        "label": "PRODUCT",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "category",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "float",
+            "name": "price",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "stock_count",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "places",
+        "entityB": "entity-ORDER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ORDER-1",
+        "roleA": "contains",
+        "entityB": "entity-ORDER_ITEM-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PRODUCT-3",
+        "roleA": "appears in",
+        "entityB": "entity-ORDER_ITEM-2",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "type": "er",
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

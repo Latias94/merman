@@ -1,0 +1,32 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "Monthly Cloud Infrastructure Costs",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      {
+        "label": "Compute (EC2/GCE)",
+        "value": 42.0
+      },
+      {
+        "label": "Storage (S3/GCS)",
+        "value": 23.0
+      },
+      {
+        "label": "Database (RDS/CloudSQL)",
+        "value": 18.0
+      },
+      {
+        "label": "Networking & CDN",
+        "value": 11.0
+      },
+      {
+        "label": "Monitoring & Logging",
+        "value": 6.0
+      }
+    ]
+  }
+}

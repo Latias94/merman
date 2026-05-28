@@ -1,0 +1,180 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "init",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "add-readme",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "init"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "auth-scaffold",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "add-readme"
+        ],
+        "branch": "feature/auth"
+      },
+      {
+        "id": "login-endpoint",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "auth-scaffold"
+        ],
+        "branch": "feature/auth"
+      },
+      {
+        "id": "jwt-middleware",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "login-endpoint"
+        ],
+        "branch": "feature/auth"
+      },
+      {
+        "id": "db-schema",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "add-readme"
+        ],
+        "branch": "feature/database"
+      },
+      {
+        "id": "migrations",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "db-schema"
+        ],
+        "branch": "feature/database"
+      },
+      {
+        "id": "merge-db",
+        "message": "merged branch feature/database into main",
+        "seq": 7,
+        "type": 3,
+        "tags": [
+          "v0.2.0"
+        ],
+        "parents": [
+          "add-readme",
+          "migrations"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "auth-tests",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "jwt-middleware"
+        ],
+        "branch": "feature/auth"
+      },
+      {
+        "id": "merge-auth",
+        "message": "merged branch feature/auth into main",
+        "seq": 9,
+        "type": 3,
+        "tags": [
+          "v0.3.0"
+        ],
+        "parents": [
+          "merge-db",
+          "auth-tests"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "ci-pipeline",
+        "message": "",
+        "seq": 10,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "merge-auth"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "patch-vuln",
+        "message": "",
+        "seq": 11,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ci-pipeline"
+        ],
+        "branch": "hotfix/security"
+      },
+      {
+        "id": "merge-hotfix",
+        "message": "merged branch hotfix/security into main",
+        "seq": 12,
+        "type": 3,
+        "tags": [
+          "v0.3.1"
+        ],
+        "parents": [
+          "ci-pipeline",
+          "patch-vuln"
+        ],
+        "branch": "main",
+        "customId": true
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "feature/auth"
+      },
+      {
+        "name": "feature/database"
+      },
+      {
+        "name": "hotfix/security"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

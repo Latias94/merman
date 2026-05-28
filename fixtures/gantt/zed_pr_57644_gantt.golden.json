@@ -1,0 +1,436 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Product Launch Timeline",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%b %d",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Research",
+      "Design",
+      "Development",
+      "Launch"
+    ],
+    "tasks": [
+      {
+        "section": "Research",
+        "type": "Research",
+        "task": "Market analysis        ",
+        "id": "r1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done,    r1, 2025-01-06, 14d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2025-01-06"
+          },
+          "endTime": {
+            "data": "14d"
+          }
+        },
+        "startTime": "2025-01-06T00:00:00.000",
+        "endTime": "2025-01-20T00:00:00.000"
+      },
+      {
+        "section": "Research",
+        "type": "Research",
+        "task": "Competitor review      ",
+        "id": "r2",
+        "prevTaskId": "r1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done,    r2, after r1, 7d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after r1"
+          },
+          "endTime": {
+            "data": "7d"
+          }
+        },
+        "startTime": "2025-01-20T00:00:00.000",
+        "endTime": "2025-01-27T00:00:00.000"
+      },
+      {
+        "section": "Research",
+        "type": "Research",
+        "task": "User interviews        ",
+        "id": "r3",
+        "prevTaskId": "r2",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done,    r3, 2025-01-13, 10d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2025-01-13"
+          },
+          "endTime": {
+            "data": "10d"
+          }
+        },
+        "startTime": "2025-01-13T00:00:00.000",
+        "endTime": "2025-01-23T00:00:00.000"
+      },
+      {
+        "section": "Design",
+        "type": "Design",
+        "task": "Wireframes             ",
+        "id": "d1",
+        "prevTaskId": "r3",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done,    d1, after r2, 10d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after r2"
+          },
+          "endTime": {
+            "data": "10d"
+          }
+        },
+        "startTime": "2025-01-27T00:00:00.000",
+        "endTime": "2025-02-06T00:00:00.000"
+      },
+      {
+        "section": "Design",
+        "type": "Design",
+        "task": "Visual design          ",
+        "id": "d2",
+        "prevTaskId": "d1",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":active,  d2, after d1, 14d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after d1"
+          },
+          "endTime": {
+            "data": "14d"
+          }
+        },
+        "startTime": "2025-02-06T00:00:00.000",
+        "endTime": "2025-02-20T00:00:00.000"
+      },
+      {
+        "section": "Design",
+        "type": "Design",
+        "task": "Prototype              ",
+        "id": "d3",
+        "prevTaskId": "d2",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         d3, after d2, 7d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after d2"
+          },
+          "endTime": {
+            "data": "7d"
+          }
+        },
+        "startTime": "2025-02-20T00:00:00.000",
+        "endTime": "2025-02-27T00:00:00.000"
+      },
+      {
+        "section": "Design",
+        "type": "Design",
+        "task": "Usability testing      ",
+        "id": "d4",
+        "prevTaskId": "d3",
+        "order": 6,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         d4, after d3, 5d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after d3"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2025-02-27T00:00:00.000",
+        "endTime": "2025-03-04T00:00:00.000"
+      },
+      {
+        "section": "Development",
+        "type": "Development",
+        "task": "Backend API            ",
+        "id": "dev1",
+        "prevTaskId": "d4",
+        "order": 7,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         dev1, after d2, 21d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after d2"
+          },
+          "endTime": {
+            "data": "21d"
+          }
+        },
+        "startTime": "2025-02-20T00:00:00.000",
+        "endTime": "2025-03-13T00:00:00.000"
+      },
+      {
+        "section": "Development",
+        "type": "Development",
+        "task": "Frontend implementation",
+        "id": "dev2",
+        "prevTaskId": "dev1",
+        "order": 8,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         dev2, after d3, 18d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after d3"
+          },
+          "endTime": {
+            "data": "18d"
+          }
+        },
+        "startTime": "2025-02-27T00:00:00.000",
+        "endTime": "2025-03-17T00:00:00.000"
+      },
+      {
+        "section": "Development",
+        "type": "Development",
+        "task": "Integration            ",
+        "id": "dev3",
+        "prevTaskId": "dev2",
+        "order": 9,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         dev3, after dev1, 7d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after dev1"
+          },
+          "endTime": {
+            "data": "7d"
+          }
+        },
+        "startTime": "2025-03-13T00:00:00.000",
+        "endTime": "2025-03-20T00:00:00.000"
+      },
+      {
+        "section": "Development",
+        "type": "Development",
+        "task": "QA testing             ",
+        "id": "dev4",
+        "prevTaskId": "dev3",
+        "order": 10,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":crit,    dev4, after dev3, 10d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after dev3"
+          },
+          "endTime": {
+            "data": "10d"
+          }
+        },
+        "startTime": "2025-03-20T00:00:00.000",
+        "endTime": "2025-03-30T00:00:00.000"
+      },
+      {
+        "section": "Launch",
+        "type": "Launch",
+        "task": "Staging deploy         ",
+        "id": "l1",
+        "prevTaskId": "dev4",
+        "order": 11,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         l1, after dev4, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after dev4"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2025-03-30T00:00:00.000",
+        "endTime": "2025-04-02T00:00:00.000"
+      },
+      {
+        "section": "Launch",
+        "type": "Launch",
+        "task": "Beta release           ",
+        "id": "l2",
+        "prevTaskId": "l1",
+        "order": 12,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":         l2, after l1, 14d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after l1"
+          },
+          "endTime": {
+            "data": "14d"
+          }
+        },
+        "startTime": "2025-04-02T00:00:00.000",
+        "endTime": "2025-04-16T00:00:00.000"
+      },
+      {
+        "section": "Launch",
+        "type": "Launch",
+        "task": "Production deploy      ",
+        "id": "l3",
+        "prevTaskId": "l2",
+        "order": 13,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": true,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":milestone, l3, after l2, 0d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after l2"
+          },
+          "endTime": {
+            "data": "0d"
+          }
+        },
+        "startTime": "2025-04-16T00:00:00.000",
+        "endTime": "2025-04-16T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}
