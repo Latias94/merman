@@ -2,6 +2,7 @@ use std::fmt::Write as _;
 
 use super::defs::prepare_flowchart_defs;
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
+use super::render::node::geom::{generate_circle_points, generate_full_sine_wave_points};
 use super::*;
 
 pub(super) fn render_flowchart_v2_svg(
@@ -62,53 +63,6 @@ fn rough_stroke_svg_path_bounds(
             path_data, "#000", 1.3, "0 0", 0,
         )?;
     crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
-}
-
-fn generate_circle_points(
-    center_x: f64,
-    center_y: f64,
-    radius: f64,
-    num_points: usize,
-    start_angle_deg: f64,
-    end_angle_deg: f64,
-) -> Vec<(f64, f64)> {
-    let start = start_angle_deg.to_radians();
-    let end = end_angle_deg.to_radians();
-    let angle_range = end - start;
-    let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
-    let mut points = Vec::with_capacity(num_points);
-    for index in 0..num_points {
-        let angle = start + index as f64 * step;
-        let x = center_x + radius * angle.cos();
-        let y = center_y + radius * angle.sin();
-        points.push((-x, -y));
-    }
-    points
-}
-
-fn generate_full_sine_wave_points(
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    amplitude: f64,
-    num_cycles: f64,
-) -> Vec<(f64, f64)> {
-    let steps: usize = 50;
-    let delta_x = x2 - x1;
-    let delta_y = y2 - y1;
-    let cycle_length = delta_x / num_cycles;
-    let frequency = (2.0 * std::f64::consts::PI) / cycle_length;
-    let mid_y = y1 + delta_y / 2.0;
-
-    let mut points = Vec::with_capacity(steps + 1);
-    for index in 0..=steps {
-        let t = index as f64 / steps as f64;
-        let x = x1 + t * delta_x;
-        let y = mid_y + amplitude * (frequency * (x - x1)).sin();
-        points.push((x, y));
-    }
-    points
 }
 
 fn prepare_render_edges_and_extra_nodes<'a>(

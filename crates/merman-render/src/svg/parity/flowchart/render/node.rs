@@ -2,7 +2,7 @@
 
 use super::super::*;
 
-mod geom;
+pub(in crate::svg::parity::flowchart) mod geom;
 mod helpers;
 mod label;
 pub(in crate::svg::parity) mod roughjs;

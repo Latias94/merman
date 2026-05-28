@@ -6,7 +6,7 @@ pub(super) use crate::svg::parity::roughjs_common::{
     closed_path_d_from_points as path_from_points, mermaid_arc_points as arc_points,
 };
 
-pub(super) fn generate_circle_points(
+pub(in crate::svg::parity::flowchart) fn generate_circle_points(
     center_x: f64,
     center_y: f64,
     radius: f64,
@@ -32,7 +32,7 @@ pub(super) fn generate_circle_points(
     pts
 }
 
-pub(super) fn generate_full_sine_wave_points(
+pub(in crate::svg::parity::flowchart) fn generate_full_sine_wave_points(
     x1: f64,
     y1: f64,
     x2: f64,
