@@ -10,6 +10,13 @@ Default SVG output is not optimized or cleaned by default because parity output 
 surface for upstream Mermaid fixtures. Consumers that need renderer compatibility should opt in to
 a pipeline explicitly.
 
+Typical choices:
+
+- Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
+- Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
+- Use `render_svg_resvg_safe_sync` or `SvgPipeline::resvg_safe()` before PNG/JPG/PDF export through `resvg` / `usvg`.
+- Add `SvgPostprocessor` passes when a host application needs product-specific styling, metadata, or cleanup after a built-in preset.
+
 ## Presets
 
 | Preset | Behavior |
@@ -98,11 +105,11 @@ let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
     ScopedCssPostprocessor::new(
         r#"
 .node rect {
-  stroke: var(--host-accent);
+  stroke: #2563eb;
   stroke-width: 2px;
 }
 .merman-foreignobject-fallback-text {
-  fill: var(--host-fg);
+  fill: #111827;
 }
 "#,
     )
@@ -119,7 +126,10 @@ let svg = renderer
 `ScopedCssPostprocessor` injects a `<style>` element under the root `<svg>` tag and prefixes normal
 selectors with the root SVG id. `CssOverridePolicy::StripExistingImportant` is opt-in because it
 changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful classes and inline
-font/fill hints so host CSS can target readable fallback output.
+font/fill hints so host CSS can target readable fallback output. When the same pipeline feeds raster
+export, keep injected CSS in the `usvg` / `resvg` supported subset; browser-only features such as CSS
+custom properties are better reserved for inline-only SVG pipelines or resolved by the host before
+rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom

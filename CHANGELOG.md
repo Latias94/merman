@@ -8,25 +8,43 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.6.0] - 2026-05-28
 
+This release adds an opt-in SVG output pipeline for applications that need Mermaid-parity SVG by default but also need cleaner output for in-app previews, PNG/PDF export, or host-specific theming. Use `render_svg_sync` for parity snapshots, `SvgPipeline::readable()` when the SVG will be inlined and should keep readable fallback text, and `SvgPipeline::resvg_safe()` before rasterizing through `resvg` / `usvg`.
+
 ### Added
 
-- Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus `SvgPostprocessor` hooks for host-specific cleanup and styling.
-- Added metadata in SVG postprocessing context (`diagram_type`, `diagram_title`, and `svg_id`) and product-neutral styling helpers including scoped CSS and opt-in CSS override policy.
+- Added `SvgPipeline::readable()` and `SvgPipeline::resvg_safe()` for callers that need fallback text, rasterizer-friendly SVG, or cleanup without changing default `render_svg_sync` output.
+- Added host styling extension points: `SvgPostprocessor` for custom passes, `ScopedCssPostprocessor` for CSS injection, and `CssOverridePolicy::StripExistingImportant` for callers that want app styles to override Mermaid defaults. Postprocessors can read the diagram type, title, and root SVG id from `SvgPostprocessContext`.
 - Expanded Zed-derived regression coverage for Sequence, Flowchart, ER, Gantt, Class, and raster fallback cases.
-- Added a runnable `svg_pipeline` example:
+- Added a rendering guide in `docs/rendering/SVG_OUTPUT_PIPELINE.md` and a runnable `svg_pipeline` example:
 
   ```bash
   cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
   ```
 
-  Library integrations can use the same pipeline directly:
+  Library integrations can use the same pipeline directly. This example builds a typical editor/export pipeline: make the SVG `resvg`-friendly, allow host CSS to override Mermaid defaults, and scope the injected CSS to one diagram id.
 
   ```rust
-  use merman::render::{HeadlessRenderer, SvgPipeline};
+  use merman::render::{
+      CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
+  };
 
-  let renderer = HeadlessRenderer::new().with_diagram_id("example-diagram");
+  let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
+      ScopedCssPostprocessor::new(
+          r#"
+  .node rect {
+    stroke: #2563eb;
+    stroke-width: 2px;
+  }
+  .merman-foreignobject-fallback-text {
+    fill: #111827;
+  }
+  "#,
+      )
+      .with_override_policy(CssOverridePolicy::StripExistingImportant),
+  );
+  let renderer = HeadlessRenderer::new().with_diagram_id("host-diagram");
   let svg = renderer
-      .render_svg_with_pipeline_sync("flowchart TD; A-->B;", &SvgPipeline::resvg_safe())?
+      .render_svg_with_pipeline_sync("flowchart TD; A[API]-->B[DB];", &pipeline)?
       .unwrap();
   # let _ = svg;
   # Ok::<(), Box<dyn std::error::Error>>(())

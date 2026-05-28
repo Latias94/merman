@@ -171,6 +171,13 @@ prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
 `HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original
 `<foreignObject>` nodes and add best-effort `<text>/<tspan>` fallback overlays.
 
+The split is intentional:
+
+- `render_svg_sync` is for Mermaid-parity snapshots and callers that want the raw SVG contract.
+- `render_svg_readable_sync` is for inline previews that can keep `<foreignObject>` but still want readable fallback text.
+- `render_svg_resvg_safe_sync` or `SvgPipeline::resvg_safe()` is for PNG/JPG/PDF export and tools built on `resvg` / `usvg`.
+- `SvgPostprocessor` and `ScopedCssPostprocessor` are for host applications that need product-specific theme or cleanup passes after a built-in preset.
+
 `render_svg_sync` intentionally stays Mermaid-parity by default. For consumer-oriented output,
 use an explicit SVG pipeline:
 
@@ -181,8 +188,18 @@ use merman::render::{
 
 let renderer = HeadlessRenderer::new().with_diagram_id("readme-diagram");
 let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
-    ScopedCssPostprocessor::new(".node rect { stroke: var(--host-accent); }")
-        .with_override_policy(CssOverridePolicy::StripExistingImportant),
+    ScopedCssPostprocessor::new(
+        r#"
+.node rect {
+  stroke: #2563eb;
+  stroke-width: 2px;
+}
+.merman-foreignobject-fallback-text {
+  fill: #111827;
+}
+"#,
+    )
+    .with_override_policy(CssOverridePolicy::StripExistingImportant),
 );
 let svg = renderer
     .render_svg_with_pipeline_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &pipeline)?
@@ -191,7 +208,7 @@ let svg = renderer
 ```
 
 See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
-behavior, metadata-aware host postprocessor extension points, and scoped CSS examples.
+behavior, custom postprocessors that can read diagram type/title/svg id, and scoped CSS examples.
 
 Runnable example:
 
