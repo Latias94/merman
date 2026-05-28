@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "slug": "resvg-safe-svg-output",
+  "title": "Resvg-Safe SVG Output Pipeline",
+  "status": "active",
+  "updated": "2026-05-28",
+  "scope_kind": "architecture",
+  "problem": "Downstream consumers need readable, resvg-safe, and product-custom SVG output, but current cleanup is implicit and too narrow, causing wrappers such as Zed's internal mermaid_render crate.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0063-extensible-svg-output-pipeline.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/resvg-safe-svg-output/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/resvg-safe-svg-output/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/resvg-safe-svg-output/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/resvg-safe-svg-output/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render foreign_object_overlay_splits_literal_backslash_n",
+    "cargo nextest run -p merman-render svg::parity::fallback::tests::foreign_object_overlay",
+    "cargo nextest run -p merman-render svg",
+    "cargo nextest run -p merman",
+    "cargo fmt -p merman-render -p merman -- --check",
+    "cargo clippy -p merman-render -p merman --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/resvg-safe-svg-output/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0063-extensible-svg-output-pipeline.md"
+  ],
+  "continue_policy": {
+    "default_action": "continue_with_next_task",
+    "next_task": "RSO-030",
+    "notes": "Start pipeline skeleton after the fallback correctness slice is committed."
+  }
+}
