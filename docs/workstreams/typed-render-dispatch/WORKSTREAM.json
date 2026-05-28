@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "slug": "typed-render-dispatch",
+  "title": "Typed Render Dispatch",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Typed render model aliases and kind metadata are repeated across core and renderer dispatch matches, increasing maintenance risk for each diagram alias or model addition.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/typed-render-dispatch/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/typed-render-dispatch/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/typed-render-dispatch/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/typed-render-dispatch/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-core render_semantic_model",
+    "cargo nextest run -p merman-render render_model",
+    "cargo nextest run -p merman-render",
+    "cargo nextest run -p merman-core",
+    "cargo fmt -p merman-core -p merman-render -- --check",
+    "cargo clippy -p merman-core --all-targets -- -D warnings",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/typed-render-dispatch/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Lane complete. Split generated parse-render dispatch as a follow-on if future diagram additions keep creating boilerplate."
+  }
+}

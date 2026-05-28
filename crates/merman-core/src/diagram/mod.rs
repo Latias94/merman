@@ -108,6 +108,68 @@ pub enum RenderSemanticModel {
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
 }
 
+impl RenderSemanticModel {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Json(_) => "json",
+            Self::Mindmap(_) => "mindmap",
+            Self::State(_) => "state",
+            Self::Sequence(_) => "sequence",
+            Self::Flowchart(_) => "flowchart",
+            Self::Architecture(_) => "architecture",
+            Self::Class(_) => "class",
+            Self::C4(_) => "c4",
+            Self::Kanban(_) => "kanban",
+            Self::Gantt(_) => "gantt",
+            Self::Pie(_) => "pie",
+            Self::Packet(_) => "packet",
+            Self::Timeline(_) => "timeline",
+            Self::Journey(_) => "journey",
+            Self::Requirement(_) => "requirement",
+            Self::Sankey(_) => "sankey",
+            Self::Radar(_) => "radar",
+            Self::Info(_) => "info",
+            Self::Treemap(_) => "treemap",
+            Self::Block(_) => "block",
+            Self::Er(_) => "er",
+            Self::QuadrantChart(_) => "quadrantChart",
+            Self::XyChart(_) => "xychart",
+            Self::GitGraph(_) => "gitGraph",
+        }
+    }
+
+    pub fn supports_diagram_type(&self, diagram_type: &str) -> bool {
+        match self {
+            Self::Json(_) => true,
+            Self::Mindmap(_) => diagram_type == "mindmap",
+            Self::State(_) => matches!(diagram_type, "stateDiagram" | "state"),
+            Self::Sequence(_) => matches!(diagram_type, "sequence" | "zenuml"),
+            Self::Flowchart(_) => {
+                matches!(diagram_type, "flowchart-v2" | "flowchart" | "flowchart-elk")
+            }
+            Self::Architecture(_) => diagram_type == "architecture",
+            Self::Class(_) => matches!(diagram_type, "classDiagram" | "class"),
+            Self::C4(_) => diagram_type == "c4",
+            Self::Kanban(_) => diagram_type == "kanban",
+            Self::Gantt(_) => diagram_type == "gantt",
+            Self::Pie(_) => diagram_type == "pie",
+            Self::Packet(_) => diagram_type == "packet",
+            Self::Timeline(_) => diagram_type == "timeline",
+            Self::Journey(_) => diagram_type == "journey",
+            Self::Requirement(_) => diagram_type == "requirement",
+            Self::Sankey(_) => diagram_type == "sankey",
+            Self::Radar(_) => diagram_type == "radar",
+            Self::Info(_) => diagram_type == "info",
+            Self::Treemap(_) => diagram_type == "treemap",
+            Self::Block(_) => diagram_type == "block",
+            Self::Er(_) => matches!(diagram_type, "er" | "erDiagram"),
+            Self::QuadrantChart(_) => diagram_type == "quadrantChart",
+            Self::XyChart(_) => diagram_type == "xychart",
+            Self::GitGraph(_) => diagram_type == "gitGraph",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedDiagramRender {
     pub meta: ParseMetadata,

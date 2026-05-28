@@ -390,11 +390,10 @@ impl Engine {
         let sanitize = sanitize_start.map(|s| s.elapsed());
 
         if let Some(start) = total_start {
-            let model_kind = Self::render_model_kind(&model);
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                 meta.diagram_type,
-                model_kind,
+                model.kind(),
                 start.elapsed(),
                 preprocess.unwrap_or_default(),
                 parse.unwrap_or_default(),
@@ -663,35 +662,6 @@ impl Engine {
                     v.acc_descr = Some(common_db::sanitize_acc_descr(s, effective_config));
                 }
             }
-        }
-    }
-
-    fn render_model_kind(model: &RenderSemanticModel) -> &'static str {
-        match model {
-            RenderSemanticModel::Json(_) => "json",
-            RenderSemanticModel::State(_) => "state",
-            RenderSemanticModel::Sequence(_) => "sequence",
-            RenderSemanticModel::Mindmap(_) => "mindmap",
-            RenderSemanticModel::Flowchart(_) => "flowchart",
-            RenderSemanticModel::Architecture(_) => "architecture",
-            RenderSemanticModel::Class(_) => "class",
-            RenderSemanticModel::C4(_) => "c4",
-            RenderSemanticModel::Kanban(_) => "kanban",
-            RenderSemanticModel::Gantt(_) => "gantt",
-            RenderSemanticModel::Pie(_) => "pie",
-            RenderSemanticModel::Packet(_) => "packet",
-            RenderSemanticModel::Timeline(_) => "timeline",
-            RenderSemanticModel::Journey(_) => "journey",
-            RenderSemanticModel::Requirement(_) => "requirement",
-            RenderSemanticModel::Sankey(_) => "sankey",
-            RenderSemanticModel::Radar(_) => "radar",
-            RenderSemanticModel::Info(_) => "info",
-            RenderSemanticModel::Treemap(_) => "treemap",
-            RenderSemanticModel::Block(_) => "block",
-            RenderSemanticModel::Er(_) => "er",
-            RenderSemanticModel::QuadrantChart(_) => "quadrantChart",
-            RenderSemanticModel::XyChart(_) => "xychart",
-            RenderSemanticModel::GitGraph(_) => "gitGraph",
         }
     }
 

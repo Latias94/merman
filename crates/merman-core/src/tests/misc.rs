@@ -186,6 +186,51 @@ fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
 }
 
 #[test]
+fn render_semantic_model_kind_reports_canonical_names() {
+    let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
+    assert_eq!(sequence.kind(), "sequence");
+
+    let flowchart = render_model_for("flowchart TD\nA-->B");
+    assert_eq!(flowchart.kind(), "flowchart");
+
+    let er = render_model_for("erDiagram\nCUSTOMER ||--o{ ORDER : places");
+    assert_eq!(er.kind(), "er");
+
+    let json_model = RenderSemanticModel::Json(json!({ "type": "custom" }));
+    assert_eq!(json_model.kind(), "json");
+}
+
+#[test]
+fn render_semantic_model_supports_diagram_type_aliases() {
+    let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
+    assert!(sequence.supports_diagram_type("sequence"));
+    assert!(sequence.supports_diagram_type("zenuml"));
+    assert!(!sequence.supports_diagram_type("flowchart-v2"));
+
+    let flowchart = render_model_for("flowchart TD\nA-->B");
+    assert!(flowchart.supports_diagram_type("flowchart-v2"));
+    assert!(flowchart.supports_diagram_type("flowchart"));
+    assert!(flowchart.supports_diagram_type("flowchart-elk"));
+    assert!(!flowchart.supports_diagram_type("sequence"));
+
+    let er = render_model_for("erDiagram\nCUSTOMER ||--o{ ORDER : places");
+    assert!(er.supports_diagram_type("er"));
+    assert!(er.supports_diagram_type("erDiagram"));
+    assert!(!er.supports_diagram_type("classDiagram"));
+
+    let json_model = RenderSemanticModel::Json(json!({ "type": "custom" }));
+    assert!(json_model.supports_diagram_type("unknown-plugin"));
+}
+
+fn render_model_for(input: &str) -> RenderSemanticModel {
+    Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .model
+}
+
+#[test]
 fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = "sequenceDiagram\nAlice->>Bob: Hi";
