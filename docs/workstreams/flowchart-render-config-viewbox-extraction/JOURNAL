@@ -1,0 +1,2 @@
+2026-05-28T00:00:00Z opened bounded lane for flowchart render config and viewBox/content-bounds extraction.
+2026-05-28T14:00:00+08:00 extracted render configuration, rendered content bounds, final viewBox bounds, and recorded gates.
