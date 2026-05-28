@@ -1,27 +1,31 @@
 # Resvg-Safe SVG Output Pipeline - Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## Current State
 
-The workstream and ADR are open. The first focused fallback correctness task is implemented and
-verified: readable fallback text now splits literal `\n` inside `<foreignObject>` labels into
-separate overlay text lines.
+The workstream is implemented and verified. SVG output now has an explicit `SvgPipeline` with
+`Parity`, `Readable`, and `ResvgSafe` presets. Default `render_svg_sync` remains parity output,
+while readable, raster, and CLI raster paths opt in to the shared pipeline.
 
 ## Current Task
 
-- Task ID: RSO-030
+- Task ID: RSO-080
 - Owner: codex
 - Files:
   - `crates/merman-render/src/svg`
   - `crates/merman/src/lib.rs`
-- Goal: Introduce `SvgPipeline` presets without changing default parity rendering.
+- `crates/merman/src/render/raster.rs`
+- `crates/merman-cli/src/main.rs`
+- Goal: Close verified pipeline lane.
 - Validation:
-  - `cargo nextest run -p merman-render fallback`
-  - `cargo nextest run -p merman`
+  - `cargo nextest run -p merman-render`
+  - `cargo nextest run -p merman --features raster`
+  - `cargo nextest run -p merman-cli`
   - `cargo fmt -p merman-render -p merman -- --check`
-- Status: TODO
+- `cargo clippy -p merman-render -p merman --all-targets -- -D warnings`
+- Status: DONE
 
 ## Decisions
 
@@ -29,8 +33,12 @@ separate overlay text lines.
 - Build consumer cleanup as an explicit pipeline.
 - Expose a string/Cow custom postprocessor first; keep event-stream internals private.
 - Do not copy Zed GPL implementation.
+- `SvgPipeline::resvg_safe()` strips `<foreignObject>` only after fallback overlays are inserted.
+- Product-specific theme/accent semantics remain host-owned custom postprocessors.
 
 ## Next Step
 
-Start RSO-030 by moving readable fallback behavior behind a pipeline preset while keeping existing
-public helpers as compatibility wrappers.
+No required next task remains in this workstream. Follow-up candidates, if needed:
+
+- Add more structured XML/CSS parsing internally if string postprocessing profiles as a bottleneck.
+- Add host-specific examples once an integration requests theme/accent pass guidance.

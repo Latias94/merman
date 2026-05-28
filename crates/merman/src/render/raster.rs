@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::render::{HeadlessError, LayoutOptions, SvgRenderOptions};
+use crate::render::{HeadlessError, LayoutOptions, SvgPipeline, SvgRenderOptions};
 use merman_core::{Engine, ParseOptions};
 
 #[derive(Debug, thiserror::Error)]
@@ -50,12 +50,17 @@ pub fn render_png_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) =
-        super::render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
+    let Some(svg) = super::render_svg_with_pipeline_sync(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        svg_options,
+        &SvgPipeline::resvg_safe(),
+    )?
     else {
         return Ok(None);
     };
-    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_png(&svg, raster)?))
 }
 
@@ -67,12 +72,17 @@ pub fn render_jpeg_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) =
-        super::render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
+    let Some(svg) = super::render_svg_with_pipeline_sync(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        svg_options,
+        &SvgPipeline::resvg_safe(),
+    )?
     else {
         return Ok(None);
     };
-    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_jpeg(&svg, raster)?))
 }
 
@@ -83,12 +93,17 @@ pub fn render_pdf_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) =
-        super::render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
+    let Some(svg) = super::render_svg_with_pipeline_sync(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        svg_options,
+        &SvgPipeline::resvg_safe(),
+    )?
     else {
         return Ok(None);
     };
-    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_pdf(&svg)?))
 }
 

@@ -8,5 +8,9 @@
 #![forbid(unsafe_code)]
 
 mod parity;
+mod pipeline;
 
 pub use parity::*;
+pub use pipeline::{
+    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor, resvg_safe_svg,
+};

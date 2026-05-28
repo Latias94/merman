@@ -17,11 +17,16 @@ pub use merman_core::*;
 pub mod render {
     pub use merman_render::math::{MathRenderer, NoopMathRenderer};
     pub use merman_render::model::LayoutedDiagram;
-    pub use merman_render::svg::{SvgRenderOptions, foreign_object_label_fallback_svg_text};
+    pub use merman_render::svg::{
+        SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessor, SvgRenderOptions,
+        foreign_object_label_fallback_svg_text, resvg_safe_svg,
+    };
     pub use merman_render::text::{
         DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
     };
-    pub use merman_render::{LayoutOptions, layout_parsed};
+    pub use merman_render::{
+        Error as RenderError, LayoutOptions, Result as RenderResult, layout_parsed,
+    };
 
     #[cfg(feature = "raster")]
     pub mod raster;
@@ -214,6 +219,33 @@ pub mod render {
         Ok(Some(svg))
     }
 
+    pub fn apply_svg_pipeline(svg: &str, pipeline: &SvgPipeline) -> Result<String> {
+        Ok(pipeline.process_to_string(svg)?)
+    }
+
+    pub fn svg_readable(svg: &str) -> Result<String> {
+        apply_svg_pipeline(svg, &SvgPipeline::readable())
+    }
+
+    pub fn svg_resvg_safe(svg: &str) -> Result<String> {
+        apply_svg_pipeline(svg, &SvgPipeline::resvg_safe())
+    }
+
+    pub fn render_svg_with_pipeline_sync(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<String>> {
+        let Some(svg) = render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(apply_svg_pipeline(&svg, pipeline)?))
+    }
+
     /// Synchronous SVG render helper that applies a best-effort readability fallback for
     /// `<foreignObject>` labels.
     ///
@@ -226,11 +258,31 @@ pub mod render {
         layout_options: &LayoutOptions,
         svg_options: &SvgRenderOptions,
     ) -> Result<Option<String>> {
-        let Some(svg) = render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
-        else {
-            return Ok(None);
-        };
-        Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
+        render_svg_with_pipeline_sync(
+            engine,
+            text,
+            parse_options,
+            layout_options,
+            svg_options,
+            &SvgPipeline::readable(),
+        )
+    }
+
+    pub fn render_svg_resvg_safe_sync(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+    ) -> Result<Option<String>> {
+        render_svg_with_pipeline_sync(
+            engine,
+            text,
+            parse_options,
+            layout_options,
+            svg_options,
+            &SvgPipeline::resvg_safe(),
+        )
     }
 
     pub async fn render_svg(
@@ -255,6 +307,114 @@ pub mod render {
         // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
         // It executes synchronously and does not yield.
         render_svg_readable_sync(engine, text, parse_options, layout_options, svg_options)
+    }
+
+    pub async fn render_svg_with_pipeline(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<String>> {
+        // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
+        // It executes synchronously and does not yield.
+        render_svg_with_pipeline_sync(
+            engine,
+            text,
+            parse_options,
+            layout_options,
+            svg_options,
+            pipeline,
+        )
+    }
+
+    pub async fn render_svg_resvg_safe(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+    ) -> Result<Option<String>> {
+        // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
+        // It executes synchronously and does not yield.
+        render_svg_resvg_safe_sync(engine, text, parse_options, layout_options, svg_options)
+    }
+
+    #[cfg(test)]
+    mod svg_pipeline_tests {
+        use super::*;
+
+        #[test]
+        fn readable_helper_routes_through_readable_pipeline() {
+            let engine = merman_core::Engine::new();
+            let layout = LayoutOptions::headless_svg_defaults();
+            let svg = SvgRenderOptions::default();
+            let source = "flowchart TD\nA[Hello] --> B[World]";
+
+            let helper = render_svg_readable_sync(
+                &engine,
+                source,
+                merman_core::ParseOptions::default(),
+                &layout,
+                &svg,
+            )
+            .unwrap()
+            .unwrap();
+            let pipeline = render_svg_with_pipeline_sync(
+                &engine,
+                source,
+                merman_core::ParseOptions::default(),
+                &layout,
+                &svg,
+                &SvgPipeline::readable(),
+            )
+            .unwrap()
+            .unwrap();
+
+            assert_eq!(helper, pipeline);
+            assert!(pipeline.contains("data-merman-foreignobject"));
+        }
+
+        #[test]
+        fn default_svg_helper_stays_parity_without_pipeline_cleanup() {
+            let engine = merman_core::Engine::new();
+            let layout = LayoutOptions::headless_svg_defaults();
+            let svg = SvgRenderOptions::default();
+            let source = "flowchart TD\nA[Hello] --> B[World]";
+
+            let default_svg = render_svg_sync(
+                &engine,
+                source,
+                merman_core::ParseOptions::default(),
+                &layout,
+                &svg,
+            )
+            .unwrap()
+            .unwrap();
+            let parity_pipeline = render_svg_with_pipeline_sync(
+                &engine,
+                source,
+                merman_core::ParseOptions::default(),
+                &layout,
+                &svg,
+                &SvgPipeline::parity(),
+            )
+            .unwrap()
+            .unwrap();
+            let readable = render_svg_readable_sync(
+                &engine,
+                source,
+                merman_core::ParseOptions::default(),
+                &layout,
+                &svg,
+            )
+            .unwrap()
+            .unwrap();
+
+            assert_eq!(default_svg, parity_pipeline);
+            assert_ne!(default_svg, readable);
+        }
     }
 
     /// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.
@@ -376,16 +536,32 @@ pub mod render {
             render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
         }
 
+        pub fn render_svg_with_pipeline_sync(
+            &self,
+            text: &str,
+            pipeline: &SvgPipeline,
+        ) -> Result<Option<String>> {
+            render_svg_with_pipeline_sync(
+                &self.engine,
+                text,
+                self.parse,
+                &self.layout,
+                &self.svg,
+                pipeline,
+            )
+        }
+
         /// Renders SVG and applies a best-effort readability fallback for `<foreignObject>` labels.
         ///
         /// Many headless SVG renderers and rasterizers do not fully support HTML inside
         /// `<foreignObject>`. This helper overlays extracted label text as `<text>/<tspan>` so
         /// consumers can still display something readable.
         pub fn render_svg_readable_sync(&self, text: &str) -> Result<Option<String>> {
-            let Some(svg) = self.render_svg_sync(text)? else {
-                return Ok(None);
-            };
-            Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
+            self.render_svg_with_pipeline_sync(text, &SvgPipeline::readable())
+        }
+
+        pub fn render_svg_resvg_safe_sync(&self, text: &str) -> Result<Option<String>> {
+            self.render_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
         }
 
         pub fn render_svg_readable_sync_with_diagram_id(
@@ -393,10 +569,23 @@ pub mod render {
             text: &str,
             diagram_id: &str,
         ) -> Result<Option<String>> {
-            let Some(svg) = self.render_svg_sync_with_diagram_id(text, diagram_id)? else {
-                return Ok(None);
-            };
-            Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
+            self.render_svg_with_pipeline_sync_with_diagram_id(
+                text,
+                diagram_id,
+                &SvgPipeline::readable(),
+            )
+        }
+
+        pub fn render_svg_resvg_safe_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+        ) -> Result<Option<String>> {
+            self.render_svg_with_pipeline_sync_with_diagram_id(
+                text,
+                diagram_id,
+                &SvgPipeline::resvg_safe(),
+            )
         }
 
         pub fn render_svg_sync_with(
@@ -407,6 +596,22 @@ pub mod render {
             render_svg_sync(&self.engine, text, self.parse, &self.layout, svg)
         }
 
+        pub fn render_svg_with_pipeline_sync_with(
+            &self,
+            text: &str,
+            svg: &SvgRenderOptions,
+            pipeline: &SvgPipeline,
+        ) -> Result<Option<String>> {
+            render_svg_with_pipeline_sync(
+                &self.engine,
+                text,
+                self.parse,
+                &self.layout,
+                svg,
+                pipeline,
+            )
+        }
+
         pub fn render_svg_sync_with_diagram_id(
             &self,
             text: &str,
@@ -415,6 +620,17 @@ pub mod render {
             let mut svg = self.svg.clone();
             svg.diagram_id = Some(sanitize_svg_id(diagram_id));
             self.render_svg_sync_with(text, &svg)
+        }
+
+        pub fn render_svg_with_pipeline_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+            pipeline: &SvgPipeline,
+        ) -> Result<Option<String>> {
+            let mut svg = self.svg.clone();
+            svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            self.render_svg_with_pipeline_sync_with(text, &svg, pipeline)
         }
 
         #[cfg(feature = "raster")]

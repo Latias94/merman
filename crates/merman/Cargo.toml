@@ -55,6 +55,7 @@ required-features = ["render"]
 [[bench]]
 name = "architecture_stress"
 harness = false
+required-features = ["render"]
 
 [[bench]]
 name = "architecture_layout_stress"

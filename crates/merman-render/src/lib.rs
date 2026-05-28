@@ -53,11 +53,22 @@ pub enum Error {
     UnsupportedDiagram { diagram_type: String },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error("SVG postprocessor `{pass}` failed: {message}")]
+    SvgPostprocess { pass: String, message: String },
     #[error("semantic model JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    pub fn svg_postprocess(pass: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::SvgPostprocess {
+            pass: pass.into(),
+            message: message.into(),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct LayoutOptions {

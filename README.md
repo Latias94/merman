@@ -170,6 +170,25 @@ If your downstream renderer does not support SVG `<foreignObject>` (common for r
 prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
 overlay extracted from Mermaid labels.
 
+`render_svg_sync` intentionally stays Mermaid-parity by default. For consumer-oriented output,
+use an explicit SVG pipeline:
+
+```rust
+use merman::render::{HeadlessRenderer, SvgPipeline};
+
+let renderer = HeadlessRenderer::new();
+let svg = renderer
+    .render_svg_with_pipeline_sync(
+        "flowchart TD; A[Layer 7\\nHTTP]-->B;",
+        &SvgPipeline::resvg_safe(),
+    )?
+    .unwrap();
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
+behavior and host postprocessor extension points.
+
 ## Showcase
 
 All screenshots below are produced by [`merman-cli`](crates/merman-cli) (headless) and committed under

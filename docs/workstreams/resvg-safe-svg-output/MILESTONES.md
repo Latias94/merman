@@ -1,6 +1,6 @@
 # Resvg-Safe SVG Output Pipeline - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-28
 
 ## M0 - Scope Freeze
@@ -23,7 +23,7 @@ Exit criteria:
 
 ## M2 - Pipeline Skeleton
 
-Status: Pending
+Status: Done
 
 Exit criteria:
 
@@ -33,7 +33,7 @@ Exit criteria:
 
 ## M3 - Resvg-Safe Built-ins
 
-Status: Pending
+Status: Done
 
 Exit criteria:
 
@@ -42,7 +42,7 @@ Exit criteria:
 
 ## M4 - Host Extension API
 
-Status: Pending
+Status: Done
 
 Exit criteria:
 
@@ -51,7 +51,7 @@ Exit criteria:
 
 ## M5 - Verification And Closeout
 
-Status: Pending
+Status: Done
 
 Exit criteria:
 

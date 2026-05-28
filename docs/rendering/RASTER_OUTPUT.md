@@ -20,12 +20,17 @@ many diagrams would rasterize as “geometry only” (boxes/lines) or even look 
 ## Current approach
 
 To keep SVG parity strictness focused on `merman-render` while still producing useful raster
-outputs, `merman-cli` applies a **raster-only SVG preprocessing pass**:
+outputs, `merman-cli` and the `merman::render::raster::render_*_sync` helpers apply the explicit
+`SvgPipeline::resvg_safe()` preset:
 
 - For raster formats (PNG/JPG/PDF), convert common `<foreignObject>` label patterns into SVG
-  `<text>/<tspan>` elements (approximate alignment + line breaks).
+  `<text>` elements (approximate alignment + line breaks).
 - The fallback accounts for common Mermaid positioning patterns where labels are placed via parent
   `<g transform="translate(x,y)">` wrappers (so overlays land in the right place for kanban/mindmap).
+- Strip the original `<foreignObject>` elements after the fallback overlay is inserted.
+- Remove common `usvg` / `resvg` hazards such as unsupported `@keyframes` / `:root` CSS blocks,
+  animation declarations, CSS `deg` units, empty visual attributes, and non-finite values such as
+  `NaN`.
 - Keep the default SVG output unchanged (no impact on upstream SVG baselines).
 
 This makes `tools/preview/export-fixtures-png.ps1` produce readable previews across most diagrams
@@ -40,13 +45,38 @@ Note on sizing:
 
 ## Library usage
 
-If you want the same PNG/JPG/PDF output without spawning the CLI, enable the `raster` feature on
-the `merman` crate and call the helpers directly:
+If you want render-and-raster output without spawning the CLI, enable the `raster` feature on the
+`merman` crate and call the render helpers:
 
 ```rust
-use merman::render::raster::{svg_to_jpeg, svg_to_pdf, svg_to_png, RasterOptions};
+use merman::{Engine, ParseOptions};
+use merman::render::{headless_layout_options, raster, SvgRenderOptions};
+
+let engine = Engine::new();
+let bytes = raster::render_png_sync(
+    &engine,
+    "flowchart TD; A[Layer 7\\nHTTP]-->B;",
+    ParseOptions::default(),
+    &headless_layout_options(),
+    &SvgRenderOptions::default(),
+    &raster::RasterOptions::default(),
+)?
+.unwrap();
+# let _ = bytes;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+If you already have an SVG string and want the same preprocessing before calling the lower-level
+`svg_to_*` functions, apply the pipeline first:
+
+```rust
+use merman::render::{
+    raster::{svg_to_jpeg, svg_to_pdf, svg_to_png, RasterOptions},
+    svg_resvg_safe,
+};
 
 let svg = "<svg><!-- ... --></svg>";
+let svg = svg_resvg_safe(svg)?;
 
 let mut opts = RasterOptions::default();
 opts.scale = 2.0;
@@ -58,8 +88,7 @@ let pdf = svg_to_pdf(svg)?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Note: raster helpers intentionally apply the `<foreignObject>` readability fallback described
-above. Strict upstream SVG baselines are still generated from the original SVG output.
+Strict upstream SVG baselines are still generated from the original parity SVG output.
 
 ## Known gaps
 

@@ -44,7 +44,7 @@ pub trait SvgPostprocessor: Send + Sync {
     fn name(&self) -> &'static str;
     fn process<'a>(
         &self,
-        svg: &'a str,
+        svg: std::borrow::Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<std::borrow::Cow<'a, str>>;
 }

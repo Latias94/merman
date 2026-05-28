@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "resvg-safe-svg-output",
   "title": "Resvg-Safe SVG Output Pipeline",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-28",
   "scope_kind": "architecture",
   "problem": "Downstream consumers need readable, resvg-safe, and product-custom SVG output, but current cleanup is implicit and too narrow, causing wrappers such as Zed's internal mermaid_render crate.",
@@ -43,8 +43,8 @@
     "docs/adr/0063-extensible-svg-output-pipeline.md"
   ],
   "continue_policy": {
-    "default_action": "continue_with_next_task",
-    "next_task": "RSO-030",
-    "notes": "Start pipeline skeleton after the fallback correctness slice is committed."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "SvgPipeline presets, resvg-safe built-ins, host postprocessor API, docs, and gates are complete. Split future structured parser or host-theme examples into a new workstream if needed."
   }
 }

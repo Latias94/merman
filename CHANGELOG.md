@@ -6,10 +6,24 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
+  string/Cow `SvgPostprocessor` extension point for host-provided SVG cleanup.
+
+### Changed
+
+- Routed readable SVG helpers, raster render helpers, and CLI raster export through the shared
+  SVG pipeline. The default `render_svg_sync` path remains Mermaid-parity output and does not
+  apply consumer cleanup by default.
+
 ### Fixed
 
 - Fixed readable/raster `<foreignObject>` fallback text extraction so labels containing literal
   `\n` are split into separate overlay text lines.
+- Fixed raster-oriented SVG cleanup for common `usvg` / `resvg` hazards by stripping
+  `<foreignObject>` after fallback insertion, unsupported CSS blocks, animation declarations,
+  empty/invalid visual attributes, CSS `deg` units, and non-finite values such as `NaN`.
 
 ## [0.5.0] - 2026-05-19
 

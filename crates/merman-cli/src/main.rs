@@ -485,7 +485,7 @@ impl<'a> RasterRequest<'a> {
     }
 
     fn rasterize(&self) -> Result<Vec<u8>, CliError> {
-        let svg = merman::render::foreign_object_label_fallback_svg_text(self.svg);
+        let svg = merman::render::svg_resvg_safe(self.svg)?;
         match self.args.render_format {
             RenderFormat::Svg => Err(CliError::Usage(usage())),
             RenderFormat::Png => Ok(merman::render::raster::svg_to_png(
