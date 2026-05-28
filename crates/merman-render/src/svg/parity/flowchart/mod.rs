@@ -3,6 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 mod css;
 mod debug_svg;
+mod document;
 mod edge;
 mod edge_geom;
 mod hierarchy;

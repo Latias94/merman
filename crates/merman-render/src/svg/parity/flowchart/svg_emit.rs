@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::*;
 
 pub(super) fn render_flowchart_v2_svg(
@@ -1488,33 +1489,18 @@ fn render_flowchart_v2_svg_with_config_inner(
         bbox_max_y = bbox_max_y.max(baseline_y + descent);
     }
 
-    // Chromium's `getBBox()` values frequently land on an `f32` lattice. Mermaid then computes the
-    // root viewport in JS double space:
-    // - viewBox.x/y = bbox.x/y - padding
-    // - viewBox.w/h = bbox.width/height + 2*padding
-    //
-    // Mirror that by quantizing the content bounds to `f32` first, then applying padding in `f64`.
-    let bbox_min_x_f32 = bbox_min_x as f32;
-    let bbox_min_y_f32 = bbox_min_y as f32;
-    let bbox_max_x_f32 = bbox_max_x as f32;
-    let bbox_max_y_f32 = bbox_max_y as f32;
-    let bbox_has_area = (bbox_max_x_f32 - bbox_min_x_f32).abs() >= 1e-6
-        || (bbox_max_y_f32 - bbox_min_y_f32).abs() >= 1e-6;
-    let bbox_w_f32 = if bbox_has_area {
-        (bbox_max_x_f32 - bbox_min_x_f32).max(1.0)
-    } else {
-        0.0
-    };
-    let bbox_h_f32 = if bbox_has_area {
-        (bbox_max_y_f32 - bbox_min_y_f32).max(1.0)
-    } else {
-        0.0
-    };
-
-    let vb_min_x = (bbox_min_x_f32 as f64) - diagram_padding;
-    let vb_min_y = (bbox_min_y_f32 as f64) - diagram_padding;
-    let vb_w = (bbox_w_f32 as f64) + diagram_padding * 2.0;
-    let vb_h = (bbox_h_f32 as f64) + diagram_padding * 2.0;
+    let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
+        diagram_id,
+        diagram_type,
+        model,
+        use_max_width,
+        apply_root_overrides: options.apply_root_overrides,
+        diagram_padding,
+        bbox_min_x,
+        bbox_min_y,
+        bbox_max_x,
+        bbox_max_y,
+    });
 
     drop(_g_viewbox);
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
@@ -1534,99 +1520,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         + layout.clusters.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
 
-    let vb_w = vb_w.max(1.0);
-    let vb_h = vb_h.max(1.0);
-
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut w_attr = fmt_string(vb_w);
-    let mut h_attr = fmt_string(vb_h);
-    if options.apply_root_overrides {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override,
-        );
-    }
-
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.trim().is_empty());
-    let aria_labelledby_raw = acc_title.map(|_| format!("chart-title-{diagram_id}"));
-    let aria_describedby_raw = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let aria_labelledby_attr = aria_labelledby_raw
-        .as_deref()
-        .map(super::super::util::escape_attr);
-    let aria_describedby_attr = aria_describedby_raw
-        .as_deref()
-        .map(super::super::util::escape_attr);
-
-    if use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("flowchart"),
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby: aria_labelledby_attr.as_deref(),
-                aria_describedby: aria_describedby_attr.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
-            },
-        );
-    } else {
-        let after_roledescription_attrs: [(&str, &str); 1] =
-            [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("flowchart"),
-                width: root_svg::SvgRootWidth::Fixed(w_attr.as_str()),
-                height_attr: Some(h_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                aria_labelledby: aria_labelledby_attr.as_deref(),
-                aria_describedby: aria_describedby_attr.as_deref(),
-                after_roledescription_attrs: &after_roledescription_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterClass,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
-            },
-        );
-    }
-
-    if let (Some(id), Some(title)) = (aria_labelledby_raw.as_deref(), acc_title) {
-        out.push_str(r#"<title id=""#);
-        super::super::util::escape_attr_into(&mut out, id);
-        out.push_str(r#"">"#);
-        escape_xml_into(&mut out, title);
-        out.push_str("</title>");
-    }
-    if let (Some(id), Some(descr)) = (aria_describedby_raw.as_deref(), acc_descr) {
-        out.push_str(r#"<desc id=""#);
-        super::super::util::escape_attr_into(&mut out, id);
-        out.push_str(r#"">"#);
-        escape_xml_into(&mut out, descr);
-        out.push_str("</desc>");
-    }
+    document.push_root_open(&mut out);
+    document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
