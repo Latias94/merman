@@ -14,14 +14,24 @@ AGR-010 is implemented and verified:
 - `graph/adapter.rs` owns `FlowchartV2Model` conversion and validation.
 - `graph/mod.rs` keeps rendering/layout behavior unchanged.
 
+AGR-020 is implemented and verified:
+
+- `tests/graph_fixture.rs` checks the copied upstream graph fixture allowlist.
+- The allowlist currently has 13 exact matches: 7 ASCII and 6 Unicode.
+- The gap inventory names every remaining copied graph fixture so future routing work can move
+  fixtures from gap to allowlist intentionally.
+- `tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md` mirrors the readable gap list.
+
 ## Next Task
 
-Run AGR-020:
+Run AGR-030:
 
-- Add `graph_fixture` integration tests around copied `mermaid-ascii` graph fixtures.
-- Keep an explicit allowlist of fixtures that currently match.
-- Record unsupported fixtures as named gaps instead of implying full parity.
-- Verify with `cargo nextest run -p merman-ascii graph_fixture` and flowchart gates.
+- Replace the linear-only LR layout assumption for branch/multi-root/fan-out/fan-in fixtures.
+- Start by comparing `two_layer_single_graph*.txt`, `two_root_nodes*.txt`,
+  `two_single_root_nodes.txt`, `ampersand_*.txt`, `comments.txt`, and
+  `preserve_order_of_definition.txt`.
+- Move fixtures from `GRAPH_FIXTURE_GAPS` to `GRAPH_FIXTURE_ALLOWLIST` only after exact-output
+  parity is verified.
 
 ## Constraints
 

@@ -29,3 +29,10 @@ Last updated: 2026-05-29
   - PASS `cargo fmt --all --check`
   - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 19 skipped)
   - PASS `cargo nextest run -p merman-ascii graph::` (6 passed, 35 skipped)
+- 2026-05-29 AGR-020: Added `crates/merman-ascii/tests/graph_fixture.rs` with an explicit
+  allowlist and a named gap inventory covering all copied graph fixtures under `ascii` and
+  `extended-chars`.
+- 2026-05-29 AGR-020 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)

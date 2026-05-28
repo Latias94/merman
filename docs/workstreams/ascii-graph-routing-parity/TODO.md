@@ -19,15 +19,17 @@ Last updated: 2026-05-29
 
 ## M1 - Fixture Harness
 
-- [ ] AGR-020 [owner=codex] [deps=AGR-010] [scope=crates/merman-ascii/tests,crates/merman-ascii/tests/testdata/mermaid-ascii]
+- [x] AGR-020 [owner=codex] [deps=AGR-010] [scope=crates/merman-ascii/tests,crates/merman-ascii/tests/testdata/mermaid-ascii]
   Goal: Add a graph fixture harness with an explicit allowlist and skipped-gap inventory for copied
   `mermaid-ascii` graph fixtures.
   Validation:
-  - `cargo nextest run -p merman-ascii graph_fixture`
-  - `cargo nextest run -p merman-ascii flowchart`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
   Review: The harness must not claim full corpus parity; unsupported fixtures must be named.
-  Evidence: Allowlisted fixture tests and gap list.
-  Handoff: Pending.
+  Evidence: `tests/graph_fixture.rs` allowlists 13 exact graph fixture matches and requires all
+  remaining copied graph fixtures to be named as gaps. `GRAPH_FIXTURE_GAPS.md` mirrors the readable
+  gap inventory.
+  Handoff: AGR-030 is next.
 
 ## M2 - Branch And Multi-Root Routing
 

@@ -10,6 +10,8 @@ These fixtures are copied from the MIT-licensed
 
 The files keep the upstream `input---expected-output` split format. They are tracked here because
 `repo-ref/` is gitignored and must not be required by CI, crates.io packages, or downstream users.
+Graph fixture parity is tracked by `tests/graph_fixture.rs`; known non-matching graph fixtures are
+named in `GRAPH_FIXTURE_GAPS.md`.
 
 Expected inventory:
 
