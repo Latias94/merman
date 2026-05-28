@@ -66,6 +66,12 @@ fn inject_style(svg: &mut String, css: &str) {
 
     if let Some(start) = svg.find("<svg") {
         if let Some(end) = find_tag_end(svg, start) {
+            if let Some(style_close_start) = svg.rfind("</style") {
+                if let Some(style_close_end) = find_tag_end(svg, style_close_start) {
+                    svg.insert_str(style_close_end + 1, &style);
+                    return;
+                }
+            }
             svg.insert_str(end + 1, &style);
             return;
         }
@@ -148,7 +154,7 @@ mod tests {
     use crate::svg::pipeline::SvgPipeline;
 
     #[test]
-    fn scoped_css_injects_after_root_svg_tag() {
+    fn scoped_css_injects_after_root_svg_tag_when_no_style_exists() {
         let svg = r#"<svg id="diagram"><rect class="node"/></svg>"#;
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
@@ -159,6 +165,23 @@ mod tests {
 
         assert!(out.starts_with(r#"<svg id="diagram"><style"#));
         assert!(out.contains("#diagram .node rect, #diagram text.label { fill: red; }"));
+    }
+
+    #[test]
+    fn scoped_css_injects_after_existing_style_for_cascade_order() {
+        let svg =
+            r#"<svg id="diagram"><style>#diagram .node rect { fill: red; }</style><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(".node rect { fill: green; }"))
+            .process_to_string(svg)
+            .unwrap();
+
+        let existing = out.find("fill: red").unwrap();
+        let injected = out.find("fill: green").unwrap();
+        assert!(
+            existing < injected,
+            "injected CSS should follow Mermaid CSS for cascade order: {out}"
+        );
     }
 
     #[test]

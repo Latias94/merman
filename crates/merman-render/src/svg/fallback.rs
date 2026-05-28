@@ -123,6 +123,70 @@ fn strip_html_tags(s: &str) -> String {
     out
 }
 
+fn decode_html_entities_once(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after_amp = &rest[amp + 1..];
+        let Some(semi) = after_amp.find(';') else {
+            out.push('&');
+            rest = after_amp;
+            continue;
+        };
+
+        let entity = &after_amp[..semi];
+        let decoded = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "nbsp" => Some(' '),
+            _ => {
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                } else if let Some(decimal) = entity.strip_prefix('#') {
+                    decimal.parse::<u32>().ok().and_then(char::from_u32)
+                } else {
+                    None
+                }
+            }
+        };
+
+        if let Some(ch) = decoded {
+            out.push(ch);
+        } else {
+            out.push('&');
+            out.push_str(entity);
+            out.push(';');
+        }
+        rest = &after_amp[semi + 1..];
+    }
+
+    out.push_str(rest);
+    out
+}
+
+fn decode_html_entities(text: &str) -> String {
+    let mut current = text.to_string();
+    for _ in 0..3 {
+        if !current.contains('&') {
+            break;
+        }
+        let next = decode_html_entities_once(&current);
+        if next == current {
+            break;
+        }
+        current = next;
+    }
+    current
+}
+
 fn htmlish_to_text_lines(html: &str) -> Vec<String> {
     // Mermaid foreignObject labels often look like:
     //   <div class="label">Line 1<br/>Line 2</div>
@@ -132,7 +196,7 @@ fn htmlish_to_text_lines(html: &str) -> Vec<String> {
     normalized = normalized.replace("<br>", "\n");
     normalized = normalized.replace("</br>", "\n");
     normalized = normalized.replace("\\n", "\n");
-    let text = strip_html_tags(&normalized);
+    let text = decode_html_entities(&strip_html_tags(&normalized));
 
     text.lines()
         .map(|l| l.trim())
@@ -564,5 +628,21 @@ mod tests {
                 && out.contains("font-style: italic"),
             "expected font context to propagate: {out}"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_decodes_double_escaped_html_entities_for_fallback_text() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>List&amp;lt;Animal&amp;gt; &amp;amp; friends</p></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(">List&lt;Animal&gt; &amp; friends<"),
+            "expected fallback text to avoid double-escaped entities: {out}"
+        );
+        let fallback = &out[out
+            .find(r#"data-merman-foreignobject="fallback""#)
+            .expect("fallback group")..];
+        assert!(!fallback.contains("&amp;lt;"), "got: {fallback}");
+        assert!(!fallback.contains("&amp;gt;"), "got: {fallback}");
     }
 }

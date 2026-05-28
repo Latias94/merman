@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn resvg_safe_pipeline_strips_generic_raster_hazards() {
-        let svg = r#"<svg id="test" xmlns="http://www.w3.org/2000/svg"><style type="text/css">@keyframes bounce { 0% { transform: scale(1); } 100% { transform: scale(1.1); } } #test :root { --bg: white; } .node rect { animation: dash 1s linear; transform: rotate(45deg); fill: red; }</style><g transform="translate(undefined,NaN)"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject><rect width="10px" height="" fill="hsl(240, 100%, NaN%)" stroke="" style="fill: ; stroke: #333; transform: rotate(45deg); animation: dash 1s;"/></g></svg>"#;
+        let svg = r#"<svg id="test" xmlns="http://www.w3.org/2000/svg"><style type="text/css">@keyframes bounce { 0% { transform: scale(1); } 100% { transform: scale(1.1); } } #test :root { --bg: white; } .node rect { animation: dash 1s linear; transform: rotate(45deg); fill: red; }</style><g transform="translate(undefined,NaN)"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject><rect width="10px" height="12px" stroke="" style="fill: ; stroke: #333; transform: rotate(45deg); animation: dash 1s;"/><rect width="10px" height="" fill="hsl(240, 100%, NaN%)"/></g></svg>"#;
 
         let out = SvgPipeline::resvg_safe().process_to_string(svg).unwrap();
 
@@ -173,6 +173,7 @@ mod tests {
         assert!(!out.contains(r#"fill="hsl"#));
         assert!(!out.contains(r#"stroke="""#));
         assert!(out.contains(r#"width="10""#));
+        assert!(out.contains(r#"height="12""#));
         assert!(out.contains("stroke:#333"));
         assert!(out.contains(">Hello</text>"));
     }

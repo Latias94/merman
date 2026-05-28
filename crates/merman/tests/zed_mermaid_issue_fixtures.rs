@@ -149,6 +149,37 @@ fn zed_flowchart_foreign_object_labels_have_text_fallbacks() {
 }
 
 #[test]
+fn zed_class_generics_fallback_text_is_not_double_escaped() {
+    let svg = render_resvg_safe(
+        "zed-class-generics",
+        r#"classDiagram
+    class Shelter {
+        -List~Animal~ animals
+        +adopt(Animal a) bool
+    }"#,
+    );
+
+    assert!(
+        !svg.contains("&amp;lt;") && !svg.contains("&amp;gt;"),
+        "fallback text should not double-escape class generic markers: {svg}"
+    );
+    assert!(
+        svg.contains("List&lt;Animal"),
+        "expected class generic marker to remain readable in fallback text: {svg}"
+    );
+}
+
+#[test]
+fn zed_resvg_safe_output_drops_empty_rect_placeholders() {
+    let svg = render_resvg_safe("zed-empty-rects", "flowchart TD\n    A[Hello] --> B[World]");
+
+    assert!(
+        !svg.contains("<rect/>"),
+        "resvg-safe output should drop empty rect placeholders: {svg}"
+    );
+}
+
+#[test]
 fn zed_old_mermaid_rs_partial_parallelogram_stays_inside_result_boundary() {
     let result = catch_unwind(AssertUnwindSafe(|| {
         HeadlessRenderer::new()

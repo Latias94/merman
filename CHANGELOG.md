@@ -53,13 +53,14 @@ This release adds an opt-in SVG output pipeline for applications that need Merma
 ### Changed
 
 - Readable SVG helpers, raster helpers, and CLI raster export now use the shared SVG output pipeline; default `render_svg_sync` remains Mermaid-parity output with no consumer cleanup.
+- `ScopedCssPostprocessor` now inserts host CSS after existing SVG styles when possible, so scoped host rules follow Mermaid defaults in cascade order.
 
 ### Fixed
 
 - Fixed Architecture arrowheads on diagonal edges so they follow the rendered line direction.
-- Fixed readable/raster output for Mermaid HTML labels: fallback text now handles literal `\n` and keeps useful styling context for host CSS.
+- Fixed readable/raster output for Mermaid HTML labels: fallback text now handles literal `\n`, avoids double-escaped entities such as class generics, and keeps useful styling context for host CSS.
 - Fixed sequence diagrams with keyword-like participant ids such as `AS`, `END`, `RECT`, or `loop`.
-- Hardened `SvgPipeline::resvg_safe()` against common `usvg` / `resvg` incompatibilities, including unsupported CSS, animation declarations, invalid visual attributes, CSS `deg` units, and non-finite values.
+- Hardened `SvgPipeline::resvg_safe()` against common `usvg` / `resvg` incompatibilities, including unsupported CSS, animation declarations, invalid visual attributes, empty rectangle placeholders, CSS `deg` units, and non-finite values.
 
 ## [0.5.0] - 2026-05-19
 

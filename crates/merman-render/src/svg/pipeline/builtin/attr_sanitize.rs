@@ -38,6 +38,17 @@ pub(crate) fn sanitize_element_attributes(svg: &str) -> String {
         };
 
         let tag = &svg[start..=end];
+        if is_bad_rect_tag(tag) {
+            cursor = if tag.trim_end().ends_with("/>") {
+                end + 1
+            } else {
+                svg[end + 1..]
+                    .find("</rect>")
+                    .map(|rel_close| end + 1 + rel_close + "</rect>".len())
+                    .unwrap_or(end + 1)
+            };
+            continue;
+        }
         out.push_str(&sanitize_tag_attributes(tag));
         cursor = end + 1;
     }
@@ -165,6 +176,58 @@ fn normalize_px_attribute(name: &str, value: &str) -> Option<String> {
     }
 }
 
+fn is_start_or_empty_tag(tag: &str, expected: &str) -> bool {
+    let tag = tag.trim_start();
+    if !tag.starts_with('<') || tag.starts_with("</") || tag.starts_with("<!--") {
+        return false;
+    }
+
+    let name = tag[1..]
+        .chars()
+        .take_while(|ch| !ch.is_whitespace() && *ch != '/' && *ch != '>')
+        .collect::<String>();
+    name.eq_ignore_ascii_case(expected)
+}
+
+fn attr_value(tag: &str, name: &str) -> Option<String> {
+    static ATTR_RE: OnceLock<Regex> = OnceLock::new();
+    let attr_re = ATTR_RE.get_or_init(|| {
+        Regex::new(r#"\s+([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*"([^"]*)""#)
+            .expect("valid SVG attribute regex")
+    });
+
+    for caps in attr_re.captures_iter(tag) {
+        if caps[1].eq_ignore_ascii_case(name) {
+            return Some(caps[2].to_string());
+        }
+    }
+    None
+}
+
+fn is_missing_or_invalid_rect_dimension(value: Option<&str>) -> bool {
+    let Some(value) = value.map(str::trim) else {
+        return true;
+    };
+    if value.is_empty() {
+        return true;
+    }
+    if let Ok(n) = value.parse::<f64>() {
+        return !n.is_finite() || n <= 0.0;
+    }
+    false
+}
+
+fn is_bad_rect_tag(tag: &str) -> bool {
+    if !is_start_or_empty_tag(tag, "rect") {
+        return false;
+    }
+
+    let width = attr_value(tag, "width");
+    let height = attr_value(tag, "height");
+    is_missing_or_invalid_rect_dimension(width.as_deref())
+        || is_missing_or_invalid_rect_dimension(height.as_deref())
+}
+
 fn sanitize_style_attribute(value: &str) -> String {
     let mut out = Vec::new();
 
@@ -222,5 +285,20 @@ mod tests {
 
         assert!(!out.contains("undefined"), "got: {out}");
         assert!(out.contains(r#"style="stroke:#333""#), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_drops_rects_without_positive_dimensions() {
+        let svg = r#"<svg><rect/><rect width="0" height="10"/><rect width="12" height="8"/><g><rect width="NaN" height="10"><title>bad</title></rect></g></svg>"#;
+        let out = sanitize_element_attributes(svg);
+
+        assert!(!out.contains("<rect/>"), "got: {out}");
+        assert!(!out.contains(r#"width="0""#), "got: {out}");
+        assert!(!out.contains("NaN"), "got: {out}");
+        assert!(!out.contains("<title>bad</title>"), "got: {out}");
+        assert!(
+            out.contains(r#"<rect width="12" height="8"/>"#),
+            "got: {out}"
+        );
     }
 }

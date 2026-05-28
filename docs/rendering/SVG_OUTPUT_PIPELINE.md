@@ -23,7 +23,7 @@ Typical choices:
 | --- | --- |
 | `SvgPipeline::parity()` | No post-processing. This preserves the exact SVG string produced by the parity renderer. |
 | `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays for labels emitted via `<foreignObject>`. |
-| `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards such as unsupported CSS blocks, animation declarations, CSS `deg` units, empty visual attributes, and non-finite values. |
+| `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards such as unsupported CSS blocks, animation declarations, CSS `deg` units, empty visual attributes, empty rectangle placeholders, and non-finite values. |
 
 ## Rendering With A Pipeline
 
@@ -124,12 +124,13 @@ let svg = renderer
 ```
 
 `ScopedCssPostprocessor` injects a `<style>` element under the root `<svg>` tag and prefixes normal
-selectors with the root SVG id. `CssOverridePolicy::StripExistingImportant` is opt-in because it
-changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful classes and inline
-font/fill hints so host CSS can target readable fallback output. When the same pipeline feeds raster
-export, keep injected CSS in the `usvg` / `resvg` supported subset; browser-only features such as CSS
-custom properties are better reserved for inline-only SVG pipelines or resolved by the host before
-rasterizing.
+selectors with the root SVG id. When the SVG already has style elements, the injected style is placed
+after them so host rules follow Mermaid defaults in cascade order. `CssOverridePolicy::StripExistingImportant`
+is opt-in because it changes cascade semantics. Generated `<foreignObject>` fallback text keeps useful
+classes and inline font/fill hints so host CSS can target readable fallback output. When the same pipeline
+feeds raster export, keep injected CSS in the `usvg` / `resvg` supported subset; browser-only features
+such as CSS custom properties are better reserved for inline-only SVG pipelines or resolved by the host
+before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
