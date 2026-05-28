@@ -46,6 +46,99 @@ struct ArchitectureEdgePoints {
     end_y: f64,
 }
 
+struct ArchitectureArrowGeometry {
+    points: String,
+    transform: String,
+    bounds: Bounds,
+}
+
+fn architecture_dir_unit(dir: char) -> (f64, f64) {
+    match dir {
+        'L' => (1.0, 0.0),
+        'R' => (-1.0, 0.0),
+        'T' => (0.0, 1.0),
+        'B' => (0.0, -1.0),
+        _ => (1.0, 0.0),
+    }
+}
+
+fn architecture_arrow_geometry(
+    dir: char,
+    anchor_x: f64,
+    anchor_y: f64,
+    adjacent_x: f64,
+    adjacent_y: f64,
+    arrow_size: f64,
+) -> ArchitectureArrowGeometry {
+    let half_arrow_size = arrow_size / 2.0;
+    let dx = anchor_x - adjacent_x;
+    let dy = anchor_y - adjacent_y;
+    let len = (dx * dx + dy * dy).sqrt();
+    let (ux, uy) = if len > 1e-6 {
+        (dx / len, dy / len)
+    } else {
+        architecture_dir_unit(dir)
+    };
+
+    let port_x_shift = if is_arch_dir_x(dir) {
+        arrow_shift(dir, anchor_x, arrow_size)
+    } else {
+        anchor_x - half_arrow_size
+    };
+    let port_y_shift = if is_arch_dir_y(dir) {
+        arrow_shift(dir, anchor_y, arrow_size)
+    } else {
+        anchor_y - half_arrow_size
+    };
+
+    if ux.abs() < 1e-6 || uy.abs() < 1e-6 {
+        return ArchitectureArrowGeometry {
+            points: arrow_points(dir, arrow_size),
+            transform: format!("translate({},{})", fmt(port_x_shift), fmt(port_y_shift)),
+            bounds: bounds_from_rect(port_x_shift, port_y_shift, arrow_size, arrow_size),
+        };
+    }
+
+    // Mermaid positions Architecture arrows as standalone polygons rather than SVG markers.
+    // Rotate that polygon by the actual final segment, so diagonal crosslinks point along the
+    // edge instead of only following the requested port side.
+    let tip_x = anchor_x + 2.0 * ux;
+    let tip_y = anchor_y + 2.0 * uy;
+    let base_x = tip_x - arrow_size * ux;
+    let base_y = tip_y - arrow_size * uy;
+    let perp_x = -uy * half_arrow_size;
+    let perp_y = ux * half_arrow_size;
+    let p0 = (base_x + perp_x, base_y + perp_y);
+    let p1 = (base_x - perp_x, base_y - perp_y);
+    let p2 = (tip_x, tip_y);
+    let exact_bounds = Bounds {
+        min_x: p0.0.min(p1.0).min(p2.0),
+        min_y: p0.1.min(p1.1).min(p2.1),
+        max_x: p0.0.max(p1.0).max(p2.0),
+        max_y: p0.1.max(p1.1).max(p2.1),
+    };
+    let port_bounds = bounds_from_rect(port_x_shift, port_y_shift, arrow_size, arrow_size);
+    let angle = (-ux).atan2(uy).to_degrees();
+
+    ArchitectureArrowGeometry {
+        points: arrow_points('T', arrow_size),
+        transform: format!(
+            "translate({},{}) rotate({},{},{})",
+            fmt(tip_x - half_arrow_size),
+            fmt(tip_y - arrow_size),
+            fmt(angle),
+            fmt(half_arrow_size),
+            fmt(arrow_size)
+        ),
+        bounds: Bounds {
+            min_x: exact_bounds.min_x.min(port_bounds.min_x),
+            min_y: exact_bounds.min_y.min(port_bounds.min_y),
+            max_x: exact_bounds.max_x.max(port_bounds.max_x),
+            max_y: exact_bounds.max_y.max(port_bounds.max_y),
+        },
+    }
+}
+
 fn architecture_edge_label_plan(
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
@@ -304,7 +397,6 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     // Edges (including conservative label bounds).
     if model.edges_len() != 0 {
         let arrow_size = settings.icon_size_px / 6.0;
-        let half_arrow_size = arrow_size / 2.0;
         for (edge_idx, edge) in model.edges().enumerate() {
             let points = edge_points(edge_idx, edge);
 
@@ -324,37 +416,27 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             );
 
             if edge.lhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, points.start_x, arrow_size)
-                } else {
-                    points.start_x - half_arrow_size
-                };
-                let y_shift = if is_arch_dir_y(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, points.start_y, arrow_size)
-                } else {
-                    points.start_y - half_arrow_size
-                };
-                extend_bounds(
-                    content_bounds,
-                    bounds_from_rect(x_shift, y_shift, arrow_size, arrow_size),
+                let arrow = architecture_arrow_geometry(
+                    edge.lhs_dir,
+                    points.start_x,
+                    points.start_y,
+                    points.mid_x,
+                    points.mid_y,
+                    arrow_size,
                 );
+                extend_bounds(content_bounds, arrow.bounds);
             }
 
             if edge.rhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, points.end_x, arrow_size)
-                } else {
-                    points.end_x - half_arrow_size
-                };
-                let y_shift = if is_arch_dir_y(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, points.end_y, arrow_size)
-                } else {
-                    points.end_y - half_arrow_size
-                };
-                extend_bounds(
-                    content_bounds,
-                    bounds_from_rect(x_shift, y_shift, arrow_size, arrow_size),
+                let arrow = architecture_arrow_geometry(
+                    edge.rhs_dir,
+                    points.end_x,
+                    points.end_y,
+                    points.mid_x,
+                    points.mid_y,
+                    arrow_size,
                 );
+                extend_bounds(content_bounds, arrow.bounds);
             }
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
@@ -385,42 +467,36 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             );
 
             if edge.lhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, points.start_x, arrow_size)
-                } else {
-                    points.start_x - half_arrow_size
-                };
-                let y_shift = if is_arch_dir_y(edge.lhs_dir) {
-                    arrow_shift(edge.lhs_dir, points.start_y, arrow_size)
-                } else {
-                    points.start_y - half_arrow_size
-                };
+                let arrow = architecture_arrow_geometry(
+                    edge.lhs_dir,
+                    points.start_x,
+                    points.start_y,
+                    points.mid_x,
+                    points.mid_y,
+                    arrow_size,
+                );
                 let _ = write!(
                     out,
-                    r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
-                    pts = arrow_points(edge.lhs_dir, arrow_size),
-                    x = fmt(x_shift),
-                    y = fmt(y_shift)
+                    r#"<polygon points="{pts}" transform="{transform}" class="arrow"/>"#,
+                    pts = arrow.points,
+                    transform = arrow.transform
                 );
             }
 
             if edge.rhs_into == Some(true) {
-                let x_shift = if is_arch_dir_x(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, points.end_x, arrow_size)
-                } else {
-                    points.end_x - half_arrow_size
-                };
-                let y_shift = if is_arch_dir_y(edge.rhs_dir) {
-                    arrow_shift(edge.rhs_dir, points.end_y, arrow_size)
-                } else {
-                    points.end_y - half_arrow_size
-                };
+                let arrow = architecture_arrow_geometry(
+                    edge.rhs_dir,
+                    points.end_x,
+                    points.end_y,
+                    points.mid_x,
+                    points.mid_y,
+                    arrow_size,
+                );
                 let _ = write!(
                     out,
-                    r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
-                    pts = arrow_points(edge.rhs_dir, arrow_size),
-                    x = fmt(x_shift),
-                    y = fmt(y_shift)
+                    r#"<polygon points="{pts}" transform="{transform}" class="arrow"/>"#,
+                    pts = arrow.points,
+                    transform = arrow.transform
                 );
             }
 

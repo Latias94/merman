@@ -485,6 +485,36 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             })
         }
 
+        fn has_class_token(n: roxmltree::Node<'_, '_>, token: &str) -> bool {
+            n.attribute("class")
+                .is_some_and(|c| c.split_whitespace().any(|t| t == token))
+        }
+
+        fn is_architecture_edge_arrow(n: roxmltree::Node<'_, '_>) -> bool {
+            if !(n.tag_name().name() == "polygon" && has_class_token(n, "arrow")) {
+                return false;
+            }
+
+            let mut in_architecture_svg = false;
+            let mut in_architecture_edges = false;
+            for a in n.ancestors() {
+                if !a.is_element() {
+                    continue;
+                }
+                if a.tag_name().name() == "svg"
+                    && a.attribute("aria-roledescription")
+                        .is_some_and(|v| v == "architecture")
+                {
+                    in_architecture_svg = true;
+                }
+                if a.tag_name().name() == "g" && has_class_token(a, "architecture-edges") {
+                    in_architecture_edges = true;
+                }
+            }
+
+            in_architecture_svg && in_architecture_edges
+        }
+
         fn is_xychart_bar_data_label_text(n: roxmltree::Node<'_, '_>) -> bool {
             if !(n.is_element() && n.tag_name().name() == "text") {
                 return false;
@@ -556,6 +586,14 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             if mode != DomMode::Strict {
                 if key == "data-points" {
                     val = "<data-points>".to_string();
+                    normalized_geom = true;
+                }
+                if key == "transform" && is_architecture_edge_arrow(n) {
+                    // Mermaid Architecture emits edge arrowheads as translated polygons, so
+                    // upstream diagonal arrows can point away from their edge segment. Merman
+                    // rotates those standalone polygons from actual routed geometry; parity
+                    // modes should treat that as a visual-geometry delta, not a DOM regression.
+                    val = "<geom>".to_string();
                     normalized_geom = true;
                 }
                 if key == "d" || key == "points" {
@@ -1393,6 +1431,18 @@ mod tests {
         }
 
         assert_eq!(find_ellipse_id(&dom), Some("<icon-id>"));
+    }
+
+    #[test]
+    fn parity_masks_architecture_edge_arrow_transform_as_geom() {
+        let svg = r#"<svg aria-roledescription="architecture"><g class="architecture-edges"><g><path class="edge" d="M 0,0 L 10,10"/><polygon class="arrow" points="0,0 10,0 5,10" transform="translate(1,2) rotate(45,5,10)"/></g></g></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+        let arrow = &dom.children[0].children[0].children[1];
+
+        assert_eq!(
+            arrow.attrs.get("transform").map(|s| s.as_str()),
+            Some("<geom>")
+        );
     }
 
     #[test]

@@ -54,7 +54,7 @@ Diagram coverage and current parity status live in [docs/alignment/STATUS.md](do
 
 ## Install
 
-From source (today):
+From source:
 
 ```sh
 cargo install --path crates/merman-cli
@@ -167,8 +167,9 @@ If you already know the diagram type (e.g. from a Markdown fence info string), p
 `Engine::parse_diagram_as_sync(...)` to skip type detection.
 
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
-prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
-overlay extracted from Mermaid labels.
+prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
+`HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original
+`<foreignObject>` nodes and add best-effort `<text>/<tspan>` fallback overlays.
 
 `render_svg_sync` intentionally stays Mermaid-parity by default. For consumer-oriented output,
 use an explicit SVG pipeline:
@@ -345,7 +346,7 @@ gantt
 
 | Architecture (ports + routing) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: cross-region services + crosslinks" src="docs/assets/showcase/architecture_crosslinks.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd`](fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd)<br/><sub>Note: Architecture geometry/viewport parity is still being tightened (layout ports in progress); see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md).</sub> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: cross-region services + crosslinks" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture_crosslinks.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd`](fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd)<br/><sub>Note: Architecture diagonal arrowheads are oriented from the rendered edge segment; DOM parity still normalizes geometry against upstream Mermaid.</sub> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
 
 ## Quality gates
 
@@ -380,8 +381,8 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 
 ## Limitations
 
-- SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_readable_sync()`.
-- Architecture layout/edge routing is still being aligned to upstream Cytoscape/FCoSE; expect differences in dense compound graphs (see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md)).
+- SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.
+- Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
 
 ## Architecture notes

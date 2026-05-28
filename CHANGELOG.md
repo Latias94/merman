@@ -57,6 +57,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Fixed Architecture edge arrowheads on diagonal routed segments. Standalone Architecture polygon
+  arrows now rotate from the actual rendered edge segment while axis-aligned arrows keep the
+  Mermaid-compatible translate-only DOM.
 - Fixed readable/raster `<foreignObject>` fallback text extraction so labels containing literal
   `\n` are split into separate overlay text lines.
 - Improved readable/raster `<foreignObject>` fallback overlays so generated SVG text keeps useful
