@@ -51,7 +51,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "AGR-030",
-    "notes": "AGR-010 split graph model and flowchart adapter boundaries. AGR-020 added a graph fixture allowlist/gap harness with 13 exact matches and named remaining graph gaps. Continue with branch and multi-root routing fixtures before the 2026-05-29 09:00 +08:00 target."
+    "next_task": "AGR-040",
+    "notes": "AGR-010 split graph model and flowchart adapter boundaries. AGR-020 added a graph fixture allowlist/gap harness. AGR-030 replaced LR linear layout with grid placement and basic branch/multi-root/fan-in routing, raising graph fixture parity to 31 exact matches. Continue with self/back-edge and label separation fixtures before the 2026-05-29 09:00 +08:00 target."
   }
 }

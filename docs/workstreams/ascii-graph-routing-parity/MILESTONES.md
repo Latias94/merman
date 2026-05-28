@@ -20,6 +20,8 @@ Exit criteria:
 
 ## M2 - Branch And Multi-Root Routing
 
+Status: Complete for the current lane slice.
+
 Exit criteria:
 
 - At least one branch or multi-root reference fixture moves into the passing allowlist.

@@ -2,6 +2,7 @@ use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::text::display_width;
+use std::collections::{BTreeMap, HashMap, HashSet};
 mod adapter;
 mod model;
 
@@ -19,10 +20,14 @@ struct GraphCharset {
     horizontal: char,
     vertical: char,
     right_connector: char,
+    down_connector: char,
     arrow_right: char,
+    arrow_up: char,
     arrow_down: char,
     dotted_horizontal: char,
     dotted_vertical: char,
+    corner_down_right: char,
+    corner_right_up: char,
     rounded_top_left: char,
     rounded_top_right: char,
     rounded_bottom_left: char,
@@ -40,10 +45,14 @@ impl GraphCharset {
                 horizontal: '-',
                 vertical: '|',
                 right_connector: '|',
+                down_connector: '-',
                 arrow_right: '>',
+                arrow_up: '^',
                 arrow_down: 'v',
                 dotted_horizontal: '.',
                 dotted_vertical: ':',
+                corner_down_right: '+',
+                corner_right_up: '+',
                 rounded_top_left: '/',
                 rounded_top_right: '\\',
                 rounded_bottom_left: '\\',
@@ -57,10 +66,14 @@ impl GraphCharset {
                 horizontal: '─',
                 vertical: '│',
                 right_connector: '├',
+                down_connector: '┬',
                 arrow_right: '►',
+                arrow_up: '▲',
                 arrow_down: '▼',
                 dotted_horizontal: '┄',
                 dotted_vertical: '┆',
+                corner_down_right: '└',
+                corner_right_up: '┘',
                 rounded_top_left: '╭',
                 rounded_top_right: '╮',
                 rounded_bottom_left: '╰',
@@ -97,6 +110,12 @@ impl NodeLayout {
     fn bottom(&self) -> usize {
         self.y + self.height - 1
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GridCoord {
+    x: usize,
+    y: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +181,220 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 }
 
 fn layout_nodes(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Vec<NodeLayout> {
+    match graph.direction {
+        GraphDirection::LeftRight => layout_left_right_grid_nodes(graph, options),
+        GraphDirection::TopDown => layout_top_down_linear_nodes(graph, options),
+    }
+}
+
+fn layout_left_right_grid_nodes(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+) -> Vec<NodeLayout> {
+    let placements = place_left_right_grid_nodes(graph);
+    let mut column_widths = BTreeMap::new();
+    let mut row_heights = BTreeMap::new();
+
+    for (index, coord) in placements.iter().copied().enumerate() {
+        let node = &graph.nodes[index];
+        set_axis_size(&mut column_widths, coord.x, 1);
+        set_axis_size(
+            &mut column_widths,
+            coord.x + 1,
+            node_width(node, options).saturating_sub(2),
+        );
+        set_axis_size(&mut column_widths, coord.x + 2, 1);
+        if coord.x > 0 {
+            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+        }
+
+        let height = node_height(options);
+        set_axis_size(&mut row_heights, coord.y, 1);
+        set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
+        set_axis_size(&mut row_heights, coord.y + 2, 1);
+        if coord.y > 0 {
+            set_axis_size(&mut row_heights, coord.y - 1, options.graph_padding_y);
+        }
+    }
+
+    let coord_by_id = graph
+        .nodes
+        .iter()
+        .zip(placements.iter().copied())
+        .map(|(node, coord)| (node.id.as_str(), coord))
+        .collect::<HashMap<_, _>>();
+    for edge in &graph.edges {
+        let (Some(from), Some(to)) = (
+            coord_by_id.get(edge.from.as_str()).copied(),
+            coord_by_id.get(edge.to.as_str()).copied(),
+        ) else {
+            continue;
+        };
+        if to.x <= from.x {
+            continue;
+        }
+
+        let length_gap = options
+            .graph_padding_x
+            .saturating_add(edge.length.saturating_sub(1) * 2);
+        let label_gap = edge.label.as_deref().map(display_width).unwrap_or_default();
+        set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
+    }
+
+    let group_offset_x = usize::from(!graph.groups.is_empty()) * 2;
+    let group_offset_y = usize::from(!graph.groups.is_empty()) * 2;
+    let label_y_offset = usize::from(graph.edges.iter().any(|edge| edge.label.is_some()));
+
+    placements
+        .into_iter()
+        .zip(graph.nodes.iter())
+        .map(|(coord, node)| NodeLayout {
+            id: node.id.clone(),
+            label: node.label.clone(),
+            shape: node.shape,
+            x: group_offset_x + axis_position(&column_widths, coord.x),
+            y: group_offset_y + label_y_offset + axis_position(&row_heights, coord.y),
+            width: axis_span(&column_widths, coord.x, 3),
+            height: axis_span(&row_heights, coord.y, 3),
+        })
+        .collect()
+}
+
+fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
+    let index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let mut placements = vec![None; graph.nodes.len()];
+    let mut occupied = HashSet::new();
+    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
+
+    for root_index in left_right_root_indices(graph) {
+        place_left_right_node(
+            root_index,
+            0,
+            &mut placements,
+            &mut occupied,
+            &mut highest_position_per_level,
+        );
+    }
+
+    for node_index in 0..graph.nodes.len() {
+        if placements[node_index].is_none() {
+            place_left_right_node(
+                node_index,
+                0,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+
+        let Some(parent_coord) = placements[node_index] else {
+            continue;
+        };
+        let child_level = parent_coord.x + 4;
+        for child_index in child_indices(graph, node_index, &index_by_id) {
+            if placements[child_index].is_some() {
+                continue;
+            }
+            place_left_right_node(
+                child_index,
+                child_level,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+    }
+
+    placements
+        .into_iter()
+        .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
+        .collect()
+}
+
+fn left_right_root_indices(graph: &AsciiGraph) -> Vec<usize> {
+    let mut nodes_found = HashSet::new();
+    let mut roots = Vec::new();
+
+    for (index, node) in graph.nodes.iter().enumerate() {
+        if !nodes_found.contains(node.id.as_str()) {
+            roots.push(index);
+        }
+        nodes_found.insert(node.id.as_str());
+        for edge in graph.edges.iter().filter(|edge| edge.from == node.id) {
+            nodes_found.insert(edge.to.as_str());
+        }
+    }
+
+    roots
+}
+
+fn child_indices<'a>(
+    graph: &'a AsciiGraph,
+    node_index: usize,
+    index_by_id: &HashMap<&'a str, usize>,
+) -> Vec<usize> {
+    let node = &graph.nodes[node_index];
+    graph
+        .edges
+        .iter()
+        .filter(|edge| edge.from == node.id)
+        .filter_map(|edge| index_by_id.get(edge.to.as_str()).copied())
+        .collect()
+}
+
+fn place_left_right_node(
+    node_index: usize,
+    level: usize,
+    placements: &mut [Option<GridCoord>],
+    occupied: &mut HashSet<(usize, usize)>,
+    highest_position_per_level: &mut BTreeMap<usize, usize>,
+) {
+    let requested_y = highest_position_per_level
+        .get(&level)
+        .copied()
+        .unwrap_or_default();
+    let coord = reserve_grid_spot(
+        occupied,
+        GridCoord {
+            x: level,
+            y: requested_y,
+        },
+    );
+    placements[node_index] = Some(coord);
+    highest_position_per_level.insert(level, coord.y + 4);
+}
+
+fn reserve_grid_spot(
+    occupied: &mut HashSet<(usize, usize)>,
+    requested_coord: GridCoord,
+) -> GridCoord {
+    let mut coord = requested_coord;
+    while grid_spot_occupied(occupied, coord) {
+        coord.y += 4;
+    }
+
+    for x in coord.x..(coord.x + 3) {
+        for y in coord.y..(coord.y + 3) {
+            occupied.insert((x, y));
+        }
+    }
+
+    coord
+}
+
+fn grid_spot_occupied(occupied: &HashSet<(usize, usize)>, coord: GridCoord) -> bool {
+    (coord.x..(coord.x + 3)).any(|x| (coord.y..(coord.y + 3)).any(|y| occupied.contains(&(x, y))))
+}
+
+fn layout_top_down_linear_nodes(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+) -> Vec<NodeLayout> {
     let group_offset_x = usize::from(!graph.groups.is_empty()) * 2;
     let group_offset_y = usize::from(!graph.groups.is_empty()) * 2;
     let measured = graph
@@ -169,62 +402,62 @@ fn layout_nodes(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Vec<NodeLay
         .iter()
         .map(|node| {
             let width = node_width(node, options);
-            let height = 1 + options.box_border_padding * 2 + 2;
+            let height = node_height(options);
             (node, width, height)
         })
         .collect::<Vec<_>>();
 
-    match graph.direction {
-        GraphDirection::LeftRight => {
-            let label_y_offset = usize::from(graph.edges.iter().any(|edge| edge.label.is_some()));
-            let mut x = group_offset_x;
-            measured
-                .into_iter()
-                .enumerate()
-                .map(|(index, (node, width, height))| {
-                    let layout = NodeLayout {
-                        id: node.id.clone(),
-                        label: node.label.clone(),
-                        shape: node.shape,
-                        x,
-                        y: group_offset_y + label_y_offset,
-                        width,
-                        height,
-                    };
-                    x += width + left_right_gap_after(graph, index, options);
-                    layout
-                })
-                .collect()
-        }
-        GraphDirection::TopDown => {
-            let canvas_width = measured
-                .iter()
-                .map(|(_, width, _)| *width)
-                .max()
-                .unwrap_or_default();
-            let mut y = 0;
-            measured
-                .into_iter()
-                .map(|(node, width, height)| {
-                    let layout = NodeLayout {
-                        id: node.id.clone(),
-                        label: node.label.clone(),
-                        shape: node.shape,
-                        x: group_offset_x + (canvas_width - width) / 2,
-                        y,
-                        width,
-                        height,
-                    };
-                    y += height + options.graph_padding_y;
-                    layout
-                })
-                .map(|mut layout| {
-                    layout.y += group_offset_y;
-                    layout
-                })
-                .collect()
-        }
-    }
+    let canvas_width = measured
+        .iter()
+        .map(|(_, width, _)| *width)
+        .max()
+        .unwrap_or_default();
+    let mut y = 0;
+    measured
+        .into_iter()
+        .map(|(node, width, height)| {
+            let layout = NodeLayout {
+                id: node.id.clone(),
+                label: node.label.clone(),
+                shape: node.shape,
+                x: group_offset_x + (canvas_width - width) / 2,
+                y,
+                width,
+                height,
+            };
+            y += height + options.graph_padding_y;
+            layout
+        })
+        .map(|mut layout| {
+            layout.y += group_offset_y;
+            layout
+        })
+        .collect()
+}
+
+fn set_axis_size(axis_sizes: &mut BTreeMap<usize, usize>, index: usize, size: usize) {
+    axis_sizes
+        .entry(index)
+        .and_modify(|current| *current = (*current).max(size))
+        .or_insert(size);
+}
+
+fn axis_position(axis_sizes: &BTreeMap<usize, usize>, index: usize) -> usize {
+    axis_sizes
+        .range(..index)
+        .map(|(_, size)| *size)
+        .sum::<usize>()
+        + axis_sizes.get(&index).copied().unwrap_or_default() / 2
+}
+
+fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> usize {
+    (start..(start + len))
+        .map(|index| axis_sizes.get(&index).copied().unwrap_or_default())
+        .sum()
+}
+
+fn node_height(options: &AsciiRenderOptions) -> usize {
+    1 + options.box_border_padding * 2 + 2
 }
 
 fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
@@ -278,32 +511,6 @@ fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
         GraphNodeShape::Cylinder => base + 2,
         GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => base,
     }
-}
-
-fn left_right_gap_after(
-    graph: &AsciiGraph,
-    node_index: usize,
-    options: &AsciiRenderOptions,
-) -> usize {
-    let Some(from) = graph.nodes.get(node_index) else {
-        return options.graph_padding_x;
-    };
-    let Some(to) = graph.nodes.get(node_index + 1) else {
-        return options.graph_padding_x;
-    };
-    let Some(edge) = graph
-        .edges
-        .iter()
-        .find(|edge| edge.from == from.id && edge.to == to.id)
-    else {
-        return options.graph_padding_x;
-    };
-
-    let length_gap = options
-        .graph_padding_x
-        .saturating_add(edge.length.saturating_sub(1) * 2);
-    let label_gap = edge.label.as_deref().map(display_width).unwrap_or_default();
-    length_gap.max(label_gap)
 }
 
 fn draw_node(
@@ -370,9 +577,7 @@ fn draw_rect_node(
         canvas.set(right, y, charset.vertical);
     }
 
-    let text_x = layout.x + 1 + options.box_border_padding;
-    let text_y = layout.y + 1 + options.box_border_padding;
-    canvas.write_text(text_x, text_y, &layout.label);
+    write_centered_label(canvas, layout, options);
 }
 
 fn draw_rounded_node(
@@ -428,16 +633,14 @@ fn draw_node_with_corners(
         canvas.set(right, y, charset.vertical);
     }
 
-    let text_x = layout.x + 1 + options.box_border_padding;
-    let text_y = layout.y + 1 + options.box_border_padding;
-    canvas.write_text(text_x, text_y, &layout.label);
+    write_centered_label(canvas, layout, options);
 }
 
 fn draw_diamond_node(
     canvas: &mut Canvas,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    options: &AsciiRenderOptions,
+    _options: &AsciiRenderOptions,
 ) {
     let right = layout.right();
     let bottom = layout.bottom();
@@ -459,7 +662,8 @@ fn draw_diamond_node(
         canvas.set(x, bottom, charset.horizontal);
     }
 
-    let text_x = layout.x + 1 + options.box_border_padding;
+    let text_width = display_width(&layout.label);
+    let text_x = layout.x + centered_label_offset(layout.width, text_width);
     canvas.write_text(text_x, center_y, &layout.label);
 }
 
@@ -506,9 +710,14 @@ fn draw_cylinder_node(
 
 fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, options: &AsciiRenderOptions) {
     let text_width = display_width(&layout.label);
-    let text_x = layout.x + layout.width.saturating_sub(text_width) / 2;
+    let text_x = layout.x + centered_label_offset(layout.width, text_width);
     let text_y = layout.y + 1 + options.box_border_padding;
     canvas.write_text(text_x, text_y, &layout.label);
+}
+
+fn centered_label_offset(width: usize, text_width: usize) -> usize {
+    let center = width.saturating_sub(1) / 2 + 1;
+    center.saturating_sub(text_width.div_ceil(2))
 }
 
 fn draw_edge(
@@ -540,6 +749,21 @@ fn draw_left_right_edge(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) {
+    if from.center_y() < to.center_y() && to.x > from.x {
+        draw_left_right_down_then_right_edge(canvas, from, to, edge, charset);
+        return;
+    }
+
+    if from.center_y() < to.center_y() && to.x == from.x {
+        draw_left_right_down_edge(canvas, from, to, edge, charset);
+        return;
+    }
+
+    if from.center_y() > to.center_y() && to.x > from.x {
+        draw_left_right_right_then_up_edge(canvas, from, to, edge, charset);
+        return;
+    }
+
     if to.x <= from.right() + 1 {
         return;
     }
@@ -557,6 +781,93 @@ fn draw_left_right_edge(
     match edge.arrow {
         GraphEdgeArrow::Open => canvas.set(end, y, line),
         GraphEdgeArrow::Point => canvas.set(end, y, charset.arrow_right),
+    }
+}
+
+fn draw_left_right_down_edge(
+    canvas: &mut Canvas,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    if to.y <= from.bottom() + 1 {
+        return;
+    }
+
+    let x = from.center_x();
+    let start = from.bottom() + 1;
+    let end = to.y - 1;
+    let line = edge_line_char(edge, charset, GraphDirection::TopDown);
+    canvas.set(x, from.bottom(), charset.down_connector);
+    for y in start..end {
+        canvas.set(x, y, line);
+    }
+    match edge.arrow {
+        GraphEdgeArrow::Open => canvas.set(x, end, line),
+        GraphEdgeArrow::Point => canvas.set(x, end, charset.arrow_down),
+    }
+}
+
+fn draw_left_right_down_then_right_edge(
+    canvas: &mut Canvas,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    let x = from.center_x();
+    let corner_y = to.center_y();
+    if corner_y <= from.bottom() || to.x <= x + 1 {
+        return;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    canvas.set(x, from.bottom(), charset.down_connector);
+    for y in (from.bottom() + 1)..corner_y {
+        canvas.set(x, y, vertical);
+    }
+    canvas.set(x, corner_y, charset.corner_down_right);
+
+    let end = to.x - 1;
+    for line_x in (x + 1)..end {
+        canvas.set(line_x, corner_y, horizontal);
+    }
+    match edge.arrow {
+        GraphEdgeArrow::Open => canvas.set(end, corner_y, horizontal),
+        GraphEdgeArrow::Point => canvas.set(end, corner_y, charset.arrow_right),
+    }
+}
+
+fn draw_left_right_right_then_up_edge(
+    canvas: &mut Canvas,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    let y = from.center_y();
+    let corner_x = to.center_x();
+    if corner_x <= from.right() || y <= to.bottom() + 1 {
+        return;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    canvas.set(from.right(), y, charset.right_connector);
+    for x in (from.right() + 1)..corner_x {
+        canvas.set(x, y, horizontal);
+    }
+    canvas.set(corner_x, y, charset.corner_right_up);
+
+    let arrow_y = to.bottom() + 1;
+    for line_y in (arrow_y + 1)..y {
+        canvas.set(corner_x, line_y, vertical);
+    }
+    match edge.arrow {
+        GraphEdgeArrow::Open => canvas.set(corner_x, arrow_y, vertical),
+        GraphEdgeArrow::Point => canvas.set(corner_x, arrow_y, charset.arrow_up),
     }
 }
 

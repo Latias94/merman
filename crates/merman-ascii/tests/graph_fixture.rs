@@ -26,6 +26,22 @@ impl GraphFixture {
 const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
+        name: "ampersand_lhs.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "ampersand_rhs.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "ampersand_without_edge.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "backlink_from_bottom.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "flowchart_tb_simple.txt",
     },
     GraphFixture {
@@ -46,11 +62,47 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "two_layer_single_graph.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "two_layer_single_graph_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "two_nodes_linked.txt",
     },
     GraphFixture {
         directory: "ascii",
         name: "two_nodes_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "two_root_nodes_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "two_root_nodes.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "two_single_root_nodes.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "ampersand_lhs.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "ampersand_rhs.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "ampersand_without_edge.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "backlink_from_bottom.txt",
     },
     GraphFixture {
         directory: "extended-chars",
@@ -70,11 +122,31 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "two_layer_single_graph_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "two_layer_single_graph.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "two_nodes_linked.txt",
     },
     GraphFixture {
         directory: "extended-chars",
         name: "two_nodes_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "two_root_nodes_longer_names.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "two_root_nodes.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "two_single_root_nodes.txt",
     },
 ];
 
@@ -85,27 +157,11 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
-        name: "ampersand_lhs.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "ampersand_rhs.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "ampersand_without_edge.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "back_edges_two_labels_td.txt",
     },
     GraphFixture {
         directory: "ascii",
         name: "back_reference_from_child.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "backlink_from_bottom.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -240,40 +296,8 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
         name: "subgraph_with_labels.txt",
     },
     GraphFixture {
-        directory: "ascii",
-        name: "two_layer_single_graph_longer_names.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "two_layer_single_graph.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "two_root_nodes_longer_names.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "two_root_nodes.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "two_single_root_nodes.txt",
-    },
-    GraphFixture {
         directory: "extended-chars",
         name: "ampersand_lhs_and_rhs.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "ampersand_lhs.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "ampersand_rhs.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "ampersand_without_edge.txt",
     },
     GraphFixture {
         directory: "extended-chars",
@@ -282,10 +306,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "extended-chars",
         name: "back_reference_from_child.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "backlink_from_bottom.txt",
     },
     GraphFixture {
         directory: "extended-chars",
@@ -306,26 +326,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "extended-chars",
         name: "self_reference.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "two_layer_single_graph_longer_names.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "two_layer_single_graph.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "two_root_nodes_longer_names.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "two_root_nodes.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "two_single_root_nodes.txt",
     },
 ];
 

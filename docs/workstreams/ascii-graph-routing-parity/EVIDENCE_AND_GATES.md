@@ -36,3 +36,16 @@ Last updated: 2026-05-29
   - PASS `cargo fmt --all --check`
   - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
   - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+- 2026-05-29 AGR-030: Replaced the LR linear node layout with a reference-style 3x3 grid
+  placement for roots and child levels, added basic same-row, down, down-then-right, and
+  right-then-up edge routing, and aligned widened-column node labels with upstream centering.
+  Exact graph fixture matches increased from 13 to 31:
+  - ASCII: 16 exact matches, 36 named gaps.
+  - Unicode: 15 exact matches, 8 named gaps.
+- 2026-05-29 AGR-030 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
+  - PASS `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`

@@ -8,34 +8,48 @@ the current gap shape readable for planning.
 
 ASCII:
 
+- `ampersand_lhs.txt`
+- `ampersand_rhs.txt`
+- `ampersand_without_edge.txt`
+- `backlink_from_bottom.txt`
 - `flowchart_tb_simple.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
+- `two_layer_single_graph_longer_names.txt`
+- `two_layer_single_graph.txt`
 - `two_nodes_linked.txt`
 - `two_nodes_longer_names.txt`
+- `two_root_nodes_longer_names.txt`
+- `two_root_nodes.txt`
+- `two_single_root_nodes.txt`
 
 Unicode:
 
+- `ampersand_lhs.txt`
+- `ampersand_rhs.txt`
+- `ampersand_without_edge.txt`
+- `backlink_from_bottom.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
+- `two_layer_single_graph_longer_names.txt`
+- `two_layer_single_graph.txt`
 - `two_nodes_linked.txt`
 - `two_nodes_longer_names.txt`
+- `two_root_nodes_longer_names.txt`
+- `two_root_nodes.txt`
+- `two_single_root_nodes.txt`
 
 ## Named Gaps
 
 ASCII:
 
 - `ampersand_lhs_and_rhs.txt`
-- `ampersand_lhs.txt`
-- `ampersand_rhs.txt`
-- `ampersand_without_edge.txt`
 - `back_edges_two_labels_td.txt`
 - `back_reference_from_child.txt`
-- `backlink_from_bottom.txt`
 - `backlink_from_top.txt`
 - `backlink_with_short_y_padding.txt`
 - `bidirectional_edge_labels_lr.txt`
@@ -69,28 +83,14 @@ ASCII:
 - `subgraph_three_separate.txt`
 - `subgraph_two_separate.txt`
 - `subgraph_with_labels.txt`
-- `two_layer_single_graph_longer_names.txt`
-- `two_layer_single_graph.txt`
-- `two_root_nodes_longer_names.txt`
-- `two_root_nodes.txt`
-- `two_single_root_nodes.txt`
 
 Unicode:
 
 - `ampersand_lhs_and_rhs.txt`
-- `ampersand_lhs.txt`
-- `ampersand_rhs.txt`
-- `ampersand_without_edge.txt`
 - `back_edges_two_labels_td.txt`
 - `back_reference_from_child.txt`
-- `backlink_from_bottom.txt`
 - `backlink_from_top.txt`
 - `comments.txt`
 - `preserve_order_of_definition.txt`
 - `self_reference_with_edge.txt`
 - `self_reference.txt`
-- `two_layer_single_graph_longer_names.txt`
-- `two_layer_single_graph.txt`
-- `two_root_nodes_longer_names.txt`
-- `two_root_nodes.txt`
-- `two_single_root_nodes.txt`

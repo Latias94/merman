@@ -33,16 +33,21 @@ Last updated: 2026-05-29
 
 ## M2 - Branch And Multi-Root Routing
 
-- [ ] AGR-030 [owner=codex] [deps=AGR-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
+- [x] AGR-030 [owner=codex] [deps=AGR-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
   Goal: Replace the linear-only layout assumption for common multi-root, branch, fan-out, and
   fan-in flowcharts.
   Validation:
-  - `cargo nextest run -p merman-ascii graph_fixture`
-  - `cargo nextest run -p merman-ascii flowchart`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS 2026-05-29: `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Current simple LR/TD outputs should remain stable unless a fixture-backed change is
   intentional.
-  Evidence: Newly allowlisted reference graph fixtures.
-  Handoff: Pending.
+  Evidence: LR graph layout now uses a reference-style 3x3 grid for roots and child levels.
+  Allowlisted exact graph fixtures increased from 13 to 31.
+  Handoff: AGR-040 is next.
 
 ## M3 - Back Edges And Self References
 
