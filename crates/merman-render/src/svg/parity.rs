@@ -19,7 +19,6 @@ mod css;
 mod curve;
 mod er;
 mod error;
-mod fallback;
 mod flowchart;
 mod gantt;
 mod gitgraph;
@@ -51,7 +50,6 @@ use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
-pub use fallback::foreign_object_label_fallback_svg_text;
 use path_bounds::svg_path_bounds_from_d;
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)

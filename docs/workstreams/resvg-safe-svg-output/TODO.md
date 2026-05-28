@@ -20,7 +20,7 @@ Last updated: 2026-05-28
   Goal: Fix readable fallback text extraction for literal `\n` inside `<foreignObject>` labels.
   Validation:
   - `cargo nextest run -p merman-render foreign_object_overlay_splits_literal_backslash_n`
-  - `cargo nextest run -p merman-render svg::parity::fallback::tests::foreign_object_overlay`
+  - `cargo nextest run -p merman-render svg::fallback::tests::foreign_object_overlay`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: DONE.
 

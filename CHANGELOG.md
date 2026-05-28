@@ -47,6 +47,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Split the SVG pipeline implementation into public API, context, preset composition, and built-in
   postprocessor modules so future host styling work can evolve without growing a monolithic
   cleanup file.
+- Moved the readable `<foreignObject>` fallback out of the Mermaid-parity SVG module and split the
+  `merman::render` public wrapper from `lib.rs` into `render/mod.rs` without changing public paths.
 
 ### Fixed
 

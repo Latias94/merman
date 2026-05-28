@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-// NOTE: This module intentionally keeps parsing "cheap" and non-validating.
+// NOTE: This fallback module intentionally keeps parsing "cheap" and non-validating.
 // It is a best-effort readability fallback for SVG consumers that do not fully
 // support HTML inside `<foreignObject>` (e.g. many rasterizers).
 

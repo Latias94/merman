@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::svg::parity::foreign_object_label_fallback_svg_text;
+use crate::svg::foreign_object_label_fallback_svg_text;
 use std::borrow::Cow;
 
 use super::util::find_tag_end;

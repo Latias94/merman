@@ -47,7 +47,7 @@ Last updated: 2026-05-28
   - Tests cover opt-in stripping of existing `!important`.
   - Tests cover generated fallback text receiving inherited style/class information.
   Evidence: scoped CSS tests, CSS override tests, and
-  `svg::parity::fallback::tests::foreign_object_overlay_propagates_style_context`.
+  `svg::fallback::tests::foreign_object_overlay_propagates_style_context`.
   Handoff: DONE.
 
 ## M4 - Docs, Examples, And Changelog

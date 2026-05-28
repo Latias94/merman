@@ -9,7 +9,7 @@ Focused gates for early slices:
 
 ```bash
 cargo nextest run -p merman-render foreign_object_overlay_splits_literal_backslash_n
-cargo nextest run -p merman-render svg::parity::fallback::tests::foreign_object_overlay
+cargo nextest run -p merman-render svg::fallback::tests::foreign_object_overlay
 ```
 
 Pipeline/API gates:
@@ -38,7 +38,7 @@ git diff --check
 - `rustfmt crates/merman-render/src/svg/parity/fallback.rs` - PASS.
 - `cargo nextest run -p merman-render foreign_object_overlay_splits_literal_backslash_n`
   - PASS, 1 test passed.
-- `cargo nextest run -p merman-render svg::parity::fallback::tests::foreign_object_overlay`
+- `cargo nextest run -p merman-render svg::fallback::tests::foreign_object_overlay`
   - PASS, 3 tests passed.
 - `cargo fmt -p merman-render -- --check` - PASS after formatting.
 - `git diff --check` - PASS.
