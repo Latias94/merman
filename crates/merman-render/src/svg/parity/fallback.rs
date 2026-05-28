@@ -111,6 +111,7 @@ fn htmlish_to_text_lines(html: &str) -> Vec<String> {
     normalized = normalized.replace("<br />", "\n");
     normalized = normalized.replace("<br>", "\n");
     normalized = normalized.replace("</br>", "\n");
+    normalized = normalized.replace("\\n", "\n");
     let text = strip_html_tags(&normalized);
 
     text.lines()
@@ -394,6 +395,18 @@ mod tests {
         assert!(
             out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
             "expected rect with foreignObject bounds"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_splits_literal_backslash_n() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10, 20)"><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><p>Layer 7\nHTTP</p></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(out.contains(">Layer 7<"), "got: {out}");
+        assert!(out.contains(">HTTP<"), "got: {out}");
+        assert!(
+            !out.contains(">Layer 7\\nHTTP</text>"),
+            "literal backslash-n should not remain in fallback text overlay: {out}"
         );
     }
 }

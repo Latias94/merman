@@ -6,6 +6,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed readable/raster `<foreignObject>` fallback text extraction so labels containing literal
+  `\n` are split into separate overlay text lines.
+
 ## [0.5.0] - 2026-05-19
 
 This release is mostly about rendering fidelity and the render pipeline. If you render diagrams to SVG, PNG, JPG, or PDF, the main difference is fewer label, sizing, and viewport mismatches against Mermaid 11.12.3. The public semantic JSON API stays available, while render-only paths now avoid more of the old JSON round trip.
