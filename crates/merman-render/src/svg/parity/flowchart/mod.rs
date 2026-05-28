@@ -16,6 +16,7 @@ mod style;
 mod types;
 mod util;
 mod viewbox;
+mod viewbox_node_bounds;
 
 pub(super) use css::*;
 use edge::*;

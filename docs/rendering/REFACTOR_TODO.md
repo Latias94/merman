@@ -65,6 +65,10 @@ Related docs:
         `svg/parity/flowchart/render_config.rs`, and rendered content/viewBox bounds preparation
         moved to `svg/parity/flowchart/viewbox.rs` via
         `docs/workstreams/flowchart-render-config-viewbox-extraction/`. Broader split remains open.
+      - 2026-05-28: node/shape rendered-bounds preparation moved to
+        `svg/parity/flowchart/viewbox_node_bounds.rs`, with shared layout-node label metric
+        helpers, via `docs/workstreams/flowchart-viewbox-node-bounds-extraction/`.
+        Broader split remains open.
 - [ ] Split the class renderer into submodules (in progress: moved to `svg/parity/class/*`, extracted `debug_svg`, `defs`, `label`, `rough`, `render`).
 - [ ] Split the state renderer into submodules (in progress: extracted `svg/parity/state/render.rs`;
       2026-05-28 edge path/label rendering moved to `svg/parity/state/edge.rs` via

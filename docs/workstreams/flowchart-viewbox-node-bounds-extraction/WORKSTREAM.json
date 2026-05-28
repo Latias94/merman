@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "flowchart-viewbox-node-bounds-extraction",
+  "title": "Flowchart ViewBox Node Bounds Extraction",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Flowchart viewbox.rs owned node/shape-specific bbox heuristics and repeated layout-node label measurement blocks.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/flowchart-viewbox-node-bounds-extraction/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/flowchart-viewbox-node-bounds-extraction/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/flowchart-viewbox-node-bounds-extraction/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/flowchart-viewbox-node-bounds-extraction/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render flowchart",
+    "cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --text-measurer vendored",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/flowchart-viewbox-node-bounds-extraction/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Node/shape rendered-bounds extraction passed flowchart and package gates."
+  }
+}
