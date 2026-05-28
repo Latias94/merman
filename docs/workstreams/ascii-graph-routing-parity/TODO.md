@@ -1,6 +1,6 @@
 # ASCII Graph Routing Parity - TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Workstream And Baseline
@@ -84,19 +84,21 @@ Last updated: 2026-05-29
 
 ## M5 - Closeout
 
-- [ ] AGR-060 [owner=codex] [deps=AGR-020] [scope=docs/workstreams/ascii-graph-routing-parity,crates/merman-ascii/FLOWCHART_SUPPORT.md,CHANGELOG.md]
+- [x] AGR-060 [owner=codex] [deps=AGR-020] [scope=docs/workstreams/ascii-graph-routing-parity,crates/merman-ascii/FLOWCHART_SUPPORT.md,CHANGELOG.md]
   Goal: Record final evidence, commit completed bounded tasks, and close or hand off the lane with
   concrete remaining fixture gaps.
   Validation:
-  - `cargo fmt --all --check`
-  - `cargo nextest run -p merman-ascii`
-  - `cargo nextest run -p merman --features ascii`
-  - `cargo nextest run -p merman-cli --features ascii`
-  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
-  - `git diff --check`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS 2026-05-29: `cargo nextest run -p merman --features ascii` (3 passed)
+  - PASS 2026-05-29: `cargo nextest run -p merman-cli --features ascii` (10 passed)
+  - PASS 2026-05-29: `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - PASS 2026-05-29: `git diff --check`
   Review: Close only if shipped slices are verified and remaining gaps are named.
-  Evidence: `docs/workstreams/ascii-graph-routing-parity/EVIDENCE_AND_GATES.md`.
-  Handoff: Pending.
+  Evidence: `docs/workstreams/ascii-graph-routing-parity/EVIDENCE_AND_GATES.md`; final allowlist
+  is 44 exact graph fixtures, with remaining gaps named in
+  `crates/merman-ascii/tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md`.
+  Handoff: Lane closed with explicit follow-ons.
 
 ## 09:00 Execution Order
 

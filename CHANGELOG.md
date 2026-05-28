@@ -13,6 +13,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   ascii|unicode` behind the CLI `ascii` feature.
 - Expanded ASCII/Unicode flowchart support for edge labels, open/dotted/length-modified edges,
   common terminal node-shape approximations, and simple titled subgraphs.
+- Added grid-based ASCII/Unicode flowchart routing for multi-root graphs, fan-out/fan-in branches,
+  self-loops, same-row back edges, and upstream-style simple subgraph boxes, with copied
+  `mermaid-ascii` fixture parity tracking.
 
 ## [0.6.0] - 2026-05-28
 

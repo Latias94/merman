@@ -1,6 +1,6 @@
 # ASCII Graph Routing Parity - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Workstream And Baseline
@@ -46,6 +46,8 @@ Exit criteria:
   concrete blockers.
 
 ## M5 - Closeout
+
+Status: Complete.
 
 Exit criteria:
 

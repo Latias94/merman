@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-graph-routing-parity",
   "title": "ASCII Graph Routing Parity",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-29",
   "scope_kind": "architecture",
   "problem": "merman-ascii flowchart output is useful but still relies on a linear graph renderer that cannot absorb mermaid-ascii routing parity cleanly.",
@@ -50,8 +50,8 @@
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "AGR-060",
-    "notes": "AGR-010 split graph model and flowchart adapter boundaries. AGR-020 added a graph fixture allowlist/gap harness. AGR-030 replaced LR linear layout with grid placement and basic branch/multi-root/fan-in routing. AGR-040 added self-loop and same-row back-edge routing. AGR-050 hardened simple subgraph title rows and empty subgraphs, raising graph fixture parity to 44 exact matches. Continue with closeout gates before the 2026-05-29 09:00 +08:00 target."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "ASCII graph routing parity lane is complete for the 2026-05-29 time box. It split graph boundaries, added fixture allowlist/gap tracking, shipped grid layout for LR multi-root/branch/fan-in/self/back-edge slices, aligned simple subgraph boxes, and closed with 44 exact copied graph fixture matches. Remaining crossing junctions, duplicate/bidirectional labels, padding directives, TD back-edge labels, and complex nested/external-edge subgraphs should be split into follow-on work."
   }
 }

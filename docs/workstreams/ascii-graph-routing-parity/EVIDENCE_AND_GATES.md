@@ -1,6 +1,6 @@
 # ASCII Graph Routing Parity - Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Focused Gates
@@ -71,3 +71,12 @@ Last updated: 2026-05-29
   - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
   - PASS `cargo nextest run -p merman-ascii` (43 passed)
   - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`
+- 2026-05-29 AGR-060: Closeout complete. `FLOWCHART_SUPPORT.md`, `CHANGELOG.md`, and workstream
+  docs now reflect the shipped grid-routing/subgraph slices and remaining named gaps.
+- 2026-05-29 AGR-060 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS `cargo nextest run -p merman --features ascii` (3 passed)
+  - PASS `cargo nextest run -p merman-cli --features ascii` (10 passed)
+  - PASS `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - PASS `git diff --check`

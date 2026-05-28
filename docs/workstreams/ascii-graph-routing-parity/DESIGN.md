@@ -1,6 +1,6 @@
 # ASCII Graph Routing Parity - Design
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Problem
@@ -39,6 +39,10 @@ Execution target: 2026-05-29 09:00 +08:00.
 
 The time box prioritizes durable structure and high-value routing behavior over attempting to force
 all 75 graph reference fixtures green in one pass.
+
+Closeout result: 44 copied graph fixtures are exact matches (26 ASCII, 18 Unicode). Remaining gaps
+are explicit follow-ons around crossing junction merging, duplicate/bidirectional label placement,
+padding directives, TD back-edge labels, and complex nested/external-edge subgraphs.
 
 ## Scope
 

@@ -1,6 +1,6 @@
 # ASCII Graph Routing Parity - Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Current State
@@ -46,14 +46,15 @@ AGR-050 is implemented and verified:
 - The allowlist currently has 44 exact matches: 26 ASCII and 18 Unicode.
 - Remaining subgraph gaps are complex nested/external-edge layouts and multi-subgraph spacing.
 
-## Next Task
+## Follow-Ons
 
-Run AGR-060:
+This lane is closed. Split remaining work into follow-on tasks or a new workstream:
 
-- Run closeout gates.
-- Update final support docs/changelog if desired.
-- Decide whether remaining crossing junctions, labels, padding directives, and nested subgraphs
-  should be a follow-on workstream or continue in this lane.
+- Crossing junction merging: `ampersand_lhs_and_rhs.txt`, `backlink_from_top.txt`.
+- Label separation: duplicate labels and bidirectional LR/TD labels.
+- Parser/options parity for copied fixtures with `paddingX` / `paddingY` directives.
+- TD back-edge labels: `back_edges_two_labels_td.txt`.
+- Complex subgraphs: nested membership, external edges through group boxes, multi-subgraph spacing.
 
 ## Constraints
 
@@ -65,3 +66,5 @@ Run AGR-060:
 ## Target Window
 
 Aim to stop, close, or hand off before 2026-05-29 09:00 +08:00.
+
+Closed before the target window with 44 exact graph fixture matches.
