@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-graph-routing-parity",
+  "title": "ASCII Graph Routing Parity",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "architecture",
+  "problem": "merman-ascii flowchart output is useful but still relies on a linear graph renderer that cannot absorb mermaid-ascii routing parity cleanly.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-graph-routing-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-graph-routing-parity/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-graph-routing-parity/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-graph-routing-parity/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-graph-routing-parity/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii graph::",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii",
+    "cargo nextest run -p merman --features ascii",
+    "cargo nextest run -p merman-cli --features ascii",
+    "cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/ascii-graph-routing-parity/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AGR-020",
+    "notes": "AGR-010 split graph model and flowchart adapter boundaries. Continue with a graph fixture harness, then expand routing support by allowlisted reference fixtures before the 2026-05-29 09:00 +08:00 target."
+  }
+}
