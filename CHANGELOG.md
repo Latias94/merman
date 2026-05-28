@@ -10,16 +10,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
-- Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
-  string/Cow `SvgPostprocessor` extension point for host-provided SVG cleanup.
-- Added a Zed Mermaid issue regression fixture suite covering sequence loop endings, sequence
-  `rect rgb(...)`, flowchart hyphenated edge labels, ER labels, Gantt compact frontmatter, class
-  inheritance, `<foreignObject>` fallback text, and old mermaid-rs panic boundaries.
-- Added metadata-aware SVG postprocessing context (`diagram_type`, `diagram_title`, and `svg_id`)
-  plus product-neutral host styling blocks: `ScopedCssPostprocessor`, `CssOverridePostprocessor`,
-  and `CssOverridePolicy`.
-- Added a runnable `svg_pipeline` example showing `SvgPipeline::resvg_safe()` with a custom
-  postprocessor and scoped host CSS:
+- Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus `SvgPostprocessor` hooks for host-specific cleanup and styling.
+- Added metadata in SVG postprocessing context (`diagram_type`, `diagram_title`, and `svg_id`) and product-neutral styling helpers including scoped CSS and opt-in CSS override policy.
+- Expanded Zed-derived regression coverage for Sequence, Flowchart, ER, Gantt, Class, and raster fallback cases.
+- Added a runnable `svg_pipeline` example:
 
   ```bash
   cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
@@ -28,17 +22,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   Library integrations can use the same pipeline directly:
 
   ```rust
-  use merman::render::{
-      CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
-  };
+  use merman::render::{HeadlessRenderer, SvgPipeline};
 
   let renderer = HeadlessRenderer::new().with_diagram_id("example-diagram");
-  let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
-      ScopedCssPostprocessor::new(".node rect { stroke: var(--host-accent); }")
-          .with_override_policy(CssOverridePolicy::StripExistingImportant),
-  );
   let svg = renderer
-      .render_svg_with_pipeline_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &pipeline)?
+      .render_svg_with_pipeline_sync("flowchart TD; A-->B;", &SvgPipeline::resvg_safe())?
       .unwrap();
   # let _ = svg;
   # Ok::<(), Box<dyn std::error::Error>>(())
@@ -46,30 +34,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
-- Routed readable SVG helpers, raster render helpers, and CLI raster export through the shared
-  SVG pipeline. The default `render_svg_sync` path remains Mermaid-parity output and does not
-  apply consumer cleanup by default.
-- Split the SVG pipeline implementation into public API, context, preset composition, and built-in
-  postprocessor modules so future host styling work can evolve without growing a monolithic
-  cleanup file.
-- Moved the readable `<foreignObject>` fallback out of the Mermaid-parity SVG module and split the
-  `merman::render` public wrapper from `lib.rs` into `render/mod.rs` without changing public paths.
+- Readable SVG helpers, raster helpers, and CLI raster export now use the shared SVG output pipeline; default `render_svg_sync` remains Mermaid-parity output with no consumer cleanup.
 
 ### Fixed
 
-- Fixed Architecture edge arrowheads on diagonal routed segments. Standalone Architecture polygon
-  arrows now rotate from the actual rendered edge segment while axis-aligned arrows keep the
-  Mermaid-compatible translate-only DOM.
-- Fixed readable/raster `<foreignObject>` fallback text extraction so labels containing literal
-  `\n` are split into separate overlay text lines.
-- Improved readable/raster `<foreignObject>` fallback overlays so generated SVG text keeps useful
-  class, fill, and font context for host CSS.
-- Fixed the sequence parser so keyword-like participant ids such as `AS`, `END`, `RECT`, or `loop`
-  can be declared and used in messages without being mistaken for Mermaid control keywords.
-- Fixed raster-oriented SVG cleanup for common `usvg` / `resvg` hazards by stripping
-  `<foreignObject>` after fallback insertion, unsupported CSS blocks, animation declarations,
-  empty/invalid visual attributes, bare invalid style declarations, CSS `deg` units, and non-finite
-  values such as `NaN`.
+- Fixed Architecture arrowheads on diagonal edges so they follow the rendered line direction.
+- Fixed readable/raster output for Mermaid HTML labels: fallback text now handles literal `\n` and keeps useful styling context for host CSS.
+- Fixed sequence diagrams with keyword-like participant ids such as `AS`, `END`, `RECT`, or `loop`.
+- Hardened `SvgPipeline::resvg_safe()` against common `usvg` / `resvg` incompatibilities, including unsupported CSS, animation declarations, invalid visual attributes, CSS `deg` units, and non-finite values.
 
 ## [0.5.0] - 2026-05-19
 
