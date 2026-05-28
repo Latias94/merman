@@ -1,5 +1,6 @@
 use std::fmt::Write as _;
 
+use super::defs::prepare_flowchart_defs;
 use super::document::{FlowchartSvgDocumentRequest, prepare_flowchart_svg_document};
 use super::*;
 
@@ -1526,10 +1527,10 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str(&css);
     out.push_str("</style>");
 
-    out.push_str("<g>");
-    flowchart_markers(&mut out, diagram_id);
+    let defs = prepare_flowchart_defs(diagram_id, &ctx);
 
-    let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
+    out.push_str("<g>");
+    defs.push_base_markers(&mut out);
     let mut root_session = FlowchartRootRenderSession {
         timing_enabled,
         details: &mut detail,
@@ -1537,7 +1538,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     };
     render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session);
 
-    flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
+    defs.push_extra_markers(&mut out);
     out.push_str("</g>");
     if let Some(title) = diagram_title {
         let title_x = title_anchor_x;

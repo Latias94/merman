@@ -1,5 +1,6 @@
 //! Flowchart edge path renderer.
 
+use super::super::defs::write_flowchart_marker_id_xml;
 use super::super::*;
 
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
@@ -125,12 +126,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);
-        css::write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
         out.push_str(r#")""#);
     }
     if let Some(base) = flowchart_edge_marker_end_base(edge) {
         out.push_str(r#" marker-end="url(#"#);
-        css::write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
+        write_flowchart_marker_id_xml(out, ctx.diagram_id, base, marker_color);
         out.push_str(r#")""#);
     }
     out.push_str(" />");
