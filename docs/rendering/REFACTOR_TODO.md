@@ -29,6 +29,9 @@ Related docs:
       so strict XML diffs can remain stable while refactoring.
 - [ ] Consolidate common SVG escaping + number formatting usage so diagram renderers don’t reach for
       ad-hoc `format!` / `write!` patterns.
+      - 2026-05-28: first bounded slice completed in
+        `docs/workstreams/svg-parity-helper-consolidation/`: shared point-list formatting helper
+        adopted by radar polygon emission. Broader consolidation remains open.
 - [x] Extend the shared writer to support root attribute placement quirks beyond `viewBox`/`style`
       ordering (e.g. `style` after aria, fixed-size `height` placement) and adopt it in diagrams that
       depend on that ordering.

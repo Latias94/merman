@@ -320,13 +320,7 @@ pub(super) fn render_radar_diagram_svg_model(
             if g.points.is_empty() {
                 out.push_str(r#"<polygon points="" class="radarGraticule"/>"#);
             } else {
-                let mut points = String::new();
-                for (i, p) in g.points.iter().enumerate() {
-                    if i > 0 {
-                        points.push(' ');
-                    }
-                    let _ = write!(&mut points, "{},{}", fmt_display(p.x), fmt_display(p.y));
-                }
+                let points = fmt_points(&g.points);
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{points}" class="radarGraticule"/>"#,
@@ -364,13 +358,7 @@ pub(super) fn render_radar_diagram_svg_model(
         .is_some_and(|g| g.kind.trim() == "polygon");
     for c in &layout.curves {
         if polygon_curves && !c.points.is_empty() {
-            let mut points = String::new();
-            for (i, p) in c.points.iter().enumerate() {
-                if i > 0 {
-                    points.push(' ');
-                }
-                let _ = write!(&mut points, "{},{}", fmt_display(p.x), fmt_display(p.y));
-            }
+            let points = fmt_points(&c.points);
             let _ = write!(
                 &mut out,
                 r#"<polygon points="{points}" class="radarCurve-{idx}"/>"#,

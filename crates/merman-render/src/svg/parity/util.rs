@@ -131,6 +131,25 @@ pub(super) fn fmt_display(v: f64) -> FmtDisplay {
     fmt(v)
 }
 
+pub(super) fn fmt_points(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    push_points_attr(&mut out, points);
+    out
+}
+
+pub(super) fn push_points_attr(out: &mut String, points: &[crate::model::LayoutPoint]) {
+    for (idx, point) in points.iter().enumerate() {
+        if idx > 0 {
+            out.push(' ');
+        }
+        push_point_pair(out, point.x, point.y);
+    }
+}
+
+pub(super) fn push_point_pair(out: &mut String, x: f64, y: f64) {
+    let _ = write!(out, "{},{}", fmt_display(x), fmt_display(y));
+}
+
 pub(super) fn fmt(v: f64) -> FmtDisplay {
     FmtDisplay(v)
 }
@@ -606,6 +625,23 @@ mod tests {
             assert_eq!(fmt_display(v).to_string(), fmt_string(v));
             assert_eq!(fmt(v).to_string(), fmt_string(v));
         }
+    }
+
+    #[test]
+    fn fmt_points_matches_expected() {
+        let points = [
+            crate::model::LayoutPoint { x: -0.0, y: 0.0 },
+            crate::model::LayoutPoint {
+                x: 1.0000004,
+                y: -2.5,
+            },
+            crate::model::LayoutPoint {
+                x: 3.25,
+                y: f64::NAN,
+            },
+        ];
+
+        assert_eq!(fmt_points(&points), "0,0 1,-2.5 3.25,0");
     }
 
     #[test]

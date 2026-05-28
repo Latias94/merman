@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "svg-parity-helper-consolidation",
+  "title": "SVG Parity Helper Consolidation",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "SVG parity renderers still repeat low-level number formatting and point-list string building, increasing the risk of inconsistent DOM output.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/svg-parity-helper-consolidation/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/svg-parity-helper-consolidation/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/svg-parity-helper-consolidation/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/svg-parity-helper-consolidation/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render fmt_points",
+    "cargo nextest run -p merman-render radar",
+    "cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/svg-parity-helper-consolidation/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "First bounded helper task complete. Split further adopters later."
+  }
+}

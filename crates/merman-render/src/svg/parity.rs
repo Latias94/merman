@@ -66,8 +66,8 @@ use util::{
     apply_root_viewport_override, config_bool, config_f64, config_f64_css_px, config_string,
     decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_xml,
     escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
-    fmt_max_width_px, fmt_path, fmt_path_into, fmt_string, json_f64, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, theme_color,
+    fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string, json_f64,
+    json_stringify_points, json_stringify_points_into, normalize_css_font_family, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
