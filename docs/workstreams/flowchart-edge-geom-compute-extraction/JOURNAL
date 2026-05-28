@@ -1,0 +1,2 @@
+2026-05-28T00:00:00Z opened bounded lane for flowchart edge geometry compute extraction.
+2026-05-28T14:00:00+08:00 moved edge path geometry computation from flowchart/mod.rs to edge_geom/compute.rs.

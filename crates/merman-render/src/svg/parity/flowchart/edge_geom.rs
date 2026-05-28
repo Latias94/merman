@@ -1,12 +1,12 @@
 //! Flowchart edge geometry helpers.
 //!
-//! This module is a façade to keep the flowchart renderer organized. The current implementation
-//! lives in `flowchart.rs` and can be migrated here incrementally.
+//! This module is a façade to keep the flowchart renderer organized.
 
 use super::*;
 
 mod basis;
 mod boundary;
+mod compute;
 mod curve_path;
 mod cyclic_special;
 mod data_points;
@@ -37,7 +37,7 @@ pub(super) use trace::{
     FlowchartEdgeTraceInput, TraceEndpointIntersection, tb, tp, write_flowchart_edge_trace,
 };
 
-pub(super) struct FlowchartEdgePathGeomRequest<'a> {
+pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) ctx: &'a FlowchartRenderCtx<'a>,
     pub(super) edge: &'a crate::flowchart::FlowEdge,
     pub(super) origin_x: f64,
@@ -47,9 +47,9 @@ pub(super) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 }
 
-pub(super) fn flowchart_compute_edge_path_geom(
+pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Option<FlowchartEdgePathGeom> {
-    super::flowchart_compute_edge_path_geom_impl(request, scratch)
+    compute::flowchart_compute_edge_path_geom(request, scratch)
 }

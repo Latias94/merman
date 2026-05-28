@@ -69,6 +69,9 @@ Related docs:
         `svg/parity/flowchart/viewbox_node_bounds.rs`, with shared layout-node label metric
         helpers, via `docs/workstreams/flowchart-viewbox-node-bounds-extraction/`.
         Broader split remains open.
+      - 2026-05-28: edge path geometry computation moved from `flowchart/mod.rs` to
+        `svg/parity/flowchart/edge_geom/compute.rs` via
+        `docs/workstreams/flowchart-edge-geom-compute-extraction/`. Broader split remains open.
 - [ ] Split the class renderer into submodules (in progress: moved to `svg/parity/class/*`, extracted `debug_svg`, `defs`, `label`, `rough`, `render`).
 - [ ] Split the state renderer into submodules (in progress: extracted `svg/parity/state/render.rs`;
       2026-05-28 edge path/label rendering moved to `svg/parity/state/edge.rs` via

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "flowchart-edge-geom-compute-extraction",
+  "title": "Flowchart Edge Geometry Compute Extraction",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Flowchart mod.rs still owned edge path geometry computation instead of acting as a compact renderer façade.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/flowchart-edge-geom-compute-extraction/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/flowchart-edge-geom-compute-extraction/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/flowchart-edge-geom-compute-extraction/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/flowchart-edge-geom-compute-extraction/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render flowchart",
+    "cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --text-measurer vendored",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/flowchart-edge-geom-compute-extraction/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Edge geometry compute extraction passed flowchart and package gates."
+  }
+}
