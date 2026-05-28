@@ -71,3 +71,7 @@ required-features = ["render"]
 name = "text_measure_stress"
 harness = false
 required-features = ["render"]
+
+[[example]]
+name = "svg_pipeline"
+required-features = ["render"]

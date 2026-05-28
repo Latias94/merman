@@ -34,6 +34,12 @@ let svg = renderer
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+Runnable example:
+
+```bash
+cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+```
+
 The compatibility helpers are wrappers around the same pipeline:
 
 - `render_svg_readable_sync(...)` uses `SvgPipeline::readable()`.

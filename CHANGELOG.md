@@ -10,6 +10,28 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
   string/Cow `SvgPostprocessor` extension point for host-provided SVG cleanup.
+- Added a runnable `svg_pipeline` example showing `SvgPipeline::resvg_safe()` with a custom
+  postprocessor:
+
+  ```bash
+  cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+  ```
+
+  Library integrations can use the same pipeline directly:
+
+  ```rust
+  use merman::render::{HeadlessRenderer, SvgPipeline};
+
+  let renderer = HeadlessRenderer::new();
+  let svg = renderer
+      .render_svg_with_pipeline_sync(
+          "flowchart TD; A[Layer 7\\nHTTP]-->B;",
+          &SvgPipeline::resvg_safe(),
+      )?
+      .unwrap();
+  # let _ = svg;
+  # Ok::<(), Box<dyn std::error::Error>>(())
+  ```
 
 ### Changed
 

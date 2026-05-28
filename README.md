@@ -189,6 +189,12 @@ let svg = renderer
 See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
 behavior and host postprocessor extension points.
 
+Runnable example:
+
+```bash
+cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+```
+
 ## Showcase
 
 All screenshots below are produced by [`merman-cli`](crates/merman-cli) (headless) and committed under
