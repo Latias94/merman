@@ -1,0 +1,2 @@
+2026-05-28T00:00:00Z opened bounded lane for state edge renderer extraction.
+2026-05-28T00:00:00Z extracted state edge path and label rendering into state/edge.rs; state and package gates passed.

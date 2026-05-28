@@ -3,6 +3,7 @@ use rustc_hash::FxHashMap;
 use std::sync::Arc;
 mod context;
 mod debug_svg;
+mod edge;
 mod emitted_bounds;
 mod links;
 mod rough_cache;
@@ -27,6 +28,7 @@ use roughjs::{
 // State diagram SVG renderer implementation (split from parity.rs).
 
 use context::*;
+use edge::*;
 use links::*;
 use rough_cache::*;
 use style::*;

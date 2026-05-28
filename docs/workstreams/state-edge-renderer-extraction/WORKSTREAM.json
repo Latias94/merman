@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "slug": "state-edge-renderer-extraction",
+  "title": "State Edge Renderer Extraction",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "State SVG parity rendering keeps edge geometry, path encoding, label placement, and root orchestration in one large render module.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/state-edge-renderer-extraction/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/state-edge-renderer-extraction/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/state-edge-renderer-extraction/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/state-edge-renderer-extraction/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-render state",
+    "cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo fmt -p merman-render -- --check",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/state-edge-renderer-extraction/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "State edge rendering extraction passed state and package gates. Future state renderer splits should be separate bounded lanes."
+  }
+}
