@@ -6,6 +6,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-28
+
 ### Added
 
 - Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
