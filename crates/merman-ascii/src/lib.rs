@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn render_flowchart_rejects_unsupported_edge_labels() {
+    fn render_flowchart_renders_model_edge_labels() {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A"), node("B")];
         model.edges = vec![FlowEdge {
@@ -207,19 +207,49 @@ mod tests {
             ..edge("A", "B")
         }];
 
-        let err = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap_err();
+        let rendered = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap();
 
         assert_eq!(
-            err,
-            AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "edge labels",
-            }
+            rendered,
+            "     label     \n+---+     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n+---+     +---+\n"
         );
     }
 
     #[test]
-    fn render_flowchart_rejects_unsupported_subgraphs() {
+    fn render_flowchart_rejects_unsupported_edge_variants() {
+        let mut thick = empty_flowchart();
+        thick.nodes = vec![node("A"), node("B")];
+        thick.edges = vec![FlowEdge {
+            stroke: Some("thick".to_string()),
+            ..edge("A", "B")
+        }];
+
+        assert_eq!(
+            render_flowchart(&thick, &AsciiRenderOptions::ascii()),
+            Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "non-normal edge strokes",
+            })
+        );
+
+        let mut cross = empty_flowchart();
+        cross.nodes = vec![node("A"), node("B")];
+        cross.edges = vec![FlowEdge {
+            edge_type: Some("arrow_cross".to_string()),
+            ..edge("A", "B")
+        }];
+
+        assert_eq!(
+            render_flowchart(&cross, &AsciiRenderOptions::ascii()),
+            Err(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "non-point edge arrows",
+            })
+        );
+    }
+
+    #[test]
+    fn render_flowchart_renders_model_subgraphs() {
         let mut model = empty_flowchart();
         model.nodes = vec![node("A")];
         model.subgraphs = vec![FlowSubgraph {
@@ -232,14 +262,11 @@ mod tests {
             nodes: vec!["A".to_string()],
         }];
 
-        let err = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap_err();
+        let rendered = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap();
 
         assert_eq!(
-            err,
-            AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "subgraphs",
-            }
+            rendered,
+            "+---------+\n|         |\n| +---+   |\n| |   |   |\n| | A |   |\n| |   |   |\n| +---+   |\n+---------+\n"
         );
     }
 

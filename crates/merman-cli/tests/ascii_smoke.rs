@@ -53,11 +53,14 @@ fn cli_renders_plain_ascii_output_to_file() {
             out_arg.as_str(),
             "-",
         ],
-        "flowchart LR\nA --> B",
+        "flowchart TB\nsubgraph one\nA((Start)) -- go --> B[(DB)]\nend",
     );
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
 
     let text = fs::read_to_string(out).expect("read ascii output");
-    assert!(text.contains("+---+"));
-    assert!(text.contains("| A |---->| B |"));
+    assert!(text.contains("one"));
+    assert!(text.contains("Start"));
+    assert!(text.contains("go"));
+    assert!(text.contains("DB"));
+    assert!(text.contains("/"));
 }

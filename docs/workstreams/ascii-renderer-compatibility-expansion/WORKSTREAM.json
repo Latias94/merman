@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-renderer-compatibility-expansion",
+  "title": "ASCII Renderer Compatibility Expansion",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "merman-ascii has productized basic output, but common Mermaid flowchart constructs still fail instead of producing useful terminal output.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-renderer-compatibility-expansion/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-renderer-compatibility-expansion/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-renderer-compatibility-expansion/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-renderer-compatibility-expansion/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-renderer-compatibility-expansion/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo check -p merman-ascii",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii graph::",
+    "cargo nextest run -p merman-ascii",
+    "cargo nextest run -p merman --features ascii",
+    "cargo nextest run -p merman-cli --features ascii",
+    "cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings",
+    "cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/ascii-renderer-compatibility-expansion/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "ASCII renderer compatibility expansion is complete: flowchart edge labels, open/dotted/length-modified edges, common node-shape approximations, simple titled subgraphs, examples, CLI smoke coverage, and closeout gates are done. Split complex routing, uncommon shapes, or sequence expansion into future workstreams."
+  }
+}

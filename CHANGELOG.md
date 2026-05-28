@@ -11,6 +11,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added productized ASCII/Unicode text rendering via the new `merman-ascii` crate, the opt-in
   `merman` `ascii` feature, `merman::ascii` public helpers, and `merman-cli render --format
   ascii|unicode` behind the CLI `ascii` feature.
+- Expanded ASCII/Unicode flowchart support for edge labels, open/dotted/length-modified edges,
+  common terminal node-shape approximations, and simple titled subgraphs.
 
 ## [0.6.0] - 2026-05-28
 

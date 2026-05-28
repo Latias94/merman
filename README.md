@@ -100,6 +100,10 @@ merman-cli render path/to/diagram.mmd --out out.svg
 merman-cli render --format unicode path/to/diagram.mmd
 merman-cli render --format ascii path/to/diagram.mmd
 
+# Terminal text supports common flowchart labels, shapes, and simple subgraphs
+printf "flowchart TB\nsubgraph one\nA((Start)) -- go --> B[(DB)]\nend\n" |
+  merman-cli render --format ascii -
+
 # Render raster formats
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
@@ -117,6 +121,7 @@ flowchart TD
 EOF
 
 merman-cli render example.mmd --out example.svg
+merman-cli render --format ascii example.mmd
 ```
 
 ```powershell

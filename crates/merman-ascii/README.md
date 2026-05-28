@@ -10,14 +10,15 @@ parse Mermaid syntax itself.
 
 ## Current Status
 
-This crate currently contains the public API foundation, options, errors, third-party provenance,
-copied upstream golden fixtures, the first graph rendering slice, and initial sequence rendering.
-Basic flowcharts with boxed nodes and direct left-to-right or top-down edges can render through
-`render_flowchart`. Basic sequence diagrams with participants, solid/dotted messages, self
-messages, and visible autonumber can render through `render_sequence` or `render_model`.
+This crate contains the public API foundation, options, errors, third-party provenance, copied
+upstream golden fixtures, flowchart rendering, and initial sequence rendering. Flowcharts with
+boxed nodes, common terminal shape approximations, edge labels, open/dotted edges, length spacing,
+and simple titled subgraphs can render through `render_flowchart`. Basic sequence diagrams with
+participants, solid/dotted messages, self messages, and visible autonumber can render through
+`render_sequence` or `render_model`.
 
-Broader flowchart and sequence compatibility are being implemented under
-`docs/workstreams/ascii-renderer-productization/`.
+Broader flowchart and sequence compatibility is tracked under
+`docs/workstreams/ascii-renderer-compatibility-expansion/` and follow-on workstreams.
 
 See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices.
 
@@ -30,7 +31,10 @@ use merman_core::{Engine, ParseOptions};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
     let parsed = engine
-        .parse_diagram_for_render_model_sync("flowchart TD; A --> B", ParseOptions::strict())?
+        .parse_diagram_for_render_model_sync(
+            "flowchart TD\nsubgraph one\nA((Start)) -- go --> B[(DB)]\nend",
+            ParseOptions::strict(),
+        )?
         .expect("diagram detected");
 
     let renderer = AsciiRenderer::new(AsciiRenderOptions::default())?;

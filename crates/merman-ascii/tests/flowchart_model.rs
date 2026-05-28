@@ -65,36 +65,70 @@ fn flowchart_parser_tb_chain_matches_upstream_ascii_golden() {
 }
 
 #[test]
-fn flowchart_parser_edge_label_is_explicitly_unsupported() {
-    let err = render_flowchart(
+fn flowchart_parser_lr_edge_label_renders_above_edge() {
+    let rendered = render_flowchart(
         "flowchart LR\nA -- hello --> B",
         &AsciiRenderOptions::ascii(),
     )
-    .unwrap_err();
+    .unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "edge labels",
-        }
+        rendered,
+        concat!(
+            "     hello     \n",
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| A |---->| B |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+        )
     );
 }
 
 #[test]
-fn flowchart_parser_subgraph_is_explicitly_unsupported() {
-    let err = render_flowchart(
+fn flowchart_parser_tb_edge_label_renders_between_nodes() {
+    let rendered =
+        render_flowchart("flowchart TB\nA -- yes --> B", &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n", "  |  \n", "  |  \n", " yes \n",
+            "  |  \n", "  v  \n", "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_simple_subgraph_renders_group_box() {
+    let rendered = render_flowchart(
         "flowchart TB\nsubgraph one\nA --> B\nend",
         &AsciiRenderOptions::ascii(),
     )
-    .unwrap_err();
+    .unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "subgraphs",
-        }
+        rendered,
+        concat!(
+            "+- one -+\n",
+            "|       |\n",
+            "| +---+ |\n",
+            "| |   | |\n",
+            "| | A | |\n",
+            "| |   | |\n",
+            "| +---+ |\n",
+            "|   |   |\n",
+            "|   |   |\n",
+            "|   |   |\n",
+            "|   |   |\n",
+            "|   v   |\n",
+            "| +---+ |\n",
+            "| |   | |\n",
+            "| | B | |\n",
+            "| |   | |\n",
+            "| +---+ |\n",
+            "+-------+\n",
+        )
     );
 }
 
@@ -112,55 +146,75 @@ fn flowchart_parser_unsupported_direction_is_explicit() {
 }
 
 #[test]
-fn flowchart_parser_non_rect_shape_is_explicitly_unsupported() {
-    let err =
-        render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap_err();
+fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
+    let rendered =
+        render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-rectangular node shapes",
-        }
+        rendered,
+        "/---\\     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n\\---/     +---+\n"
     );
 }
 
 #[test]
-fn flowchart_parser_dotted_edges_are_explicitly_unsupported() {
-    let err = render_flowchart("flowchart LR\nA -.-> B", &AsciiRenderOptions::ascii()).unwrap_err();
+fn flowchart_parser_diamond_shape_renders_as_decision_terminal_shape() {
+    let rendered =
+        render_flowchart("flowchart LR\nA{A} --> B", &AsciiRenderOptions::ascii()).unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-normal edge strokes",
-        }
+        rendered,
+        "/---\\     +---+\n/   \\     |   |\n< A >---->| B |\n\\   /     |   |\n\\---/     +---+\n"
     );
 }
 
 #[test]
-fn flowchart_parser_open_edges_are_explicitly_unsupported() {
-    let err = render_flowchart("flowchart LR\nA --- B", &AsciiRenderOptions::ascii()).unwrap_err();
+fn flowchart_parser_subroutine_and_cylinder_shapes_render_terminal_approximations() {
+    let rendered = render_flowchart(
+        "flowchart LR\nA[[Sub]] --> B[(DB)]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-point edge arrows",
-        }
+        rendered,
+        concat!(
+            "+-------+     /------\\\n",
+            "| |   | |     |------|\n",
+            "| |Sub| |---->|  DB  |\n",
+            "| |   | |     |      |\n",
+            "+-------+     \\------/\n",
+        )
     );
 }
 
 #[test]
-fn flowchart_parser_edge_length_modifiers_are_explicitly_unsupported() {
-    let err =
-        render_flowchart("flowchart LR\nA ----> B", &AsciiRenderOptions::ascii()).unwrap_err();
+fn flowchart_parser_dotted_edges_render_with_dotted_line() {
+    let rendered =
+        render_flowchart("flowchart LR\nA -.-> B", &AsciiRenderOptions::ascii()).unwrap();
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "edge length modifiers",
-        }
+        rendered,
+        "+---+     +---+\n|   |     |   |\n| A |....>| B |\n|   |     |   |\n+---+     +---+\n"
+    );
+}
+
+#[test]
+fn flowchart_parser_open_edges_render_without_arrowhead() {
+    let rendered = render_flowchart("flowchart LR\nA --- B", &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(
+        rendered,
+        "+---+     +---+\n|   |     |   |\n| A |-----| B |\n|   |     |   |\n+---+     +---+\n"
+    );
+}
+
+#[test]
+fn flowchart_parser_edge_length_modifiers_add_spacing() {
+    let rendered =
+        render_flowchart("flowchart LR\nA ----> B", &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(
+        rendered,
+        "+---+         +---+\n|   |         |   |\n| A |-------->| B |\n|   |         |   |\n+---+         +---+\n"
     );
 }
