@@ -21,6 +21,7 @@ struct GraphCharset {
     vertical: char,
     right_connector: char,
     down_connector: char,
+    down_junction: char,
     arrow_right: char,
     arrow_up: char,
     arrow_down: char,
@@ -46,6 +47,7 @@ impl GraphCharset {
                 vertical: '|',
                 right_connector: '|',
                 down_connector: '-',
+                down_junction: '+',
                 arrow_right: '>',
                 arrow_up: '^',
                 arrow_down: 'v',
@@ -67,6 +69,7 @@ impl GraphCharset {
                 vertical: '│',
                 right_connector: '├',
                 down_connector: '┬',
+                down_junction: '┬',
                 arrow_right: '►',
                 arrow_up: '▲',
                 arrow_down: '▼',
@@ -146,16 +149,19 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     let charset = GraphCharset::for_options(options);
     let layouts = layout_nodes(graph, options);
     let group_layouts = layout_groups(graph, &layouts);
+    let (edge_width, edge_height) = edge_canvas_extent(&layouts, &graph.edges, graph.direction);
     let width = layouts
         .iter()
         .map(|layout| layout.x + layout.width)
         .chain(group_layouts.iter().map(|layout| layout.x + layout.width))
+        .chain(std::iter::once(edge_width))
         .max()
         .unwrap_or_default();
     let height = layouts
         .iter()
         .map(|layout| layout.y + layout.height)
         .chain(group_layouts.iter().map(|layout| layout.y + layout.height))
+        .chain(std::iter::once(edge_height))
         .max()
         .unwrap_or_default();
     let actual_cells = width.saturating_mul(height);
@@ -173,11 +179,48 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     for layout in &layouts {
         draw_node(&mut canvas, layout, &charset, options);
     }
-    for edge in &graph.edges {
+    for edge in graph.edges.iter().filter(|edge| edge.from != edge.to) {
+        draw_edge(&mut canvas, &layouts, edge, graph.direction, &charset);
+    }
+    for edge in graph.edges.iter().filter(|edge| edge.from == edge.to) {
         draw_edge(&mut canvas, &layouts, edge, graph.direction, &charset);
     }
 
     Ok(canvas.finish())
+}
+
+fn edge_canvas_extent(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    direction: GraphDirection,
+) -> (usize, usize) {
+    let mut width = 0;
+    let mut height = 0;
+    if direction != GraphDirection::LeftRight {
+        return (width, height);
+    }
+
+    for edge in edges.iter().filter(|edge| edge.from == edge.to) {
+        let Some(layout) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            continue;
+        };
+        width = width.max(self_loop_right_x(layouts, layout) + 1);
+        height = height.max(self_loop_bottom_y(layout) + 1);
+    }
+    for edge in edges.iter().filter(|edge| edge.from != edge.to) {
+        let Some(from) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            continue;
+        };
+        let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
+            continue;
+        };
+        if from.center_y() == to.center_y() && from.x > to.x {
+            width = width.max(from.center_x() + 1);
+            height = height.max(left_right_back_edge_bottom_y(from) + 1);
+        }
+    }
+
+    (width, height)
 }
 
 fn layout_nodes(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Vec<NodeLayout> {
@@ -735,7 +778,7 @@ fn draw_edge(
     };
 
     match direction {
-        GraphDirection::LeftRight => draw_left_right_edge(canvas, from, to, edge, charset),
+        GraphDirection::LeftRight => draw_left_right_edge(canvas, layouts, from, to, edge, charset),
         GraphDirection::TopDown => draw_top_down_edge(canvas, from, to, edge, charset),
     }
 
@@ -744,11 +787,22 @@ fn draw_edge(
 
 fn draw_left_right_edge(
     canvas: &mut Canvas,
+    layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) {
+    if from.id == to.id {
+        draw_left_right_self_edge(canvas, layouts, from, edge, charset);
+        return;
+    }
+
+    if from.center_y() == to.center_y() && from.x > to.x {
+        draw_left_right_back_edge(canvas, from, to, edge, charset);
+        return;
+    }
+
     if from.center_y() < to.center_y() && to.x > from.x {
         draw_left_right_down_then_right_edge(canvas, from, to, edge, charset);
         return;
@@ -782,6 +836,113 @@ fn draw_left_right_edge(
         GraphEdgeArrow::Open => canvas.set(end, y, line),
         GraphEdgeArrow::Point => canvas.set(end, y, charset.arrow_right),
     }
+}
+
+fn draw_left_right_back_edge(
+    canvas: &mut Canvas,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    let start_x = from.center_x();
+    let end_x = to.center_x();
+    if start_x <= end_x {
+        return;
+    }
+
+    let bottom_y = left_right_back_edge_bottom_y(from);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+
+    canvas.set(start_x, from.bottom(), charset.down_connector);
+    for y in (from.bottom() + 1)..bottom_y {
+        canvas.set(start_x, y, vertical);
+    }
+    canvas.set(start_x, bottom_y, charset.bottom_right);
+
+    for x in (end_x + 1)..start_x {
+        canvas.set(x, bottom_y, horizontal);
+    }
+    canvas.set(end_x, bottom_y, charset.corner_down_right);
+
+    let arrow_y = bottom_y - 1;
+    match edge.arrow {
+        GraphEdgeArrow::Open => canvas.set(end_x, arrow_y, vertical),
+        GraphEdgeArrow::Point => canvas.set(end_x, arrow_y, charset.arrow_up),
+    }
+}
+
+fn left_right_back_edge_bottom_y(from: &NodeLayout) -> usize {
+    from.bottom() + 2
+}
+
+fn draw_left_right_self_edge(
+    canvas: &mut Canvas,
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    let y = from.center_y();
+    let loop_x = self_loop_right_x(layouts, from);
+    let bottom_y = self_loop_bottom_y(from);
+    if loop_x <= from.right() || bottom_y <= y + 1 {
+        return;
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    if from.shape != GraphNodeShape::Diamond {
+        canvas.set(from.right(), y, charset.right_connector);
+    }
+    for x in (from.right() + 1)..loop_x {
+        canvas.set(x, y, horizontal);
+    }
+    let top_corner = if self_loop_has_right_neighbor(layouts, from) {
+        charset.down_junction
+    } else {
+        charset.top_right
+    };
+    canvas.set(loop_x, y, top_corner);
+
+    for line_y in (y + 1)..bottom_y {
+        canvas.set(loop_x, line_y, vertical);
+    }
+    canvas.set(loop_x, bottom_y, charset.bottom_right);
+
+    for x in (from.center_x() + 1)..loop_x {
+        canvas.set(x, bottom_y, horizontal);
+    }
+    canvas.set(from.center_x(), bottom_y, charset.corner_down_right);
+
+    let arrow_y = bottom_y - 1;
+    match edge.arrow {
+        GraphEdgeArrow::Open => canvas.set(from.center_x(), arrow_y, vertical),
+        GraphEdgeArrow::Point => canvas.set(from.center_x(), arrow_y, charset.arrow_up),
+    }
+}
+
+fn self_loop_has_right_neighbor(layouts: &[NodeLayout], from: &NodeLayout) -> bool {
+    layouts.iter().any(|layout| {
+        layout.id != from.id && layout.center_y() == from.center_y() && layout.x > from.x
+    })
+}
+
+fn self_loop_right_x(layouts: &[NodeLayout], from: &NodeLayout) -> usize {
+    layouts
+        .iter()
+        .filter(|layout| {
+            layout.id != from.id && layout.center_y() == from.center_y() && layout.x > from.x
+        })
+        .map(|layout| layout.x)
+        .min()
+        .map(|right_x| (from.right() + right_x) / 2)
+        .unwrap_or_else(|| from.right() + 2)
+}
+
+fn self_loop_bottom_y(from: &NodeLayout) -> usize {
+    from.bottom() + 2
 }
 
 fn draw_left_right_down_edge(

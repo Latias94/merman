@@ -11,8 +11,11 @@ ASCII:
 - `ampersand_lhs.txt`
 - `ampersand_rhs.txt`
 - `ampersand_without_edge.txt`
+- `back_reference_from_child.txt`
 - `backlink_from_bottom.txt`
 - `flowchart_tb_simple.txt`
+- `self_reference_with_edge.txt`
+- `self_reference.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
 - `three_nodes_single_line.txt`
@@ -30,7 +33,10 @@ Unicode:
 - `ampersand_lhs.txt`
 - `ampersand_rhs.txt`
 - `ampersand_without_edge.txt`
+- `back_reference_from_child.txt`
 - `backlink_from_bottom.txt`
+- `self_reference_with_edge.txt`
+- `self_reference.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
 - `three_nodes_single_line.txt`
@@ -49,7 +55,6 @@ ASCII:
 
 - `ampersand_lhs_and_rhs.txt`
 - `back_edges_two_labels_td.txt`
-- `back_reference_from_child.txt`
 - `backlink_from_top.txt`
 - `backlink_with_short_y_padding.txt`
 - `bidirectional_edge_labels_lr.txt`
@@ -61,8 +66,6 @@ ASCII:
 - `graph_tb_direction.txt`
 - `multiline_single_node.txt`
 - `preserve_order_of_definition.txt`
-- `self_reference_with_edge.txt`
-- `self_reference.txt`
 - `subgraph_complex_mixed.txt`
 - `subgraph_complex_nested.txt`
 - `subgraph_empty.txt`
@@ -88,9 +91,6 @@ Unicode:
 
 - `ampersand_lhs_and_rhs.txt`
 - `back_edges_two_labels_td.txt`
-- `back_reference_from_child.txt`
 - `backlink_from_top.txt`
 - `comments.txt`
 - `preserve_order_of_definition.txt`
-- `self_reference_with_edge.txt`
-- `self_reference.txt`

@@ -49,3 +49,14 @@ Last updated: 2026-05-29
   - PASS `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
   - PASS `cargo nextest run -p merman-ascii` (43 passed)
   - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`
+- 2026-05-29 AGR-040: Added LR self-loop routing, self-loop canvas extents, self-loop draw order
+  over same-row edges, and same-row right-to-left back-edge routing. Exact graph fixture matches
+  increased from 31 to 37:
+  - ASCII: 19 exact matches, 33 named gaps.
+  - Unicode: 18 exact matches, 5 named gaps.
+- 2026-05-29 AGR-040 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS `cargo clippy -p merman-ascii --all-targets -- -D warnings`

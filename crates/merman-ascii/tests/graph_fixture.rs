@@ -38,6 +38,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "back_reference_from_child.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "backlink_from_bottom.txt",
     },
     GraphFixture {
@@ -51,6 +55,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "single_node.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "self_reference.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "self_reference_with_edge.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -102,7 +114,19 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "back_reference_from_child.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "backlink_from_bottom.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "self_reference.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "self_reference_with_edge.txt",
     },
     GraphFixture {
         directory: "extended-chars",
@@ -161,10 +185,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
-        name: "back_reference_from_child.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "backlink_from_top.txt",
     },
     GraphFixture {
@@ -206,14 +226,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "preserve_order_of_definition.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "self_reference_with_edge.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "self_reference.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -305,10 +317,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
-        name: "back_reference_from_child.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
         name: "backlink_from_top.txt",
     },
     GraphFixture {
@@ -318,14 +326,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "extended-chars",
         name: "preserve_order_of_definition.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "self_reference_with_edge.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "self_reference.txt",
     },
 ];
 

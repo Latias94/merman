@@ -51,15 +51,19 @@ Last updated: 2026-05-29
 
 ## M3 - Back Edges And Self References
 
-- [ ] AGR-040 [owner=codex] [deps=AGR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
+- [x] AGR-040 [owner=codex] [deps=AGR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
   Goal: Add routing support for self references, back edges, non-adjacent edges, and label
   separation where feasible inside the time box.
   Validation:
-  - `cargo nextest run -p merman-ascii graph_fixture`
-  - `cargo nextest run -p merman-ascii flowchart`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS 2026-05-29: `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Avoid silent misrouting; split fixtures that need deeper junction merging.
-  Evidence: Reference fixture allowlist expansion.
-  Handoff: Pending.
+  Evidence: Self-loop and same-row back-edge routing moved six more exact fixtures into the
+  allowlist, raising graph fixture parity from 31 to 37 exact matches.
+  Handoff: AGR-050 is next.
 
 ## M4 - Subgraph Routing Hardening
 

@@ -26,17 +26,25 @@ AGR-030 is implemented and verified:
 - LR graph layout now uses a reference-style 3x3 grid for root and child placement.
 - Basic multi-root, fan-out, fan-in, same-column downward edges, and right-then-up edges are
   rendered through grid-derived node positions.
-- The allowlist currently has 31 exact matches: 16 ASCII and 15 Unicode.
-- Remaining high-value gaps are junction merging (`ampersand_lhs_and_rhs.txt`,
+- Remaining high-value gaps after AGR-030 were junction merging (`ampersand_lhs_and_rhs.txt`,
   `backlink_from_top.txt`), self/back references, duplicate/bidirectional labels, and subgraphs.
+
+AGR-040 is implemented and verified:
+
+- LR self-loops now draw their loop body and expand the canvas.
+- Self-loops are drawn after same-row edges so shared junctions remain visible.
+- Same-row right-to-left back edges now route below the row.
+- The allowlist currently has 37 exact matches: 19 ASCII and 18 Unicode.
+- Remaining high-value gaps are crossing junction merging, TD back-edge labels, duplicate and
+  bidirectional label separation, padding directives, and subgraph exact layout parity.
 
 ## Next Task
 
-Run AGR-040:
+Run AGR-050:
 
-- Add routing support for self references, back edges, and non-adjacent edges where feasible.
-- Start by comparing `self_reference*.txt`, `backlink_from_top.txt`,
-  `back_reference_from_child.txt`, `preserve_order_of_definition.txt`, and label fixtures.
+- Harden subgraph layout where feasible.
+- Start by comparing `subgraph_single_node.txt`, `subgraph_multiple_nodes.txt`,
+  `subgraph_td_direction.txt`, and `graph_tb_direction.txt`.
 - Move fixtures from `GRAPH_FIXTURE_GAPS` to `GRAPH_FIXTURE_ALLOWLIST` only after exact-output
   parity is verified.
 

@@ -29,6 +29,8 @@ Exit criteria:
 
 ## M3 - Back Edges And Self References
 
+Status: Complete for the current lane slice.
+
 Exit criteria:
 
 - At least one self-reference or back-edge fixture moves into the passing allowlist, or the lane
