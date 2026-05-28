@@ -2,6 +2,7 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::Value;
 
 pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
+pub type RenderSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
 
 #[derive(Debug, Clone, Default)]
 pub struct DiagramRegistry {
@@ -167,6 +168,143 @@ impl RenderSemanticModel {
             Self::XyChart(_) => diagram_type == "xychart",
             Self::GitGraph(_) => diagram_type == "gitGraph",
         }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RenderDiagramRegistry {
+    parsers: std::collections::HashMap<&'static str, RenderSemanticParser>,
+}
+
+impl RenderDiagramRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, diagram_type: &'static str, parser: RenderSemanticParser) {
+        self.parsers.insert(diagram_type, parser);
+    }
+
+    pub fn get(&self, diagram_type: &str) -> Option<RenderSemanticParser> {
+        self.parsers.get(diagram_type).copied()
+    }
+
+    pub fn default_mermaid_11_12_2() -> Self {
+        let mut reg = Self::new();
+
+        reg.insert("mindmap", |code, meta| {
+            crate::diagrams::mindmap::parse_mindmap_model_for_render(code, meta)
+                .map(RenderSemanticModel::Mindmap)
+        });
+        reg.insert("stateDiagram", |code, meta| {
+            crate::diagrams::state::parse_state_model_for_render(code, meta)
+                .map(RenderSemanticModel::State)
+        });
+        reg.insert("state", |code, meta| {
+            crate::diagrams::state::parse_state_model_for_render(code, meta)
+                .map(RenderSemanticModel::State)
+        });
+        reg.insert("zenuml", |code, meta| {
+            crate::diagrams::zenuml::parse_zenuml_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sequence)
+        });
+        reg.insert("sequence", |code, meta| {
+            crate::diagrams::sequence::parse_sequence_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sequence)
+        });
+        reg.insert("flowchart-v2", |code, meta| {
+            crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
+                .map(RenderSemanticModel::Flowchart)
+        });
+        reg.insert("flowchart", |code, meta| {
+            crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
+                .map(RenderSemanticModel::Flowchart)
+        });
+        reg.insert("flowchart-elk", |code, meta| {
+            crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
+                .map(RenderSemanticModel::Flowchart)
+        });
+        reg.insert("classDiagram", |code, meta| {
+            crate::diagrams::class::parse_class_typed(code, meta).map(RenderSemanticModel::Class)
+        });
+        reg.insert("class", |code, meta| {
+            crate::diagrams::class::parse_class_typed(code, meta).map(RenderSemanticModel::Class)
+        });
+        reg.insert("c4", |code, meta| {
+            crate::diagrams::c4::parse_c4_model_for_render(code, meta).map(RenderSemanticModel::C4)
+        });
+        reg.insert("architecture", |code, meta| {
+            crate::diagrams::architecture::parse_architecture_model_for_render(code, meta)
+                .map(RenderSemanticModel::Architecture)
+        });
+        reg.insert("kanban", |code, meta| {
+            crate::diagrams::kanban::parse_kanban_model_for_render(code, meta)
+                .map(RenderSemanticModel::Kanban)
+        });
+        reg.insert("gantt", |code, meta| {
+            crate::diagrams::gantt::parse_gantt_model_for_render(code, meta)
+                .map(RenderSemanticModel::Gantt)
+        });
+        reg.insert("pie", |code, meta| {
+            crate::diagrams::pie::parse_pie_model_for_render(code, meta)
+                .map(RenderSemanticModel::Pie)
+        });
+        reg.insert("packet", |code, meta| {
+            crate::diagrams::packet::parse_packet_model_for_render(code, meta)
+                .map(RenderSemanticModel::Packet)
+        });
+        reg.insert("timeline", |code, meta| {
+            crate::diagrams::timeline::parse_timeline_model_for_render(code, meta)
+                .map(RenderSemanticModel::Timeline)
+        });
+        reg.insert("journey", |code, meta| {
+            crate::diagrams::journey::parse_journey_model_for_render(code, meta)
+                .map(RenderSemanticModel::Journey)
+        });
+        reg.insert("requirement", |code, meta| {
+            crate::diagrams::requirement::parse_requirement_model_for_render(code, meta)
+                .map(RenderSemanticModel::Requirement)
+        });
+        reg.insert("sankey", |code, meta| {
+            crate::diagrams::sankey::parse_sankey_model_for_render(code, meta)
+                .map(RenderSemanticModel::Sankey)
+        });
+        reg.insert("radar", |code, meta| {
+            crate::diagrams::radar::parse_radar_model_for_render(code, meta)
+                .map(RenderSemanticModel::Radar)
+        });
+        reg.insert("info", |code, meta| {
+            crate::diagrams::info::parse_info_model_for_render(code, meta)
+                .map(RenderSemanticModel::Info)
+        });
+        reg.insert("treemap", |code, meta| {
+            crate::diagrams::treemap::parse_treemap_model_for_render(code, meta)
+                .map(RenderSemanticModel::Treemap)
+        });
+        reg.insert("block", |code, meta| {
+            crate::diagrams::block::parse_block_model_for_render(code, meta)
+                .map(RenderSemanticModel::Block)
+        });
+        reg.insert("er", |code, meta| {
+            crate::diagrams::er::parse_er_model_for_render(code, meta).map(RenderSemanticModel::Er)
+        });
+        reg.insert("erDiagram", |code, meta| {
+            crate::diagrams::er::parse_er_model_for_render(code, meta).map(RenderSemanticModel::Er)
+        });
+        reg.insert("quadrantChart", |code, meta| {
+            crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render(code, meta)
+                .map(RenderSemanticModel::QuadrantChart)
+        });
+        reg.insert("xychart", |code, meta| {
+            crate::diagrams::xychart::parse_xychart_model_for_render(code, meta)
+                .map(RenderSemanticModel::XyChart)
+        });
+        reg.insert("gitGraph", |code, meta| {
+            crate::diagrams::git_graph::parse_git_graph_model_for_render(code, meta)
+                .map(RenderSemanticModel::GitGraph)
+        });
+
+        reg
     }
 }
 

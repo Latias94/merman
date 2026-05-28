@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "render-parser-registry",
+  "title": "Render Parser Registry",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Typed render parser dispatch is still a large Engine match, keeping parser aliases and model construction coupled to the engine instead of a registry boundary.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/render-parser-registry/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/render-parser-registry/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/render-parser-registry/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/render-parser-registry/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p merman-core render_parser_registry",
+    "cargo fmt -p merman-core -p merman-render -- --check",
+    "cargo nextest run -p merman-core",
+    "cargo nextest run -p merman-render",
+    "cargo clippy -p merman-core --all-targets -- -D warnings",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/render-parser-registry/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "closed",
+    "notes": "Lane complete. Split macro/table generation separately if registry boilerplate becomes the next clear bottleneck."
+  }
+}

@@ -222,6 +222,57 @@ fn render_semantic_model_supports_diagram_type_aliases() {
     assert!(json_model.supports_diagram_type("unknown-plugin"));
 }
 
+#[test]
+fn render_parser_registry_drives_typed_alias_parse() {
+    let engine = Engine::new();
+    assert!(
+        engine
+            .render_diagram_registry()
+            .get("flowchart-elk")
+            .is_some()
+    );
+
+    let parsed = engine
+        .parse_diagram_for_render_model_as_sync(
+            "flowchart-elk",
+            "flowchart-elk TD\nA-->B;",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "flowchart-elk");
+    assert_eq!(parsed.model.kind(), "flowchart");
+    assert!(matches!(parsed.model, RenderSemanticModel::Flowchart(_)));
+}
+
+#[test]
+fn render_parser_registry_falls_back_to_json_registry_for_custom_diagrams() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("customDiagram", custom_json_parser);
+
+    let parsed = engine
+        .parse_diagram_for_render_model_as_sync(
+            "customDiagram",
+            "customDiagram\npayload",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.meta.diagram_type, "customDiagram");
+    match parsed.model {
+        RenderSemanticModel::Json(model) => assert_eq!(model["type"], json!("customDiagram")),
+        other => panic!("custom render fallback should use JSON model, got {other:?}"),
+    }
+}
+
+fn custom_json_parser(_code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
+    Ok(json!({ "type": "customDiagram" }))
+}
+
 fn render_model_for(input: &str) -> RenderSemanticModel {
     Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())

@@ -27,7 +27,8 @@ pub mod utils;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender, RenderSemanticModel,
+    DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender,
+    RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
@@ -68,6 +69,7 @@ pub struct ParseMetadata {
 pub struct Engine {
     registry: DetectorRegistry,
     diagram_registry: DiagramRegistry,
+    render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
     fixed_today_local: Option<chrono::NaiveDate>,
     fixed_local_offset_minutes: Option<i32>,
@@ -80,6 +82,7 @@ impl Default for Engine {
         Self {
             registry: DetectorRegistry::default_mermaid_11_12_2(),
             diagram_registry: DiagramRegistry::default_mermaid_11_12_2(),
+            render_diagram_registry: RenderDiagramRegistry::default_mermaid_11_12_2(),
             site_config,
             fixed_today_local: None,
             fixed_local_offset_minutes: None,
@@ -141,6 +144,14 @@ impl Engine {
 
     pub fn diagram_registry_mut(&mut self) -> &mut DiagramRegistry {
         &mut self.diagram_registry
+    }
+
+    pub fn render_diagram_registry(&self) -> &RenderDiagramRegistry {
+        &self.render_diagram_registry
+    }
+
+    pub fn render_diagram_registry_mut(&mut self) -> &mut RenderDiagramRegistry {
+        &mut self.render_diagram_registry
     }
 
     /// Synchronous variant of [`Engine::parse_metadata`].
@@ -410,73 +421,12 @@ impl Engine {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticModel> {
-        match meta.diagram_type.as_str() {
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(code, meta)
-                .map(RenderSemanticModel::Mindmap),
-            "stateDiagram" | "state" => {
-                crate::diagrams::state::parse_state_model_for_render(code, meta)
-                    .map(RenderSemanticModel::State)
-            }
-            "zenuml" => crate::diagrams::zenuml::parse_zenuml_model_for_render(code, meta)
-                .map(RenderSemanticModel::Sequence),
-            "sequence" => crate::diagrams::sequence::parse_sequence_model_for_render(code, meta)
-                .map(RenderSemanticModel::Sequence),
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
-                crate::diagrams::flowchart::parse_flowchart_model_for_render(code, meta)
-                    .map(RenderSemanticModel::Flowchart)
-            }
-            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(code, meta)
-                .map(RenderSemanticModel::Class),
-            "c4" => crate::diagrams::c4::parse_c4_model_for_render(code, meta)
-                .map(RenderSemanticModel::C4),
-            "architecture" => {
-                crate::diagrams::architecture::parse_architecture_model_for_render(code, meta)
-                    .map(RenderSemanticModel::Architecture)
-            }
-            "kanban" => crate::diagrams::kanban::parse_kanban_model_for_render(code, meta)
-                .map(RenderSemanticModel::Kanban),
-            "gantt" => crate::diagrams::gantt::parse_gantt_model_for_render(code, meta)
-                .map(RenderSemanticModel::Gantt),
-            "pie" => crate::diagrams::pie::parse_pie_model_for_render(code, meta)
-                .map(RenderSemanticModel::Pie),
-            "packet" => crate::diagrams::packet::parse_packet_model_for_render(code, meta)
-                .map(RenderSemanticModel::Packet),
-            "timeline" => crate::diagrams::timeline::parse_timeline_model_for_render(code, meta)
-                .map(RenderSemanticModel::Timeline),
-            "journey" => crate::diagrams::journey::parse_journey_model_for_render(code, meta)
-                .map(RenderSemanticModel::Journey),
-            "requirement" => {
-                crate::diagrams::requirement::parse_requirement_model_for_render(code, meta)
-                    .map(RenderSemanticModel::Requirement)
-            }
-            "sankey" => crate::diagrams::sankey::parse_sankey_model_for_render(code, meta)
-                .map(RenderSemanticModel::Sankey),
-            "radar" => crate::diagrams::radar::parse_radar_model_for_render(code, meta)
-                .map(RenderSemanticModel::Radar),
-            "info" => crate::diagrams::info::parse_info_model_for_render(code, meta)
-                .map(RenderSemanticModel::Info),
-            "treemap" => crate::diagrams::treemap::parse_treemap_model_for_render(code, meta)
-                .map(RenderSemanticModel::Treemap),
-            "block" => crate::diagrams::block::parse_block_model_for_render(code, meta)
-                .map(RenderSemanticModel::Block),
-            "er" | "erDiagram" => crate::diagrams::er::parse_er_model_for_render(code, meta)
-                .map(RenderSemanticModel::Er),
-            "quadrantChart" => {
-                crate::diagrams::quadrant_chart::parse_quadrant_chart_model_for_render(code, meta)
-                    .map(RenderSemanticModel::QuadrantChart)
-            }
-            "xychart" => crate::diagrams::xychart::parse_xychart_model_for_render(code, meta)
-                .map(RenderSemanticModel::XyChart),
-            "gitGraph" => crate::diagrams::git_graph::parse_git_graph_model_for_render(code, meta)
-                .map(RenderSemanticModel::GitGraph),
-            _ => diagram::parse_or_unsupported(
-                &self.diagram_registry,
-                &meta.diagram_type,
-                code,
-                meta,
-            )
-            .map(RenderSemanticModel::Json),
+        if let Some(parser) = self.render_diagram_registry.get(&meta.diagram_type) {
+            return parser(code, meta);
         }
+
+        diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, code, meta)
+            .map(RenderSemanticModel::Json)
     }
 
     fn sanitize_render_semantic_model(
