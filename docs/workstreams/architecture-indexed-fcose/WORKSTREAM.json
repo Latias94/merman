@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "slug": "architecture-indexed-fcose",
+  "title": "Architecture Indexed FCoSE",
+  "status": "complete",
+  "updated": "2026-05-28",
+  "scope_kind": "execution",
+  "problem": "Architecture layout builds string-keyed FCoSE adapter input before FCoSE converts it back into indexed internals, adding accidental overhead to the slowest remaining performance canary.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/architecture-indexed-fcose/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/architecture-indexed-fcose/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/architecture-indexed-fcose/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/architecture-indexed-fcose/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "cargo nextest run -p manatee",
+    "cargo nextest run -p merman-render architecture",
+    "cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3",
+    "cargo run -p xtask -- report-overrides --check-no-growth",
+    "cargo bench -p merman --features render --bench architecture_layout_stress"
+  ],
+  "evidence": [
+    "docs/performance/spotcheck_2026-05-10_standard_canaries_stage_mmdr_toolchain.md",
+    "docs/workstreams/architecture-indexed-fcose/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "close",
+    "notes": "Indexed FCoSE and direct Architecture integration are complete. Split typed dispatch and text measurement into follow-on workstreams if pursued."
+  }
+}

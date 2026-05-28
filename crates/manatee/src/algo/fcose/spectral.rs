@@ -17,8 +17,8 @@ const MAX_POWER_ITERATIONS: usize = 10_000;
 pub(super) fn apply_spectral_start_positions(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
-    compound_parent: &FxHashMap<String, Option<String>>,
-    compound_ids_in_order: &[String],
+    compound_parent: &[Option<usize>],
+    compound_ids_in_order: &[usize],
     rng: &mut XorShift64Star,
 ) -> bool {
     if nodes.is_empty() {
@@ -180,8 +180,8 @@ enum ElemKey {
 fn build_transformed_adjacency(
     nodes: &[SimNode],
     edges: &[SimEdge],
-    compound_parent: &FxHashMap<String, Option<String>>,
-    compound_ids_in_order: &[String],
+    compound_parent: &[Option<usize>],
+    compound_ids_in_order: &[usize],
 ) -> (Vec<Vec<usize>>, usize) {
     let n_real = nodes.len();
 
@@ -204,25 +204,23 @@ fn build_transformed_adjacency(
     // Match upstream spectral.js ordering:
     // - compound ids follow the Cytoscape insertion order (Mermaid adds groups first, then services)
     // - we keep that order as provided by the caller (derived from `graph.compounds`)
-    let compound_ids: Vec<String> = compound_ids_in_order
+    let compound_ids: Vec<usize> = compound_ids_in_order
         .iter()
-        .filter(|id| compound_parent.contains_key(id.as_str()))
-        .cloned()
+        .copied()
+        .filter(|id| *id < compound_parent.len())
         .collect();
-    let mut compound_id_to_ix: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    for (ix, id) in compound_ids.iter().enumerate() {
-        compound_id_to_ix.insert(id.clone(), ix);
+    let mut compound_id_to_ix: Vec<Option<usize>> = vec![None; compound_parent.len()];
+    for (ix, &id) in compound_ids.iter().enumerate() {
+        compound_id_to_ix[id] = Some(ix);
     }
 
     let mut compound_parent_ix: Vec<Option<usize>> = vec![None; compound_ids.len()];
-    for (id, parent) in compound_parent {
-        let Some(&ix) = compound_id_to_ix.get(id.as_str()) else {
-            continue;
-        };
-        let parent_ix = parent
-            .as_deref()
-            .and_then(|p| compound_id_to_ix.get(p).copied());
+    for (ix, &compound_id) in compound_ids.iter().enumerate() {
+        let parent_ix = compound_parent
+            .get(compound_id)
+            .copied()
+            .flatten()
+            .and_then(|parent_id| compound_id_to_ix.get(parent_id).copied().flatten());
         compound_parent_ix[ix] = parent_ix;
     }
 
@@ -239,13 +237,13 @@ fn build_transformed_adjacency(
     let mut leaf_immediate_parent: Vec<Option<usize>> = vec![None; n_real];
     let mut leaf_root_compound: Vec<Option<usize>> = vec![None; n_real];
     for i in 0..n_real {
-        let mut cur = nodes[i].parent.as_deref();
+        let mut cur = nodes[i].parent;
         while let Some(cid) = cur {
-            let Some(&cix) = compound_id_to_ix.get(cid) else {
+            let Some(cix) = compound_id_to_ix.get(cid).copied().flatten() else {
                 break;
             };
             leaf_chain[i].push(cix);
-            cur = compound_parent.get(cid).and_then(|p| p.as_deref());
+            cur = compound_parent.get(cid).copied().flatten();
         }
         leaf_immediate_parent[i] = leaf_chain[i].first().copied();
         leaf_root_compound[i] = leaf_chain[i].last().copied();

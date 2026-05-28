@@ -12,7 +12,7 @@ mod spectral;
 #[derive(Debug, Default, Clone)]
 struct FcoseLayoutTimings {
     total: std::time::Duration,
-    from_graph: std::time::Duration,
+    from_indexed: std::time::Duration,
     constraints: std::time::Duration,
     spring: FcoseSpringTimings,
     translate: std::time::Duration,
@@ -37,21 +37,150 @@ struct SpringStats {
     spectral_applied: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct IndexedGraph {
+    pub nodes: Vec<IndexedNode>,
+    pub edges: Vec<IndexedEdge>,
+    /// Optional compound nodes. Parent references in nodes and compounds point into this vector.
+    pub compounds: Vec<IndexedCompound>,
+}
+
+impl IndexedGraph {
+    fn validate(&self) -> Result<()> {
+        for (idx, n) in self.nodes.iter().enumerate() {
+            if n.parent.is_some_and(|p| p >= self.compounds.len()) {
+                return Err(crate::error::Error::MissingEndpoint {
+                    edge_id: format!("node-parent:#{idx}"),
+                });
+            }
+        }
+
+        for (idx, c) in self.compounds.iter().enumerate() {
+            if c.parent.is_some_and(|p| p >= self.compounds.len()) {
+                return Err(crate::error::Error::MissingEndpoint {
+                    edge_id: format!("compound-parent:#{idx}"),
+                });
+            }
+        }
+
+        for (idx, e) in self.edges.iter().enumerate() {
+            if e.source >= self.nodes.len() || e.target >= self.nodes.len() {
+                return Err(crate::error::Error::MissingEndpoint {
+                    edge_id: format!("#{idx}"),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedNode {
+    /// Parent compound index, if any.
+    pub parent: Option<usize>,
+    pub width: f64,
+    pub height: f64,
+    /// Initial center position.
+    pub x: f64,
+    pub y: f64,
+    pub bounds_extras: BoundsExtras,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedCompound {
+    /// Parent compound index, if any.
+    pub parent: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedEdge {
+    pub source: usize,
+    pub target: usize,
+    pub label_width: Option<f64>,
+    pub label_height: Option<f64>,
+    pub source_anchor: Option<Anchor>,
+    pub target_anchor: Option<Anchor>,
+    pub ideal_length: f64,
+    pub elasticity: f64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IndexedFcoseOptions {
+    pub random_seed: u64,
+    pub rerun: bool,
+    pub default_edge_length: Option<f64>,
+    /// Alignment groups use FCoSE element indices: leaves first, then compounds.
+    pub alignment_constraint: Option<IndexedAlignmentConstraint>,
+    /// Relative constraints use FCoSE element indices: leaves first, then compounds.
+    pub relative_placement_constraint: Vec<IndexedRelativePlacementConstraint>,
+    pub compound_padding: Option<f64>,
+    pub relocate_center: Option<(f64, f64)>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IndexedAlignmentConstraint {
+    /// Elements in each inner vec share the same y coordinate.
+    pub horizontal: Vec<Vec<usize>>,
+    /// Elements in each inner vec share the same x coordinate.
+    pub vertical: Vec<Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedRelativePlacementConstraint {
+    pub left: Option<usize>,
+    pub right: Option<usize>,
+    pub top: Option<usize>,
+    pub bottom: Option<usize>,
+    pub gap: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexedLayoutResult {
+    pub node_positions: Vec<Point>,
+    pub compound_positions: Vec<Point>,
+}
+
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
+    graph.validate()?;
+
+    let (indexed_graph, indexed_opts) = graph_to_indexed(graph, opts);
+    let indexed = layout_indexed(&indexed_graph, &indexed_opts)?;
+
+    let mut positions: std::collections::BTreeMap<String, Point> =
+        std::collections::BTreeMap::new();
+    for (idx, n) in graph.nodes.iter().enumerate() {
+        if let Some(p) = indexed.node_positions.get(idx).copied() {
+            positions.insert(n.id.clone(), p);
+        }
+    }
+    for (idx, c) in graph.compounds.iter().enumerate() {
+        if let Some(p) = indexed.compound_positions.get(idx).copied() {
+            positions.insert(c.id.clone(), p);
+        }
+    }
+
+    Ok(LayoutResult { positions })
+}
+
+pub fn layout_indexed(
+    graph: &IndexedGraph,
+    opts: &IndexedFcoseOptions,
+) -> Result<IndexedLayoutResult> {
     graph.validate()?;
 
     let timing_enabled = std::env::var("MANATEE_FCOSE_TIMING").ok().as_deref() == Some("1");
     let mut timings = FcoseLayoutTimings::default();
     let total_start = timing_enabled.then(std::time::Instant::now);
 
-    let from_graph_start = timing_enabled.then(std::time::Instant::now);
-    let mut sim = SimGraph::from_graph(graph);
-    if let Some(s) = from_graph_start {
-        timings.from_graph = s.elapsed();
+    let from_indexed_start = timing_enabled.then(std::time::Instant::now);
+    let mut sim = SimGraph::from_indexed(graph);
+    if let Some(s) = from_indexed_start {
+        timings.from_indexed = s.elapsed();
     }
 
     let constraints_start = timing_enabled.then(std::time::Instant::now);
-    let constraints = Constraints::from_opts(&sim, opts);
+    let constraints = Constraints::from_indexed_opts(&sim, opts);
     if let Some(s) = constraints_start {
         timings.constraints = s.elapsed();
     }
@@ -165,17 +294,22 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     }
 
     let output_start = timing_enabled.then(std::time::Instant::now);
+    let leaf_count = sim.leaf_count;
     let node_count = sim.nodes.len();
     let edge_count = sim.edges.len();
     let compound_count = sim.compound_parent.len();
 
-    let mut positions: std::collections::BTreeMap<String, Point> =
-        std::collections::BTreeMap::new();
+    let mut node_positions: Vec<Point> = Vec::with_capacity(leaf_count);
+    let mut compound_positions: Vec<Point> = Vec::with_capacity(compound_count);
     let nodes = std::mem::take(&mut sim.nodes);
-    for n in nodes {
+    for (idx, n) in nodes.into_iter().enumerate() {
         let x = n.center_x();
         let y = n.center_y();
-        positions.insert(n.id, Point { x, y });
+        if idx < leaf_count {
+            node_positions.push(Point { x, y });
+        } else {
+            compound_positions.push(Point { x, y });
+        }
     }
     if let Some(s) = output_start {
         timings.output = s.elapsed();
@@ -184,9 +318,9 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[manatee-fcose-timing] total={:?} from_graph={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
+            "[manatee-fcose-timing] total={:?} from_indexed={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
             timings.total,
-            timings.from_graph,
+            timings.from_indexed,
             timings.constraints,
             timings.spring.total,
             timings.spring.opts_prep,
@@ -206,13 +340,136 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
         );
     }
 
-    Ok(LayoutResult { positions })
+    Ok(IndexedLayoutResult {
+        node_positions,
+        compound_positions,
+    })
+}
+
+fn graph_to_indexed(graph: &Graph, opts: &FcoseOptions) -> (IndexedGraph, IndexedFcoseOptions) {
+    let mut node_id_to_idx: FxHashMap<&str, usize> = FxHashMap::default();
+    node_id_to_idx.reserve(graph.nodes.len().saturating_mul(2));
+    let mut compound_id_to_idx: FxHashMap<&str, usize> = FxHashMap::default();
+    compound_id_to_idx.reserve(graph.compounds.len().saturating_mul(2));
+    let mut element_id_to_idx: FxHashMap<&str, usize> = FxHashMap::default();
+    element_id_to_idx.reserve((graph.nodes.len() + graph.compounds.len()).saturating_mul(2));
+
+    for (idx, n) in graph.nodes.iter().enumerate() {
+        node_id_to_idx.insert(n.id.as_str(), idx);
+        element_id_to_idx.insert(n.id.as_str(), idx);
+    }
+    for (idx, c) in graph.compounds.iter().enumerate() {
+        compound_id_to_idx.insert(c.id.as_str(), idx);
+        element_id_to_idx.insert(c.id.as_str(), graph.nodes.len() + idx);
+    }
+
+    let indexed_graph = IndexedGraph {
+        nodes: graph
+            .nodes
+            .iter()
+            .map(|n| IndexedNode {
+                parent: n
+                    .parent
+                    .as_deref()
+                    .and_then(|p| compound_id_to_idx.get(p).copied()),
+                width: n.width,
+                height: n.height,
+                x: n.x,
+                y: n.y,
+                bounds_extras: n.bounds_extras,
+            })
+            .collect(),
+        edges: graph
+            .edges
+            .iter()
+            .filter_map(|e| {
+                let source = node_id_to_idx.get(e.source.as_str()).copied()?;
+                let target = node_id_to_idx.get(e.target.as_str()).copied()?;
+                Some(IndexedEdge {
+                    source,
+                    target,
+                    label_width: e.label_width,
+                    label_height: e.label_height,
+                    source_anchor: e.source_anchor,
+                    target_anchor: e.target_anchor,
+                    ideal_length: e.ideal_length,
+                    elasticity: e.elasticity,
+                })
+            })
+            .collect(),
+        compounds: graph
+            .compounds
+            .iter()
+            .map(|c| IndexedCompound {
+                parent: c
+                    .parent
+                    .as_deref()
+                    .and_then(|p| compound_id_to_idx.get(p).copied()),
+            })
+            .collect(),
+    };
+
+    let indexed_opts = IndexedFcoseOptions {
+        random_seed: opts.random_seed,
+        rerun: opts.rerun,
+        default_edge_length: opts.default_edge_length,
+        alignment_constraint: opts.alignment_constraint.as_ref().map(|a| {
+            IndexedAlignmentConstraint {
+                horizontal: map_string_align_lists(&a.horizontal, &element_id_to_idx),
+                vertical: map_string_align_lists(&a.vertical, &element_id_to_idx),
+            }
+        }),
+        relative_placement_constraint: opts
+            .relative_placement_constraint
+            .iter()
+            .map(|r| IndexedRelativePlacementConstraint {
+                left: r
+                    .left
+                    .as_deref()
+                    .and_then(|id| element_id_to_idx.get(id).copied()),
+                right: r
+                    .right
+                    .as_deref()
+                    .and_then(|id| element_id_to_idx.get(id).copied()),
+                top: r
+                    .top
+                    .as_deref()
+                    .and_then(|id| element_id_to_idx.get(id).copied()),
+                bottom: r
+                    .bottom
+                    .as_deref()
+                    .and_then(|id| element_id_to_idx.get(id).copied()),
+                gap: r.gap,
+            })
+            .collect(),
+        compound_padding: opts.compound_padding,
+        relocate_center: opts.relocate_center,
+    };
+
+    (indexed_graph, indexed_opts)
+}
+
+fn map_string_align_lists(
+    groups: &[Vec<String>],
+    element_id_to_idx: &FxHashMap<&str, usize>,
+) -> Vec<Vec<usize>> {
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    for g in groups {
+        let idxs: Vec<usize> = g
+            .iter()
+            .filter_map(|id| element_id_to_idx.get(id.as_str()).copied())
+            .collect();
+        if idxs.len() > 1 {
+            out.push(idxs);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone)]
 struct SimNode {
     id: String,
-    parent: Option<String>,
+    parent: Option<usize>,
     owner_idx: usize,
     is_compound: bool,
     width: f64,
@@ -403,34 +660,22 @@ struct RelConstraint {
 }
 
 impl Constraints {
-    fn from_opts(sim: &SimGraph, opts: &FcoseOptions) -> Self {
+    fn from_indexed_opts(sim: &SimGraph, opts: &IndexedFcoseOptions) -> Self {
         let mut align_horizontal: Vec<Vec<usize>> = Vec::new();
         let mut align_vertical: Vec<Vec<usize>> = Vec::new();
 
         if let Some(a) = opts.alignment_constraint.as_ref() {
-            align_horizontal = map_align_lists(sim, &a.horizontal);
-            align_vertical = map_align_lists(sim, &a.vertical);
+            align_horizontal = map_indexed_align_lists(&a.horizontal, sim.nodes.len());
+            align_vertical = map_indexed_align_lists(&a.vertical, sim.nodes.len());
         }
 
         let mut relative: Vec<RelConstraint> = Vec::new();
         for r in &opts.relative_placement_constraint {
             relative.push(RelConstraint {
-                left: r
-                    .left
-                    .as_deref()
-                    .and_then(|id| sim.id_to_idx.get(id).copied()),
-                right: r
-                    .right
-                    .as_deref()
-                    .and_then(|id| sim.id_to_idx.get(id).copied()),
-                top: r
-                    .top
-                    .as_deref()
-                    .and_then(|id| sim.id_to_idx.get(id).copied()),
-                bottom: r
-                    .bottom
-                    .as_deref()
-                    .and_then(|id| sim.id_to_idx.get(id).copied()),
+                left: r.left.filter(|idx| *idx < sim.nodes.len()),
+                right: r.right.filter(|idx| *idx < sim.nodes.len()),
+                top: r.top.filter(|idx| *idx < sim.nodes.len()),
+                bottom: r.bottom.filter(|idx| *idx < sim.nodes.len()),
                 gap: r.gap.max(0.0),
             });
         }
@@ -761,7 +1006,7 @@ impl AxisConstraintRuntime {
     }
 }
 
-fn map_align_lists(sim: &SimGraph, groups: &[Vec<String>]) -> Vec<Vec<usize>> {
+fn map_indexed_align_lists(groups: &[Vec<usize>], node_count: usize) -> Vec<Vec<usize>> {
     // Preserve Mermaid/Cytoscape ordering (and duplicates) for alignment arrays.
     //
     // Upstream `ConstraintHandler` uses the *first* node id in each alignment group as the seed
@@ -769,10 +1014,7 @@ fn map_align_lists(sim: &SimGraph, groups: &[Vec<String>]) -> Vec<Vec<usize>> {
     // here changes that seed and can shift the entire layout in parity-root mode.
     let mut out: Vec<Vec<usize>> = Vec::new();
     for g in groups {
-        let idxs: Vec<usize> = g
-            .iter()
-            .filter_map(|id| sim.id_to_idx.get(id.as_str()).copied())
-            .collect();
+        let idxs: Vec<usize> = g.iter().copied().filter(|idx| *idx < node_count).collect();
         if idxs.len() > 1 {
             out.push(idxs);
         }
@@ -784,9 +1026,8 @@ fn map_align_lists(sim: &SimGraph, groups: &[Vec<String>]) -> Vec<Vec<usize>> {
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
-    id_to_idx: FxHashMap<String, usize>,
-    compound_parent: FxHashMap<String, Option<String>>,
-    compound_ids_in_order: Vec<String>,
+    compound_parent: Vec<Option<usize>>,
+    compound_ids_in_order: Vec<usize>,
     leaf_count: usize,
     // Owner graph identity for repulsion/gravity: each node belongs to the child graph of its
     // parent compound, or the root graph.
@@ -832,18 +1073,17 @@ impl SimGraph {
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
-    fn from_graph(graph: &Graph) -> Self {
+    fn from_indexed(graph: &IndexedGraph) -> Self {
         let leaf_count = graph.nodes.len();
-        let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len() + graph.compounds.len());
-        let mut id_to_idx: FxHashMap<String, usize> = FxHashMap::default();
-        id_to_idx.reserve((graph.nodes.len() + graph.compounds.len()).saturating_mul(2));
+        let compound_count = graph.compounds.len();
+        let mut nodes: Vec<SimNode> = Vec::with_capacity(leaf_count + compound_count);
 
-        for (idx, n) in graph.nodes.iter().enumerate() {
+        for n in &graph.nodes {
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
             nodes.push(SimNode {
-                id: n.id.clone(),
-                parent: n.parent.clone(),
+                id: String::new(),
+                parent: n.parent,
                 owner_idx: usize::MAX,
                 is_compound: false,
                 width: w,
@@ -866,23 +1106,17 @@ impl SimGraph {
                 grid_start_y: 0,
                 grid_finish_y: 0,
             });
-            id_to_idx.insert(n.id.clone(), idx);
         }
 
-        let mut compound_parent: FxHashMap<String, Option<String>> = FxHashMap::default();
-        compound_parent.reserve(graph.compounds.len().saturating_mul(2));
-        let mut compound_ids_in_order: Vec<String> = Vec::with_capacity(graph.compounds.len());
-        for c in &graph.compounds {
-            compound_parent.insert(c.id.clone(), c.parent.clone());
-            compound_ids_in_order.push(c.id.clone());
-        }
+        let compound_parent: Vec<Option<usize>> =
+            graph.compounds.iter().map(|c| c.parent).collect();
+        let compound_ids_in_order: Vec<usize> = (0..compound_count).collect();
 
         // Materialize compound nodes as layout nodes (Cytoscape parent nodes).
         for c in &graph.compounds {
-            let idx = nodes.len();
             nodes.push(SimNode {
-                id: c.id.clone(),
-                parent: c.parent.clone(),
+                id: String::new(),
+                parent: c.parent,
                 owner_idx: usize::MAX,
                 is_compound: true,
                 width: Self::EMPTY_COMPOUND_NODE_SIZE,
@@ -905,18 +1139,11 @@ impl SimGraph {
                 grid_start_y: 0,
                 grid_finish_y: 0,
             });
-            id_to_idx.insert(c.id.clone(), idx);
         }
 
         let mut edges: Vec<SimEdge> = Vec::new();
         for e in &graph.edges {
-            let Some(&a) = id_to_idx.get(e.source.as_str()) else {
-                continue;
-            };
-            let Some(&b) = id_to_idx.get(e.target.as_str()) else {
-                continue;
-            };
-            if a == b {
+            if e.source >= leaf_count || e.target >= leaf_count || e.source == e.target {
                 continue;
             }
 
@@ -931,10 +1158,10 @@ impl SimGraph {
                 Self::DEFAULT_SPRING_STRENGTH
             };
             edges.push(SimEdge {
-                a,
-                b,
-                a_in_lca: a,
-                b_in_lca: b,
+                a: e.source,
+                b: e.target,
+                a_in_lca: e.source,
+                b_in_lca: e.target,
                 a_anchor: e.source_anchor,
                 b_anchor: e.target_anchor,
                 base_ideal_length: ideal.max(1.0),
@@ -952,8 +1179,8 @@ impl SimGraph {
         for n in &mut nodes {
             let owner_idx = n
                 .parent
-                .as_deref()
-                .and_then(|p| id_to_idx.get(p).copied())
+                .map(|p| leaf_count + p)
+                .filter(|idx| *idx < root_owner_idx)
                 .unwrap_or(root_owner_idx);
             n.owner_idx = owner_idx;
         }
@@ -966,26 +1193,23 @@ impl SimGraph {
         //
         // This ordering is observable in `graphManager.getGraphs()/getAllNodes()` iteration and
         // affects deterministic parity for FR-grid repulsion (processed set ordering).
-        for c in &graph.compounds {
-            if let Some(&idx) = id_to_idx.get(c.id.as_str()) {
-                let owner = nodes
-                    .get(idx)
-                    .map(|n| n.owner_idx)
-                    .unwrap_or(root_owner_idx);
-                if owner < children_by_owner.len() {
-                    children_by_owner[owner].push(idx);
-                }
+        for compound_idx in 0..compound_count {
+            let idx = leaf_count + compound_idx;
+            let owner = nodes
+                .get(idx)
+                .map(|n| n.owner_idx)
+                .unwrap_or(root_owner_idx);
+            if owner < children_by_owner.len() {
+                children_by_owner[owner].push(idx);
             }
         }
-        for n in &graph.nodes {
-            if let Some(&idx) = id_to_idx.get(n.id.as_str()) {
-                let owner = nodes
-                    .get(idx)
-                    .map(|n| n.owner_idx)
-                    .unwrap_or(root_owner_idx);
-                if owner < children_by_owner.len() {
-                    children_by_owner[owner].push(idx);
-                }
+        for idx in 0..leaf_count {
+            let owner = nodes
+                .get(idx)
+                .map(|n| n.owner_idx)
+                .unwrap_or(root_owner_idx);
+            if owner < children_by_owner.len() {
+                children_by_owner[owner].push(idx);
             }
         }
 
@@ -1109,7 +1333,6 @@ impl SimGraph {
         Self {
             nodes,
             edges,
-            id_to_idx,
             compound_parent,
             compound_ids_in_order,
             leaf_count,
@@ -1648,7 +1871,7 @@ impl SimGraph {
     fn run_spring_embedder(
         &mut self,
         constraints: &Constraints,
-        opts: &FcoseOptions,
+        opts: &IndexedFcoseOptions,
         rng: &mut XorShift64Star,
         mut timings: Option<&mut FcoseSpringTimings>,
     ) -> SpringStats {
@@ -3663,9 +3886,14 @@ impl XorShift64Star {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundsExtras, Constraints, RelConstraint, RepulsionGrid, SimNode, XorShift64Star,
-        apply_reflection_for_relative_placement, procrustes_transform_for_alignments,
+        BoundsExtras, Constraints, IndexedAlignmentConstraint, IndexedCompound, IndexedEdge,
+        IndexedFcoseOptions, IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint,
+        RelConstraint, RepulsionGrid, SimNode, XorShift64Star,
+        apply_reflection_for_relative_placement, layout, layout_indexed,
+        procrustes_transform_for_alignments,
     };
+    use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
+    use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
     use nalgebra as na;
 
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
@@ -3694,6 +3922,183 @@ mod tests {
             grid_start_y: 0,
             grid_finish_y: 0,
         }
+    }
+
+    fn assert_point_close(actual: Point, expected: Point) {
+        let dx = (actual.x - expected.x).abs();
+        let dy = (actual.y - expected.y).abs();
+        assert!(
+            dx < 1e-9 && dy < 1e-9,
+            "point mismatch: actual=({:.12},{:.12}) expected=({:.12},{:.12}) d=({:.3e},{:.3e})",
+            actual.x,
+            actual.y,
+            expected.x,
+            expected.y,
+            dx,
+            dy
+        );
+    }
+
+    #[test]
+    fn indexed_layout_matches_string_graph_layout_for_compound_constraints() {
+        let graph = Graph {
+            nodes: vec![
+                Node {
+                    id: "a".to_string(),
+                    parent: Some("group".to_string()),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                Node {
+                    id: "b".to_string(),
+                    parent: Some("group".to_string()),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 120.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                Node {
+                    id: "c".to_string(),
+                    parent: None,
+                    width: 80.0,
+                    height: 80.0,
+                    x: 240.0,
+                    y: 120.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: vec![
+                Edge {
+                    id: "ab".to_string(),
+                    source: "a".to_string(),
+                    target: "b".to_string(),
+                    label_width: Some(32.0),
+                    label_height: Some(16.0),
+                    source_anchor: Some(Anchor::Right),
+                    target_anchor: Some(Anchor::Left),
+                    ideal_length: 80.0,
+                    elasticity: 0.45,
+                },
+                Edge {
+                    id: "bc".to_string(),
+                    source: "b".to_string(),
+                    target: "c".to_string(),
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: Some(Anchor::Bottom),
+                    target_anchor: Some(Anchor::Top),
+                    ideal_length: 80.0,
+                    elasticity: 0.001,
+                },
+            ],
+            compounds: vec![Compound {
+                id: "group".to_string(),
+                parent: None,
+            }],
+        };
+
+        let opts = FcoseOptions {
+            random_seed: 1,
+            rerun: false,
+            default_edge_length: Some(80.0),
+            alignment_constraint: Some(AlignmentConstraint {
+                horizontal: vec![vec!["a".to_string(), "b".to_string()]],
+                vertical: vec![vec!["b".to_string(), "c".to_string()]],
+            }),
+            relative_placement_constraint: vec![RelativePlacementConstraint {
+                left: Some("a".to_string()),
+                right: Some("c".to_string()),
+                top: None,
+                bottom: None,
+                gap: 140.0,
+            }],
+            compound_padding: Some(12.0),
+            relocate_center: None,
+        };
+
+        let compat = layout(&graph, &opts).expect("compat layout");
+
+        let indexed_graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: Some(0),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: Some(0),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 120.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 80.0,
+                    height: 80.0,
+                    x: 240.0,
+                    y: 120.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: vec![
+                IndexedEdge {
+                    source: 0,
+                    target: 1,
+                    label_width: Some(32.0),
+                    label_height: Some(16.0),
+                    source_anchor: Some(Anchor::Right),
+                    target_anchor: Some(Anchor::Left),
+                    ideal_length: 80.0,
+                    elasticity: 0.45,
+                },
+                IndexedEdge {
+                    source: 1,
+                    target: 2,
+                    label_width: None,
+                    label_height: None,
+                    source_anchor: Some(Anchor::Bottom),
+                    target_anchor: Some(Anchor::Top),
+                    ideal_length: 80.0,
+                    elasticity: 0.001,
+                },
+            ],
+            compounds: vec![IndexedCompound { parent: None }],
+        };
+        let indexed_opts = IndexedFcoseOptions {
+            random_seed: 1,
+            rerun: false,
+            default_edge_length: Some(80.0),
+            alignment_constraint: Some(IndexedAlignmentConstraint {
+                horizontal: vec![vec![0, 1]],
+                vertical: vec![vec![1, 2]],
+            }),
+            relative_placement_constraint: vec![IndexedRelativePlacementConstraint {
+                left: Some(0),
+                right: Some(2),
+                top: None,
+                bottom: None,
+                gap: 140.0,
+            }],
+            compound_padding: Some(12.0),
+            relocate_center: None,
+        };
+        let indexed = layout_indexed(&indexed_graph, &indexed_opts).expect("indexed layout");
+
+        assert_eq!(indexed.node_positions.len(), graph.nodes.len());
+        assert_eq!(indexed.compound_positions.len(), graph.compounds.len());
+        assert_point_close(indexed.node_positions[0], compat.positions["a"]);
+        assert_point_close(indexed.node_positions[1], compat.positions["b"]);
+        assert_point_close(indexed.node_positions[2], compat.positions["c"]);
+        assert_point_close(indexed.compound_positions[0], compat.positions["group"]);
     }
 
     #[test]
