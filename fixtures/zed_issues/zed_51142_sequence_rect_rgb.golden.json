@@ -1,0 +1,182 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "FE",
+      "AS",
+      "DB",
+      "FS"
+    ],
+    "actors": {
+      "User": {
+        "name": "User",
+        "description": "User",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "FE": {
+        "name": "FE",
+        "description": "Frontend",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "AS": {
+        "name": "AS",
+        "description": "AppService",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "Store",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "FS": {
+        "name": "FS",
+        "description": "Filesystem",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "FS",
+        "message": "Phase 1 - Startup (pgA, pgB exist on disk)",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "User",
+        "to": "FE",
+        "message": "launch foo",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "FE",
+        "to": "AS",
+        "message": "new(store, parser, serializer)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "FE",
+        "to": "AS",
+        "message": "startup_reconcile()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "AS",
+        "to": "FS",
+        "message": "Reconciliation Step 1 - Inventory",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "rgb(240, 245, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "FS",
+        "to": "AS",
+        "message": "[pgA.md, pgB.md] + filesystem timestamps",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "AS",
+        "to": "DB",
+        "message": "get recorded file timestamps",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "DB",
+        "to": "AS",
+        "message": "[pgA: ts1, pgB: ts2]",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "User",
+          "FS"
+        ],
+        "placement": 2,
+        "message": "Phase 1 - Startup (pgA, pgB exist on disk)",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "AS",
+          "FS"
+        ],
+        "placement": 2,
+        "message": "Reconciliation Step 1 - Inventory",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

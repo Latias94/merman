@@ -78,6 +78,10 @@ pub(super) struct Lexer<'input> {
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
+    // Keywords are also legal participant ids in Mermaid. These flags let parser context win over
+    // keyword lexing for positions that must be actor ids.
+    force_actor_id: bool,
+    after_signal_type: bool,
 }
 
 impl<'input> Lexer<'input> {
@@ -87,6 +91,8 @@ impl<'input> Lexer<'input> {
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
+            force_actor_id: false,
+            after_signal_type: false,
         }
     }
 
@@ -186,6 +192,8 @@ impl<'input> Lexer<'input> {
             b'\n' | b';' => {
                 self.pos += 1;
                 self.mode = Mode::Default;
+                self.force_actor_id = false;
+                self.after_signal_type = false;
                 Some((start, Tok::Newline, self.pos))
             }
             _ => None,
@@ -617,6 +625,80 @@ impl<'input> Lexer<'input> {
         self.pos = end;
         Some((start, Tok::Actor(s), self.pos))
     }
+
+    fn lex_forced_actor_id(&mut self) -> Option<(usize, Tok, usize)> {
+        if let Some(tok) = self.lex_num() {
+            return Some(tok);
+        }
+        self.lex_actor()
+    }
+
+    fn lex_actor_before_signal(&mut self) -> Option<(usize, Tok, usize)> {
+        let saved = self.pos;
+        let tok = self.lex_actor()?;
+        let after_actor = self.pos;
+
+        while let Some(b) = self.input.as_bytes().get(self.pos) {
+            if *b == b' ' || *b == b'\t' || *b == b'\r' {
+                self.pos += 1;
+                continue;
+            }
+            break;
+        }
+
+        let has_signal = self.peek_signal_type_at_current();
+        self.pos = after_actor;
+        if has_signal {
+            Some(tok)
+        } else {
+            self.pos = saved;
+            None
+        }
+    }
+
+    fn peek_signal_type_at_current(&self) -> bool {
+        let rest = &self.input[self.pos..];
+        rest.starts_with("<<-->>")
+            || rest.starts_with("<<->>")
+            || rest.starts_with("-->>")
+            || rest.starts_with("->>")
+            || rest.starts_with("-->")
+            || rest.starts_with("->")
+            || rest.starts_with("--x")
+            || rest.starts_with("-x")
+            || rest.starts_with("--)")
+            || rest.starts_with("-)")
+    }
+
+    fn note_emitted_token(&mut self, tok: &Tok) {
+        self.after_signal_type = matches!(tok, Tok::SignalType(_));
+        self.force_actor_id = matches!(
+            tok,
+            Tok::Participant
+                | Tok::ActorKw
+                | Tok::Destroy
+                | Tok::Links
+                | Tok::Link
+                | Tok::Properties
+                | Tok::Details
+                | Tok::Activate
+                | Tok::Deactivate
+                | Tok::LeftOf
+                | Tok::RightOf
+                | Tok::Over
+                | Tok::Plus
+                | Tok::Minus
+                | Tok::Comma
+        );
+    }
+
+    fn emit(
+        &mut self,
+        tok: (usize, Tok, usize),
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        self.note_emitted_token(&tok.1);
+        Some(Ok(tok))
+    }
 }
 
 impl<'input> Iterator for Lexer<'input> {
@@ -624,6 +706,7 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(tok) = self.pending.pop_front() {
+            self.note_emitted_token(&tok.1);
             return Some(Ok(tok));
         }
 
@@ -640,51 +723,78 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_multiline_acc_descr() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_rest_of_line() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_newline() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_keyword_lines() {
-                return Some(Ok(tok));
+                return self.emit(tok);
+            }
+
+            if self.force_actor_id {
+                if let Some(tok) = self.lex_forced_actor_id() {
+                    return self.emit(tok);
+                }
+            }
+
+            if self.after_signal_type {
+                if let Some(tok) = self.lex_punct() {
+                    return self.emit(tok);
+                }
+                if let Some(tok) = self.lex_minus() {
+                    return self.emit(tok);
+                }
+                if let Some(tok) = self.lex_forced_actor_id() {
+                    return self.emit(tok);
+                }
+            }
+
+            if let Some(tok) = self.lex_actor_before_signal() {
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_word_keywords() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_signal_type() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_config() {
+                if let Ok((_, ref tok, _)) = tok {
+                    self.note_emitted_token(tok);
+                } else {
+                    self.force_actor_id = false;
+                }
                 return Some(tok);
             }
 
             if let Some(tok) = self.lex_text() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_num() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_punct() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_minus() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_actor() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             let _ = self.bump();

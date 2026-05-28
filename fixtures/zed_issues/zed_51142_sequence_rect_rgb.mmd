@@ -1,0 +1,19 @@
+sequenceDiagram
+  actor User
+  participant FE as Frontend
+  participant AS as AppService
+  participant DB as Store
+  participant FS as Filesystem
+
+  Note over User,FS: Phase 1 - Startup (pgA, pgB exist on disk)
+
+  User->>FE: launch foo
+  FE->>AS: new(store, parser, serializer)
+  FE->>AS: startup_reconcile()
+
+  Note over AS,FS: Reconciliation Step 1 - Inventory
+  rect rgb(240, 245, 255)
+  FS-->>AS: [pgA.md, pgB.md] + filesystem timestamps
+  AS->>DB: get recorded file timestamps
+  DB-->>AS: [pgA: ts1, pgB: ts2]
+  end

@@ -175,6 +175,9 @@ fn sanitize_style_attribute(value: &str) -> String {
         }
 
         let Some((property, raw_value)) = trimmed.split_once(':') else {
+            if is_invalid_svg_value(trimmed) {
+                continue;
+            }
             out.push(strip_css_deg_units(trimmed));
             continue;
         };
@@ -206,4 +209,18 @@ fn is_invalid_svg_value(value: &str) -> bool {
 
     let lower = value.to_ascii_lowercase();
     lower.contains("nan") || lower.contains("undefined") || lower.contains("infinity")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_element_attributes;
+
+    #[test]
+    fn sanitize_style_attribute_drops_invalid_bare_declarations() {
+        let svg = r#"<svg><path style="undefined; stroke: #333; undefined"/></svg>"#;
+        let out = sanitize_element_attributes(svg);
+
+        assert!(!out.contains("undefined"), "got: {out}");
+        assert!(out.contains(r#"style="stroke:#333""#), "got: {out}");
+    }
 }

@@ -1,0 +1,17 @@
+erDiagram
+    EMPRESA {
+        int empresa_id PK
+        string name
+    }
+    UNIDADE {
+        int unidade_id PK
+        int empresa_id FK
+        string status
+    }
+    USUARIO {
+        int usuario_id PK
+        string login
+    }
+
+    EMPRESA ||--o{ UNIDADE : "has"
+    EMPRESA ||--o{ USUARIO : "employs"

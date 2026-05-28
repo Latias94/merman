@@ -10,6 +10,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Added an explicit SVG output pipeline with `Parity`, `Readable`, and `ResvgSafe` presets plus a
   string/Cow `SvgPostprocessor` extension point for host-provided SVG cleanup.
+- Added a Zed Mermaid issue regression fixture suite covering sequence loop endings, sequence
+  `rect rgb(...)`, flowchart hyphenated edge labels, ER labels, Gantt compact frontmatter, class
+  inheritance, `<foreignObject>` fallback text, and old mermaid-rs panic boundaries.
 - Added metadata-aware SVG postprocessing context (`diagram_type`, `diagram_title`, and `svg_id`)
   plus product-neutral host styling blocks: `ScopedCssPostprocessor`, `CssOverridePostprocessor`,
   and `CssOverridePolicy`.
@@ -56,9 +59,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `\n` are split into separate overlay text lines.
 - Improved readable/raster `<foreignObject>` fallback overlays so generated SVG text keeps useful
   class, fill, and font context for host CSS.
+- Fixed the sequence parser so keyword-like participant ids such as `AS`, `END`, `RECT`, or `loop`
+  can be declared and used in messages without being mistaken for Mermaid control keywords.
 - Fixed raster-oriented SVG cleanup for common `usvg` / `resvg` hazards by stripping
   `<foreignObject>` after fallback insertion, unsupported CSS blocks, animation declarations,
-  empty/invalid visual attributes, CSS `deg` units, and non-finite values such as `NaN`.
+  empty/invalid visual attributes, bare invalid style declarations, CSS `deg` units, and non-finite
+  values such as `NaN`.
 
 ## [0.5.0] - 2026-05-19
 

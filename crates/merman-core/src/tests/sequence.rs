@@ -160,6 +160,39 @@ link a: Tests @ https://tests.contoso.com/?svc=alice@contoso.com
 }
 
 #[test]
+fn parse_diagram_sequence_allows_keyword_like_actor_ids() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+participant AS as AppService
+participant DB as Store
+participant END as End Service
+participant loop as Loop Service
+participant RECT as Rectangle Worker
+AS->>DB: get recorded file timestamps
+END->>RECT: uppercase keyword id can send
+loop->>AS: lowercase keyword id can send when followed by a signal"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let actors = res.model["actors"].as_object().unwrap();
+    assert_eq!(actors["AS"]["description"], json!("AppService"));
+    assert_eq!(actors["DB"]["description"], json!("Store"));
+    assert_eq!(actors["END"]["description"], json!("End Service"));
+    assert_eq!(actors["loop"]["description"], json!("Loop Service"));
+    assert_eq!(actors["RECT"]["description"], json!("Rectangle Worker"));
+
+    let msgs = res.model["messages"].as_array().unwrap();
+    assert_eq!(msgs[0]["from"], json!("AS"));
+    assert_eq!(msgs[0]["to"], json!("DB"));
+    assert_eq!(msgs[1]["from"], json!("END"));
+    assert_eq!(msgs[1]["to"], json!("RECT"));
+    assert_eq!(msgs[2]["from"], json!("loop"));
+    assert_eq!(msgs[2]["to"], json!("AS"));
+}
+
+#[test]
 fn parse_diagram_sequence_properties() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

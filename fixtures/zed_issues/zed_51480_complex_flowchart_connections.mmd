@@ -1,0 +1,46 @@
+flowchart TD
+    A[Stage 1: MVP]
+    A1[Async order lifecycle]
+    A2[Single collateral]
+    A3[Isolated margin]
+    A4[Market orders only]
+    A5[One team-run executor bot]
+    A6[Permissionless executeOrder interface]
+    A7[Low leverage + strict OI caps]
+
+    B[Stage 2: Production]
+    B1[Multiple independent keepers]
+    B2[Broader market set]
+    B3[Optional more order types]
+    B4[Stronger liquidation ops]
+    B5[Formalized governance for listings/rebalances]
+    B6[Potential leverage expansion on proven markets]
+
+    A --> B
+    A --> A1
+    A --> A2
+    A --> A3
+    A --> A4
+    A --> A5
+    A --> A6
+    A --> A7
+
+    B --> B1
+    B --> B2
+    B --> B3
+    B --> B4
+    B --> B5
+    B --> B6
+
+    C[What stays unchanged]
+    C1[Index computed on-chain from constituent feeds]
+    C2[Async request -> execute flow]
+    C3[Permissionless executor contract entrypoint]
+    C4[Versioned market definitions]
+
+    A --> C
+    B --> C
+    C --> C1
+    C --> C2
+    C --> C3
+    C --> C4

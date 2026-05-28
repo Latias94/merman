@@ -1,0 +1,12 @@
+flowchart TD
+  A[Start] --> B[Prepare change]
+  B --> C["feature/example-branch"]
+  C --> D[Commit locally]
+  D --> E[Push branch]
+  E --> F[Open pull request]
+  F --> G{CI checks}
+  G -->|checks pass| H[Review]
+  G -->|checks fail| I[Fix and push again]
+  I --> G
+  H --> J[Merge]
+  J --> K[Release]
