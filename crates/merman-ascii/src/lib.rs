@@ -6,6 +6,7 @@
 //! parsing.
 
 mod canvas;
+mod class;
 mod error;
 mod graph;
 mod options;
@@ -18,6 +19,7 @@ pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
+use merman_core::models::class_diagram::ClassDiagram;
 
 #[derive(Debug, Clone, Default)]
 pub struct AsciiRenderer {
@@ -42,12 +44,18 @@ impl AsciiRenderer {
 pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
     match model {
+        RenderSemanticModel::Class(model) => render_class(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
         RenderSemanticModel::Sequence(model) => render_sequence(model, options),
         other => Err(AsciiError::UnsupportedDiagram {
             diagram_type: other.kind().to_string(),
         }),
     }
+}
+
+pub fn render_class(model: &ClassDiagram, options: &AsciiRenderOptions) -> Result<String> {
+    options.validate()?;
+    class::render_class_diagram(model, options)
 }
 
 pub fn render_flowchart(model: &FlowchartV2Model, options: &AsciiRenderOptions) -> Result<String> {

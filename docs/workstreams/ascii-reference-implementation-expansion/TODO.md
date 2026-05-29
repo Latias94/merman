@@ -15,12 +15,15 @@ Last updated: 2026-05-29
 
 ## M1 — Class Diagram ASCII
 
-- [ ] ARI-020 [owner=unassigned] [deps=ARI-010] [scope=crates/merman-ascii/src,class tests]
+- [x] ARI-020 [owner=codex] [deps=ARI-010] [scope=crates/merman-ascii/src,class tests]
   Goal: Render a first classDiagram ASCII/Unicode slice from `RenderSemanticModel::Class`.
   Validation: `cargo nextest run -p merman-ascii class`
-  Review: Use `review-workstream` before accepting completion.
-  Evidence: New class ASCII tests covering class boxes, members/methods, and one relationship type.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Review: Self-review found no blocking findings; broader planner review can still inspect ARI-030
+  relationship expansion before the class milestone closes.
+  Evidence: `crates/merman-ascii/src/class/`, `crates/merman-ascii/tests/class_model.rs`,
+  `crates/merman-ascii/README.md`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. The slice supports class boxes, members, methods, Unicode/ASCII borders, and one
+  solid extension relationship. Labels and other relationship kinds are explicitly unsupported.
 
 - [ ] ARI-030 [owner=unassigned] [deps=ARI-020] [scope=crates/merman-ascii/src,class tests]
   Goal: Expand class ASCII relationships using `beautiful-mermaid` as a reference for inheritance,

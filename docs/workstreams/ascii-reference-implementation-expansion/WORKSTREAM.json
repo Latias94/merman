@@ -50,6 +50,11 @@
       "date": "2026-05-29",
       "task": "ARI-010",
       "result": "opened reference implementation expansion lane and recorded MIT provenance for mermaid-ascii and beautiful-mermaid"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ARI-020",
+      "result": "implemented first classDiagram ASCII/Unicode slice from RenderSemanticModel::Class with class boxes, members, methods, one extension relationship, focused tests, and verification evidence"
     }
   ],
   "adr_refs": [
@@ -58,7 +63,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ARI-020",
-    "notes": "Continue with bounded implementation slices. Start with classDiagram ASCII from the merman-core typed model; do not port parsers from reference repositories."
+    "next_task": "ARI-030",
+    "notes": "Continue with bounded implementation slices. ARI-030 can expand class relationships from the merman-core typed model; ARI-040 and ARI-050 remain independently startable for ER and xychart. Do not port parsers from reference repositories."
   }
 }
