@@ -46,6 +46,11 @@
       "date": "2026-05-29",
       "task": "ASCB-040",
       "result": "implemented ASCII and Unicode sectioned frames for alt, par, and critical sequence control blocks while keeping rect and par_over deferred"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASCB-050",
+      "result": "covered nested and empty control-block diagnostics plus lifecycle, notes, and participant-box combinations"
     }
   ],
   "adr_refs": [
@@ -53,7 +58,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASCB-050",
-    "notes": "Settle nesting, empty-section, lifecycle, notes, and participant-box edge-case policy for control blocks."
+    "next_task": "ASCB-060",
+    "notes": "Package examples, run final gates, and close or split remaining control-block parity work."
   }
 }

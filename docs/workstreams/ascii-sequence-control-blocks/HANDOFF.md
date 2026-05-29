@@ -5,8 +5,8 @@ Last updated: 2026-05-29
 
 ## Current State
 
-ASCB-010, ASCB-020, ASCB-030, and ASCB-040 are complete. The lane is open and scoped to Mermaid
-sequence control blocks for the ASCII renderer.
+ASCB-010, ASCB-020, ASCB-030, ASCB-040, and ASCB-050 are complete. The lane is open and scoped to
+Mermaid sequence control blocks for the ASCII renderer.
 
 The ASCII adapter now renders single-section `loop`, `opt`, and `break` endpoint-less control
 signals as labeled text frames. It also renders sectioned `alt`/`else`, `par`/`and`, and
@@ -20,17 +20,19 @@ signals as labeled text frames. It also renders sectioned `alt`/`else`, `par`/`a
 inside sectioned frames are covered by
 `sequence_sectioned_control_blocks_frame_multiple_sections_and_notes`.
 
+ASCB-050 covers the current edge-case policy: nested blocks and empty sections are explicit
+unsupported diagnostics; activations, create/destroy lifecycle rows, notes, and participant boxes
+are supported with control-block frames.
+
 ## Active Task
 
-- Task ID: ASCB-050
+- Task ID: ASCB-060
 - Status: Ready
 
 ## Next Action
 
-Settle nesting and edge-case policy. The most important cases are nested control blocks, empty
-sections, lifecycle events inside blocks, created/destroyed actors inside blocks, participant boxes
-inside blocks, and notes inside sectioned blocks. Supported cases need tests; deferred cases need
-explicit diagnostics and support-doc entries.
+Generate manual example outputs, run final gates, update docs, and close the lane or split any
+remaining control-block parity debt.
 
 ## Decisions Since Open
 

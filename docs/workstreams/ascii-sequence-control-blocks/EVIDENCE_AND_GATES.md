@@ -113,3 +113,15 @@ Run `review-workstream` before accepting task or lane completion. Review should 
 - 2026-05-29 ASCB-040 review: No blocking workstream-compliance or code-quality findings. The diff
   stays inside ASCB-040 scope, keeps `rect` and `par_over` deferred, reuses the dedicated control
   frame renderer for separator rows, and covers multi-section plus note-in-section behavior.
+- 2026-05-29 ASCB-050: Settled the first edge-case policy for control blocks. Nested blocks return
+  `nested control blocks`; empty sections return `empty control block sections`; `rect` and
+  `par_over` remain deferred as `control messages`; activations, create/destroy lifecycle rows,
+  notes, and participant boxes are covered as supported combinations. Fresh gates passed:
+  `cargo nextest run -p merman-ascii sequence_nested_control_blocks sequence_empty_control_block sequence_control_blocks_support sequence_control_blocks_render_inside`,
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`,
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`,
+  `cargo nextest run -p merman-ascii`, and `git diff --check`.
+- 2026-05-29 ASCB-050 review: No blocking workstream-compliance or code-quality findings. The
+  change is test/docs focused, records explicit diagnostics for deferred edge cases, and covers the
+  supported lifecycle and participant-box combinations without expanding scope beyond ASCB-050.

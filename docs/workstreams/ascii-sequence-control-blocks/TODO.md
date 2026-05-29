@@ -64,7 +64,7 @@ Last updated: 2026-05-29
 
 ## M4 - Nesting And Edge Cases
 
-- [ ] ASCB-050 [owner=codex] [deps=ASCB-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASCB-050 [owner=codex] [deps=ASCB-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Decide and implement the supported policy for nested blocks, empty blocks, lifecycle events,
   created/destroyed actors, and participant boxes inside control-block spans.
   Validation:
@@ -74,7 +74,9 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii`
   Review: Unsupported edge cases must be explicit diagnostics; supported edge cases must have
   regression tests.
-  Evidence: Tests and docs for final supported/deferred edge-case policy.
+  Evidence: Tests now cover explicit `nested control blocks` and `empty control block sections`
+  diagnostics, plus activations, create/destroy lifecycle rows, and participant boxes with control
+  blocks. Focused and package gates passed.
   Handoff: ASCB-060 should package examples and close the lane.
 
 ## M5 - Examples, Verification, And Closeout

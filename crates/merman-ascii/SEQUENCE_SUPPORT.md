@@ -27,6 +27,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Sequence control blocks | Supported subset | `loop`, `opt`, and `break` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. |
+| Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
 ## Explicitly Unsupported
