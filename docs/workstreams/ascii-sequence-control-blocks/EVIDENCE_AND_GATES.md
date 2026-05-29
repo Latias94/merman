@@ -98,3 +98,18 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   stays inside the ASCB-030 scope, keeps sectioned blocks unsupported, introduces a dedicated
   `sequence/control.rs` frame renderer above low-level row painting, and leaves existing sequence
   golden fixtures unchanged.
+- 2026-05-29 ASCB-040: Extended the control-block render plan to sectioned `alt`/`else`,
+  `par`/`and`, and `critical`/`option` blocks. Internal control events now include section
+  separators, `sequence/control.rs` renders labeled separator rows, and `rect`/`par_over` remain
+  explicit deferred `control messages`. Tests cover ASCII/Unicode sectioned frames, repeated
+  sections, and notes inside a section. Fresh gates passed:
+  `cargo nextest run -p merman-ascii sequence_sectioned_control_blocks`,
+  `cargo nextest run -p merman-ascii sequence_control_blocks sequence_deferred_control_blocks`,
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`,
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`,
+  `cargo nextest run -p merman-ascii`, and `git diff --check`. CLI visual sanity check for
+  Unicode `alt`, `par`, and `critical` examples rendered successfully.
+- 2026-05-29 ASCB-040 review: No blocking workstream-compliance or code-quality findings. The diff
+  stays inside ASCB-040 scope, keeps `rect` and `par_over` deferred, reuses the dedicated control
+  frame renderer for separator rows, and covers multi-section plus note-in-section behavior.

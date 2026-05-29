@@ -47,7 +47,7 @@ Last updated: 2026-05-29
 
 ## M3 - Sectioned Blocks
 
-- [ ] ASCB-040 [owner=codex] [deps=ASCB-030] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASCB-040 [owner=codex] [deps=ASCB-030] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Implement `alt`/`else`, `par`/`and`, and `critical`/`option` sectioned frames with labels
   and deterministic separators.
   Validation:
@@ -56,7 +56,10 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence_golden`
   - `cargo nextest run -p merman-ascii`
   Review: Check empty sections, multi-section labels, and notes/messages inside sections.
-  Evidence: Passing render tests for all sectioned block forms.
+  Evidence: `sequence_sectioned_control_blocks_render_unicode_frames` and
+  `sequence_sectioned_control_blocks_render_ascii_frames` cover `alt`, `par`, and `critical`
+  sectioned frames; `sequence_sectioned_control_blocks_frame_multiple_sections_and_notes` covers
+  repeated sections and notes inside a section. Focused and package gates passed.
   Handoff: ASCB-050 should settle nesting and edge-case policy.
 
 ## M4 - Nesting And Edge Cases

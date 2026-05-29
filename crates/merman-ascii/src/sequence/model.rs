@@ -18,8 +18,17 @@ const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
 const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
 const LOOP_START_MESSAGE_TYPE: i32 = 10;
 const LOOP_END_MESSAGE_TYPE: i32 = 11;
+const ALT_START_MESSAGE_TYPE: i32 = 12;
+const ALT_ELSE_MESSAGE_TYPE: i32 = 13;
+const ALT_END_MESSAGE_TYPE: i32 = 14;
 const OPT_START_MESSAGE_TYPE: i32 = 15;
 const OPT_END_MESSAGE_TYPE: i32 = 16;
+const PAR_START_MESSAGE_TYPE: i32 = 19;
+const PAR_AND_MESSAGE_TYPE: i32 = 20;
+const PAR_END_MESSAGE_TYPE: i32 = 21;
+const CRITICAL_START_MESSAGE_TYPE: i32 = 27;
+const CRITICAL_OPTION_MESSAGE_TYPE: i32 = 28;
+const CRITICAL_END_MESSAGE_TYPE: i32 = 29;
 const BREAK_START_MESSAGE_TYPE: i32 = 30;
 const BREAK_END_MESSAGE_TYPE: i32 = 31;
 const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
@@ -69,6 +78,7 @@ pub(super) enum SequenceEvent {
         kind: SequenceControlKind,
         model_index: usize,
     },
+    ControlSeparator(SequenceControlSeparator),
 }
 
 impl SequenceEvent {
@@ -81,6 +91,7 @@ impl SequenceEvent {
             }
             Self::ControlStart(start) => start.model_index,
             Self::ControlEnd { model_index, .. } => *model_index,
+            Self::ControlSeparator(separator) => separator.model_index,
         }
     }
 }
@@ -92,11 +103,21 @@ pub(super) struct SequenceControlStart {
     pub(super) label: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SequenceControlSeparator {
+    pub(super) model_index: usize,
+    pub(super) kind: SequenceControlKind,
+    pub(super) label: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SequenceControlKind {
     Loop,
     Opt,
     Break,
+    Alt,
+    Par,
+    Critical,
 }
 
 impl SequenceControlKind {
@@ -105,6 +126,18 @@ impl SequenceControlKind {
             Self::Loop => "loop",
             Self::Opt => "opt",
             Self::Break => "break",
+            Self::Alt => "alt",
+            Self::Par => "par",
+            Self::Critical => "critical",
+        }
+    }
+
+    pub(super) fn separator_keyword(self) -> Option<&'static str> {
+        match self {
+            Self::Alt => Some("else"),
+            Self::Par => Some("and"),
+            Self::Critical => Some("option"),
+            Self::Loop | Self::Opt | Self::Break => None,
         }
     }
 }
@@ -313,23 +346,41 @@ fn sequence_control_event(
     let kind = match message.message_type {
         LOOP_START_MESSAGE_TYPE => Some((SequenceControlKind::Loop, true)),
         LOOP_END_MESSAGE_TYPE => Some((SequenceControlKind::Loop, false)),
+        ALT_START_MESSAGE_TYPE => Some((SequenceControlKind::Alt, true)),
+        ALT_END_MESSAGE_TYPE => Some((SequenceControlKind::Alt, false)),
         OPT_START_MESSAGE_TYPE => Some((SequenceControlKind::Opt, true)),
         OPT_END_MESSAGE_TYPE => Some((SequenceControlKind::Opt, false)),
+        PAR_START_MESSAGE_TYPE => Some((SequenceControlKind::Par, true)),
+        PAR_END_MESSAGE_TYPE => Some((SequenceControlKind::Par, false)),
+        CRITICAL_START_MESSAGE_TYPE => Some((SequenceControlKind::Critical, true)),
+        CRITICAL_END_MESSAGE_TYPE => Some((SequenceControlKind::Critical, false)),
         BREAK_START_MESSAGE_TYPE => Some((SequenceControlKind::Break, true)),
         BREAK_END_MESSAGE_TYPE => Some((SequenceControlKind::Break, false)),
         _ => None,
     };
 
+    let separator_kind = match message.message_type {
+        ALT_ELSE_MESSAGE_TYPE => Some(SequenceControlKind::Alt),
+        PAR_AND_MESSAGE_TYPE => Some(SequenceControlKind::Par),
+        CRITICAL_OPTION_MESSAGE_TYPE => Some(SequenceControlKind::Critical),
+        _ => None,
+    };
+
     let Some((kind, is_start)) = kind else {
+        if let Some(kind) = separator_kind {
+            ensure_endpointless_control_message(message)?;
+            return Ok(Some(SequenceEvent::ControlSeparator(
+                SequenceControlSeparator {
+                    model_index,
+                    kind,
+                    label: message.message_text().to_string(),
+                },
+            )));
+        }
         return Ok(None);
     };
 
-    if message.from.is_some() || message.to.is_some() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "control messages",
-        });
-    }
+    ensure_endpointless_control_message(message)?;
 
     if is_start {
         Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
@@ -340,6 +391,17 @@ fn sequence_control_event(
     } else {
         Ok(Some(SequenceEvent::ControlEnd { kind, model_index }))
     }
+}
+
+fn ensure_endpointless_control_message(message: &CoreSequenceMessage) -> Result<()> {
+    if message.from.is_some() || message.to.is_some() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "control messages",
+        });
+    }
+
+    Ok(())
 }
 
 fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequenceParticipant> {

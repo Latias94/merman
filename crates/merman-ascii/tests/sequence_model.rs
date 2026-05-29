@@ -502,10 +502,6 @@ fn sequence_control_blocks_are_core_control_signals() {
             "{} should still include drawable messages inside the block",
             case.name
         );
-
-        if matches!(case.name, "alt" | "par" | "critical") {
-            assert_unsupported_sequence_model(model, "control messages");
-        }
     }
 }
 
@@ -601,6 +597,138 @@ fn sequence_single_section_control_blocks_frame_notes() {
             .any(|line| line.starts_with('│') && line.contains("Continue")),
         "loop should keep later message rows inside the same frame:\n{rendered}"
     );
+}
+
+#[test]
+fn sequence_sectioned_control_blocks_render_unicode_frames() {
+    let cases = [
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\nalt Success\nA->>B: OK\nelse Failure\nB-->>A: Retry\nend",
+            "alt",
+            "Success",
+            "else",
+            "Failure",
+            "OK",
+            "Retry",
+        ),
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\npar First\nA->>B: One\nand Second\nB-->>A: Two\nend",
+            "par",
+            "First",
+            "and",
+            "Second",
+            "One",
+            "Two",
+        ),
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\ncritical Must lock\nA->>B: Lock\noption Timeout\nB-->>A: Backoff\nend",
+            "critical",
+            "Must lock",
+            "option",
+            "Timeout",
+            "Lock",
+            "Backoff",
+        ),
+    ];
+
+    for (input, keyword, label, separator, separator_label, first, second) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{keyword} should render: {err}"));
+
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with(&format!("┌ {keyword} {label} "))),
+            "{keyword} should render a labeled Unicode top frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with(&format!("├ {separator} {separator_label} "))),
+            "{keyword} should render a labeled Unicode section separator:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains(first)),
+            "{keyword} should keep first section rows inside the frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains(second)),
+            "{keyword} should keep second section rows inside the frame:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn sequence_sectioned_control_blocks_render_ascii_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nalt Success\nA->>B: OK\nelse Failure\nB-->>A: Retry\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("alt should render with ASCII charset");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("+ alt Success ")),
+        "alt should render a labeled ASCII top frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("+ else Failure ")),
+        "alt should render a labeled ASCII section separator:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('|') && line.contains("Retry")),
+        "alt should keep second section rows inside the ASCII frame:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_sectioned_control_blocks_frame_multiple_sections_and_notes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nalt Primary path\nA->>B: First\nelse Secondary path\nNote over A,B: Wait\nelse Tertiary path\nB-->>A: Third\nend",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("alt should render multiple sections and notes");
+
+    for marker in ["├ else Secondary path ", "├ else Tertiary path "] {
+        assert!(
+            rendered.lines().any(|line| line.starts_with(marker)),
+            "alt should render every section separator:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('│') && line.contains("Wait")),
+        "alt should keep note rows inside sectioned frames:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('│') && line.contains("Third")),
+        "alt should keep later section messages inside the frame:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_deferred_control_blocks_are_explicitly_unsupported() {
+    let cases = [
+        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\nA->>B: Shaded\nend",
+        "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nA->>B: Work\nend",
+    ];
+
+    for input in cases {
+        let model = parse_sequence_render_model(input);
+        assert_unsupported_sequence_model(model, "control messages");
+    }
 }
 
 #[test]

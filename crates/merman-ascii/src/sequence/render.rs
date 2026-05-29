@@ -1,5 +1,7 @@
 use super::boxes::render_sequence_boxes;
-use super::control::{SequenceControlFrame, render_sequence_control_frames};
+use super::control::{
+    SequenceControlFrame, SequenceControlFrameSeparator, render_sequence_control_frames,
+};
 use super::events::{ensure_message_actors_visible, render_message, render_self_message};
 use super::layout::{
     LifecycleEdge, SequenceLayout, calculate_layout, initial_visible_actors, lifecycle_actors_at,
@@ -173,7 +175,34 @@ pub(crate) fn render_sequence_diagram(
                     kind: start.kind,
                     label: start.label.clone(),
                     start_row: lines.len(),
+                    separators: Vec::new(),
                     end_row: None,
+                });
+                continue;
+            }
+            SequenceEvent::ControlSeparator(separator) => {
+                let Some(frame_index) = active_control_frame else {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "control block ordering",
+                    });
+                };
+                let frame = &mut control_frames[frame_index];
+                if frame.kind != separator.kind {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "control block ordering",
+                    });
+                }
+                if frame.current_section_start_row() == lines.len() {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "empty control block sections",
+                    });
+                }
+                frame.separators.push(SequenceControlFrameSeparator {
+                    label: separator.label.clone(),
+                    row: lines.len(),
                 });
                 continue;
             }
@@ -191,10 +220,10 @@ pub(crate) fn render_sequence_diagram(
                         feature: "control block ordering",
                     });
                 }
-                if frame.start_row == lines.len() {
+                if frame.current_section_start_row() == lines.len() {
                     return Err(AsciiError::UnsupportedFeature {
                         diagram_type: "sequence",
-                        feature: "empty control blocks",
+                        feature: "empty control block sections",
                     });
                 }
                 frame.end_row = Some(lines.len() - 1);
@@ -266,7 +295,8 @@ pub(crate) fn render_sequence_diagram(
             SequenceEvent::ActivationStart { .. }
             | SequenceEvent::ActivationEnd { .. }
             | SequenceEvent::ControlStart(_)
-            | SequenceEvent::ControlEnd { .. } => {}
+            | SequenceEvent::ControlEnd { .. }
+            | SequenceEvent::ControlSeparator(_) => {}
         }
 
         for actor in destroyed_actors {
