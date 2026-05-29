@@ -75,6 +75,16 @@
       "date": "2026-05-29",
       "task": "ASP-110",
       "result": "passed focused and broad gates for activation rendering slice"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-075",
+      "result": "added typed actor create/destroy lifecycle and cross message rendering"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-120",
+      "result": "passed focused and broad gates for actor lifecycle rendering slice"
     }
   ],
   "adr_refs": [
@@ -82,7 +92,7 @@
   ],
   "continue_policy": {
     "default_action": "execute_next_task",
-    "next_task": "ASP-075",
-    "notes": "Decide and implement or split actor create/destroy lifecycle rendering."
+    "next_task": "ASP-080",
+    "notes": "Decide wrapping support for actors/messages/notes, including CJK and emoji width risks."
   }
 }

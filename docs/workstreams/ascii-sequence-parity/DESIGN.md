@@ -49,7 +49,8 @@ rendered without changing parser contracts:
 - Single-line notes: `Note left of`, `Note right of`, and `Note over` (done).
 - Sequence boxes around actor groups (done).
 - Activation state for `activate`/`deactivate` and `+`/`-` messages (done).
-- Then create/destroy lifecycle behavior and wrapping as separate slices.
+- Actor create/destroy lifecycle behavior, including cross destroy messages (done).
+- Then wrapping as a separate slice.
 
 Keep unsupported constructs explicit. Do not silently drop typed model semantics.
 

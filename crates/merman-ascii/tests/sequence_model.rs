@@ -85,6 +85,21 @@ fn basic_sequence_model() -> SequenceDiagramRenderModel {
     }
 }
 
+fn add_sequence_participant(model: &mut SequenceDiagramRenderModel, id: &str) {
+    model.actor_order.push(id.to_string());
+    model.actors.insert(
+        id.to_string(),
+        SequenceActor {
+            name: id.to_string(),
+            description: id.to_string(),
+            actor_type: "participant".to_string(),
+            wrap: false,
+            links: Default::default(),
+            properties: Default::default(),
+        },
+    );
+}
+
 fn assert_unsupported_sequence_model(model: SequenceDiagramRenderModel, feature: &'static str) {
     let err = render_sequence_model(&model, &AsciiRenderOptions::unicode()).unwrap_err();
     assert_eq!(
@@ -283,6 +298,68 @@ fn sequence_activations_render_from_typed_model() {
 }
 
 #[test]
+fn sequence_actor_lifecycle_renders_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Before\ncreate participant C\nB->>C: Hello C\nC->>B: Still here\ndestroy C\nB--xC: Bye C\nB->>A: After",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("sequence actor create/destroy should render");
+
+    let header = rendered.lines().take(3).collect::<Vec<_>>().join("\n");
+    assert!(
+        !header.contains("│ C │"),
+        "created participant should not render in the initial header:\n{rendered}"
+    );
+    assert_eq!(
+        rendered.matches("│ C │").count(),
+        1,
+        "created participant should render once at its creation point:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("×"),
+        "destroyed participant should render a termination marker:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_actor_lifecycle_validates_hand_built_indices() {
+    let mut cases = Vec::new();
+
+    let mut model = basic_sequence_model();
+    model.messages.push(message(Some("A"), Some("A"), 0));
+    model.created_actors.insert("B".to_string(), 0);
+    cases.push((model, "actor lifecycle actors"));
+
+    let mut model = basic_sequence_model();
+    model.messages.push(message(Some("A"), Some("A"), 0));
+    model.created_actors.insert("A".to_string(), 1);
+    cases.push((model, "actor lifecycle message indices"));
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.messages.push(message(Some("A"), Some("A"), 0));
+    model.created_actors.insert("B".to_string(), 0);
+    cases.push((model, "actor creation messages"));
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.messages.push(message(Some("A"), Some("A"), 0));
+    model.destroyed_actors.insert("B".to_string(), 0);
+    cases.push((model, "actor destruction messages"));
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model.messages.push(message(Some("A"), Some("B"), 0));
+    model.messages.push(message(Some("A"), Some("B"), 0));
+    model.destroyed_actors.insert("B".to_string(), 0);
+    cases.push((model, "actor lifecycle visibility"));
+
+    for (model, feature) in cases {
+        assert_unsupported_sequence_model(model, feature);
+    }
+}
+
+#[test]
 fn sequence_open_arrows_render_from_typed_model() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nA->B: Open\nA-->B: Dotted\nB->A: Back",
@@ -348,10 +425,6 @@ fn sequence_actor_links_are_explicitly_unsupported() {
 #[test]
 fn sequence_other_model_features_are_explicitly_unsupported() {
     let mut cases = Vec::new();
-
-    let mut model = basic_sequence_model();
-    model.created_actors.insert("A".to_string(), 0);
-    cases.push((model, "actor create/destroy"));
 
     let mut model = basic_sequence_model();
     model.messages.push(SequenceMessage {

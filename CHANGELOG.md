@@ -31,6 +31,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added sequence ASCII/Unicode rendering for single-line typed notes.
 - Added sequence ASCII/Unicode rendering for typed sequence boxes around actor groups.
 - Added sequence ASCII/Unicode rendering for typed activation state.
+- Added sequence ASCII/Unicode rendering for typed actor create/destroy lifecycle markers.
 
 ## [0.6.0] - 2026-05-28
 

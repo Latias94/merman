@@ -17,6 +17,8 @@ const ACTIVE_START_MESSAGE_TYPE: i32 = 17;
 const ACTIVE_END_MESSAGE_TYPE: i32 = 18;
 const SOLID_FILLED_MESSAGE_TYPE: i32 = 0;
 const DOTTED_FILLED_MESSAGE_TYPE: i32 = 1;
+const SOLID_CROSS_MESSAGE_TYPE: i32 = 3;
+const DOTTED_CROSS_MESSAGE_TYPE: i32 = 4;
 const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
 const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
 const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
@@ -29,6 +31,7 @@ const SEQUENCE_BOX_LABEL_MARGIN: usize = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
     participants: Vec<SequenceParticipant>,
+    lifecycles: Vec<SequenceActorLifecycle>,
     boxes: Vec<SequenceGroupBox>,
     events: Vec<SequenceEvent>,
 }
@@ -45,16 +48,35 @@ struct SequenceGroupBox {
     label: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SequenceActorLifecycle {
+    created_at: Option<usize>,
+    destroyed_at: Option<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SequenceEvent {
     Message(SequenceMessage),
     Note(SequenceNote),
-    ActivationStart(usize),
-    ActivationEnd(usize),
+    ActivationStart { actor: usize, model_index: usize },
+    ActivationEnd { actor: usize, model_index: usize },
+}
+
+impl SequenceEvent {
+    fn model_index(&self) -> usize {
+        match self {
+            Self::Message(message) => message.model_index,
+            Self::Note(note) => note.model_index,
+            Self::ActivationStart { model_index, .. } | Self::ActivationEnd { model_index, .. } => {
+                *model_index
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SequenceMessage {
+    model_index: usize,
     from: usize,
     to: usize,
     label: String,
@@ -72,10 +94,12 @@ enum SequenceLineStyle {
 enum SequenceArrowHead {
     Filled,
     Open,
+    Cross,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SequenceNote {
+    model_index: usize,
     from: usize,
     to: usize,
     label: String,
@@ -112,6 +136,7 @@ struct SequenceChars {
     horizontal: char,
     vertical: char,
     active_vertical: char,
+    destroyed_mark: char,
     tee_down: char,
     tee_right: char,
     tee_left: char,
@@ -136,6 +161,7 @@ impl SequenceChars {
                 horizontal: '-',
                 vertical: '|',
                 active_vertical: '#',
+                destroyed_mark: 'x',
                 tee_down: '+',
                 tee_right: '+',
                 tee_left: '+',
@@ -156,6 +182,7 @@ impl SequenceChars {
                 horizontal: '─',
                 vertical: '│',
                 active_vertical: '┃',
+                destroyed_mark: '×',
                 tee_down: '┬',
                 tee_right: '├',
                 tee_left: '┤',
@@ -175,6 +202,7 @@ impl SequenceChars {
         match arrow {
             SequenceArrowHead::Filled => self.filled_arrow_right,
             SequenceArrowHead::Open => self.open_arrow_right,
+            SequenceArrowHead::Cross => self.destroyed_mark,
         }
     }
 
@@ -182,6 +210,7 @@ impl SequenceChars {
         match arrow {
             SequenceArrowHead::Filled => self.filled_arrow_left,
             SequenceArrowHead::Open => self.open_arrow_left,
+            SequenceArrowHead::Cross => self.destroyed_mark,
         }
     }
 }
@@ -214,10 +243,11 @@ pub(crate) fn from_sequence_model(
         .map(|(index, participant)| (participant.id.as_str(), index))
         .collect::<HashMap<_, _>>();
     let boxes = sequence_boxes(model, &participant_index)?;
+    let lifecycles = sequence_actor_lifecycles(model, &participant_index)?;
     let mut events = Vec::new();
     let mut autonumber = AutonumberState::default();
 
-    for message in &model.messages {
+    for (model_index, message) in model.messages.iter().enumerate() {
         if consume_autonumber(message, &mut autonumber) {
             continue;
         }
@@ -240,9 +270,9 @@ pub(crate) fn from_sequence_model(
                     feature: "messages with unknown actors",
                 })?;
             let event = if message.message_type == ACTIVE_START_MESSAGE_TYPE {
-                SequenceEvent::ActivationStart(actor)
+                SequenceEvent::ActivationStart { actor, model_index }
             } else {
-                SequenceEvent::ActivationEnd(actor)
+                SequenceEvent::ActivationEnd { actor, model_index }
             };
             events.push(event);
             continue;
@@ -286,6 +316,7 @@ pub(crate) fn from_sequence_model(
                 });
             }
             events.push(SequenceEvent::Note(SequenceNote {
+                model_index,
                 from,
                 to,
                 label: label.to_string(),
@@ -297,6 +328,8 @@ pub(crate) fn from_sequence_model(
         let (style, arrow) = match message.message_type {
             SOLID_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Filled),
             DOTTED_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Filled),
+            SOLID_CROSS_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Cross),
+            DOTTED_CROSS_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Cross),
             SOLID_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Open),
             DOTTED_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Open),
             _ => {
@@ -309,6 +342,7 @@ pub(crate) fn from_sequence_model(
         let label = autonumber.label(message.message_text());
 
         events.push(SequenceEvent::Message(SequenceMessage {
+            model_index,
             from,
             to,
             label,
@@ -319,6 +353,7 @@ pub(crate) fn from_sequence_model(
 
     Ok(AsciiSequenceDiagram {
         participants,
+        lifecycles,
         boxes,
         events,
     })
@@ -400,13 +435,6 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "empty boxes",
-        });
-    }
-
-    if !model.created_actors.is_empty() || !model.destroyed_actors.is_empty() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "actor create/destroy",
         });
     }
 
@@ -503,6 +531,86 @@ fn sequence_boxes(
         .collect()
 }
 
+fn sequence_actor_lifecycles(
+    model: &SequenceDiagramRenderModel,
+    participant_index: &HashMap<&str, usize>,
+) -> Result<Vec<SequenceActorLifecycle>> {
+    let mut lifecycles = vec![SequenceActorLifecycle::default(); participant_index.len()];
+
+    for (actor_id, model_index) in &model.created_actors {
+        let actor_index =
+            actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
+        let message =
+            actor_lifecycle_message(model, *model_index, "actor lifecycle message indices")?;
+        if message.to.as_deref() != Some(actor_id.as_str()) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "actor creation messages",
+            });
+        }
+        lifecycles[actor_index].created_at = Some(*model_index);
+    }
+
+    for (actor_id, model_index) in &model.destroyed_actors {
+        let actor_index =
+            actor_lifecycle_index(participant_index, actor_id, "actor lifecycle actors")?;
+        let message =
+            actor_lifecycle_message(model, *model_index, "actor lifecycle message indices")?;
+        if message.from.as_deref() != Some(actor_id.as_str())
+            && message.to.as_deref() != Some(actor_id.as_str())
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "actor destruction messages",
+            });
+        }
+        lifecycles[actor_index].destroyed_at = Some(*model_index);
+    }
+
+    for lifecycle in &lifecycles {
+        if let (Some(created_at), Some(destroyed_at)) =
+            (lifecycle.created_at, lifecycle.destroyed_at)
+        {
+            if destroyed_at <= created_at {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "actor lifecycle order",
+                });
+            }
+        }
+    }
+
+    Ok(lifecycles)
+}
+
+fn actor_lifecycle_index(
+    participant_index: &HashMap<&str, usize>,
+    actor_id: &str,
+    feature: &'static str,
+) -> Result<usize> {
+    participant_index
+        .get(actor_id)
+        .copied()
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature,
+        })
+}
+
+fn actor_lifecycle_message<'a>(
+    model: &'a SequenceDiagramRenderModel,
+    model_index: usize,
+    feature: &'static str,
+) -> Result<&'a CoreSequenceMessage> {
+    model
+        .messages
+        .get(model_index)
+        .ok_or(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature,
+        })
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct AutonumberState {
     next: Option<i64>,
@@ -559,51 +667,34 @@ pub(crate) fn render_sequence_diagram(
     let layout = calculate_layout(diagram, options);
     let mut lines = Vec::new();
     let mut active_counts = vec![0usize; diagram.participants.len()];
+    let mut visible_actors = initial_visible_actors(diagram);
 
-    lines.push(build_participant_line(diagram, &layout, |index| {
-        format!(
-            "{}{}{}",
-            chars.top_left,
-            chars
-                .horizontal
-                .to_string()
-                .repeat(layout.participant_widths[index]),
-            chars.top_right
-        )
-    }));
-    lines.push(build_participant_line(diagram, &layout, |index| {
-        let width = layout.participant_widths[index];
-        let label = &diagram.participants[index].label;
-        let label_width = display_width(label);
-        let left_padding = (width - label_width) / 2;
-        format!(
-            "{}{}{}{}{}",
-            chars.vertical,
-            " ".repeat(left_padding),
-            label,
-            " ".repeat(width - left_padding - label_width),
-            chars.vertical
-        )
-    }));
-    lines.push(build_participant_line(diagram, &layout, |index| {
-        let width = layout.participant_widths[index];
-        format!(
-            "{}{}{}{}{}",
-            chars.bottom_left,
-            chars.horizontal.to_string().repeat(width / 2),
-            chars.tee_down,
-            chars.horizontal.to_string().repeat(width - width / 2 - 1),
-            chars.bottom_right
-        )
-    }));
+    lines.push(build_participant_line(
+        diagram,
+        &layout,
+        &visible_actors,
+        |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Top),
+    ));
+    lines.push(build_participant_line(
+        diagram,
+        &layout,
+        &visible_actors,
+        |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Label),
+    ));
+    lines.push(build_participant_line(
+        diagram,
+        &layout,
+        &visible_actors,
+        |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Bottom),
+    ));
 
     for event in &diagram.events {
         match event {
-            SequenceEvent::ActivationStart(actor) => {
+            SequenceEvent::ActivationStart { actor, .. } => {
                 active_counts[*actor] += 1;
                 continue;
             }
-            SequenceEvent::ActivationEnd(actor) => {
+            SequenceEvent::ActivationEnd { actor, .. } => {
                 let Some(count) = active_counts.get_mut(*actor) else {
                     return Err(AsciiError::UnsupportedFeature {
                         diagram_type: "sequence",
@@ -623,30 +714,80 @@ pub(crate) fn render_sequence_diagram(
         }
 
         for _ in 0..layout.message_spacing {
-            lines.push(build_lifeline(&layout, &chars, &active_counts));
+            lines.push(build_lifeline(
+                &layout,
+                &chars,
+                &active_counts,
+                &visible_actors,
+            ));
         }
+
+        let model_index = event.model_index();
+        let created_actors = lifecycle_actors_at(diagram, model_index, LifecycleEdge::Created);
+        if !created_actors.is_empty() {
+            lines.extend(render_lifecycle_participants(
+                diagram,
+                &layout,
+                &chars,
+                &active_counts,
+                &visible_actors,
+                &created_actors,
+            ));
+            for actor in &created_actors {
+                visible_actors[*actor] = true;
+            }
+        }
+
+        let destroyed_actors = lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
 
         match event {
             SequenceEvent::Message(message) => {
+                ensure_message_actors_visible(message, &visible_actors)?;
                 if message.from == message.to {
                     lines.extend(render_self_message(
                         message,
                         &layout,
                         &chars,
                         &active_counts,
+                        &visible_actors,
+                        &destroyed_actors,
                     ));
                 } else {
-                    lines.extend(render_message(message, &layout, &chars, &active_counts));
+                    lines.extend(render_message(
+                        message,
+                        &layout,
+                        &chars,
+                        &active_counts,
+                        &visible_actors,
+                        &destroyed_actors,
+                    ));
                 }
             }
             SequenceEvent::Note(note) => {
-                lines.extend(render_note(note, &layout, &chars, &active_counts));
+                ensure_note_actors_visible(note, &visible_actors)?;
+                lines.extend(render_note(
+                    note,
+                    &layout,
+                    &chars,
+                    &active_counts,
+                    &visible_actors,
+                ));
             }
-            SequenceEvent::ActivationStart(_) | SequenceEvent::ActivationEnd(_) => {}
+            SequenceEvent::ActivationStart { .. } | SequenceEvent::ActivationEnd { .. } => {}
+        }
+
+        for actor in destroyed_actors {
+            visible_actors[actor] = false;
+            active_counts[actor] = 0;
         }
     }
 
-    lines.push(build_lifeline(&layout, &chars, &active_counts));
+    lines.push(build_lifeline(
+        &layout,
+        &chars,
+        &active_counts,
+        &visible_actors,
+    ));
     if !diagram.boxes.is_empty() {
         lines = render_sequence_boxes(lines, diagram, &layout, &chars);
     }
@@ -691,15 +832,51 @@ fn calculate_layout(
     }
 }
 
+fn initial_visible_actors(diagram: &AsciiSequenceDiagram) -> Vec<bool> {
+    diagram
+        .lifecycles
+        .iter()
+        .map(|lifecycle| lifecycle.created_at.is_none())
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LifecycleEdge {
+    Created,
+    Destroyed,
+}
+
+fn lifecycle_actors_at(
+    diagram: &AsciiSequenceDiagram,
+    model_index: usize,
+    edge: LifecycleEdge,
+) -> Vec<usize> {
+    diagram
+        .lifecycles
+        .iter()
+        .enumerate()
+        .filter_map(|(actor, lifecycle)| {
+            let target = match edge {
+                LifecycleEdge::Created => lifecycle.created_at,
+                LifecycleEdge::Destroyed => lifecycle.destroyed_at,
+            };
+            (target == Some(model_index)).then_some(actor)
+        })
+        .collect()
+}
+
 fn build_participant_line(
     diagram: &AsciiSequenceDiagram,
     layout: &SequenceLayout,
+    visible_actors: &[bool],
     draw: impl Fn(usize) -> String,
 ) -> String {
     let mut line = String::new();
     for index in 0..diagram.participants.len() {
-        let box_width = layout.participant_widths[index] + BOX_BORDER_WIDTH;
-        let left = layout.participant_centers[index] - box_width / 2;
+        if !visible_actors.get(index).copied().unwrap_or(true) {
+            continue;
+        }
+        let left = participant_left(layout, index);
         let needed = left.saturating_sub(line.chars().count());
         line.push_str(&" ".repeat(needed));
         line.push_str(&draw(index));
@@ -707,13 +884,111 @@ fn build_participant_line(
     line
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParticipantBoxRow {
+    Top,
+    Label,
+    Bottom,
+}
+
+fn participant_box_segment(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    index: usize,
+    row: ParticipantBoxRow,
+) -> String {
+    let width = layout.participant_widths[index];
+    match row {
+        ParticipantBoxRow::Top => {
+            format!(
+                "{}{}{}",
+                chars.top_left,
+                chars.horizontal.to_string().repeat(width),
+                chars.top_right
+            )
+        }
+        ParticipantBoxRow::Label => {
+            let label = &diagram.participants[index].label;
+            let label_width = display_width(label);
+            let left_padding = (width - label_width) / 2;
+            format!(
+                "{}{}{}{}{}",
+                chars.vertical,
+                " ".repeat(left_padding),
+                label,
+                " ".repeat(width - left_padding - label_width),
+                chars.vertical
+            )
+        }
+        ParticipantBoxRow::Bottom => {
+            format!(
+                "{}{}{}{}{}",
+                chars.bottom_left,
+                chars.horizontal.to_string().repeat(width / 2),
+                chars.tee_down,
+                chars.horizontal.to_string().repeat(width - width / 2 - 1),
+                chars.bottom_right
+            )
+        }
+    }
+}
+
+fn participant_left(layout: &SequenceLayout, index: usize) -> usize {
+    let box_width = layout.participant_widths[index] + BOX_BORDER_WIDTH;
+    layout.participant_centers[index] - box_width / 2
+}
+
+fn render_lifecycle_participants(
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    active_counts: &[usize],
+    visible_actors: &[bool],
+    actor_indices: &[usize],
+) -> Vec<String> {
+    [
+        ParticipantBoxRow::Top,
+        ParticipantBoxRow::Label,
+        ParticipantBoxRow::Bottom,
+    ]
+    .into_iter()
+    .map(|row| {
+        let width = actor_indices
+            .iter()
+            .map(|index| {
+                participant_left(layout, *index)
+                    + participant_box_segment(diagram, layout, chars, *index, row)
+                        .chars()
+                        .count()
+            })
+            .max()
+            .unwrap_or(layout.total_width + 1)
+            .max(layout.total_width + 1);
+        let mut line = padded_line(
+            build_lifeline(layout, chars, active_counts, visible_actors),
+            width,
+        );
+        for index in actor_indices {
+            let segment = participant_box_segment(diagram, layout, chars, *index, row);
+            write_text(&mut line, participant_left(layout, *index), &segment);
+        }
+        trim_right(line)
+    })
+    .collect()
+}
+
 fn build_lifeline(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
+    visible_actors: &[bool],
 ) -> String {
     let mut line = vec![' '; layout.total_width + 1];
     for (index, center) in layout.participant_centers.iter().enumerate() {
+        if !visible_actors.get(index).copied().unwrap_or(true) {
+            continue;
+        }
         if *center < line.len() {
             line[*center] = lifeline_char(index, chars, active_counts);
         }
@@ -729,11 +1004,39 @@ fn lifeline_char(index: usize, chars: &SequenceChars, active_counts: &[usize]) -
     }
 }
 
+fn ensure_message_actors_visible(message: &SequenceMessage, visible_actors: &[bool]) -> Result<()> {
+    if visible_actors.get(message.from).copied().unwrap_or(false)
+        && visible_actors.get(message.to).copied().unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    Err(AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature: "actor lifecycle visibility",
+    })
+}
+
+fn ensure_note_actors_visible(note: &SequenceNote, visible_actors: &[bool]) -> Result<()> {
+    if visible_actors.get(note.from).copied().unwrap_or(false)
+        && visible_actors.get(note.to).copied().unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    Err(AsciiError::UnsupportedFeature {
+        diagram_type: "sequence",
+        feature: "actor lifecycle visibility",
+    })
+}
+
 fn render_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
+    visible_actors: &[bool],
+    destroyed_actors: &[usize],
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let from = layout.participant_centers[message.from];
@@ -746,12 +1049,15 @@ fn render_message(
             .total_width
             .max(start + label_width)
             .saturating_add(LABEL_BUFFER_SPACE);
-        let mut line = padded_line(build_lifeline(layout, chars, active_counts), width);
+        let mut line = padded_line(
+            build_lifeline(layout, chars, active_counts, visible_actors),
+            width,
+        );
         write_text(&mut line, start, &message.label);
         lines.push(trim_right(line));
     }
 
-    let mut line = build_lifeline(layout, chars, active_counts)
+    let mut line = build_lifeline(layout, chars, active_counts, visible_actors)
         .chars()
         .collect::<Vec<_>>();
     let style = match message.style {
@@ -760,19 +1066,47 @@ fn render_message(
     };
 
     if from < to {
-        line[from] = chars.tee_right;
+        line[from] = if destroyed_actors.contains(&message.from) {
+            chars.destroyed_mark
+        } else {
+            chars.tee_right
+        };
         for cell in line.iter_mut().take(to).skip(from + 1) {
             *cell = style;
         }
-        line[to - 1] = chars.arrow_right(message.arrow);
-        line[to] = lifeline_char(message.to, chars, active_counts);
+        line[to - 1] = if destroyed_actors.contains(&message.to)
+            && message.arrow == SequenceArrowHead::Cross
+        {
+            style
+        } else {
+            chars.arrow_right(message.arrow)
+        };
+        line[to] = if destroyed_actors.contains(&message.to) {
+            chars.destroyed_mark
+        } else {
+            lifeline_char(message.to, chars, active_counts)
+        };
     } else {
-        line[to] = lifeline_char(message.to, chars, active_counts);
-        line[to + 1] = chars.arrow_left(message.arrow);
+        line[to] = if destroyed_actors.contains(&message.to) {
+            chars.destroyed_mark
+        } else {
+            lifeline_char(message.to, chars, active_counts)
+        };
+        line[to + 1] = if destroyed_actors.contains(&message.to)
+            && message.arrow == SequenceArrowHead::Cross
+        {
+            style
+        } else {
+            chars.arrow_left(message.arrow)
+        };
         for cell in line.iter_mut().take(from).skip(to + 2) {
             *cell = style;
         }
-        line[from] = chars.tee_left;
+        line[from] = if destroyed_actors.contains(&message.from) {
+            chars.destroyed_mark
+        } else {
+            chars.tee_left
+        };
     }
     lines.push(trim_right(line));
     lines
@@ -783,6 +1117,8 @@ fn render_self_message(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
+    visible_actors: &[bool],
+    destroyed_actors: &[usize],
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let center = layout.participant_centers[message.from];
@@ -791,13 +1127,20 @@ fn render_self_message(
     if !message.label.is_empty() {
         let start = center + LABEL_LEFT_MARGIN;
         let needed = start + display_width(&message.label) + LABEL_BUFFER_SPACE;
-        let mut line =
-            ensure_self_width(build_lifeline(layout, chars, active_counts), layout, needed);
+        let mut line = ensure_self_width(
+            build_lifeline(layout, chars, active_counts, visible_actors),
+            layout,
+            needed,
+        );
         write_text(&mut line, start, &message.label);
         lines.push(trim_right(line));
     }
 
-    let mut top = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
+    let mut top = ensure_self_width(
+        build_lifeline(layout, chars, active_counts, visible_actors),
+        layout,
+        0,
+    );
     top[center] = chars.tee_right;
     for offset in 1..width {
         top[center + offset] = chars.horizontal;
@@ -805,12 +1148,24 @@ fn render_self_message(
     top[center + width - 1] = chars.self_top_right;
     lines.push(trim_right(top));
 
-    let mut middle = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
+    let mut middle = ensure_self_width(
+        build_lifeline(layout, chars, active_counts, visible_actors),
+        layout,
+        0,
+    );
     middle[center + width - 1] = chars.vertical;
     lines.push(trim_right(middle));
 
-    let mut bottom = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
-    bottom[center] = lifeline_char(message.from, chars, active_counts);
+    let mut bottom = ensure_self_width(
+        build_lifeline(layout, chars, active_counts, visible_actors),
+        layout,
+        0,
+    );
+    bottom[center] = if destroyed_actors.contains(&message.from) {
+        chars.destroyed_mark
+    } else {
+        lifeline_char(message.from, chars, active_counts)
+    };
     bottom[center + 1] = chars.arrow_left(message.arrow);
     for offset in 2..(width - 1) {
         bottom[center + offset] = chars.horizontal;
@@ -826,6 +1181,7 @@ fn render_note(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
+    visible_actors: &[bool],
 ) -> Vec<String> {
     let label_width = display_width(&note.label);
     let mut inner_width = (label_width + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH);
@@ -875,9 +1231,9 @@ fn render_note(
     );
 
     vec![
-        render_overlay_row(layout, chars, active_counts, left, &top),
-        render_overlay_row(layout, chars, active_counts, left, &middle),
-        render_overlay_row(layout, chars, active_counts, left, &bottom),
+        render_overlay_row(layout, chars, active_counts, visible_actors, left, &top),
+        render_overlay_row(layout, chars, active_counts, visible_actors, left, &middle),
+        render_overlay_row(layout, chars, active_counts, visible_actors, left, &bottom),
     ]
 }
 
@@ -996,11 +1352,15 @@ fn render_overlay_row(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
+    visible_actors: &[bool],
     left: usize,
     text: &str,
 ) -> String {
     let needed = left + text.chars().count();
-    let mut line = padded_line(build_lifeline(layout, chars, active_counts), needed);
+    let mut line = padded_line(
+        build_lifeline(layout, chars, active_counts, visible_actors),
+        needed,
+    );
     write_text(&mut line, left, text);
     trim_right(line)
 }

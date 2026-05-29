@@ -68,12 +68,16 @@ Last updated: 2026-05-29
   Evidence: Support matrix and tests.
   Handoff: ASP-075 is next.
 
-- [ ] ASP-075 [owner=codex] [deps=ASP-070] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
-  Goal: Decide and implement or split actor create/destroy lifecycle rendering.
+- [x] ASP-075 [owner=codex] [deps=ASP-070] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Render actor create/destroy lifecycle from typed created/destroyed actor indices.
   Validation:
-  - Typed created/destroyed actor indices are either rendered or documented as requiring a deeper
-  lifecycle layout.
-  Evidence: `SEQUENCE_SUPPORT.md`, `HANDOFF.md`.
+  - Created participants are hidden from the initial header, render at their creating message, and
+    then keep a lifeline.
+  - Destroyed participants render a termination marker on the destroying message and stop their
+    lifeline afterward.
+  - Hand-built lifecycle maps with invalid actors, indices, endpoint bindings, or visibility order
+    return explicit unsupported-feature errors.
+  Evidence: behavior tests and support matrix updates.
   Handoff: ASP-080 is next.
 
 - [ ] ASP-080 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
@@ -128,3 +132,15 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: ASP-075 remains next unless this lane closes.
+
+- [x] ASP-120 [owner=codex] [deps=ASP-075] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
+  Goal: Run focused and broad gates, update evidence, and commit the actor lifecycle rendering
+  slice.
+  Validation:
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `git diff --check`
+  Evidence: `EVIDENCE_AND_GATES.md`.
+  Handoff: ASP-080 remains next unless this lane closes.
