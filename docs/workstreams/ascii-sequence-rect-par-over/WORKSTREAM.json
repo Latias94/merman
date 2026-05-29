@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-sequence-rect-par-over",
+  "title": "ASCII Sequence Rect And ParOver Blocks",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "The ASCII sequence renderer still rejects Mermaid rect and par_over control blocks even though merman-core parses them as endpoint-less control signals.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-sequence-rect-par-over/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-sequence-rect-par-over/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-sequence-rect-par-over/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii sequence_rect_par_over",
+    "cargo nextest run -p merman-ascii sequence",
+    "cargo nextest run -p merman-ascii sequence_golden",
+    "cargo nextest run -p merman-ascii"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "ASRP-010",
+      "result": "opened the ASCII sequence rect/par_over follow-on lane and selected boundary/inventory tests as the first executable task"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "run_next_task",
+    "next_task": "ASRP-020",
+    "notes": "Freeze rect and par_over parser/render boundaries before implementing frame rendering."
+  }
+}
