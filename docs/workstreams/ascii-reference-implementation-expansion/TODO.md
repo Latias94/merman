@@ -25,13 +25,17 @@ Last updated: 2026-05-29
   Handoff: DONE. The slice supports class boxes, members, methods, Unicode/ASCII borders, and one
   solid extension relationship. Labels and other relationship kinds are explicitly unsupported.
 
-- [ ] ARI-030 [owner=unassigned] [deps=ARI-020] [scope=crates/merman-ascii/src,class tests]
+- [x] ARI-030 [owner=codex] [deps=ARI-020] [scope=crates/merman-ascii/src,class tests]
   Goal: Expand class ASCII relationships using `beautiful-mermaid` as a reference for inheritance,
   dependency, aggregation, composition, labels, and arrow orientation.
   Validation: `cargo nextest run -p merman-ascii class`
-  Review: Confirm relationship constants are mapped from `merman-core`, not reparsed from text.
-  Evidence: Relationship-focused snapshots and unsupported-feature diagnostics for excluded cases.
-  Handoff: Split namespace/notes/styling if the slice grows too large.
+  Review: Relationship constants are mapped from `merman-core` typed constants and `RelationShape`;
+  no Mermaid text reparsing was added.
+  Evidence: `crates/merman-ascii/src/class/render.rs`, `crates/merman-ascii/tests/class_model.rs`,
+  `crates/merman-ascii/README.md`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. Supports single-relationship layouts for extension, dependency, aggregation,
+  composition, labels, arrow orientation, dotted dependency lines, and Unicode composition markers.
+  Multiple class relationships and richer graph layout remain follow-on work.
 
 ## M2 — ER Diagram ASCII
 

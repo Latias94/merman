@@ -14,8 +14,14 @@ struct ClassCharset {
     vertical: char,
     separator_left: char,
     separator_right: char,
+    solid_vertical_relation: char,
+    dotted_vertical_relation: char,
+    extension_up: char,
+    extension_down: char,
     arrow_up: char,
-    vertical_relation: char,
+    arrow_down: char,
+    aggregation: char,
+    composition: char,
 }
 
 impl ClassCharset {
@@ -30,8 +36,14 @@ impl ClassCharset {
                 vertical: '|',
                 separator_left: '+',
                 separator_right: '+',
+                solid_vertical_relation: '|',
+                dotted_vertical_relation: ':',
+                extension_up: '^',
+                extension_down: 'v',
                 arrow_up: '^',
-                vertical_relation: '|',
+                arrow_down: 'v',
+                aggregation: 'o',
+                composition: '*',
             },
             AsciiCharset::Unicode => Self {
                 top_left: '┌',
@@ -42,8 +54,14 @@ impl ClassCharset {
                 vertical: '│',
                 separator_left: '├',
                 separator_right: '┤',
+                solid_vertical_relation: '│',
+                dotted_vertical_relation: '┆',
+                extension_up: '△',
+                extension_down: '▽',
                 arrow_up: '▲',
-                vertical_relation: '│',
+                arrow_down: '▼',
+                aggregation: '◇',
+                composition: '◆',
             },
         }
     }
@@ -54,6 +72,36 @@ struct RenderedClassBox {
     id: String,
     lines: Vec<String>,
     width: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelationMarker {
+    Extension,
+    Dependency,
+    Aggregation,
+    Composition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MarkerSide {
+    Top,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelationLine {
+    Solid,
+    Dotted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RelationLayout<'a> {
+    top_id: &'a str,
+    bottom_id: &'a str,
+    marker: RelationMarker,
+    marker_side: MarkerSide,
+    line: RelationLine,
+    label: Option<&'a str>,
 }
 
 pub(crate) fn render_class_diagram(
@@ -89,11 +137,11 @@ pub(crate) fn render_class_diagram(
     }
 
     let relation = &model.relations[0];
-    let (parent_id, child_id) = extension_relation(model, relation)?;
-    let parent = find_box(&boxes, parent_id)?;
-    let child = find_box(&boxes, child_id)?;
+    let layout = relation_layout(model, relation)?;
+    let top = find_box(&boxes, layout.top_id)?;
+    let bottom = find_box(&boxes, layout.bottom_id)?;
 
-    Ok(render_vertical_extension(parent, child, charset))
+    Ok(render_vertical_relation(top, bottom, layout, charset))
 }
 
 fn render_class_box(
@@ -226,41 +274,104 @@ fn render_box(class_box: &RenderedClassBox) -> String {
     rendered
 }
 
-fn extension_relation<'a>(
+fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
-) -> Result<(&'a str, &'a str)> {
-    if relation.relation.line_type != model.constants.line_type.line {
+) -> Result<RelationLayout<'a>> {
+    let line = if relation.relation.line_type == model.constants.line_type.line {
+        RelationLine::Solid
+    } else if relation.relation.line_type == model.constants.line_type.dotted_line {
+        RelationLine::Dotted
+    } else {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "class",
-            feature: "non-solid class relationships",
+            feature: "unknown class relationship line types",
         });
-    }
+    };
 
-    if !relation.title.trim().is_empty()
-        || !relation_end_label_is_absent(&relation.relation_title_1)
+    if !relation_end_label_is_absent(&relation.relation_title_1)
         || !relation_end_label_is_absent(&relation.relation_title_2)
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "class",
-            feature: "relationship labels",
+            feature: "relationship endpoint labels",
         });
     }
 
-    let extension = model.constants.relation_type.extension;
+    let left_marker = marker_for_relation_type(model, relation.relation.type1)?;
+    let right_marker = marker_for_relation_type(model, relation.relation.type2)?;
     let none = model.constants.relation_type.none;
-    match (relation.relation.type1, relation.relation.type2) {
-        (left, right) if left == extension && right == none => {
-            Ok((relation.id1.as_str(), relation.id2.as_str()))
+
+    let (marker, marker_side) = match (left_marker, right_marker) {
+        (Some(marker), None) if relation.relation.type2 == none => (marker, MarkerSide::Top),
+        (None, Some(marker)) if relation.relation.type1 == none => (marker, MarkerSide::Bottom),
+        _ => {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "class",
+                feature: "class relationships with multiple or missing markers",
+            });
         }
-        (left, right) if left == none && right == extension => {
-            Ok((relation.id2.as_str(), relation.id1.as_str()))
-        }
-        _ => Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "class relationship types other than extension",
-        }),
+    };
+
+    let title = relation.title.trim();
+    let label = (!title.is_empty()).then_some(title);
+
+    if marker == RelationMarker::Extension {
+        return Ok(match marker_side {
+            MarkerSide::Top => RelationLayout {
+                top_id: relation.id1.as_str(),
+                bottom_id: relation.id2.as_str(),
+                marker,
+                marker_side: MarkerSide::Top,
+                line,
+                label,
+            },
+            MarkerSide::Bottom => RelationLayout {
+                top_id: relation.id2.as_str(),
+                bottom_id: relation.id1.as_str(),
+                marker,
+                marker_side: MarkerSide::Top,
+                line,
+                label,
+            },
+        });
     }
+
+    Ok(RelationLayout {
+        top_id: relation.id1.as_str(),
+        bottom_id: relation.id2.as_str(),
+        marker,
+        marker_side,
+        line,
+        label,
+    })
+}
+
+fn marker_for_relation_type(
+    model: &ClassDiagram,
+    relation_type: i32,
+) -> Result<Option<RelationMarker>> {
+    let constants = &model.constants.relation_type;
+    if relation_type == constants.none {
+        return Ok(None);
+    }
+    if relation_type == constants.extension {
+        return Ok(Some(RelationMarker::Extension));
+    }
+    if relation_type == constants.dependency {
+        return Ok(Some(RelationMarker::Dependency));
+    }
+    if relation_type == constants.aggregation {
+        return Ok(Some(RelationMarker::Aggregation));
+    }
+    if relation_type == constants.composition {
+        return Ok(Some(RelationMarker::Composition));
+    }
+
+    Err(AsciiError::UnsupportedFeature {
+        diagram_type: "class",
+        feature: "class relationship types other than extension, dependency, aggregation, or composition",
+    })
 }
 
 fn relation_end_label_is_absent(label: &str) -> bool {
@@ -278,22 +389,69 @@ fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedC
         })
 }
 
-fn render_vertical_extension(
-    parent: &RenderedClassBox,
-    child: &RenderedClassBox,
+fn render_vertical_relation(
+    top: &RenderedClassBox,
+    bottom: &RenderedClassBox,
+    layout: RelationLayout<'_>,
     charset: ClassCharset,
 ) -> String {
-    let center = (parent.width / 2).max(child.width / 2);
+    let label_half_width = layout
+        .label
+        .map(|label| display_width(label) / 2)
+        .unwrap_or(0);
+    let center = (top.width / 2).max(bottom.width / 2).max(label_half_width);
     let mut lines = Vec::new();
 
-    lines.extend(align_box(parent, center));
-    lines.push(marker_line(charset.arrow_up, center));
-    lines.push(marker_line(charset.vertical_relation, center));
-    lines.extend(align_box(child, center));
+    lines.extend(align_box(top, center));
+    match layout.marker_side {
+        MarkerSide::Top => {
+            lines.push(marker_line(
+                marker_char(layout.marker, MarkerSide::Top, charset),
+                center,
+            ));
+            if let Some(label) = layout.label {
+                lines.push(centered_text_line(label, center));
+            }
+            lines.push(marker_line(line_char(layout.line, charset), center));
+        }
+        MarkerSide::Bottom => {
+            lines.push(marker_line(line_char(layout.line, charset), center));
+            if let Some(label) = layout.label {
+                lines.push(centered_text_line(label, center));
+            }
+            lines.push(marker_line(
+                marker_char(layout.marker, MarkerSide::Bottom, charset),
+                center,
+            ));
+        }
+    }
+    lines.extend(align_box(bottom, center));
 
     let mut rendered = lines.join("\n");
     rendered.push('\n');
     rendered
+}
+
+fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) -> char {
+    match marker {
+        RelationMarker::Extension => match side {
+            MarkerSide::Top => charset.extension_up,
+            MarkerSide::Bottom => charset.extension_down,
+        },
+        RelationMarker::Dependency => match side {
+            MarkerSide::Top => charset.arrow_up,
+            MarkerSide::Bottom => charset.arrow_down,
+        },
+        RelationMarker::Aggregation => charset.aggregation,
+        RelationMarker::Composition => charset.composition,
+    }
+}
+
+fn line_char(line: RelationLine, charset: ClassCharset) -> char {
+    match line {
+        RelationLine::Solid => charset.solid_vertical_relation,
+        RelationLine::Dotted => charset.dotted_vertical_relation,
+    }
 }
 
 fn align_box(class_box: &RenderedClassBox, center: usize) -> Vec<String> {
@@ -310,5 +468,13 @@ fn marker_line(marker: char, center: usize) -> String {
     let mut line = String::new();
     line.extend(std::iter::repeat_n(' ', center));
     line.push(marker);
+    line
+}
+
+fn centered_text_line(text: &str, center: usize) -> String {
+    let mut line = String::new();
+    let half_width = display_width(text) / 2;
+    line.extend(std::iter::repeat_n(' ', center.saturating_sub(half_width)));
+    line.push_str(text);
     line
 }

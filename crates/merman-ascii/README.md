@@ -17,9 +17,10 @@ edges, length spacing, and titled/nested subgraphs can render through `render_fl
 sequence diagrams with participants, filled/open solid and dotted messages, self messages,
 wrapped message labels, wrapped notes, sequence boxes, activations, actor create/destroy lifecycle
 markers, visible autonumber, and sequence control blocks can render through `render_sequence` or
-`render_model`. A first classDiagram slice can render class boxes, members, methods, and a single
-extension relationship through `render_class` or `render_model`; broader class relationship support
-is tracked as follow-on work.
+`render_model`. The classDiagram slice can render class boxes, members, methods, relationship
+labels, and single relationship layouts for extension, dependency, aggregation, and composition
+through `render_class` or `render_model`; broader multi-relationship graph layout is tracked as
+follow-on work.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,

@@ -7,11 +7,12 @@ Last updated: 2026-05-29
 
 This lane governs how `merman-ascii` should learn from `repo-ref/mermaid-ascii` and
 `repo-ref/beautiful-mermaid` while preserving the model-driven boundary. Reference provenance is
-tracked, and the first classDiagram ASCII slice now renders from `RenderSemanticModel::Class`.
+tracked, and classDiagram ASCII now renders boxes plus an expanded single-relationship subset from
+`RenderSemanticModel::Class`.
 
 ## Active Task
 
-- Task ID: ARI-020
+- Task ID: ARI-030
 - Owner: codex
 - Files:
   - `crates/merman-ascii/src/lib.rs`
@@ -23,7 +24,7 @@ tracked, and the first classDiagram ASCII slice now renders from `RenderSemantic
   `cargo fmt --all --check`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`
 - Status: DONE
 - Review: self-review found no blocking findings; broader planner review can still inspect the
-  follow-on relationship expansion.
+  remaining multi-relationship layout scope before closing M1.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -34,16 +35,18 @@ tracked, and the first classDiagram ASCII slice now renders from `RenderSemantic
 - Class, ER, and xychart are separate vertical slices.
 - The ARI-020 class slice supports class boxes, members, methods, ASCII/Unicode borders, and one
   solid extension relationship.
-- Class relationship labels, non-extension relationship kinds, non-solid lines, multiple
-  relationships, relation layouts with unrelated classes, namespaces, notes, and styling remain
-  follow-on work with explicit diagnostics where the first slice encounters them.
+- ARI-030 expands the single-relationship layout to extension labels, reverse extension
+  orientation, aggregation, composition, dependency dotted arrows, and Unicode composition markers.
+- Multiple relationships, relation layouts with unrelated classes, association/no-marker
+  relationships, lollipop markers, namespaces, notes, and styling remain follow-on work with
+  explicit diagnostics where the current slice encounters them.
 
 ## Blockers
 
-- None for ARI-020.
+- None for ARI-030.
 
 ## Next Recommended Action
 
-Continue with ARI-030 if the priority is class relationship parity, especially dependency,
-aggregation, composition, relationship labels, and orientation. ARI-040 and ARI-050 can also start
-independently because ER and xychart consume separate typed render models.
+Continue with either a small class follow-on for multi-relationship graph layout or start ARI-040
+for ER. ARI-050 remains independently startable because xychart consumes a separate typed render
+model.

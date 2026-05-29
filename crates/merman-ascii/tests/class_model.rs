@@ -72,19 +72,26 @@ fn class_parser_extension_relation_renders_parent_above_child() {
 }
 
 #[test]
-fn class_parser_relationship_labels_are_explicitly_unsupported() {
-    let err = render_class(
+fn class_parser_extension_relation_renders_label() {
+    let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : extends",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("relationship label support should be explicit");
+    .expect("class diagram should render");
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "relationship labels",
-        }
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "  extends\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+        )
     );
 }
 
@@ -102,5 +109,123 @@ fn class_parser_relationship_layouts_with_unrelated_classes_are_explicitly_unsup
             diagram_type: "class",
             feature: "class relationship layouts with unrelated classes",
         }
+    );
+}
+
+#[test]
+fn class_parser_reverse_extension_orients_marker_toward_parent() {
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nDog --|> Animal",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_aggregation_relation_renders_hollow_diamond_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Whole\nclass Part\nWhole o-- Part : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-------+\n",
+            "| Whole |\n",
+            "+-------+\n",
+            "    o\n",
+            "  owns\n",
+            "    |\n",
+            "+------+\n",
+            "| Part |\n",
+            "+------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_composition_relation_renders_filled_diamond_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Whole\nclass Part\nWhole *-- Part : contains",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-------+\n",
+            "| Whole |\n",
+            "+-------+\n",
+            "    *\n",
+            "contains\n",
+            "    |\n",
+            "+------+\n",
+            "| Part |\n",
+            "+------+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_composition_relation_renders_unicode_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Whole\nclass Part\nWhole *-- Part",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "┌───────┐\n",
+            "│ Whole │\n",
+            "└───────┘\n",
+            "    ◆\n",
+            "    │\n",
+            "┌──────┐\n",
+            "│ Part │\n",
+            "└──────┘\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_dependency_relation_renders_dotted_arrow_marker() {
+    let rendered = render_class(
+        "classDiagram\nclass Service\nclass Repo\nService ..> Repo : uses",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---------+\n",
+            "| Service |\n",
+            "+---------+\n",
+            "     :\n",
+            "   uses\n",
+            "     v\n",
+            " +------+\n",
+            " | Repo |\n",
+            " +------+\n",
+        )
     );
 }
