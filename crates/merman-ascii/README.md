@@ -20,7 +20,9 @@ markers, visible autonumber, and sequence control blocks can render through `ren
 `render_model`. The classDiagram slice can render class boxes, members, methods, relationship
 labels, and single relationship layouts for extension, dependency, aggregation, and composition
 through `render_class` or `render_model`; broader multi-relationship graph layout is tracked as
-follow-on work.
+follow-on work. The ER slice can render entity boxes, attributes, relationship labels, identifying
+and non-identifying lines, and common cardinality markers through `render_er` or `render_model`;
+broader multi-relationship ER graph layout is tracked as follow-on work.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,

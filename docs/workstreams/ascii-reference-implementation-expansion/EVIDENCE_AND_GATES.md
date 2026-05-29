@@ -85,6 +85,7 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-010 | Reference source inspection: `mermaid-ascii@6fffb8e2714acab2c4cb41c78894fabbc62cee56`, `beautiful-mermaid@2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`; both local license files are MIT. | Provenance task opened and docs updated. |
 | 2026-05-29 | ARI-020 | Added `RenderSemanticModel::Class` dispatch, `render_class`, `crates/merman-ascii/src/class/`, and `crates/merman-ascii/tests/class_model.rs`. | First classDiagram ASCII/Unicode slice implemented: class boxes, members, methods, one solid extension relationship, and explicit diagnostics for unsupported relationship labels and unrelated-class relationship layouts. |
 | 2026-05-29 | ARI-030 | Expanded the class relation layout mapper in `crates/merman-ascii/src/class/render.rs` and relationship snapshots in `crates/merman-ascii/tests/class_model.rs`. | Single-relationship class layouts now cover extension labels, reverse extension orientation, aggregation, composition, dependency dotted arrows, and Unicode composition markers from typed `RelationShape` constants. |
+| 2026-05-29 | ARI-040 | Added `RenderSemanticModel::Er` dispatch, `render_er`, `crates/merman-ascii/src/er/`, and `crates/merman-ascii/tests/er_model.rs`. | First ER ASCII/Unicode slice implemented: entity boxes, attributes, relationship labels, identifying/non-identifying lines, common cardinality markers, and explicit diagnostics for multiple-relationship layouts. |
 
 ## Verification Log
 
@@ -98,6 +99,11 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-030 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 90 tests | Relationship expansion does not regress existing flowchart, fixture, sequence, or class behavior. |
 | 2026-05-29 | ARI-030 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after relationship expansion. |
 | 2026-05-29 | ARI-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | Expanded class relationship renderer and tests compile cleanly under deny-warnings clippy for this package. |
+| 2026-05-29 | ARI-040 | `cargo nextest run -p merman-ascii --test er_model` | Focused ER renderer tests | PASS, 7 tests | `render_model` accepts `RenderSemanticModel::Er` for the supported subset and covers entity boxes, attributes, identifying/non-identifying relationships, cardinalities, Unicode borders, and multiple-relationship diagnostics. |
+| 2026-05-29 | ARI-040 | `cargo nextest run -p merman-ascii er` | Task ledger ER filter | PASS, 65 tests | The workstream-listed focused gate passes; the broad filter also exercises existing tests with `render` in their names. |
+| 2026-05-29 | ARI-040 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 97 tests | The ER slice does not regress existing flowchart, fixture, sequence, or class behavior. |
+| 2026-05-29 | ARI-040 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after ER implementation. |
+| 2026-05-29 | ARI-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | New ER renderer and tests compile cleanly under deny-warnings clippy for this package. |
 
 Broader public feature gates (`cargo nextest run -p merman --features ascii`,
 `cargo nextest run -p merman-cli --features ascii`) were not run for ARI-020 because the existing
@@ -106,5 +112,7 @@ changed in this task.
 
 The same broader public feature gates were not rerun for ARI-030 because the task only changes
 `merman-ascii` class relationship behavior and docs; no `merman` or CLI integration files changed.
+They were also not rerun for ARI-040 because the task only changes `merman-ascii` ER behavior and
+docs; no `merman` or CLI integration files changed.
 
 Fresh verification is required before marking implementation tasks complete.

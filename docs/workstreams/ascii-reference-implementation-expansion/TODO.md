@@ -39,15 +39,17 @@ Last updated: 2026-05-29
 
 ## M2 — ER Diagram ASCII
 
-- [ ] ARI-040 [owner=unassigned] [deps=ARI-010] [scope=crates/merman-ascii/src,er tests]
+- [x] ARI-040 [owner=codex] [deps=ARI-010] [scope=crates/merman-ascii/src,er tests]
   Goal: Render ER entity boxes, attributes, relationship labels, and crow's-foot markers from
   `RenderSemanticModel::Er`.
   Validation: `cargo nextest run -p merman-ascii er`
-  Review: Verify cardinality/identifying mappings against `merman-core` model constants and Mermaid
-  upstream fixtures.
-  Evidence: ER ASCII snapshots for basic entities, attributes, identifying/non-identifying
-  relationships, and common cardinalities.
-  Handoff: Split entity styling/classes as follow-on unless needed for semantic correctness.
+  Review: Cardinality and identifying mappings are read from the typed `ErRelSpecRenderModel`; no
+  Mermaid text reparsing was added.
+  Evidence: `crates/merman-ascii/src/er/`, `crates/merman-ascii/tests/er_model.rs`,
+  `crates/merman-ascii/README.md`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. Supports entity boxes, attributes, relationship labels, identifying and
+  non-identifying lines, and common cardinality markers for single-relationship layouts. Multiple
+  ER relationship graph layout and styling/classes remain follow-on work.
 
 ## M3 — XYChart ASCII
 

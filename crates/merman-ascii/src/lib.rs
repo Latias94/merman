@@ -7,6 +7,7 @@
 
 mod canvas;
 mod class;
+mod er;
 mod error;
 mod graph;
 mod options;
@@ -17,6 +18,7 @@ pub use error::{AsciiError, Result};
 pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 
 use merman_core::diagram::RenderSemanticModel;
+use merman_core::diagrams::er::ErDiagramRenderModel;
 use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use merman_core::models::class_diagram::ClassDiagram;
@@ -45,6 +47,7 @@ pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -
     options.validate()?;
     match model {
         RenderSemanticModel::Class(model) => render_class(model, options),
+        RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
         RenderSemanticModel::Sequence(model) => render_sequence(model, options),
         other => Err(AsciiError::UnsupportedDiagram {
@@ -56,6 +59,11 @@ pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -
 pub fn render_class(model: &ClassDiagram, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
     class::render_class_diagram(model, options)
+}
+
+pub fn render_er(model: &ErDiagramRenderModel, options: &AsciiRenderOptions) -> Result<String> {
+    options.validate()?;
+    er::render_er_diagram(model, options)
 }
 
 pub fn render_flowchart(model: &FlowchartV2Model, options: &AsciiRenderOptions) -> Result<String> {

@@ -60,6 +60,11 @@
       "date": "2026-05-29",
       "task": "ARI-030",
       "result": "expanded single-relationship classDiagram ASCII rendering to dependency, aggregation, composition, labels, orientation, dotted dependency lines, and Unicode markers from typed RelationShape constants"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ARI-040",
+      "result": "implemented first ER Diagram ASCII/Unicode slice from RenderSemanticModel::Er with entity boxes, attributes, relationship labels, cardinality markers, identifying and non-identifying lines, focused tests, and verification evidence"
     }
   ],
   "adr_refs": [
@@ -68,7 +73,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ARI-040",
-    "notes": "Continue with bounded implementation slices. ARI-040 can start ER ASCII from the merman-core typed model; ARI-050 remains independently startable for xychart. Class multi-relationship graph layout should be split as a follow-on if prioritized. Do not port parsers from reference repositories."
+    "next_task": "ARI-050",
+    "notes": "Continue with bounded implementation slices. ARI-050 can start xychart ASCII from the merman-core typed model. Class and ER multi-relationship graph layout should be split as a follow-on if prioritized. Do not port parsers from reference repositories."
   }
 }
