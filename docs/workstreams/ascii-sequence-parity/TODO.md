@@ -59,12 +59,21 @@ Last updated: 2026-05-29
   Evidence: Support matrix and tests.
   Handoff: ASP-070 is next.
 
-- [ ] ASP-070 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
-  Goal: Split activations plus create/destroy into a renderer-state task if simple drawing cannot
-  preserve message order and lifeline semantics.
+- [x] ASP-070 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Render activation state and split create/destroy lifecycle behavior if it needs a deeper
+  actor-lifetime model.
   Validation:
-  - Follow-on task names exact renderer state needed.
-  Evidence: `HANDOFF.md`.
+  - Focused sequence tests prove activation state.
+  - Create/destroy follow-on names exact renderer state needed.
+  Evidence: Support matrix and tests.
+  Handoff: ASP-075 is next.
+
+- [ ] ASP-075 [owner=codex] [deps=ASP-070] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Decide and implement or split actor create/destroy lifecycle rendering.
+  Validation:
+  - Typed created/destroyed actor indices are either rendered or documented as requiring a deeper
+  lifecycle layout.
+  Evidence: `SEQUENCE_SUPPORT.md`, `HANDOFF.md`.
   Handoff: ASP-080 is next.
 
 - [ ] ASP-080 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
@@ -108,3 +117,14 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: ASP-070 remains next unless this lane closes.
+
+- [x] ASP-110 [owner=codex] [deps=ASP-070] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
+  Goal: Run focused and broad gates, update evidence, and commit the activation rendering slice.
+  Validation:
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `git diff --check`
+  Evidence: `EVIDENCE_AND_GATES.md`.
+  Handoff: ASP-075 remains next unless this lane closes.

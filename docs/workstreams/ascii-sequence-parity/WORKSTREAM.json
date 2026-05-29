@@ -65,6 +65,16 @@
       "date": "2026-05-29",
       "task": "ASP-100",
       "result": "passed focused and broad gates for sequence boxes slice"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-070",
+      "result": "added typed activation state rendering and split create/destroy lifecycle"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-110",
+      "result": "passed focused and broad gates for activation rendering slice"
     }
   ],
   "adr_refs": [
@@ -72,7 +82,7 @@
   ],
   "continue_policy": {
     "default_action": "execute_next_task",
-    "next_task": "ASP-070",
-    "notes": "Split or implement activation plus create/destroy renderer-state semantics."
+    "next_task": "ASP-075",
+    "notes": "Decide and implement or split actor create/destroy lifecycle rendering."
   }
 }

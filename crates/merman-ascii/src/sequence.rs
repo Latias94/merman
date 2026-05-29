@@ -13,6 +13,8 @@ const LABEL_LEFT_MARGIN: usize = 2;
 const LABEL_BUFFER_SPACE: usize = 10;
 const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
 const NOTE_MESSAGE_TYPE: i32 = 2;
+const ACTIVE_START_MESSAGE_TYPE: i32 = 17;
+const ACTIVE_END_MESSAGE_TYPE: i32 = 18;
 const SOLID_FILLED_MESSAGE_TYPE: i32 = 0;
 const DOTTED_FILLED_MESSAGE_TYPE: i32 = 1;
 const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
@@ -47,6 +49,8 @@ struct SequenceGroupBox {
 enum SequenceEvent {
     Message(SequenceMessage),
     Note(SequenceNote),
+    ActivationStart(usize),
+    ActivationEnd(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +111,7 @@ struct SequenceChars {
     bottom_right: char,
     horizontal: char,
     vertical: char,
+    active_vertical: char,
     tee_down: char,
     tee_right: char,
     tee_left: char,
@@ -130,6 +135,7 @@ impl SequenceChars {
                 bottom_right: '+',
                 horizontal: '-',
                 vertical: '|',
+                active_vertical: '#',
                 tee_down: '+',
                 tee_right: '+',
                 tee_left: '+',
@@ -149,6 +155,7 @@ impl SequenceChars {
                 bottom_right: '┘',
                 horizontal: '─',
                 vertical: '│',
+                active_vertical: '┃',
                 tee_down: '┬',
                 tee_right: '├',
                 tee_left: '┤',
@@ -212,6 +219,32 @@ pub(crate) fn from_sequence_model(
 
     for message in &model.messages {
         if consume_autonumber(message, &mut autonumber) {
+            continue;
+        }
+
+        if matches!(
+            message.message_type,
+            ACTIVE_START_MESSAGE_TYPE | ACTIVE_END_MESSAGE_TYPE
+        ) {
+            let actor = message
+                .from
+                .as_deref()
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "control messages",
+                })?;
+            let actor = *participant_index
+                .get(actor)
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "messages with unknown actors",
+                })?;
+            let event = if message.message_type == ACTIVE_START_MESSAGE_TYPE {
+                SequenceEvent::ActivationStart(actor)
+            } else {
+                SequenceEvent::ActivationEnd(actor)
+            };
+            events.push(event);
             continue;
         }
 
@@ -377,10 +410,16 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         });
     }
 
-    if model.messages.iter().any(|message| message.activate) {
+    let has_activation_events = model.messages.iter().any(|message| {
+        matches!(
+            message.message_type,
+            ACTIVE_START_MESSAGE_TYPE | ACTIVE_END_MESSAGE_TYPE
+        )
+    });
+    if model.messages.iter().any(|message| message.activate) && !has_activation_events {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "activations",
+            feature: "activations without state events",
         });
     }
 
@@ -519,6 +558,7 @@ pub(crate) fn render_sequence_diagram(
     let chars = SequenceChars::for_options(options);
     let layout = calculate_layout(diagram, options);
     let mut lines = Vec::new();
+    let mut active_counts = vec![0usize; diagram.participants.len()];
 
     lines.push(build_participant_line(diagram, &layout, |index| {
         format!(
@@ -558,23 +598,55 @@ pub(crate) fn render_sequence_diagram(
     }));
 
     for event in &diagram.events {
+        match event {
+            SequenceEvent::ActivationStart(actor) => {
+                active_counts[*actor] += 1;
+                continue;
+            }
+            SequenceEvent::ActivationEnd(actor) => {
+                let Some(count) = active_counts.get_mut(*actor) else {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "activation actor state",
+                    });
+                };
+                if *count == 0 {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "activation underflow",
+                    });
+                }
+                *count -= 1;
+                continue;
+            }
+            SequenceEvent::Message(_) | SequenceEvent::Note(_) => {}
+        }
+
         for _ in 0..layout.message_spacing {
-            lines.push(build_lifeline(&layout, &chars));
+            lines.push(build_lifeline(&layout, &chars, &active_counts));
         }
 
         match event {
             SequenceEvent::Message(message) => {
                 if message.from == message.to {
-                    lines.extend(render_self_message(message, &layout, &chars));
+                    lines.extend(render_self_message(
+                        message,
+                        &layout,
+                        &chars,
+                        &active_counts,
+                    ));
                 } else {
-                    lines.extend(render_message(message, &layout, &chars));
+                    lines.extend(render_message(message, &layout, &chars, &active_counts));
                 }
             }
-            SequenceEvent::Note(note) => lines.extend(render_note(note, &layout, &chars)),
+            SequenceEvent::Note(note) => {
+                lines.extend(render_note(note, &layout, &chars, &active_counts));
+            }
+            SequenceEvent::ActivationStart(_) | SequenceEvent::ActivationEnd(_) => {}
         }
     }
 
-    lines.push(build_lifeline(&layout, &chars));
+    lines.push(build_lifeline(&layout, &chars, &active_counts));
     if !diagram.boxes.is_empty() {
         lines = render_sequence_boxes(lines, diagram, &layout, &chars);
     }
@@ -635,20 +707,33 @@ fn build_participant_line(
     line
 }
 
-fn build_lifeline(layout: &SequenceLayout, chars: &SequenceChars) -> String {
+fn build_lifeline(
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    active_counts: &[usize],
+) -> String {
     let mut line = vec![' '; layout.total_width + 1];
-    for center in &layout.participant_centers {
+    for (index, center) in layout.participant_centers.iter().enumerate() {
         if *center < line.len() {
-            line[*center] = chars.vertical;
+            line[*center] = lifeline_char(index, chars, active_counts);
         }
     }
     trim_right(line)
+}
+
+fn lifeline_char(index: usize, chars: &SequenceChars, active_counts: &[usize]) -> char {
+    if active_counts.get(index).copied().unwrap_or(0) > 0 {
+        chars.active_vertical
+    } else {
+        chars.vertical
+    }
 }
 
 fn render_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
+    active_counts: &[usize],
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let from = layout.participant_centers[message.from];
@@ -661,12 +746,14 @@ fn render_message(
             .total_width
             .max(start + label_width)
             .saturating_add(LABEL_BUFFER_SPACE);
-        let mut line = padded_line(build_lifeline(layout, chars), width);
+        let mut line = padded_line(build_lifeline(layout, chars, active_counts), width);
         write_text(&mut line, start, &message.label);
         lines.push(trim_right(line));
     }
 
-    let mut line = build_lifeline(layout, chars).chars().collect::<Vec<_>>();
+    let mut line = build_lifeline(layout, chars, active_counts)
+        .chars()
+        .collect::<Vec<_>>();
     let style = match message.style {
         SequenceLineStyle::Solid => chars.solid_line,
         SequenceLineStyle::Dotted => chars.dotted_line,
@@ -678,9 +765,9 @@ fn render_message(
             *cell = style;
         }
         line[to - 1] = chars.arrow_right(message.arrow);
-        line[to] = chars.vertical;
+        line[to] = lifeline_char(message.to, chars, active_counts);
     } else {
-        line[to] = chars.vertical;
+        line[to] = lifeline_char(message.to, chars, active_counts);
         line[to + 1] = chars.arrow_left(message.arrow);
         for cell in line.iter_mut().take(from).skip(to + 2) {
             *cell = style;
@@ -695,6 +782,7 @@ fn render_self_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
     chars: &SequenceChars,
+    active_counts: &[usize],
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let center = layout.participant_centers[message.from];
@@ -703,12 +791,13 @@ fn render_self_message(
     if !message.label.is_empty() {
         let start = center + LABEL_LEFT_MARGIN;
         let needed = start + display_width(&message.label) + LABEL_BUFFER_SPACE;
-        let mut line = ensure_self_width(build_lifeline(layout, chars), layout, needed);
+        let mut line =
+            ensure_self_width(build_lifeline(layout, chars, active_counts), layout, needed);
         write_text(&mut line, start, &message.label);
         lines.push(trim_right(line));
     }
 
-    let mut top = ensure_self_width(build_lifeline(layout, chars), layout, 0);
+    let mut top = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
     top[center] = chars.tee_right;
     for offset in 1..width {
         top[center + offset] = chars.horizontal;
@@ -716,12 +805,12 @@ fn render_self_message(
     top[center + width - 1] = chars.self_top_right;
     lines.push(trim_right(top));
 
-    let mut middle = ensure_self_width(build_lifeline(layout, chars), layout, 0);
+    let mut middle = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
     middle[center + width - 1] = chars.vertical;
     lines.push(trim_right(middle));
 
-    let mut bottom = ensure_self_width(build_lifeline(layout, chars), layout, 0);
-    bottom[center] = chars.vertical;
+    let mut bottom = ensure_self_width(build_lifeline(layout, chars, active_counts), layout, 0);
+    bottom[center] = lifeline_char(message.from, chars, active_counts);
     bottom[center + 1] = chars.arrow_left(message.arrow);
     for offset in 2..(width - 1) {
         bottom[center + offset] = chars.horizontal;
@@ -732,7 +821,12 @@ fn render_self_message(
     lines
 }
 
-fn render_note(note: &SequenceNote, layout: &SequenceLayout, chars: &SequenceChars) -> Vec<String> {
+fn render_note(
+    note: &SequenceNote,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    active_counts: &[usize],
+) -> Vec<String> {
     let label_width = display_width(&note.label);
     let mut inner_width = (label_width + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH);
     let from = layout.participant_centers[note.from];
@@ -781,9 +875,9 @@ fn render_note(note: &SequenceNote, layout: &SequenceLayout, chars: &SequenceCha
     );
 
     vec![
-        render_overlay_row(layout, chars, left, &top),
-        render_overlay_row(layout, chars, left, &middle),
-        render_overlay_row(layout, chars, left, &bottom),
+        render_overlay_row(layout, chars, active_counts, left, &top),
+        render_overlay_row(layout, chars, active_counts, left, &middle),
+        render_overlay_row(layout, chars, active_counts, left, &bottom),
     ]
 }
 
@@ -901,11 +995,12 @@ fn draw_sequence_box(
 fn render_overlay_row(
     layout: &SequenceLayout,
     chars: &SequenceChars,
+    active_counts: &[usize],
     left: usize,
     text: &str,
 ) -> String {
     let needed = left + text.chars().count();
-    let mut line = padded_line(build_lifeline(layout, chars), needed);
+    let mut line = padded_line(build_lifeline(layout, chars, active_counts), needed);
     write_text(&mut line, left, text);
     trim_right(line)
 }

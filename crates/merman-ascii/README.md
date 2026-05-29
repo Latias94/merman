@@ -15,8 +15,8 @@ upstream golden fixtures, flowchart rendering, and expanding sequence rendering.
 boxed nodes, multiline node labels, common terminal shape approximations, edge labels, open/dotted
 edges, length spacing, and titled/nested subgraphs can render through `render_flowchart`. Basic
 sequence diagrams with participants, filled/open solid and dotted messages, self messages,
-single-line notes, sequence boxes, and visible autonumber can render through `render_sequence` or
-`render_model`.
+single-line notes, sequence boxes, activations, and visible autonumber can render through
+`render_sequence` or `render_model`.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,

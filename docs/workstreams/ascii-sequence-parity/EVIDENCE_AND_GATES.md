@@ -54,3 +54,13 @@ Last updated: 2026-05-29
   `cargo nextest run -p merman-cli --features ascii`,
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
   `git diff --check` all passed.
+- 2026-05-29 ASP-070: Added activation renderer state for typed `activate`/`deactivate` events and
+  `+`/`-` message activation syntax. Active participants render with active lifeline bars. Split
+  create/destroy actor lifecycle rendering into ASP-075. Passed `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence`, and
+  `cargo nextest run -p merman-ascii sequence_golden`.
+- 2026-05-29 ASP-110: Broad verification passed before commit. `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check` all passed. Re-ran `git diff --check` after evidence updates; passed.

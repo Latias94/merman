@@ -21,6 +21,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Message labels | Supported | Empty labels, single-word labels, and multiword labels. |
 | Notes | Supported subset | Single-line `Note left of`, `Note right of`, and `Note over` notes render as boxes. |
 | Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups. |
+| Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
@@ -40,7 +41,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Empty boxes | `empty boxes` |
 | Boxes referencing unknown actors | `boxes with unknown actors` |
 | Actor create/destroy | `actor create/destroy` |
-| Activations | `activations` |
+| Hand-built activation flags without state events | `activations without state events` |
+| Invalid activation event ordering | `activation underflow` |
 | Message placement controls | `message placement` |
 | Wrapped messages | `wrapped messages` |
 | Hand-built note models without ordered note messages | `notes without drawable messages` |
@@ -52,8 +54,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - Output comparison for copied upstream sequence fixtures follows upstream's normalized-whitespace
   comparison; trailing spaces in golden files are not product-significant.
-- Rich Mermaid sequence constructs such as activations, create/destroy, and wrapping need follow-up
-  implementation before they can be listed as supported.
+- Rich Mermaid sequence constructs such as create/destroy and wrapping need follow-up implementation
+  before they can be listed as supported.
 - Sequence notes render only as single-line text for now; wrapped notes remain unsupported.
 - Sequence box fill colors are intentionally not represented in plain text output. Box labels render
   in the border when present.
