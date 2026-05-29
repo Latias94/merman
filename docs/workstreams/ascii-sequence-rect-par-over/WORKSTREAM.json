@@ -47,6 +47,11 @@
       "date": "2026-05-29",
       "task": "ASRP-040",
       "result": "implemented par_over single-section frames with explicit start line type 32 and par end line type 21 matching"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRP-050",
+      "result": "covered rect and par_over combinations, edge diagnostics, and the box-background overlap fix that preserves frame labels"
     }
   ],
   "adr_refs": [
@@ -54,7 +59,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASRP-050",
-    "notes": "Cover rect/par_over combinations with notes, lifecycle rows, participant boxes, and explicit nested/empty diagnostics."
+    "next_task": "ASRP-060",
+    "notes": "Package manual examples, run final closeout gates, and close or split the lane."
   }
 }

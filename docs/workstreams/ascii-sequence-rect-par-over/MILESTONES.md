@@ -54,6 +54,13 @@ Exit criteria:
 - Supported combinations have tests.
 - Nested, empty, and malformed cases are explicit diagnostics or intentionally supported.
 
+Result:
+
+- ASRP-050 complete on 2026-05-29.
+- Notes, activations, create/destroy lifecycle rows, participant boxes, nested blocks, empty
+  sections, and malformed ordering are covered for `rect` and `par_over`.
+- The box renderer now preserves foreground control-frame text when a participant box overlaps it.
+
 ## M5 - Examples, Verification, And Closeout
 
 Package the implementation for users and future maintainers.

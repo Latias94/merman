@@ -116,3 +116,15 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   findings. The asymmetric start/end match is explicit in `SequenceControlKind::accepts_end`, the
   existing `par`/`and` sectioned tests still pass, and no unsupported `control messages` row remains
   for parser-known sequence control blocks in `SEQUENCE_SUPPORT.md`.
+- 2026-05-29 ASRP-050: Added broad combination and edge-policy coverage for `rect` and
+  `par_over`. Tests now cover notes, activations, create/destroy lifecycle rows, participant boxes,
+  nested blocks, empty sections, and malformed hand-built ordering for both supported forms. The
+  box renderer now preserves foreground control-frame text by treating participant-box borders as
+  background overlays. Fresh gates passed:
+  `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence_rect_par_over sequence_control_blocks` (10 passed),
+  `cargo nextest run -p merman-ascii` (79 passed), and `git diff --check`.
+- 2026-05-29 ASRP-050 review: No blocking workstream-compliance, code-quality, or missing-gate
+  findings. The supported combinations are rendered through public sequence APIs, the explicit
+  unsupported diagnostics remain intact, and the box-over-background adjustment avoids corrupting
+  control-frame labels.

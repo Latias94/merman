@@ -899,6 +899,148 @@ fn sequence_par_over_control_blocks_render_ascii_frames() {
 }
 
 #[test]
+fn sequence_rect_par_over_control_blocks_support_notes_activations_and_boxes() {
+    let cases = [
+        (
+            "rect rgba(0,0,0,0.1)",
+            "rect rgba(0,0,0,0.1)",
+            "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nrect rgba(0,0,0,0.1)\nNote over A,B: Wait\nA->>+B: Start\nB-->>-A: Done\nend",
+        ),
+        (
+            "par_over Everyone",
+            "par_over Everyone",
+            "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\npar_over Everyone\nNote over A,B: Wait\nA->>+B: Start\nB-->>-A: Done\nend",
+        ),
+    ];
+
+    for (label, frame_marker, input) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{label} should render: {err}"));
+
+        assert!(
+            rendered.contains("Group"),
+            "{label} should preserve participant box labels:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(frame_marker),
+            "{label} should render the control frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains("Wait")),
+            "{label} should keep notes inside the frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains('┃')),
+            "{label} should keep active lifelines inside the frame:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn sequence_rect_par_over_control_blocks_support_created_and_destroyed_actors() {
+    let cases = [
+        (
+            "rect rgba(0,0,0,0.1)",
+            "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\ncreate participant C\nB->>C: Hello C\nC->>B: Still here\ndestroy C\nB--xC: Bye C\nend",
+        ),
+        (
+            "par_over Everyone",
+            "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\ncreate participant C\nB->>C: Hello C\nC->>B: Still here\ndestroy C\nB--xC: Bye C\nend",
+        ),
+    ];
+
+    for (label, input) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{label} should render: {err}"));
+
+        assert!(
+            rendered.contains(label),
+            "{label} should render the control frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains("Hello C")),
+            "{label} should keep created actor messages inside the frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains("Bye C")),
+            "{label} should keep destroying messages inside the frame:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn sequence_rect_par_over_nested_control_blocks_are_explicitly_unsupported() {
+    let cases = [
+        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\npar_over Everyone\nA->>B: Work\nend\nend",
+        "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nrect rgba(0,0,0,0.1)\nA->>B: Work\nend\nend",
+    ];
+
+    for input in cases {
+        assert_unsupported_sequence_input(input, "nested control blocks");
+    }
+}
+
+#[test]
+fn sequence_rect_par_over_empty_sections_are_explicitly_unsupported() {
+    let mut cases = Vec::new();
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model
+        .messages
+        .push(message(None, None, LINETYPE_RECT_START));
+    model.messages.push(message(None, None, LINETYPE_RECT_END));
+    cases.push(model);
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model
+        .messages
+        .push(message(None, None, LINETYPE_PAR_OVER_START));
+    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    cases.push(model);
+
+    for model in cases {
+        assert_unsupported_sequence_model(model, "empty control block sections");
+    }
+}
+
+#[test]
+fn sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported() {
+    let mut cases = Vec::new();
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model
+        .messages
+        .push(message(None, None, LINETYPE_RECT_START));
+    model.messages.push(message(Some("A"), Some("B"), 0));
+    model.messages.push(message(None, None, LINETYPE_PAR_END));
+    cases.push(model);
+
+    let mut model = basic_sequence_model();
+    add_sequence_participant(&mut model, "B");
+    model
+        .messages
+        .push(message(None, None, LINETYPE_PAR_OVER_START));
+    model.messages.push(message(Some("A"), Some("B"), 0));
+    model.messages.push(message(None, None, LINETYPE_RECT_END));
+    cases.push(model);
+
+    for model in cases {
+        assert_unsupported_sequence_model(model, "control block ordering");
+    }
+}
+
+#[test]
 fn sequence_nested_control_blocks_are_explicitly_unsupported() {
     assert_unsupported_sequence_input(
         "sequenceDiagram\nparticipant A\nparticipant B\nloop Outer\nopt Inner\nA->>B: Work\nend\nend",

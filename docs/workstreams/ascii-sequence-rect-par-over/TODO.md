@@ -73,7 +73,7 @@ Last updated: 2026-05-29
 
 ## M4 - Combinations And Edge Policy
 
-- [ ] ASRP-050 [owner=codex] [deps=ASRP-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASRP-050 [owner=codex] [deps=ASRP-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Cover notes, activations, create/destroy lifecycle rows, participant boxes, empty sections,
   nested blocks, and malformed hand-built ordering for `rect` and `par_over`.
   Validation:
@@ -82,8 +82,17 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii`
   - `git diff --check`
   Review: Supported combinations must be rendered; unsupported edge cases must stay explicit.
-  Evidence: Pending.
-  Handoff: ASRP-060 should package examples and close or split the lane.
+  Evidence: `sequence_rect_par_over_control_blocks_support_notes_activations_and_boxes`,
+  `sequence_rect_par_over_control_blocks_support_created_and_destroyed_actors`,
+  `sequence_rect_par_over_nested_control_blocks_are_explicitly_unsupported`,
+  `sequence_rect_par_over_empty_sections_are_explicitly_unsupported`, and
+  `sequence_rect_par_over_malformed_ordering_is_explicitly_unsupported` cover the supported
+  combinations and explicit diagnostics for `rect` and `par_over`. The sequence box renderer now
+  treats box borders as background overlays so control-frame labels are not corrupted when the box
+  is drawn over them. Fresh gates passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence_rect_par_over sequence_control_blocks`
+  (10 passed), `cargo nextest run -p merman-ascii` (79 passed), and `git diff --check`.
+  Handoff: ASRP-060 should package examples, run final closeout gates, and close or split the lane.
 
 ## M5 - Examples, Verification, And Closeout
 

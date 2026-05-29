@@ -101,8 +101,8 @@ fn draw_sequence_box(
     canvas[bottom][bounds.right] = chars.bottom_right;
 
     for row in canvas.iter_mut().take(bottom).skip(top + 1) {
-        row[bounds.left] = chars.vertical;
-        row[bounds.right] = chars.vertical;
+        draw_background_vertical(row, bounds.left, chars.vertical);
+        draw_background_vertical(row, bounds.right, chars.vertical);
     }
 
     if let Some(label) = &sequence_box.label {
@@ -114,5 +114,12 @@ fn draw_sequence_box(
                 canvas[top][index] = ch;
             }
         }
+    }
+}
+
+fn draw_background_vertical(row: &mut [char], index: usize, vertical: char) {
+    // Mermaid boxes are background regions; do not corrupt foreground labels or frames.
+    if row[index] == ' ' {
+        row[index] = vertical;
     }
 }
