@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-graph-label-lanes",
+  "title": "ASCII Graph Label Lanes",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "Duplicate and bidirectional graph edge labels still collide because label placement is not tied to routed edge lanes.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-graph-label-lanes/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-graph-label-lanes/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-graph-label-lanes/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii graph::",
+    "cargo nextest run -p merman-ascii flowchart"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "AGL-010",
+      "result": "opened label lane follow-up"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGL-020",
+      "result": "split grid path planning into graph/routing/path.rs; focused gates passed"
+    }
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AGL-030",
+    "notes": "Continue through routing module deepening first, then label-lane parity."
+  }
+}
