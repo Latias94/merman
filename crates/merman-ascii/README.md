@@ -50,20 +50,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Upstream Provenance
 
-The ASCII renderer work is based on the MIT-licensed
-[`AlexanderGrooff/mermaid-ascii`](https://github.com/AlexanderGrooff/mermaid-ascii) project.
+The ASCII renderer work is based on and informed by MIT-licensed reference implementations:
 
-- Source commit used for the initial port plan and copied fixtures: `6fffb8e`
-- Upstream license: MIT
-- License copy: `LICENSES/mermaid-ascii-MIT.txt`
-- Fixture source inventory: `tests/testdata/mermaid-ascii/README.md`
+- [`AlexanderGrooff/mermaid-ascii`](https://github.com/AlexanderGrooff/mermaid-ascii)
+  - Source commit used for the initial port plan and copied fixtures:
+    `6fffb8e2714acab2c4cb41c78894fabbc62cee56`
+  - Upstream license: MIT
+  - License copy: `LICENSES/mermaid-ascii-MIT.txt`
+  - Fixture source inventory: `tests/testdata/mermaid-ascii/README.md`
+- [`lukilabs/beautiful-mermaid`](https://github.com/lukilabs/beautiful-mermaid)
+  - Source commit used for reference planning:
+    `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`
+  - Upstream license: MIT
+  - License copy: `LICENSES/beautiful-mermaid-MIT.txt`
+  - Intended use: reference algorithms, output ideas, and tests for future class, ER, xychart,
+    color, and multiline ASCII work.
 
 The local `repo-ref/` directory is gitignored and is only a research reference. Any derived source,
 fixtures, or notices required for builds and releases must live in tracked paths in this crate.
+`merman-ascii` remains model-driven: reference parsers are not copied into this crate.
 
 ## License
 
 `merman-ascii` follows the workspace license: `MIT OR Apache-2.0`.
 
-Ported algorithm work and copied fixtures derived from `mermaid-ascii` preserve the upstream MIT
-license notice in `LICENSES/mermaid-ascii-MIT.txt`.
+Ported algorithm work and copied fixtures derived from reference implementations preserve upstream
+MIT license notices in `LICENSES/`.

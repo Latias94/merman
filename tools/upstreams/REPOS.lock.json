@@ -7,6 +7,18 @@
       "ref": "mermaid@11.12.3",
       "commit": "de0a5800944da7e3f0a040a55d2e91893c2b7bdb"
     },
+    "mermaid-ascii": {
+      "path": "repo-ref/mermaid-ascii",
+      "url": "https://github.com/AlexanderGrooff/mermaid-ascii",
+      "ref": "master",
+      "commit": "6fffb8e2714acab2c4cb41c78894fabbc62cee56"
+    },
+    "beautiful-mermaid": {
+      "path": "repo-ref/beautiful-mermaid",
+      "url": "https://github.com/lukilabs/beautiful-mermaid",
+      "ref": "main",
+      "commit": "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488"
+    },
     "mermaid-rs-renderer": {
       "path": "repo-ref/mermaid-rs-renderer",
       "url": "https://github.com/1jehuang/mermaid-rs-renderer",

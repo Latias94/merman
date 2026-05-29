@@ -480,6 +480,10 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - Release quality gates: [docs/adr/0050-release-quality-gates.md](docs/adr/0050-release-quality-gates.md)
 - Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid)
 - Related: [1jehuang/mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer/)
+- ASCII reference: [AlexanderGrooff/mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii)
+  (MIT; grid/routing/fixture reference for `merman-ascii`)
+- ASCII reference: [lukilabs/beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)
+  (MIT; reference for future class, ER, xychart, color, and multiline terminal output)
 
 ## Changelog
 

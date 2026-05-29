@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-reference-implementation-expansion",
+  "title": "ASCII Reference Implementation Expansion",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "merman-ascii needs a tracked plan for learning from mermaid-ascii and beautiful-mermaid while preserving its model-driven Rust boundary.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "git diff --check",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii",
+    "cargo nextest run -p merman --features ascii",
+    "cargo nextest run -p merman-cli --features ascii",
+    "cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings",
+    "cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "ARI-010",
+      "result": "opened reference implementation expansion lane and recorded MIT provenance for mermaid-ascii and beautiful-mermaid"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "ARI-020",
+    "notes": "Continue with bounded implementation slices. Start with classDiagram ASCII from the merman-core typed model; do not port parsers from reference repositories."
+  }
+}
