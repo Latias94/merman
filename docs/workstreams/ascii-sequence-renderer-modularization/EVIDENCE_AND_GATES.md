@@ -75,3 +75,13 @@ is behavior-preserving and that control-block behavior was not silently folded i
   `git diff --check`.
 - 2026-05-29 ASRM-030 review: No blocking workstream-compliance or code-quality findings. The
   extraction stays inside the task boundary and leaves rendering behavior under the existing facade.
+- 2026-05-29 ASRM-040: Extracted top-level render orchestration, row rendering, message/self-message
+  rendering, note rendering, group-box overlays, and sequence-local text helpers into
+  `sequence/render.rs`, `sequence/events.rs`, `sequence/notes.rs`, `sequence/boxes.rs`, and
+  `sequence/text.rs`. `sequence.rs` is now a facade plus shared constants. No control-block
+  behavior was added. Passed `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`, `cargo nextest run -p merman-ascii`, and
+  `git diff --check`.
+- 2026-05-29 ASRM-040 review: No blocking workstream-compliance or code-quality findings. The diff
+  completes the intended module-boundary extraction and keeps public API/output behavior stable.

@@ -5,29 +5,27 @@ Last updated: 2026-05-29
 
 ## Current State
 
-ASRM-020 and ASRM-030 are implemented. The internal ASCII sequence render model, typed-model
-adapter, autonumber handling, lifecycle model validation helpers, and unsupported-feature
-validation now live in `sequence/model.rs` and `sequence/validate.rs`. Participant layout,
-lifecycle visibility planning, lifecycle edge lookup, and participant-left geometry now live in
-`sequence/layout.rs`. Existing sequence behavior and golden tests passed after both extractions.
+ASRM-020, ASRM-030, and ASRM-040 are implemented. The internal ASCII sequence render model,
+typed-model adapter, autonumber handling, lifecycle model validation helpers, and
+unsupported-feature validation now live in `sequence/model.rs` and `sequence/validate.rs`.
+Participant layout, lifecycle visibility planning, lifecycle edge lookup, and participant-left
+geometry now live in `sequence/layout.rs`. Render orchestration, event rows, notes, group-box
+overlays, and sequence-local text helpers now live in owner modules. Existing sequence behavior,
+golden tests, and the package gate passed after the extractions.
 
 ## Active Task
 
-- Task ID: ASRM-040
+- Task ID: ASRM-050
 - Owner: unassigned
 - Files:
+  - `docs/workstreams/ascii-sequence-renderer-modularization`
   - `crates/merman-ascii/src/sequence.rs`
-  - `crates/merman-ascii/src/sequence/render.rs`
-  - `crates/merman-ascii/src/sequence/events.rs`
-  - `crates/merman-ascii/src/sequence/notes.rs`
-  - `crates/merman-ascii/src/sequence/boxes.rs`
-  - `crates/merman-ascii/src/sequence/text.rs`
+  - `crates/merman-ascii/src/sequence`
 - Validation:
-  - `cargo fmt --all --check`
-  - `cargo nextest run -p merman-ascii sequence`
-  - `cargo nextest run -p merman-ascii sequence_golden`
+  - `cargo nextest run -p merman-ascii`
+  - `git diff --check`
 - Status: READY
-- Review: ASRM-020 and ASRM-030 had no blocking findings; ASRM-040 review remains required before completion
+- Review: ASRM-020, ASRM-030, and ASRM-040 had no blocking findings; ASRM-050 review remains required before completion
 - Evidence: update `EVIDENCE_AND_GATES.md` after fresh verification
 
 ## Decisions Since Open
@@ -40,6 +38,8 @@ lifecycle visibility planning, lifecycle edge lookup, and participant-left geome
   model module.
 - ASRM-030 kept row rendering in the facade while moving layout and lifecycle visibility helpers
   into `sequence/layout.rs`.
+- ASRM-040 turned `sequence.rs` into a facade and split rendering responsibilities into owner
+  modules without adding control-block behavior.
 
 ## Blockers
 
@@ -47,4 +47,5 @@ lifecycle visibility planning, lifecycle edge lookup, and participant-left geome
 
 ## Next Recommended Action
 
-Run ASRM-040 as the next bounded no-behavior refactor task after ASRM-030 is reviewed and accepted.
+Run ASRM-050 to document the final module boundary and confirm that sequence control blocks remain
+a separate follow-on lane.

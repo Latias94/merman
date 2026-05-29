@@ -42,7 +42,7 @@ Last updated: 2026-05-29
   Handoff: ASRM-040 is next; output and lifecycle visibility behavior remained stable under the
   focused and package gates.
 
-- [ ] ASRM-040 [owner=unassigned] [deps=ASRM-030] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/render.rs,crates/merman-ascii/src/sequence/events.rs,crates/merman-ascii/src/sequence/notes.rs,crates/merman-ascii/src/sequence/boxes.rs,crates/merman-ascii/src/sequence/text.rs]
+- [x] ASRM-040 [owner=codex] [deps=ASRM-030] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/render.rs,crates/merman-ascii/src/sequence/events.rs,crates/merman-ascii/src/sequence/notes.rs,crates/merman-ascii/src/sequence/boxes.rs,crates/merman-ascii/src/sequence/text.rs]
   Goal: Extract row rendering, note rendering, group-box overlays, and sequence-local text helpers
   into owner modules with no intended output change.
   Validation:
@@ -51,8 +51,10 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence_golden`
   - `cargo nextest run -p merman-ascii`
   Review: `review-workstream` before accepting completion.
-  Evidence: module diff and package gate.
-  Handoff: ASRM-050 is next.
+  Evidence: `sequence/render.rs`, `sequence/events.rs`, `sequence/notes.rs`,
+  `sequence/boxes.rs`, `sequence/text.rs`, focused sequence gates, and package gate.
+  Handoff: ASRM-050 is next; `sequence.rs` is now a facade and output stayed stable under the
+  focused and package gates.
 
 ## M3 - Control-Block Readiness
 

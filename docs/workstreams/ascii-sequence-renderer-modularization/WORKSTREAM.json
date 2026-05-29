@@ -41,6 +41,11 @@
       "date": "2026-05-29",
       "task": "ASRM-030",
       "result": "extracted participant layout and lifecycle visibility helpers into sequence/layout.rs with focused and package gates passing"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-040",
+      "result": "split sequence render orchestration, events, notes, boxes, and text helpers into owner modules with focused and package gates passing"
     }
   ],
   "adr_refs": [
@@ -48,7 +53,7 @@
   ],
   "continue_policy": {
     "default_action": "run_task",
-    "next_task": "ASRM-040",
+    "next_task": "ASRM-050",
     "notes": "Run one bounded no-behavior extraction task at a time. Do not implement sequence control blocks in this lane."
   }
 }
