@@ -20,8 +20,8 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Solid cross messages | Supported | `A-xB` and reverse direction messages render cross endpoints. |
 | Dotted cross messages | Supported | `A--xB` and reverse direction messages render cross endpoints. |
 | Self messages | Supported | Loop-style self calls with labels. |
-| Message labels | Supported | Empty labels, single-word labels, and multiword labels. |
-| Notes | Supported subset | Single-line `Note left of`, `Note right of`, and `Note over` notes render as boxes. |
+| Message labels | Supported | Empty labels, single-word labels, multiword labels, and `wrap:` message labels. |
+| Notes | Supported subset | `Note left of`, `Note right of`, and `Note over` notes render as boxes; `wrap:` notes wrap by display width. |
 | Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups. |
 | Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. |
@@ -38,7 +38,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Actor-shaped participants | `actor participant shapes` |
 | Wrapped actor labels | `wrapped actor labels` |
 | Actor links/properties | `actor links/properties` |
-| Wrapped notes | `wrapped notes` |
 | Multiline notes | `multiline notes` |
 | Wrapped boxes | `wrapped boxes` |
 | Empty boxes | `empty boxes` |
@@ -51,7 +50,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Hand-built activation flags without state events | `activations without state events` |
 | Invalid activation event ordering | `activation underflow` |
 | Message placement controls | `message placement` |
-| Wrapped messages | `wrapped messages` |
 | Hand-built note models without ordered note messages | `notes without drawable messages` |
 | Control messages with no drawable endpoints | `control messages` |
 | Messages referencing unknown actors | `messages with unknown actors` |
@@ -61,9 +59,10 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - Output comparison for copied upstream sequence fixtures follows upstream's normalized-whitespace
   comparison; trailing spaces in golden files are not product-significant.
-- Rich Mermaid sequence wrapping still needs follow-up implementation before it can be listed as
-  supported.
-- Sequence notes render only as single-line text for now; wrapped notes remain unsupported.
+- Wrapped actor labels and wrapped boxes remain unsupported because they require multi-line
+  participant and group-box layout.
+- Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a
+  text rendering approximation rather than Mermaid's browser font measurement path.
 - Sequence box fill colors are intentionally not represented in plain text output. Box labels render
   in the border when present.
 - Mermaid `actor` shapes and actor links/properties are intentionally rejected for now because the

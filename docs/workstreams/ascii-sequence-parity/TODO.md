@@ -80,11 +80,16 @@ Last updated: 2026-05-29
   Evidence: behavior tests and support matrix updates.
   Handoff: ASP-080 is next.
 
-- [ ] ASP-080 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
-  Goal: Decide wrapping support for actors/messages/notes, including CJK/emoji width risks.
+- [x] ASP-080 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Support wrapped messages and notes while preserving explicit unsupported boundaries for
+  wrapped actor labels and wrapped boxes.
   Validation:
-  - Support matrix distinguishes unsupported wrapping from supported single-line rendering.
-  Evidence: `SEQUENCE_SUPPORT.md`.
+  - Wrapped message labels render as multiple display-width-bounded rows.
+  - Wrapped notes render as taller note boxes with display-width-bounded text rows.
+  - CJK text without spaces wraps by display width instead of staying on one long row.
+  - Support matrix distinguishes supported message/note wrapping from unsupported actor/box
+    wrapping.
+  Evidence: behavior tests and `SEQUENCE_SUPPORT.md`.
   Handoff: Closeout or next implementation task.
 
 ## M5 - Verification And Commit
@@ -144,3 +149,14 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: ASP-080 remains next unless this lane closes.
+
+- [x] ASP-130 [owner=codex] [deps=ASP-080] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
+  Goal: Run focused and broad gates, update evidence, and commit the wrapping rendering slice.
+  Validation:
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `git diff --check`
+  Evidence: `EVIDENCE_AND_GATES.md`.
+  Handoff: Sequence parity lane is ready for closeout review.

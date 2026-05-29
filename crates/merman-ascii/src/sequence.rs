@@ -1,6 +1,6 @@
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
-use crate::text::display_width;
+use crate::text::{display_width, wrap_display_lines};
 use merman_core::diagrams::sequence::{
     SequenceDiagramRenderModel, SequenceMessage as CoreSequenceMessage, SequenceMessagePayload,
 };
@@ -25,6 +25,7 @@ const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
 const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
 const NOTE_PLACEMENT_OVER: i32 = 2;
 const NOTE_SIDE_GAP: usize = 2;
+const NOTE_WRAP_TEXT_WIDTH: usize = 24;
 const SEQUENCE_BOX_CONTENT_OFFSET: usize = 1;
 const SEQUENCE_BOX_LABEL_MARGIN: usize = 2;
 
@@ -80,6 +81,7 @@ struct SequenceMessage {
     from: usize,
     to: usize,
     label: String,
+    wrap: bool,
     style: SequenceLineStyle,
     arrow: SequenceArrowHead,
 }
@@ -103,6 +105,7 @@ struct SequenceNote {
     from: usize,
     to: usize,
     label: String,
+    wrap: bool,
     placement: SequenceNotePlacement,
 }
 
@@ -320,6 +323,7 @@ pub(crate) fn from_sequence_model(
                 from,
                 to,
                 label: label.to_string(),
+                wrap: message.wrap,
                 placement,
             }));
             continue;
@@ -346,6 +350,7 @@ pub(crate) fn from_sequence_model(
             from,
             to,
             label,
+            wrap: message.wrap,
             style,
             arrow,
         }));
@@ -393,18 +398,6 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "actor links/properties",
-        });
-    }
-
-    if model.notes.iter().any(|note| note.wrap)
-        || model
-            .messages
-            .iter()
-            .any(|message| message.message_type == NOTE_MESSAGE_TYPE && message.wrap)
-    {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped notes",
         });
     }
 
@@ -459,13 +452,6 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
             feature: "message placement",
-        });
-    }
-
-    if model.messages.iter().any(|message| message.wrap) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "wrapped messages",
         });
     }
 
@@ -1030,6 +1016,16 @@ fn ensure_note_actors_visible(note: &SequenceNote, visible_actors: &[bool]) -> R
     })
 }
 
+fn message_label_lines(message: &SequenceMessage, max_width: usize) -> Vec<String> {
+    if message.label.is_empty() {
+        Vec::new()
+    } else if message.wrap {
+        wrap_display_lines(&message.label, max_width)
+    } else {
+        vec![message.label.clone()]
+    }
+}
+
 fn render_message(
     message: &SequenceMessage,
     layout: &SequenceLayout,
@@ -1042,9 +1038,9 @@ fn render_message(
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
 
-    if !message.label.is_empty() {
+    for label in message_label_lines(message, from.abs_diff(to).saturating_sub(LABEL_LEFT_MARGIN)) {
         let start = from.min(to) + LABEL_LEFT_MARGIN;
-        let label_width = display_width(&message.label);
+        let label_width = display_width(&label);
         let width = layout
             .total_width
             .max(start + label_width)
@@ -1053,7 +1049,7 @@ fn render_message(
             build_lifeline(layout, chars, active_counts, visible_actors),
             width,
         );
-        write_text(&mut line, start, &message.label);
+        write_text(&mut line, start, &label);
         lines.push(trim_right(line));
     }
 
@@ -1124,15 +1120,15 @@ fn render_self_message(
     let center = layout.participant_centers[message.from];
     let width = layout.self_message_width;
 
-    if !message.label.is_empty() {
+    for label in message_label_lines(message, layout.self_message_width + LABEL_BUFFER_SPACE) {
         let start = center + LABEL_LEFT_MARGIN;
-        let needed = start + display_width(&message.label) + LABEL_BUFFER_SPACE;
+        let needed = start + display_width(&label) + LABEL_BUFFER_SPACE;
         let mut line = ensure_self_width(
             build_lifeline(layout, chars, active_counts, visible_actors),
             layout,
             needed,
         );
-        write_text(&mut line, start, &message.label);
+        write_text(&mut line, start, &label);
         lines.push(trim_right(line));
     }
 
@@ -1183,7 +1179,12 @@ fn render_note(
     active_counts: &[usize],
     visible_actors: &[bool],
 ) -> Vec<String> {
-    let label_width = display_width(&note.label);
+    let label_lines = note_label_lines(note, layout);
+    let label_width = label_lines
+        .iter()
+        .map(|line| display_width(line))
+        .max()
+        .unwrap_or(0);
     let mut inner_width = (label_width + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH);
     let from = layout.participant_centers[note.from];
     let to = layout.participant_centers[note.to];
@@ -1207,21 +1208,11 @@ fn render_note(
         }
     };
 
-    let label_left_padding = (inner_width - label_width) / 2;
-    let label_right_padding = inner_width - label_left_padding - label_width;
     let top = format!(
         "{}{}{}",
         chars.top_left,
         chars.horizontal.to_string().repeat(inner_width),
         chars.top_right
-    );
-    let middle = format!(
-        "{}{}{}{}{}",
-        chars.vertical,
-        " ".repeat(label_left_padding),
-        note.label,
-        " ".repeat(label_right_padding),
-        chars.vertical
     );
     let bottom = format!(
         "{}{}{}",
@@ -1230,11 +1221,40 @@ fn render_note(
         chars.bottom_right
     );
 
-    vec![
-        render_overlay_row(layout, chars, active_counts, visible_actors, left, &top),
-        render_overlay_row(layout, chars, active_counts, visible_actors, left, &middle),
-        render_overlay_row(layout, chars, active_counts, visible_actors, left, &bottom),
-    ]
+    let mut rows = Vec::with_capacity(label_lines.len() + 2);
+    rows.push(top);
+    for line in label_lines {
+        let line_width = display_width(&line);
+        let left_padding = (inner_width - line_width) / 2;
+        let right_padding = inner_width - left_padding - line_width;
+        rows.push(format!(
+            "{}{}{}{}{}",
+            chars.vertical,
+            " ".repeat(left_padding),
+            line,
+            " ".repeat(right_padding),
+            chars.vertical
+        ));
+    }
+    rows.push(bottom);
+
+    rows.into_iter()
+        .map(|row| render_overlay_row(layout, chars, active_counts, visible_actors, left, &row))
+        .collect()
+}
+
+fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String> {
+    if note.label.is_empty() {
+        return vec![String::new()];
+    }
+
+    if !note.wrap {
+        return vec![note.label.clone()];
+    }
+
+    let span_width =
+        layout.participant_centers[note.from].abs_diff(layout.participant_centers[note.to]);
+    wrap_display_lines(&note.label, span_width.max(NOTE_WRAP_TEXT_WIDTH))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

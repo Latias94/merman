@@ -183,29 +183,6 @@ fn sequence_notes_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_wrapped_notes_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.notes.push(SequenceNote {
-        actor: "A".into(),
-        message: "remember".to_string(),
-        placement: 1,
-        wrap: true,
-    });
-    model.messages.push(SequenceMessage {
-        id: "n0".to_string(),
-        from: Some("A".to_string()),
-        to: Some("A".to_string()),
-        message_type: 2,
-        message: SequenceMessagePayload::Text("remember".to_string()),
-        wrap: true,
-        activate: false,
-        placement: Some(1),
-    });
-
-    assert_unsupported_sequence_model(model, "wrapped notes");
-}
-
-#[test]
 fn sequence_multiline_notes_are_explicitly_unsupported() {
     let mut model = basic_sequence_model();
     model.notes.push(SequenceNote {
@@ -226,6 +203,56 @@ fn sequence_multiline_notes_are_explicitly_unsupported() {
     });
 
     assert_unsupported_sequence_model(model, "multiline notes");
+}
+
+#[test]
+fn sequence_wrapped_messages_render_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B:wrap: Alpha Beta Gamma",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("wrapped sequence messages should render");
+
+    assert!(
+        rendered.contains("Alpha") && rendered.contains("Beta") && rendered.contains("Gamma"),
+        "wrapped message should keep all words:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Alpha Beta Gamma"),
+        "wrapped message should not render as one long line:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_wrapped_notes_render_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nNote over A,B:wrap: Alpha Beta Gamma Delta Epsilon Zeta",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("wrapped sequence notes should render");
+
+    assert!(
+        rendered.contains("Alpha") && rendered.contains("Zeta"),
+        "wrapped note should keep all words:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Alpha Beta Gamma Delta Epsilon Zeta"),
+        "wrapped note should not render as one long line:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_wrapped_messages_respect_display_width_for_cjk() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B:wrap: 数据数据数据数据",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("wrapped CJK sequence messages should render");
+
+    assert!(
+        !rendered.contains("数据数据数据数据"),
+        "wide text without spaces should wrap by display width:\n{rendered}"
+    );
 }
 
 #[test]
@@ -432,13 +459,6 @@ fn sequence_other_model_features_are_explicitly_unsupported() {
         ..message(Some("A"), Some("A"), 0)
     });
     cases.push((model, "message placement"));
-
-    let mut model = basic_sequence_model();
-    model.messages.push(SequenceMessage {
-        wrap: true,
-        ..message(Some("A"), Some("A"), 0)
-    });
-    cases.push((model, "wrapped messages"));
 
     let mut model = basic_sequence_model();
     model.messages.push(message(None, None, 0));

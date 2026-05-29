@@ -76,3 +76,14 @@ Last updated: 2026-05-29
   `cargo nextest run -p merman-cli --features ascii`, and
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` all
   passed. `git diff --check` passed after evidence updates.
+- 2026-05-29 ASP-080: Added wrapped sequence message and note rendering. Wrapped messages render as
+  multiple label rows bounded by terminal display width; wrapped notes render as taller note boxes.
+  CJK text without spaces wraps by display width. Wrapped actor labels and wrapped boxes remain
+  explicit unsupported features because they require a multi-line participant/group layout model.
+  Passed `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`, and
+  `cargo nextest run -p merman-ascii sequence_golden`.
+- 2026-05-29 ASP-130: Broad verification passed before commit. `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`, and
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` all
+  passed. `git diff --check` passed after evidence updates.

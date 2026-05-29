@@ -50,7 +50,10 @@ rendered without changing parser contracts:
 - Sequence boxes around actor groups (done).
 - Activation state for `activate`/`deactivate` and `+`/`-` messages (done).
 - Actor create/destroy lifecycle behavior, including cross destroy messages (done).
-- Then wrapping as a separate slice.
+- Wrapped messages and notes with deterministic terminal display-width wrapping (done).
+
+Keep wrapped actor labels and wrapped boxes explicit unsupported features until the text renderer has
+a deliberate multi-line participant/group layout model.
 
 Keep unsupported constructs explicit. Do not silently drop typed model semantics.
 

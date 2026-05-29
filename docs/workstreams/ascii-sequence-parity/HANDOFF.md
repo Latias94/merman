@@ -5,21 +5,22 @@ Last updated: 2026-05-29
 
 ## Current State
 
-ASP-010, ASP-020, ASP-030, ASP-040, ASP-050, ASP-060, ASP-070, ASP-075, ASP-090, ASP-100, ASP-110,
-and ASP-120 are complete. Copied upstream `mermaid-ascii` sequence fixtures are exact under the
-existing normalized-whitespace comparison. The lane is now moving beyond copied fixtures into typed
-sequence semantics that users can already parse through `merman-core`.
+ASP-010, ASP-020, ASP-030, ASP-040, ASP-050, ASP-060, ASP-070, ASP-075, ASP-080, ASP-090, ASP-100,
+ASP-110, ASP-120, and ASP-130 are complete. Copied upstream `mermaid-ascii` sequence fixtures are
+exact under the existing normalized-whitespace comparison. The lane now covers the main typed
+sequence semantics that users can already parse through `merman-core`, with richer Mermaid control
+blocks still outside this ASCII lane.
 
 ## Active Task
 
-- Task ID: ASP-080
+- Task ID: closeout review
 - Owner: codex
 - Files:
-  - `crates/merman-ascii/src/sequence.rs`
-  - `crates/merman-ascii/tests/sequence_model.rs`
+  - `docs/workstreams/ascii-sequence-parity`
   - `crates/merman-ascii/SEQUENCE_SUPPORT.md`
 - Validation:
-  - Support matrix distinguishes unsupported wrapping from supported single-line rendering.
+  - Decide whether to close this sequence parity lane or split richer Mermaid control blocks into a
+    new lane.
 - Status: READY
 
 ## Decisions Since Open
@@ -42,6 +43,9 @@ sequence semantics that users can already parse through `merman-core`.
   destroyed participants render an `x`/`×` marker and stop their lifeline afterward.
 - Cross messages `A-xB` and `A--xB` now render because Mermaid destroy examples commonly bind
   destruction to cross-arrow syntax.
+- Wrapped messages and notes now render with deterministic terminal display-width wrapping,
+  including CJK text without spaces. Wrapped actor labels and wrapped boxes remain explicit
+  unsupported features because they need a multi-line participant/group layout model.
 
 ## Blockers
 
@@ -49,5 +53,5 @@ sequence semantics that users can already parse through `merman-core`.
 
 ## Next Recommended Action
 
-Execute ASP-080 by deciding wrapping support for actors, messages, and notes, including CJK/emoji
-width risks.
+Run a closeout review for `ascii-sequence-parity`: either close the lane or split richer Mermaid
+control blocks (`loop`/`alt`/`opt`/`par`/`critical`/`break`) into a new workstream.
