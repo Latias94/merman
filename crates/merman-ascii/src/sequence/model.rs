@@ -26,6 +26,8 @@ const OPT_END_MESSAGE_TYPE: i32 = 16;
 const PAR_START_MESSAGE_TYPE: i32 = 19;
 const PAR_AND_MESSAGE_TYPE: i32 = 20;
 const PAR_END_MESSAGE_TYPE: i32 = 21;
+const RECT_START_MESSAGE_TYPE: i32 = 22;
+const RECT_END_MESSAGE_TYPE: i32 = 23;
 const CRITICAL_START_MESSAGE_TYPE: i32 = 27;
 const CRITICAL_OPTION_MESSAGE_TYPE: i32 = 28;
 const CRITICAL_END_MESSAGE_TYPE: i32 = 29;
@@ -118,6 +120,7 @@ pub(super) enum SequenceControlKind {
     Alt,
     Par,
     Critical,
+    Rect,
 }
 
 impl SequenceControlKind {
@@ -129,6 +132,7 @@ impl SequenceControlKind {
             Self::Alt => "alt",
             Self::Par => "par",
             Self::Critical => "critical",
+            Self::Rect => "rect",
         }
     }
 
@@ -137,7 +141,7 @@ impl SequenceControlKind {
             Self::Alt => Some("else"),
             Self::Par => Some("and"),
             Self::Critical => Some("option"),
-            Self::Loop | Self::Opt | Self::Break => None,
+            Self::Loop | Self::Opt | Self::Break | Self::Rect => None,
         }
     }
 }
@@ -352,6 +356,8 @@ fn sequence_control_event(
         OPT_END_MESSAGE_TYPE => Some((SequenceControlKind::Opt, false)),
         PAR_START_MESSAGE_TYPE => Some((SequenceControlKind::Par, true)),
         PAR_END_MESSAGE_TYPE => Some((SequenceControlKind::Par, false)),
+        RECT_START_MESSAGE_TYPE => Some((SequenceControlKind::Rect, true)),
+        RECT_END_MESSAGE_TYPE => Some((SequenceControlKind::Rect, false)),
         CRITICAL_START_MESSAGE_TYPE => Some((SequenceControlKind::Critical, true)),
         CRITICAL_END_MESSAGE_TYPE => Some((SequenceControlKind::Critical, false)),
         BREAK_START_MESSAGE_TYPE => Some((SequenceControlKind::Break, true)),

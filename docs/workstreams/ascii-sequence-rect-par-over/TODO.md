@@ -25,16 +25,16 @@ Last updated: 2026-05-29
   - `git diff --check`
   Review: Confirm the tests freeze behavior through public parser/render APIs and do not assume
   implementation internals.
-  Evidence: `sequence_rect_par_over_blocks_are_core_control_signals_and_currently_unsupported`
-  proves `rect` emits 22/23 and `par_over` emits 32/21, while both still return
-  `UnsupportedFeature { feature: "control messages" }`. Fresh gates passed:
+  Evidence: `sequence_rect_par_over_blocks_are_core_control_signals` proves `rect` emits 22/23 and
+  `par_over` emits 32/21; the deferred-control diagnostic covered both forms during ASRP-020 before
+  ASRP-030 moved `rect` into the supported subset. Fresh gates passed:
   `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence_rect_par_over`, and
   `git diff --check`.
   Handoff: ASRP-030 should implement `rect` frame rendering.
 
 ## M2 - Rect Region Frames
 
-- [ ] ASRP-030 [owner=codex] [deps=ASRP-020] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASRP-030 [owner=codex] [deps=ASRP-020] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Render `rect <style>` as a single-section region frame that preserves contained rows and
   the source style expression as text.
   Validation:
@@ -43,7 +43,13 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence_golden`
   - `git diff --check`
   Review: Check that terminal output preserves region semantics without introducing ANSI styling.
-  Evidence: Pending.
+  Evidence: `sequence_rect_control_blocks_render_unicode_frames` and
+  `sequence_rect_control_blocks_render_ascii_frames` cover `rect <style>` as a labeled
+  single-section frame; `sequence_rect_par_over_blocks_are_core_control_signals` continues to prove
+  line types 22/23 and 32/21. Fresh gates passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence_rect`,
+  `cargo nextest run -p merman-ascii sequence_golden`, `cargo nextest run -p merman-ascii sequence`,
+  and `git diff --check`.
   Handoff: ASRP-040 should add `par_over` without regressing `par`.
 
 ## M3 - ParOver Frames

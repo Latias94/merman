@@ -734,10 +734,8 @@ fn sequence_sectioned_control_blocks_frame_multiple_sections_and_notes() {
 
 #[test]
 fn sequence_deferred_control_blocks_are_explicitly_unsupported() {
-    let cases = [
-        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\nA->>B: Shaded\nend",
-        "sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nA->>B: Work\nend",
-    ];
+    let cases =
+        ["sequenceDiagram\nparticipant A\nparticipant B\npar_over Everyone\nA->>B: Work\nend"];
 
     for input in cases {
         let model = parse_sequence_render_model(input);
@@ -746,7 +744,7 @@ fn sequence_deferred_control_blocks_are_explicitly_unsupported() {
 }
 
 #[test]
-fn sequence_rect_par_over_blocks_are_core_control_signals_and_currently_unsupported() {
+fn sequence_rect_par_over_blocks_are_core_control_signals() {
     struct Case {
         name: &'static str,
         input: &'static str,
@@ -804,9 +802,59 @@ fn sequence_rect_par_over_blocks_are_core_control_signals_and_currently_unsuppor
             "{} should still include drawable messages inside the block",
             case.name
         );
-
-        assert_unsupported_sequence_input(case.input, "control messages");
     }
+}
+
+#[test]
+fn sequence_rect_control_blocks_render_unicode_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\nA->>B: Shaded\nend",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("rect should render with Unicode charset");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("┌ rect rgba(0,0,0,0.1) ")),
+        "rect should render a labeled Unicode top frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('│') && line.contains("Shaded")),
+        "rect should keep contained rows inside the Unicode frame:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().any(|line| line.starts_with('└')),
+        "rect should render a Unicode bottom frame:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_rect_control_blocks_render_ascii_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nrect rgba(0,0,0,0.1)\nA->>B: Shaded\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("rect should render with ASCII charset");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("+ rect rgba(0,0,0,0.1) ")),
+        "rect should render a labeled ASCII top frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('|') && line.contains("Shaded")),
+        "rect should keep contained rows inside the ASCII frame:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().any(|line| line.starts_with('+')),
+        "rect should render an ASCII bottom frame:\n{rendered}"
+    );
 }
 
 #[test]

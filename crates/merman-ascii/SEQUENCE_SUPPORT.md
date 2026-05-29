@@ -26,7 +26,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
-| Sequence control blocks | Supported subset | `loop`, `opt`, and `break` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. |
+| Sequence control blocks | Supported subset | `loop`, `opt`, `break`, and `rect` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. |
 | Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
@@ -53,7 +53,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Invalid activation event ordering | `activation underflow` |
 | Message placement controls | `message placement` |
 | Hand-built note models without ordered note messages | `notes without drawable messages` |
-| Deferred sequence control blocks (`rect`, `par_over`) | `control messages` |
+| Deferred sequence control blocks (`par_over`) | `control messages` |
 | Empty control block sections | `empty control block sections` |
 | Nested control blocks | `nested control blocks` |
 | Malformed hand-built control blocks | `control block ordering` |
@@ -70,8 +70,10 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   text rendering approximation rather than Mermaid's browser font measurement path.
 - Sequence box fill colors are intentionally not represented in plain text output. Box labels render
   in the border when present.
-- Mermaid `rect` and `par_over` sequence blocks are parser-recognized but remain deferred for now;
-  they return `control messages` instead of silently dropping the region or parallel-over boundary.
+- Mermaid `rect` style/color expressions are preserved as frame labels but are not interpreted as
+  terminal color or background fill.
+- Mermaid `par_over` sequence blocks are parser-recognized but remain deferred for now; they return
+  `control messages` instead of silently dropping the parallel-over boundary.
 - Mermaid `actor` shapes and actor links/properties are intentionally rejected for now because the
   current text renderer draws lifecycle-aware participant boxes, not Mermaid's richer actor shapes.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
