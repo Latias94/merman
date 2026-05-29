@@ -33,6 +33,7 @@ const CRITICAL_OPTION_MESSAGE_TYPE: i32 = 28;
 const CRITICAL_END_MESSAGE_TYPE: i32 = 29;
 const BREAK_START_MESSAGE_TYPE: i32 = 30;
 const BREAK_END_MESSAGE_TYPE: i32 = 31;
+const PAR_OVER_START_MESSAGE_TYPE: i32 = 32;
 const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
 const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
 const NOTE_PLACEMENT_OVER: i32 = 2;
@@ -121,6 +122,7 @@ pub(super) enum SequenceControlKind {
     Par,
     Critical,
     Rect,
+    ParOver,
 }
 
 impl SequenceControlKind {
@@ -133,6 +135,7 @@ impl SequenceControlKind {
             Self::Par => "par",
             Self::Critical => "critical",
             Self::Rect => "rect",
+            Self::ParOver => "par_over",
         }
     }
 
@@ -141,8 +144,12 @@ impl SequenceControlKind {
             Self::Alt => Some("else"),
             Self::Par => Some("and"),
             Self::Critical => Some("option"),
-            Self::Loop | Self::Opt | Self::Break | Self::Rect => None,
+            Self::Loop | Self::Opt | Self::Break | Self::Rect | Self::ParOver => None,
         }
+    }
+
+    pub(super) fn accepts_end(self, end: Self) -> bool {
+        self == end || matches!((self, end), (Self::ParOver, Self::Par))
     }
 }
 
@@ -362,6 +369,7 @@ fn sequence_control_event(
         CRITICAL_END_MESSAGE_TYPE => Some((SequenceControlKind::Critical, false)),
         BREAK_START_MESSAGE_TYPE => Some((SequenceControlKind::Break, true)),
         BREAK_END_MESSAGE_TYPE => Some((SequenceControlKind::Break, false)),
+        PAR_OVER_START_MESSAGE_TYPE => Some((SequenceControlKind::ParOver, true)),
         _ => None,
     };
 

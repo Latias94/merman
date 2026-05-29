@@ -105,3 +105,14 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   findings. The implementation stays in the sequence model/control-frame boundary, does not add
   ANSI styling, keeps `par_over` explicitly unsupported, and preserves existing sequence regression
   tests.
+- 2026-05-29 ASRP-040: Implemented `par_over <label>` as a labeled single-section control frame.
+  The model maps line type 32 to `SequenceControlKind::ParOver`; render closeout explicitly accepts
+  the core representation where `par_over` closes with the normal `par` end signal, line type 21.
+  Unicode and ASCII tests cover the visible frame, and `SEQUENCE_SUPPORT.md` now lists `par_over` as
+  supported. Fresh gates passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence_par_over` (2 passed),
+  `cargo nextest run -p merman-ascii sequence` (37 passed), and `git diff --check`.
+- 2026-05-29 ASRP-040 review: No blocking workstream-compliance, code-quality, or missing-gate
+  findings. The asymmetric start/end match is explicit in `SequenceControlKind::accepts_end`, the
+  existing `par`/`and` sectioned tests still pass, and no unsupported `control messages` row remains
+  for parser-known sequence control blocks in `SEQUENCE_SUPPORT.md`.

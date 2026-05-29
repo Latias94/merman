@@ -42,6 +42,11 @@
       "date": "2026-05-29",
       "task": "ASRP-030",
       "result": "implemented rect style-labeled single-section frames in ASCII and Unicode while keeping par_over deferred"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRP-040",
+      "result": "implemented par_over single-section frames with explicit start line type 32 and par end line type 21 matching"
     }
   ],
   "adr_refs": [
@@ -49,7 +54,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASRP-040",
-    "notes": "Implement par_over as a single-section frame with explicit asymmetric start/end matching."
+    "next_task": "ASRP-050",
+    "notes": "Cover rect/par_over combinations with notes, lifecycle rows, participant boxes, and explicit nested/empty diagnostics."
   }
 }

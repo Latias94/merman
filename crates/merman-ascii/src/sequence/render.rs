@@ -214,7 +214,7 @@ pub(crate) fn render_sequence_diagram(
                     });
                 };
                 let frame = &mut control_frames[frame_index];
-                if frame.kind != *kind {
+                if !frame.kind.accepts_end(*kind) {
                     return Err(AsciiError::UnsupportedFeature {
                         diagram_type: "sequence",
                         feature: "control block ordering",

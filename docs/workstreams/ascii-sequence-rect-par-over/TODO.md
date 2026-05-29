@@ -54,7 +54,7 @@ Last updated: 2026-05-29
 
 ## M3 - ParOver Frames
 
-- [ ] ASRP-040 [owner=codex] [deps=ASRP-030] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASRP-040 [owner=codex] [deps=ASRP-030] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Render `par_over <label>` as a single-section frame while preserving existing `par` and
   `par`/`and` section behavior.
   Validation:
@@ -63,7 +63,12 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence`
   - `git diff --check`
   Review: Confirm asymmetric `par_over` start plus `par` end is handled intentionally.
-  Evidence: Pending.
+  Evidence: `sequence_par_over_control_blocks_render_unicode_frames` and
+  `sequence_par_over_control_blocks_render_ascii_frames` cover `par_over <label>` as a
+  single-section frame. `SequenceControlKind::accepts_end` explicitly allows `ParOver` frames to
+  close with the core `Par` end signal while preserving existing `par` behavior. Fresh gates passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence_par_over`,
+  `cargo nextest run -p merman-ascii sequence`, and `git diff --check`.
   Handoff: ASRP-050 should cover combinations and remaining diagnostics.
 
 ## M4 - Combinations And Edge Policy
