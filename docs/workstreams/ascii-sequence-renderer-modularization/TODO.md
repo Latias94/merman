@@ -30,7 +30,7 @@ Last updated: 2026-05-29
 
 ## M2 - Layout And Rendering Boundaries
 
-- [ ] ASRM-030 [owner=unassigned] [deps=ASRM-020] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/layout.rs]
+- [x] ASRM-030 [owner=codex] [deps=ASRM-020] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/layout.rs]
   Goal: Extract participant layout, lifecycle visibility, and lifeline geometry into a layout
   module with no behavior change.
   Validation:
@@ -38,8 +38,9 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence`
   - `cargo nextest run -p merman-ascii sequence_golden`
   Review: `review-workstream` before accepting completion.
-  Evidence: module diff and sequence golden gates.
-  Handoff: ASRM-040 is next.
+  Evidence: `sequence/layout.rs`, focused sequence gates, and package gate.
+  Handoff: ASRM-040 is next; output and lifecycle visibility behavior remained stable under the
+  focused and package gates.
 
 - [ ] ASRM-040 [owner=unassigned] [deps=ASRM-030] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/render.rs,crates/merman-ascii/src/sequence/events.rs,crates/merman-ascii/src/sequence/notes.rs,crates/merman-ascii/src/sequence/boxes.rs,crates/merman-ascii/src/sequence/text.rs]
   Goal: Extract row rendering, note rendering, group-box overlays, and sequence-local text helpers

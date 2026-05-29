@@ -2,9 +2,14 @@ use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::text::{display_width, wrap_display_lines};
 
+mod layout;
 mod model;
 mod validate;
 
+use layout::{
+    LifecycleEdge, SequenceLayout, calculate_layout, initial_visible_actors, lifecycle_actors_at,
+    participant_left,
+};
 pub(crate) use model::from_sequence_model;
 use model::{
     AsciiSequenceDiagram, SequenceArrowHead, SequenceEvent, SequenceGroupBox, SequenceLineStyle,
@@ -107,15 +112,6 @@ impl SequenceChars {
             SequenceArrowHead::Cross => self.destroyed_mark,
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SequenceLayout {
-    participant_widths: Vec<usize>,
-    participant_centers: Vec<usize>,
-    total_width: usize,
-    message_spacing: usize,
-    self_message_width: usize,
 }
 
 pub(crate) fn render_sequence_diagram(
@@ -261,77 +257,6 @@ pub(crate) fn render_sequence_diagram(
     Ok(lines.join("\n") + "\n")
 }
 
-fn calculate_layout(
-    diagram: &AsciiSequenceDiagram,
-    options: &AsciiRenderOptions,
-) -> SequenceLayout {
-    let participant_widths = diagram
-        .participants
-        .iter()
-        .map(|participant| {
-            (display_width(&participant.label) + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH)
-        })
-        .collect::<Vec<_>>();
-
-    let mut participant_centers = Vec::with_capacity(diagram.participants.len());
-    let mut current_x = 0;
-    for (index, width) in participant_widths.iter().enumerate() {
-        let box_width = width + BOX_BORDER_WIDTH;
-        if index == 0 {
-            participant_centers.push(box_width / 2);
-            current_x = box_width;
-        } else {
-            current_x += options.sequence_participant_spacing;
-            participant_centers.push(current_x + box_width / 2);
-            current_x += box_width;
-        }
-    }
-
-    let last = participant_widths.len() - 1;
-    let total_width = participant_centers[last] + (participant_widths[last] + BOX_BORDER_WIDTH) / 2;
-
-    SequenceLayout {
-        participant_widths,
-        participant_centers,
-        total_width,
-        message_spacing: options.sequence_message_spacing.max(1),
-        self_message_width: options.sequence_self_message_width,
-    }
-}
-
-fn initial_visible_actors(diagram: &AsciiSequenceDiagram) -> Vec<bool> {
-    diagram
-        .lifecycles
-        .iter()
-        .map(|lifecycle| lifecycle.created_at.is_none())
-        .collect()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LifecycleEdge {
-    Created,
-    Destroyed,
-}
-
-fn lifecycle_actors_at(
-    diagram: &AsciiSequenceDiagram,
-    model_index: usize,
-    edge: LifecycleEdge,
-) -> Vec<usize> {
-    diagram
-        .lifecycles
-        .iter()
-        .enumerate()
-        .filter_map(|(actor, lifecycle)| {
-            let target = match edge {
-                LifecycleEdge::Created => lifecycle.created_at,
-                LifecycleEdge::Destroyed => lifecycle.destroyed_at,
-            };
-            (target == Some(model_index)).then_some(actor)
-        })
-        .collect()
-}
-
 fn build_participant_line(
     diagram: &AsciiSequenceDiagram,
     layout: &SequenceLayout,
@@ -399,11 +324,6 @@ fn participant_box_segment(
             )
         }
     }
-}
-
-fn participant_left(layout: &SequenceLayout, index: usize) -> usize {
-    let box_width = layout.participant_widths[index] + BOX_BORDER_WIDTH;
-    layout.participant_centers[index] - box_width / 2
 }
 
 fn render_lifecycle_participants(

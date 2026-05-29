@@ -67,3 +67,11 @@ is behavior-preserving and that control-block behavior was not silently folded i
 - 2026-05-29 ASRM-020 review: No blocking workstream-compliance or code-quality findings. The
   diff stays inside the task boundary, keeps `sequence.rs` as the facade, moves typed-model
   semantics and validation out of the facade, and does not introduce control-block behavior.
+- 2026-05-29 ASRM-030: Extracted participant layout calculation, lifecycle visibility planning,
+  lifecycle edge lookup, and participant-left geometry into `sequence/layout.rs`. Row rendering,
+  message rendering, note rendering, and control-block behavior remain out of scope. Passed
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`, `cargo nextest run -p merman-ascii`, and
+  `git diff --check`.
+- 2026-05-29 ASRM-030 review: No blocking workstream-compliance or code-quality findings. The
+  extraction stays inside the task boundary and leaves rendering behavior under the existing facade.

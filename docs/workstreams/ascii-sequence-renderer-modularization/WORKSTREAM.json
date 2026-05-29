@@ -36,6 +36,11 @@
       "date": "2026-05-29",
       "task": "ASRM-020",
       "result": "extracted internal sequence model and unsupported-feature validation into dedicated modules with focused gates passing"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-030",
+      "result": "extracted participant layout and lifecycle visibility helpers into sequence/layout.rs with focused and package gates passing"
     }
   ],
   "adr_refs": [
@@ -43,7 +48,7 @@
   ],
   "continue_policy": {
     "default_action": "run_task",
-    "next_task": "ASRM-030",
+    "next_task": "ASRM-040",
     "notes": "Run one bounded no-behavior extraction task at a time. Do not implement sequence control blocks in this lane."
   }
 }
