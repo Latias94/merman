@@ -85,3 +85,6 @@ is behavior-preserving and that control-block behavior was not silently folded i
   `git diff --check`.
 - 2026-05-29 ASRM-040 review: No blocking workstream-compliance or code-quality findings. The diff
   completes the intended module-boundary extraction and keeps public API/output behavior stable.
+- 2026-05-29 ASRM-050: Documented the final module boundary in `DESIGN.md` and confirmed that
+  Mermaid sequence control blocks remain a separate follow-on lane. Passed
+  `cargo nextest run -p merman-ascii` and `git diff --check`.

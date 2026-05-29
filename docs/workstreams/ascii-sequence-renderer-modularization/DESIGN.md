@@ -87,6 +87,25 @@ sequence/text.rs             sequence-local placement and trim helpers
 The exact files may differ if extraction shows a smaller boundary is cleaner. The first task should
 prefer fewer modules and stable behavior over a large one-shot split.
 
+## Final Module Boundary
+
+As of ASRM-040, the sequence renderer boundary is:
+
+```text
+sequence.rs                  public(crate) facade and shared renderer constants
+sequence/model.rs            internal render model, typed-model adapter, autonumber handling
+sequence/validate.rs         unsupported-feature diagnostics
+sequence/layout.rs           participant geometry and lifecycle visibility planning
+sequence/render.rs           render orchestration, participant rows, lifelines, overlays
+sequence/events.rs           message and self-message rows
+sequence/notes.rs            note rows and note wrapping
+sequence/boxes.rs            group-box bounds and overlays
+sequence/text.rs             sequence-local text placement and trimming helpers
+```
+
+This lane intentionally does not implement `loop`, `alt`, `opt`, `par`, `critical`, or `break`.
+Those constructs need their own block-aware render-plan workstream.
+
 ## Closeout Condition
 
 This lane can close when:

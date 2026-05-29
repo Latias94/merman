@@ -46,14 +46,19 @@
       "date": "2026-05-29",
       "task": "ASRM-040",
       "result": "split sequence render orchestration, events, notes, boxes, and text helpers into owner modules with focused and package gates passing"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-050",
+      "result": "documented final module boundary and confirmed sequence control blocks remain follow-on scope"
     }
   ],
   "adr_refs": [
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "run_task",
-    "next_task": "ASRM-050",
-    "notes": "Run one bounded no-behavior extraction task at a time. Do not implement sequence control blocks in this lane."
+    "default_action": "closeout_review",
+    "next_task": "ASRM-060",
+    "notes": "Close this modularization lane, then open sequence-control-blocks if control-block rendering is the next priority."
   }
 }

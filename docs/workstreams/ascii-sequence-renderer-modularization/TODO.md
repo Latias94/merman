@@ -58,15 +58,15 @@ Last updated: 2026-05-29
 
 ## M3 - Control-Block Readiness
 
-- [ ] ASRM-050 [owner=unassigned] [deps=ASRM-040] [scope=docs/workstreams/ascii-sequence-renderer-modularization,crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence]
+- [x] ASRM-050 [owner=codex] [deps=ASRM-040] [scope=docs/workstreams/ascii-sequence-renderer-modularization,crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence]
   Goal: Document the final module boundary and confirm that sequence control blocks remain a
   separate follow-on lane.
   Validation:
   - `cargo nextest run -p merman-ascii`
   - `git diff --check`
-  Evidence: `EVIDENCE_AND_GATES.md`, `HANDOFF.md`.
-  Handoff: Open `ascii-sequence-control-blocks` after this lane closes if control-block rendering
-  is the next priority.
+  Evidence: `DESIGN.md`, `EVIDENCE_AND_GATES.md`, `HANDOFF.md`.
+  Handoff: ASRM-060 closeout is next. Open `ascii-sequence-control-blocks` after this lane closes
+  if control-block rendering is the next priority.
 
 ## M4 - Closeout
 

@@ -5,7 +5,7 @@ Last updated: 2026-05-29
 
 ## Current State
 
-ASRM-020, ASRM-030, and ASRM-040 are implemented. The internal ASCII sequence render model,
+ASRM-020, ASRM-030, ASRM-040, and ASRM-050 are implemented. The internal ASCII sequence render model,
 typed-model adapter, autonumber handling, lifecycle model validation helpers, and
 unsupported-feature validation now live in `sequence/model.rs` and `sequence/validate.rs`.
 Participant layout, lifecycle visibility planning, lifecycle edge lookup, and participant-left
@@ -13,19 +13,20 @@ geometry now live in `sequence/layout.rs`. Render orchestration, event rows, not
 overlays, and sequence-local text helpers now live in owner modules. Existing sequence behavior,
 golden tests, and the package gate passed after the extractions.
 
+The final module boundary is documented in `DESIGN.md`. Sequence control blocks remain a separate
+follow-on lane.
+
 ## Active Task
 
-- Task ID: ASRM-050
-- Owner: unassigned
+- Task ID: ASRM-060
+- Owner: planner
 - Files:
   - `docs/workstreams/ascii-sequence-renderer-modularization`
-  - `crates/merman-ascii/src/sequence.rs`
-  - `crates/merman-ascii/src/sequence`
 - Validation:
-  - `cargo nextest run -p merman-ascii`
-  - `git diff --check`
+  - `verify-rust-workstream` records fresh final gate evidence.
+  - `review-workstream` has no blocking findings.
 - Status: READY
-- Review: ASRM-020, ASRM-030, and ASRM-040 had no blocking findings; ASRM-050 review remains required before completion
+- Review: ASRM-020, ASRM-030, and ASRM-040 had no blocking findings; ASRM-060 closeout review remains required
 - Evidence: update `EVIDENCE_AND_GATES.md` after fresh verification
 
 ## Decisions Since Open
@@ -40,6 +41,7 @@ golden tests, and the package gate passed after the extractions.
   into `sequence/layout.rs`.
 - ASRM-040 turned `sequence.rs` into a facade and split rendering responsibilities into owner
   modules without adding control-block behavior.
+- ASRM-050 documented the final boundary and kept sequence control blocks as follow-on scope.
 
 ## Blockers
 
@@ -47,5 +49,4 @@ golden tests, and the package gate passed after the extractions.
 
 ## Next Recommended Action
 
-Run ASRM-050 to document the final module boundary and confirm that sequence control blocks remain
-a separate follow-on lane.
+Run ASRM-060 closeout.
