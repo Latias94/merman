@@ -415,7 +415,7 @@ fn sequence_actor_lifecycle_validates_hand_built_indices() {
 }
 
 #[test]
-fn sequence_control_blocks_are_core_control_signals_and_currently_unsupported() {
+fn sequence_control_blocks_are_core_control_signals() {
     struct Case {
         name: &'static str,
         input: &'static str,
@@ -503,8 +503,104 @@ fn sequence_control_blocks_are_core_control_signals_and_currently_unsupported() 
             case.name
         );
 
-        assert_unsupported_sequence_model(model, "control messages");
+        if matches!(case.name, "alt" | "par" | "critical") {
+            assert_unsupported_sequence_model(model, "control messages");
+        }
     }
+}
+
+#[test]
+fn sequence_single_section_control_blocks_render_unicode_frames() {
+    let cases = [
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\nloop Every minute\nA->>B: Ping\nend",
+            "loop",
+            "Every minute",
+            "Ping",
+        ),
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\nopt A is ready\nA->>B: Send\nend",
+            "opt",
+            "A is ready",
+            "Send",
+        ),
+        (
+            "sequenceDiagram\nparticipant A\nparticipant B\nbreak Failure\nA->>B: Stop\nend",
+            "break",
+            "Failure",
+            "Stop",
+        ),
+    ];
+
+    for (input, keyword, label, message_label) in cases {
+        let rendered = render_sequence(input, &AsciiRenderOptions::unicode())
+            .unwrap_or_else(|err| panic!("{keyword} should render: {err}"));
+
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with(&format!("┌ {keyword} {label} "))),
+            "{keyword} should render a labeled Unicode top frame:\n{rendered}"
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.starts_with('│') && line.contains(message_label)),
+            "{keyword} should keep contained rows inside the Unicode frame:\n{rendered}"
+        );
+        assert!(
+            rendered.lines().any(|line| line.starts_with('└')),
+            "{keyword} should render a Unicode bottom frame:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn sequence_single_section_control_blocks_render_ascii_frames() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nloop Every minute\nA->>B: Ping\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("loop should render with ASCII charset");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with("+ loop Every minute ")),
+        "loop should render a labeled ASCII top frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('|') && line.contains("Ping")),
+        "loop should keep contained rows inside the ASCII frame:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().any(|line| line.starts_with('+')),
+        "loop should render an ASCII bottom frame:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_single_section_control_blocks_frame_notes() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nloop Watch\nNote over A,B: Wait\nA->>B: Continue\nend",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("loop should frame notes and messages");
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('│') && line.contains("Wait")),
+        "loop should keep note rows inside the frame:\n{rendered}"
+    );
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.starts_with('│') && line.contains("Continue")),
+        "loop should keep later message rows inside the same frame:\n{rendered}"
+    );
 }
 
 #[test]

@@ -1,4 +1,5 @@
 mod boxes;
+mod control;
 mod events;
 mod layout;
 mod model;

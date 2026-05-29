@@ -1,4 +1,5 @@
 use super::boxes::render_sequence_boxes;
+use super::control::{SequenceControlFrame, render_sequence_control_frames};
 use super::events::{ensure_message_actors_visible, render_message, render_self_message};
 use super::layout::{
     LifecycleEdge, SequenceLayout, calculate_layout, initial_visible_actors, lifecycle_actors_at,
@@ -116,6 +117,8 @@ pub(crate) fn render_sequence_diagram(
     let mut lines = Vec::new();
     let mut active_counts = vec![0usize; diagram.participants.len()];
     let mut visible_actors = initial_visible_actors(diagram);
+    let mut control_frames = Vec::<SequenceControlFrame>::new();
+    let mut active_control_frame = None;
 
     lines.push(build_participant_line(
         diagram,
@@ -156,6 +159,45 @@ pub(crate) fn render_sequence_diagram(
                     });
                 }
                 *count -= 1;
+                continue;
+            }
+            SequenceEvent::ControlStart(start) => {
+                if active_control_frame.is_some() {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "nested control blocks",
+                    });
+                }
+                active_control_frame = Some(control_frames.len());
+                control_frames.push(SequenceControlFrame {
+                    kind: start.kind,
+                    label: start.label.clone(),
+                    start_row: lines.len(),
+                    end_row: None,
+                });
+                continue;
+            }
+            SequenceEvent::ControlEnd { kind, .. } => {
+                let Some(frame_index) = active_control_frame.take() else {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "control block ordering",
+                    });
+                };
+                let frame = &mut control_frames[frame_index];
+                if frame.kind != *kind {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "control block ordering",
+                    });
+                }
+                if frame.start_row == lines.len() {
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: "sequence",
+                        feature: "empty control blocks",
+                    });
+                }
+                frame.end_row = Some(lines.len() - 1);
                 continue;
             }
             SequenceEvent::Message(_) | SequenceEvent::Note(_) => {}
@@ -221,7 +263,10 @@ pub(crate) fn render_sequence_diagram(
                     &visible_actors,
                 ));
             }
-            SequenceEvent::ActivationStart { .. } | SequenceEvent::ActivationEnd { .. } => {}
+            SequenceEvent::ActivationStart { .. }
+            | SequenceEvent::ActivationEnd { .. }
+            | SequenceEvent::ControlStart(_)
+            | SequenceEvent::ControlEnd { .. } => {}
         }
 
         for actor in destroyed_actors {
@@ -236,6 +281,15 @@ pub(crate) fn render_sequence_diagram(
         &active_counts,
         &visible_actors,
     ));
+    if active_control_frame.is_some() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "control block ordering",
+        });
+    }
+    if !control_frames.is_empty() {
+        lines = render_sequence_control_frames(lines, &control_frames, &chars);
+    }
     if !diagram.boxes.is_empty() {
         lines = render_sequence_boxes(lines, diagram, &layout, &chars);
     }

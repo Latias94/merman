@@ -26,6 +26,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Activations | Supported subset | `activate`, `deactivate`, `+`, and `-` activation state renders as active lifelines. |
 | Actor create/destroy | Supported subset | Created participants render at their creating message; destroyed participants terminate with `x`/`×` and stop their lifeline. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
+| Single-section control blocks | Supported subset | `loop`, `opt`, and `break` render as labeled text frames around contained rows. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
 ## Explicitly Unsupported
@@ -51,7 +52,10 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Invalid activation event ordering | `activation underflow` |
 | Message placement controls | `message placement` |
 | Hand-built note models without ordered note messages | `notes without drawable messages` |
-| Sequence control blocks with endpoint-less markers (`loop`, `opt`, `break`, `alt`, `par`, `critical`; `rect` and `par_over` deferred) | `control messages` |
+| Sectioned or deferred sequence control blocks (`alt`, `par`, `critical`, `rect`, `par_over`) | `control messages` |
+| Empty single-section control blocks | `empty control blocks` |
+| Nested single-section control blocks | `nested control blocks` |
+| Malformed hand-built single-section control blocks | `control block ordering` |
 | Messages referencing unknown actors | `messages with unknown actors` |
 | Message types outside solid/dotted filled, solid/dotted open, solid/dotted cross, and autonumber | `message types` |
 

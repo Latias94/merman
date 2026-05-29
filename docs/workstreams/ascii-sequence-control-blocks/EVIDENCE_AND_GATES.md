@@ -82,3 +82,19 @@ Run `review-workstream` before accepting task or lane completion. Review should 
 - 2026-05-29 ASCB-020 review: No blocking workstream-compliance or code-quality findings. The diff
   stays inside the task boundary, freezes the unsupported control-block boundary through public
   parse/render APIs, and does not introduce rendering behavior.
+- 2026-05-29 ASCB-030: Implemented the first block-aware sequence render-plan slice for
+  single-section `loop`, `opt`, and `break`. `merman-ascii` now converts those endpoint-less core
+  control markers into internal control events, records rendered row spans, and applies labeled
+  ASCII/Unicode text frames around contained message and note rows. Sectioned blocks remain
+  unsupported as `control messages`; `rect` and `par_over` remain deferred. Fresh gates passed:
+  `cargo nextest run -p merman-ascii sequence_single_section_control_blocks`,
+  `cargo nextest run -p merman-ascii sequence_control_blocks`, `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`,
+  `cargo nextest run -p merman-ascii`, `git diff --check`, and
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`. CLI visual sanity checks for
+  Unicode `loop`, `opt`, and `break` examples also rendered successfully.
+- 2026-05-29 ASCB-030 review: No blocking workstream-compliance or code-quality findings. The diff
+  stays inside the ASCB-030 scope, keeps sectioned blocks unsupported, introduces a dedicated
+  `sequence/control.rs` frame renderer above low-level row painting, and leaves existing sequence
+  golden fixtures unchanged.

@@ -36,6 +36,11 @@
       "date": "2026-05-29",
       "task": "ASCB-020",
       "result": "added executable inventory tests proving core control-signal line types, endpoint-less markers, labels, and current ASCII unsupported diagnostics"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASCB-030",
+      "result": "implemented ASCII and Unicode text frames for single-section loop, opt, and break sequence control blocks"
     }
   ],
   "adr_refs": [
@@ -43,7 +48,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASCB-030",
-    "notes": "Add the first render-plan slice for single-section loop, opt, and break control blocks."
+    "next_task": "ASCB-040",
+    "notes": "Extend the control-block render plan to sectioned alt, par, and critical blocks."
   }
 }

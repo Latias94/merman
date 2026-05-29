@@ -16,7 +16,8 @@ boxed nodes, multiline node labels, common terminal shape approximations, edge l
 edges, length spacing, and titled/nested subgraphs can render through `render_flowchart`. Basic
 sequence diagrams with participants, filled/open solid and dotted messages, self messages,
 wrapped message labels, wrapped notes, sequence boxes, activations, actor create/destroy lifecycle
-markers, and visible autonumber can render through `render_sequence` or `render_model`.
+markers, visible autonumber, and single-section control blocks can render through `render_sequence`
+or `render_model`.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,

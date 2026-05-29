@@ -16,6 +16,12 @@ const SOLID_CROSS_MESSAGE_TYPE: i32 = 3;
 const DOTTED_CROSS_MESSAGE_TYPE: i32 = 4;
 const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
 const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
+const LOOP_START_MESSAGE_TYPE: i32 = 10;
+const LOOP_END_MESSAGE_TYPE: i32 = 11;
+const OPT_START_MESSAGE_TYPE: i32 = 15;
+const OPT_END_MESSAGE_TYPE: i32 = 16;
+const BREAK_START_MESSAGE_TYPE: i32 = 30;
+const BREAK_END_MESSAGE_TYPE: i32 = 31;
 const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
 const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
 const NOTE_PLACEMENT_OVER: i32 = 2;
@@ -50,8 +56,19 @@ pub(super) struct SequenceActorLifecycle {
 pub(super) enum SequenceEvent {
     Message(SequenceMessage),
     Note(SequenceNote),
-    ActivationStart { actor: usize, model_index: usize },
-    ActivationEnd { actor: usize, model_index: usize },
+    ActivationStart {
+        actor: usize,
+        model_index: usize,
+    },
+    ActivationEnd {
+        actor: usize,
+        model_index: usize,
+    },
+    ControlStart(SequenceControlStart),
+    ControlEnd {
+        kind: SequenceControlKind,
+        model_index: usize,
+    },
 }
 
 impl SequenceEvent {
@@ -62,6 +79,32 @@ impl SequenceEvent {
             Self::ActivationStart { model_index, .. } | Self::ActivationEnd { model_index, .. } => {
                 *model_index
             }
+            Self::ControlStart(start) => start.model_index,
+            Self::ControlEnd { model_index, .. } => *model_index,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct SequenceControlStart {
+    pub(super) model_index: usize,
+    pub(super) kind: SequenceControlKind,
+    pub(super) label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SequenceControlKind {
+    Loop,
+    Opt,
+    Break,
+}
+
+impl SequenceControlKind {
+    pub(super) fn keyword(self) -> &'static str {
+        match self {
+            Self::Loop => "loop",
+            Self::Opt => "opt",
+            Self::Break => "break",
         }
     }
 }
@@ -146,6 +189,11 @@ pub(crate) fn from_sequence_model(
 
     for (model_index, message) in model.messages.iter().enumerate() {
         if consume_autonumber(message, &mut autonumber) {
+            continue;
+        }
+
+        if let Some(event) = sequence_control_event(message, model_index)? {
+            events.push(event);
             continue;
         }
 
@@ -256,6 +304,42 @@ pub(crate) fn from_sequence_model(
         boxes,
         events,
     })
+}
+
+fn sequence_control_event(
+    message: &CoreSequenceMessage,
+    model_index: usize,
+) -> Result<Option<SequenceEvent>> {
+    let kind = match message.message_type {
+        LOOP_START_MESSAGE_TYPE => Some((SequenceControlKind::Loop, true)),
+        LOOP_END_MESSAGE_TYPE => Some((SequenceControlKind::Loop, false)),
+        OPT_START_MESSAGE_TYPE => Some((SequenceControlKind::Opt, true)),
+        OPT_END_MESSAGE_TYPE => Some((SequenceControlKind::Opt, false)),
+        BREAK_START_MESSAGE_TYPE => Some((SequenceControlKind::Break, true)),
+        BREAK_END_MESSAGE_TYPE => Some((SequenceControlKind::Break, false)),
+        _ => None,
+    };
+
+    let Some((kind, is_start)) = kind else {
+        return Ok(None);
+    };
+
+    if message.from.is_some() || message.to.is_some() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "control messages",
+        });
+    }
+
+    if is_start {
+        Ok(Some(SequenceEvent::ControlStart(SequenceControlStart {
+            model_index,
+            kind,
+            label: message.message_text().to_string(),
+        })))
+    } else {
+        Ok(Some(SequenceEvent::ControlEnd { kind, model_index }))
+    }
 }
 
 fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequenceParticipant> {

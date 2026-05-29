@@ -31,7 +31,7 @@ Last updated: 2026-05-29
 
 ## M2 - Single-Section Blocks
 
-- [ ] ASCB-030 [owner=codex] [deps=ASCB-020] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASCB-030 [owner=codex] [deps=ASCB-020] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Implement control-block collection and text rendering for single-section `loop`, `opt`, and
   `break` frames around contained message/note rows.
   Validation:
@@ -40,7 +40,9 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence_golden`
   - `cargo nextest run -p merman-ascii`
   Review: Verify non-control sequence snapshots are unchanged except intentional new assertions.
-  Evidence: New passing render tests for the three single-section block forms.
+  Evidence: `sequence_single_section_control_blocks_render_unicode_frames` and
+  `sequence_single_section_control_blocks_render_ascii_frames` cover the first supported block
+  forms. Focused and package gates passed.
   Handoff: ASCB-040 should extend the same plan to sectioned blocks.
 
 ## M3 - Sectioned Blocks
