@@ -1,6 +1,6 @@
 # Sequence ASCII Support
 
-Status: expanding support
+Status: supported subset
 
 This document describes the current `merman-ascii` sequence support boundary. The renderer consumes
 `merman-core` `SequenceDiagramRenderModel` values; it does not parse Mermaid text itself.

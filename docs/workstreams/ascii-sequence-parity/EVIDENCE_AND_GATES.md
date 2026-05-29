@@ -1,6 +1,6 @@
 # ASCII Sequence Parity - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Focused Gates
@@ -87,3 +87,7 @@ Last updated: 2026-05-29
   `cargo nextest run -p merman-cli --features ascii`, and
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` all
   passed. `git diff --check` passed after evidence updates.
+- 2026-05-29 ASP-140: Closeout review closed the sequence parity lane and split richer Mermaid
+  control blocks into follow-on scope. Fresh closeout verification passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii sequence_golden`, and `git diff --check`.

@@ -1,6 +1,6 @@
 # ASCII Sequence Parity - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Current State
@@ -9,19 +9,12 @@ ASP-010, ASP-020, ASP-030, ASP-040, ASP-050, ASP-060, ASP-070, ASP-075, ASP-080,
 ASP-110, ASP-120, and ASP-130 are complete. Copied upstream `mermaid-ascii` sequence fixtures are
 exact under the existing normalized-whitespace comparison. The lane now covers the main typed
 sequence semantics that users can already parse through `merman-core`, with richer Mermaid control
-blocks still outside this ASCII lane.
+blocks split out as follow-on scope.
 
 ## Active Task
 
-- Task ID: closeout review
-- Owner: codex
-- Files:
-  - `docs/workstreams/ascii-sequence-parity`
-  - `crates/merman-ascii/SEQUENCE_SUPPORT.md`
-- Validation:
-  - Decide whether to close this sequence parity lane or split richer Mermaid control blocks into a
-    new lane.
-- Status: READY
+- Task ID: none
+- Status: CLOSED
 
 ## Decisions Since Open
 
@@ -53,5 +46,5 @@ blocks still outside this ASCII lane.
 
 ## Next Recommended Action
 
-Run a closeout review for `ascii-sequence-parity`: either close the lane or split richer Mermaid
-control blocks (`loop`/`alt`/`opt`/`par`/`critical`/`break`) into a new workstream.
+Open a new workstream for richer Mermaid sequence control blocks
+(`loop`/`alt`/`opt`/`par`/`critical`/`break`) if that is the next product priority.

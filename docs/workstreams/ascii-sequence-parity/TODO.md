@@ -1,6 +1,6 @@
 # ASCII Sequence Parity - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Gap Ledger
@@ -160,3 +160,17 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: Sequence parity lane is ready for closeout review.
+
+## M6 - Closeout Review
+
+- [x] ASP-140 [owner=codex] [deps=ASP-130] [scope=docs/workstreams/ascii-sequence-parity,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Close the sequence parity lane and split richer Mermaid sequence control blocks into a new
+  workstream boundary.
+  Validation:
+  - Workstream docs mark the lane closed.
+  - Support matrix names the remaining unsupported boundary.
+  - Fresh closeout gates pass.
+  Evidence: `DESIGN.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`,
+  `HANDOFF.md`, and `SEQUENCE_SUPPORT.md`.
+  Handoff: Open a new lane for `loop`/`alt`/`opt`/`par`/`critical`/`break` rendering if that is the
+  next product priority.

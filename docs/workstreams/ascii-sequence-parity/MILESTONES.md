@@ -1,6 +1,6 @@
 # ASCII Sequence Parity - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Gap Ledger
@@ -29,16 +29,16 @@ Exit criteria:
 Exit criteria:
 
 - Single-line notes render for right-of, left-of, and over placements.
-- Wrapped notes remain explicitly unsupported.
 - Existing copied upstream sequence fixtures stay exact.
 
 ## M4 - Remaining Rich Constructs
 
 Exit criteria:
 
-- Sequence boxes render or have a documented blocker.
-- Activations, create/destroy, and wrapping each have an independent next task or documented
-  blocker.
+- Sequence boxes render with documented plain-text limitations.
+- Activations, create/destroy, and message/note wrapping render.
+- Wrapped actor labels, wrapped boxes, and richer control blocks have documented follow-on
+  boundaries.
 
 ## M5 - Verification And Commit
 
@@ -47,3 +47,11 @@ Exit criteria:
 - Focused gates pass.
 - Broad crate gates pass or any skipped gate is named with reason.
 - Work is committed.
+
+## M6 - Closeout Review
+
+Exit criteria:
+
+- Workstream docs mark the lane closed.
+- Residual unsupported features are listed in `SEQUENCE_SUPPORT.md`.
+- Richer Mermaid control blocks are split into a new workstream boundary.

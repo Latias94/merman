@@ -1,6 +1,6 @@
 # ASCII Sequence Parity - Design
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Intent
@@ -56,6 +56,16 @@ Keep wrapped actor labels and wrapped boxes explicit unsupported features until 
 a deliberate multi-line participant/group layout model.
 
 Keep unsupported constructs explicit. Do not silently drop typed model semantics.
+
+## Closeout Decision
+
+Closed on 2026-05-29. This lane's product target is met: copied upstream sequence fixtures remain
+covered, and the selected typed sequence semantics now either render or return explicit
+unsupported-feature diagnostics.
+
+Richer Mermaid control blocks (`loop`, `alt`, `opt`, `par`, `critical`, and `break`) are outside
+this lane. They should start as a new workstream because they need a block-aware vertical layout
+model rather than another message-level extension.
 
 ## Testing Plan
 

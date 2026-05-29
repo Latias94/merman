@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-sequence-parity",
   "title": "ASCII Sequence Parity",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-29",
   "scope_kind": "execution",
   "problem": "Copied mermaid-ascii sequence fixtures pass, but merman-ascii still rejects common typed sequence semantics that merman-core can parse.",
@@ -95,14 +95,19 @@
       "date": "2026-05-29",
       "task": "ASP-130",
       "result": "passed focused and broad gates for wrapping rendering slice"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-140",
+      "result": "closed ascii sequence parity lane and split richer Mermaid control blocks into follow-on scope"
     }
   ],
   "adr_refs": [
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "closeout_review",
-    "next_task": "closeout",
-    "notes": "Close ascii-sequence-parity or split richer Mermaid control blocks into a new lane."
+    "default_action": "open_new_workstream",
+    "next_task": "sequence-control-blocks",
+    "notes": "ascii-sequence-parity is closed. Start a new lane for loop/alt/opt/par/critical/break rendering if sequence control blocks are the next priority."
   }
 }
