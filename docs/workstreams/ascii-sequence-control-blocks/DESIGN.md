@@ -84,7 +84,8 @@ ASCII renderer's line-oriented model.
 - SVG parity rendering changes.
 - Browser font measurement or pixel geometry.
 - Full Mermaid styling for control-block background colors.
-- `rect` blocks unless explicitly pulled into this lane after the primary block subset is stable.
+- `rect` and `par_over` blocks unless explicitly pulled into this lane after the primary block
+  subset is stable.
 - Actor shape, wrapped actor label, actor link, and message placement support.
 
 ## Starting Assumptions
@@ -92,7 +93,7 @@ ASCII renderer's line-oriented model.
 | Assumption | Confidence | Evidence | Consequence if wrong |
 | --- | --- | --- | --- |
 | Control signals are present in `SequenceDiagramRenderModel.messages` with no endpoints. | High | `sequence/db.rs` calls `add_signal(None, None, msg, signal_type, ...)` for `ControlSignal`. | If false, add parser/model inventory tests before renderer work. |
-| SVG `block_collection.rs` is a useful semantic reference for block nesting and section labels. | High | It maps line types 10/11, 12/13/14, 15/16, 19/20/21, 27/28/29, and 30/31 into typed blocks. | If false, derive the collector directly from `merman-core` constants and tests. |
+| SVG `block_collection.rs` is a useful semantic reference for block nesting and section labels. | High | It maps line types 10/11, 12/13/14, 15/16, 19/20/21, 27/28/29, 30/31, and 32 into typed blocks. | If false, derive the collector directly from `merman-core` constants and tests. |
 | ASCII should favor stable readable frames over exact upstream/SVG geometry. | High | ADR 0065 defines ASCII output as a renderer boundary with approximation-friendly behavior. | If exact geometry becomes required, split a parity lane instead of overloading this one. |
 | A row-span render plan can be introduced without rewriting all message/note rendering at once. | Medium | The renderer now has separate `model`, `layout`, `events`, `notes`, `boxes`, `text`, and `render` modules. | If false, first split row planning from painting before implementing block frames. |
 

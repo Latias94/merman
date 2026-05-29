@@ -71,3 +71,14 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   control blocks as endpoint-less `SequenceMessage` control signals; ASCII currently rejects those
   as `control messages`; SVG parity already has a typed stack collector for the primary block
   forms. First executable task is ASCB-020 boundary/inventory tests.
+- 2026-05-29 ASCB-020: Added executable inventory coverage for `loop`, `opt`, `break`, `alt`,
+  `par`, and `critical`. The test proves `merman-core` emits endpoint-less control messages with
+  the expected line type numbers and labels, and that `merman-ascii` still returns
+  `UnsupportedFeature { feature: "control messages" }` for the block subset before rendering work
+  begins. Updated `SEQUENCE_SUPPORT.md` to name this unsupported boundary. Fresh gates passed:
+  `cargo nextest run -p merman-ascii sequence_control_blocks`, `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence`, `git diff --check`, and
+  `cargo nextest run -p merman-ascii`.
+- 2026-05-29 ASCB-020 review: No blocking workstream-compliance or code-quality findings. The diff
+  stays inside the task boundary, freezes the unsupported control-block boundary through public
+  parse/render APIs, and does not introduce rendering behavior.

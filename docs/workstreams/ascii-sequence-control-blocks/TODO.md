@@ -16,7 +16,7 @@ Last updated: 2026-05-29
 
 ## M1 - Executable Boundary Tests
 
-- [ ] ASCB-020 [owner=codex] [deps=ASCB-010] [scope=crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md,crates/merman-ascii/src/sequence/model.rs]
+- [x] ASCB-020 [owner=codex] [deps=ASCB-010] [scope=crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md,crates/merman-ascii/src/sequence/model.rs]
   Goal: Add typed inventory tests for `loop`, `opt`, `break`, `alt`, `par`, and `critical` inputs
   that prove how `merman-core` represents control signals and how ASCII currently rejects them.
   Validation:
@@ -25,7 +25,8 @@ Last updated: 2026-05-29
   - `git diff --check`
   Review: Confirm the tests freeze the current unsupported boundary without silently accepting
   control blocks.
-  Evidence: Focused tests documenting control line types, labels, endpoints, and current diagnostic.
+  Evidence: `sequence_control_blocks_are_core_control_signals_and_currently_unsupported` documents
+  control line types, labels, endpoint-less markers, and current diagnostic. Focused gates passed.
   Handoff: ASCB-030 should add the first real render-plan slice.
 
 ## M2 - Single-Section Blocks

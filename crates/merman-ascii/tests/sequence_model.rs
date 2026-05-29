@@ -5,9 +5,25 @@ use merman_core::diagrams::sequence::{
     SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+const LINETYPE_LOOP_START: i32 = 10;
+const LINETYPE_LOOP_END: i32 = 11;
+const LINETYPE_ALT_START: i32 = 12;
+const LINETYPE_ALT_ELSE: i32 = 13;
+const LINETYPE_ALT_END: i32 = 14;
+const LINETYPE_OPT_START: i32 = 15;
+const LINETYPE_OPT_END: i32 = 16;
+const LINETYPE_PAR_START: i32 = 19;
+const LINETYPE_PAR_AND: i32 = 20;
+const LINETYPE_PAR_END: i32 = 21;
+const LINETYPE_CRITICAL_START: i32 = 27;
+const LINETYPE_CRITICAL_OPTION: i32 = 28;
+const LINETYPE_CRITICAL_END: i32 = 29;
+const LINETYPE_BREAK_START: i32 = 30;
+const LINETYPE_BREAK_END: i32 = 31;
 
 fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()
@@ -16,6 +32,18 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
         .expect("sequence diagram should be detected");
 
     render_model(&parsed.model, options)
+}
+
+fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("sequence diagram should parse")
+        .expect("sequence diagram should be detected");
+
+    match parsed.model {
+        RenderSemanticModel::Sequence(model) => model,
+        other => panic!("expected sequence render model, got {}", other.kind()),
+    }
 }
 
 fn fixture_cases(directory: &str) -> Vec<PathBuf> {
@@ -383,6 +411,99 @@ fn sequence_actor_lifecycle_validates_hand_built_indices() {
 
     for (model, feature) in cases {
         assert_unsupported_sequence_model(model, feature);
+    }
+}
+
+#[test]
+fn sequence_control_blocks_are_core_control_signals_and_currently_unsupported() {
+    struct Case {
+        name: &'static str,
+        input: &'static str,
+        signals: &'static [(i32, &'static str)],
+    }
+
+    let cases = [
+        Case {
+            name: "loop",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\nloop Every minute\nA->>B: Ping\nend",
+            signals: &[
+                (LINETYPE_LOOP_START, "Every minute"),
+                (LINETYPE_LOOP_END, ""),
+            ],
+        },
+        Case {
+            name: "opt",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\nopt A is ready\nA->>B: Send\nend",
+            signals: &[(LINETYPE_OPT_START, "A is ready"), (LINETYPE_OPT_END, "")],
+        },
+        Case {
+            name: "break",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\nbreak Failure\nA->>B: Stop\nend",
+            signals: &[(LINETYPE_BREAK_START, "Failure"), (LINETYPE_BREAK_END, "")],
+        },
+        Case {
+            name: "alt",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\nalt Success\nA->>B: OK\nelse Failure\nB-->>A: Retry\nend",
+            signals: &[
+                (LINETYPE_ALT_START, "Success"),
+                (LINETYPE_ALT_ELSE, "Failure"),
+                (LINETYPE_ALT_END, ""),
+            ],
+        },
+        Case {
+            name: "par",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\npar First\nA->>B: One\nand Second\nB-->>A: Two\nend",
+            signals: &[
+                (LINETYPE_PAR_START, "First"),
+                (LINETYPE_PAR_AND, "Second"),
+                (LINETYPE_PAR_END, ""),
+            ],
+        },
+        Case {
+            name: "critical",
+            input: "sequenceDiagram\nparticipant A\nparticipant B\ncritical Must lock\nA->>B: Lock\noption Timeout\nB-->>A: Backoff\nend",
+            signals: &[
+                (LINETYPE_CRITICAL_START, "Must lock"),
+                (LINETYPE_CRITICAL_OPTION, "Timeout"),
+                (LINETYPE_CRITICAL_END, ""),
+            ],
+        },
+    ];
+
+    for case in cases {
+        let model = parse_sequence_render_model(case.input);
+        let control_messages = model
+            .messages
+            .iter()
+            .filter(|message| message.from.is_none() && message.to.is_none())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            control_messages.len(),
+            case.signals.len(),
+            "{} should have expected control marker count",
+            case.name
+        );
+
+        let actual = control_messages
+            .iter()
+            .map(|message| (message.message_type, message.message_text()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, case.signals,
+            "{} should preserve core control line types and labels",
+            case.name
+        );
+        assert!(
+            model
+                .messages
+                .iter()
+                .any(|message| message.from.is_some() && message.to.is_some()),
+            "{} should still include drawable messages inside the block",
+            case.name
+        );
+
+        assert_unsupported_sequence_model(model, "control messages");
     }
 }
 

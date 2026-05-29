@@ -31,6 +31,11 @@
       "date": "2026-05-29",
       "task": "ASCB-010",
       "result": "opened the ASCII sequence control-block lane and selected executable boundary tests as the first implementation task"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASCB-020",
+      "result": "added executable inventory tests proving core control-signal line types, endpoint-less markers, labels, and current ASCII unsupported diagnostics"
     }
   ],
   "adr_refs": [
@@ -38,7 +43,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASCB-020",
-    "notes": "Start with boundary/inventory tests before changing ASCII rendering behavior."
+    "next_task": "ASCB-030",
+    "notes": "Add the first render-plan slice for single-section loop, opt, and break control blocks."
   }
 }

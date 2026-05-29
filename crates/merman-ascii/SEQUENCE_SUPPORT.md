@@ -51,7 +51,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Invalid activation event ordering | `activation underflow` |
 | Message placement controls | `message placement` |
 | Hand-built note models without ordered note messages | `notes without drawable messages` |
-| Control messages with no drawable endpoints | `control messages` |
+| Sequence control blocks with endpoint-less markers (`loop`, `opt`, `break`, `alt`, `par`, `critical`; `rect` and `par_over` deferred) | `control messages` |
 | Messages referencing unknown actors | `messages with unknown actors` |
 | Message types outside solid/dotted filled, solid/dotted open, solid/dotted cross, and autonumber | `message types` |
 
