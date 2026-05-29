@@ -1,6 +1,6 @@
 # ASCII Sequence Control Blocks - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Smallest Current Repro
@@ -125,3 +125,18 @@ Run `review-workstream` before accepting task or lane completion. Review should 
 - 2026-05-29 ASCB-050 review: No blocking workstream-compliance or code-quality findings. The
   change is test/docs focused, records explicit diagnostics for deferred edge cases, and covers the
   supported lifecycle and participant-box combinations without expanding scope beyond ASCB-050.
+- 2026-05-29 ASCB-060: Generated manual inspection files:
+  `D:\Frankorz\Downloads\merman-ascii-control-blocks-input.mmd`,
+  `D:\Frankorz\Downloads\merman-ascii-control-blocks-unicode.txt`, and
+  `D:\Frankorz\Downloads\merman-ascii-control-blocks-ascii.txt`. The examples cover `loop`, `opt`,
+  `break`, `alt`/`else`, `par`/`and`, and `critical`/`option` in both Unicode and plain ASCII text
+  output. README now names this sequence control-block subset in the ASCII/Unicode section.
+- 2026-05-29 ASCB-060 verify: Fresh closeout gates passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii` (70 passed),
+  `cargo nextest run -p merman --features ascii` (4 passed),
+  `cargo nextest run -p merman-cli --features ascii` (10 passed),
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check`.
+- 2026-05-29 ASCB-060 review: No blocking workstream-compliance, code-quality, or missing-gate
+  findings. The lane target is met, support docs and README state the shipped boundary, and the
+  remaining parity debt is explicitly deferred to follow-ons rather than hidden inside this lane.

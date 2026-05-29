@@ -1,6 +1,6 @@
 # ASCII Sequence Control Blocks - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Semantic Inventory
@@ -81,7 +81,7 @@ Last updated: 2026-05-29
 
 ## M5 - Examples, Verification, And Closeout
 
-- [ ] ASCB-060 [owner=codex] [deps=ASCB-050] [scope=docs/workstreams/ascii-sequence-control-blocks,crates/merman-ascii,README.md]
+- [x] ASCB-060 [owner=codex] [deps=ASCB-050] [scope=docs/workstreams/ascii-sequence-control-blocks,crates/merman-ascii,README.md]
   Goal: Generate manual example outputs, run final gates, update docs, and close or split remaining
   control-block parity work.
   Validation:
@@ -92,5 +92,13 @@ Last updated: 2026-05-29
   - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
   - `git diff --check`
   Review: Run `review-workstream` and `verify-rust-workstream` before closeout.
-  Evidence: Final gate log, example `.txt` outputs for manual inspection, and updated support docs.
-  Handoff: Lane closes if the primary subset is complete; otherwise split the remaining scope.
+  Evidence: Generated `D:\Frankorz\Downloads\merman-ascii-control-blocks-unicode.txt` and
+  `D:\Frankorz\Downloads\merman-ascii-control-blocks-ascii.txt` from
+  `D:\Frankorz\Downloads\merman-ascii-control-blocks-input.mmd`. Fresh closeout gates passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check`. README now names the supported sequence control-block subset.
+  Handoff: Lane closed. Split `rect`/`par_over`, nested blocks, empty-section rendering, or exact
+  Mermaid/SVG visual parity into follow-on lanes if needed.

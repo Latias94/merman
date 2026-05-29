@@ -1,6 +1,6 @@
 # ASCII Sequence Control Blocks - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Semantic Inventory
@@ -64,3 +64,12 @@ Exit condition:
 - ASCB-060 complete.
 - Manual example outputs exist for the primary block subset.
 - Final gates pass and the workstream is closed or split cleanly.
+
+Result:
+
+- Closed on 2026-05-29 after generating manual Unicode and ASCII examples in
+  `D:\Frankorz\Downloads`.
+- Final closeout gates passed for `merman-ascii`, `merman --features ascii`, and
+  `merman-cli --features ascii`.
+- Remaining parity debt is outside this lane: `rect`/`par_over`, nested control-block rendering,
+  empty-section rendering, and exact SVG/Mermaid visual parity.

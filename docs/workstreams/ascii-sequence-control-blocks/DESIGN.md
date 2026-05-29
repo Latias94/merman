@@ -1,6 +1,6 @@
 # ASCII Sequence Control Blocks
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Why This Lane Exists
@@ -134,3 +134,18 @@ This lane can close when:
 - sequence focused and package gates pass,
 - generated examples can be rendered for manual inspection,
 - and any remaining control-block parity debt is split into a smaller follow-on.
+
+## Closeout Decision
+
+Closed on 2026-05-29. The primary Mermaid sequence control-block subset is implemented for ASCII
+and Unicode text output:
+
+- `loop`, `opt`, and `break` render as labeled single-section frames.
+- `alt`/`else`, `par`/`and`, and `critical`/`option` render as labeled sectioned frames.
+- Notes, activations, create/destroy lifecycle rows, and participant boxes are covered inside
+  supported control-block spans.
+- `rect`, `par_over`, nested blocks, empty sections, and malformed hand-built block ordering remain
+  explicit diagnostics and should be split into narrower follow-ons if product demand warrants it.
+
+Manual example outputs were generated under `D:\Frankorz\Downloads`, and the broader closeout gate
+passed for the ASCII crate, the public `merman` ASCII feature, and the CLI ASCII feature.

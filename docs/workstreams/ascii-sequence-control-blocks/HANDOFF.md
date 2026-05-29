@@ -1,12 +1,12 @@
 # ASCII Sequence Control Blocks - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Current State
 
-ASCB-010, ASCB-020, ASCB-030, ASCB-040, and ASCB-050 are complete. The lane is open and scoped to
-Mermaid sequence control blocks for the ASCII renderer.
+ASCB-010 through ASCB-060 are complete. The lane is closed for the primary Mermaid sequence
+control-block subset in the ASCII renderer.
 
 The ASCII adapter now renders single-section `loop`, `opt`, and `break` endpoint-less control
 signals as labeled text frames. It also renders sectioned `alt`/`else`, `par`/`and`, and
@@ -22,17 +22,19 @@ inside sectioned frames are covered by
 
 ASCB-050 covers the current edge-case policy: nested blocks and empty sections are explicit
 unsupported diagnostics; activations, create/destroy lifecycle rows, notes, and participant boxes
-are supported with control-block frames.
+are supported with control-block frames. ASCB-060 generated manual examples, ran the broader
+closeout gate, updated README, and closed the lane.
 
 ## Active Task
 
-- Task ID: ASCB-060
-- Status: Ready
+- Task ID: None
+- Status: Closed
 
 ## Next Action
 
-Generate manual example outputs, run final gates, update docs, and close the lane or split any
-remaining control-block parity debt.
+Open a follow-on lane only if product scope needs one of the deferred boundaries:
+`rect`/`par_over`, nested control-block rendering, empty-section rendering, or exact
+Mermaid/SVG-style visual parity for control blocks.
 
 ## Decisions Since Open
 
@@ -45,6 +47,8 @@ remaining control-block parity debt.
 - ASCB-030 intentionally rejects nested and empty single-section blocks for now; ASCB-050 owns the
   final edge-case policy.
 - ASCB-040 keeps `rect` and `par_over` deferred as `control messages`.
+- ASCB-060 closes the lane with the primary control-block subset shipped and broader ASCII feature
+  gates passing.
 
 ## Blockers
 
@@ -57,5 +61,8 @@ cargo fmt --all --check
 cargo nextest run -p merman-ascii sequence
 cargo nextest run -p merman-ascii sequence_golden
 cargo nextest run -p merman-ascii
+cargo nextest run -p merman --features ascii
+cargo nextest run -p merman-cli --features ascii
+cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings
 git diff --check
 ```
