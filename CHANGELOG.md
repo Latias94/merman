@@ -23,6 +23,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added `mermaid-ascii`-compatible `paddingX=`/`paddingY=` handling for ASCII render entry points
   and closed comment/order/padding graph fixture gaps, raising copied graph fixture parity to 60
   exact matches.
+- Added multiline flowchart node labels and completed copied `mermaid-ascii` graph fixture parity,
+  including nested/external subgraphs and TD branch layouts, raising graph fixture parity to 75
+  exact matches with no named graph gaps.
 
 ## [0.6.0] - 2026-05-28
 

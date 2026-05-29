@@ -1,6 +1,6 @@
 # ASCII Graph Final Parity - TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Scope Freeze
@@ -37,7 +37,7 @@ Last updated: 2026-05-29
 
 ## M3 - Subgraph Heavy Parity
 
-- [ ] AGF-040 [owner=codex] [deps=AGF-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
+- [x] AGF-040 [owner=codex] [deps=AGF-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
   Goal: Move as many remaining subgraph-heavy fixtures as possible into exact parity without
   fixture-name special cases.
   Validation:
@@ -49,7 +49,7 @@ Last updated: 2026-05-29
 
 ## M4 - Closeout
 
-- [ ] AGF-050 [owner=codex] [deps=AGF-040] [scope=docs/workstreams/ascii-graph-final-parity,CHANGELOG.md,crates/merman-ascii/FLOWCHART_SUPPORT.md]
+- [x] AGF-050 [owner=codex] [deps=AGF-040] [scope=docs/workstreams/ascii-graph-final-parity,CHANGELOG.md,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Run broad gates, update docs/gap inventory, commit, and close or split any irreducible
   follow-on.
   Validation:

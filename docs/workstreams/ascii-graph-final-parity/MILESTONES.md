@@ -1,6 +1,6 @@
 # ASCII Graph Final Parity - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Scope Freeze

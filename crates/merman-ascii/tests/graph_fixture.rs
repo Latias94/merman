@@ -118,7 +118,27 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "subgraph_complex_mixed.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_complex_nested.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "subgraph_empty.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_explicit_title.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_mixed_nodes_td.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_mixed_nodes.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -130,7 +150,23 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "subgraph_nested_with_external.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_nested.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_node_outside_lr.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "subgraph_single_node.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_standalone_labeled_node.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -138,7 +174,27 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "subgraph_td_multiple_paddingy.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_td_multiple.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_three_levels_nested.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_three_separate.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "subgraph_two_separate.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "subgraph_with_labels.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -270,64 +326,7 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
 ];
 
-const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_complex_mixed.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_complex_nested.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_explicit_title.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_mixed_nodes_td.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_mixed_nodes.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_nested_with_external.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_nested.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_node_outside_lr.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_standalone_labeled_node.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_td_multiple_paddingy.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_td_multiple.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_three_levels_nested.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_three_separate.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "subgraph_with_labels.txt",
-    },
-];
+const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[];
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = Engine::new()

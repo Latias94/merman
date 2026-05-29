@@ -951,6 +951,11 @@ fn draw_top_down_edge(
         return;
     }
 
+    if from.center_x() != to.center_x() {
+        draw_top_down_bent_edge(drawing, from, to, edge, charset);
+        return;
+    }
+
     if to.y <= from.bottom() + 1 {
         return;
     }
@@ -968,6 +973,66 @@ fn draw_top_down_edge(
         GraphEdgeArrow::Point => drawing.canvas.set(x, end, charset.arrow_down),
     }
     push_label_on_vertical_line(drawing.labels, x, start, end, edge.label.as_deref());
+}
+
+fn draw_top_down_bent_edge(
+    drawing: &mut RouteDrawing<'_>,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    if to.y <= from.center_y() + 1 {
+        return;
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let source_y = from.center_y();
+    let target_x = to.center_x();
+    let end_y = to.y - 1;
+
+    if target_x > from.center_x() {
+        drawing
+            .canvas
+            .set(from.right(), source_y, charset.right_connector);
+        for x in (from.right() + 1)..target_x {
+            set_route_cell(drawing.canvas, drawing.route_cells, x, source_y, horizontal);
+        }
+    } else {
+        drawing.canvas.set(from.x, source_y, charset.left_connector);
+        for x in (target_x + 1)..from.x {
+            set_route_cell(drawing.canvas, drawing.route_cells, x, source_y, horizontal);
+        }
+    }
+
+    set_route_cell(
+        drawing.canvas,
+        drawing.route_cells,
+        target_x,
+        source_y,
+        charset.corner_down_right,
+    );
+    for y in (source_y + 1)..end_y {
+        set_route_cell(drawing.canvas, drawing.route_cells, target_x, y, vertical);
+    }
+    match edge.arrow {
+        GraphEdgeArrow::Open => set_route_cell(
+            drawing.canvas,
+            drawing.route_cells,
+            target_x,
+            end_y,
+            vertical,
+        ),
+        GraphEdgeArrow::Point => drawing.canvas.set(target_x, end_y, charset.arrow_down),
+    }
+    push_label_on_vertical_line(
+        drawing.labels,
+        target_x,
+        source_y + 1,
+        end_y,
+        edge.label.as_deref(),
+    );
 }
 
 fn draw_top_down_back_edge(

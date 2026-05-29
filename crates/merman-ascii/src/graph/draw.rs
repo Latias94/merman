@@ -101,6 +101,9 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     for label in &edge_labels {
         routing::draw_routed_label(&mut canvas, label);
     }
+    for group in &graph_layout.groups {
+        draw_group_title(&mut canvas, group);
+    }
 
     Ok(canvas.finish())
 }
@@ -138,13 +141,18 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
         canvas.set(group.x, y, charset.vertical);
         canvas.set(right, y, charset.vertical);
     }
+}
 
+fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
     let title_width = display_width(&group.title);
-    if title_width + 2 < group.width {
-        let inner_width = group.width.saturating_sub(2);
-        let title_x = group.x + 1 + inner_width.saturating_sub(title_width) / 2;
-        canvas.write_text(title_x, group.y + 1, &group.title);
+    if title_width > group.width.saturating_sub(2) {
+        return;
     }
+
+    let title_x = (group.x + group.width.saturating_sub(1) / 2)
+        .saturating_sub(title_width / 2)
+        .max(group.x + 1);
+    canvas.write_text(title_x, group.y + 1, &group.title);
 }
 
 fn draw_rect_node(

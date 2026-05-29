@@ -40,6 +40,7 @@ pub(super) struct AsciiGraphEdge {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AsciiGraphGroup {
+    pub(super) id: String,
     pub(super) title: String,
     pub(super) nodes: Vec<String>,
 }
@@ -115,8 +116,14 @@ impl AsciiGraph {
         });
     }
 
-    pub(super) fn add_group(&mut self, title: impl Into<String>, nodes: Vec<String>) {
+    pub(super) fn add_group(
+        &mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        nodes: Vec<String>,
+    ) {
         self.groups.push(AsciiGraphGroup {
+            id: id.into(),
             title: title.into(),
             nodes,
         });

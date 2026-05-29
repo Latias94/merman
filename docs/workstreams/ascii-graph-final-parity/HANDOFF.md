@@ -1,23 +1,22 @@
 # ASCII Graph Final Parity - Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Current State
 
-AGF-030 is complete. Current exact graph fixture count is 61: 38 ASCII and 23 Unicode. Unicode graph
-gaps are clear. Remaining work is ASCII-only subgraph-heavy layouts.
+AGF-050 is complete. Current exact graph fixture count is 75: 52 ASCII and 23 Unicode. Graph fixture
+gaps are clear for all copied `mermaid-ascii` graph fixtures.
 
 ## Active Task
 
-- Task ID: AGF-040
+- Task ID: none
 - Owner: codex
-- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/tests`
-- Validation: `cargo fmt --all --check`; `cargo nextest run -p merman-ascii graph_fixture`;
-  `cargo nextest run -p merman-ascii flowchart`
-- Status: NEEDS_CONTEXT
-- Review: Improve subgraph-heavy fixture parity without fixture-name special cases.
-- Evidence: Pending.
+- Files: none
+- Validation: Broad gates passed.
+- Status: COMPLETE
+- Review: No active task remains in this workstream.
+- Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
 
@@ -26,6 +25,8 @@ gaps are clear. Remaining work is ASCII-only subgraph-heavy layouts.
   `graph/routing/label.rs`; keep `routing.rs` as route orchestration.
 - Added `GraphLabel` for graph node labels so layout and drawing share line-aware width/height
   semantics.
+- Added nested subgraph bounds and Mermaid-ascii-compatible subgraph layout/routing rules; all
+  copied graph fixtures are exact.
 - Keep remaining subgraph parity in this workstream but split blockers if exact parity becomes
   larger than one lane.
 
@@ -35,5 +36,5 @@ gaps are clear. Remaining work is ASCII-only subgraph-heavy layouts.
 
 ## Next Recommended Action
 
-- Execute AGF-040 by comparing the remaining subgraph-heavy fixtures against `repo-ref/mermaid-ascii`
-  layout behavior, then move only exact matches into the allowlist.
+- No next action in this workstream. Future work should target new copied fixtures or non-fixture
+  product gaps as a separate lane.

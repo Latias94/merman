@@ -67,6 +67,7 @@ pub(super) struct CanvasCoord {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GroupLayout {
+    pub(super) id: String,
     pub(super) title: String,
     pub(super) x: usize,
     pub(super) y: usize,
@@ -85,7 +86,12 @@ impl GroupLayout {
 }
 
 pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> GraphLayout {
-    let (nodes, column_widths, row_heights) = layout_nodes(graph, options);
+    let (mut nodes, column_widths, row_heights) = layout_nodes(graph, options);
+    let (group_offset_x, group_offset_y) = subgraph_offsets(graph, &nodes);
+    for node in &mut nodes {
+        node.x += group_offset_x;
+        node.y += group_offset_y;
+    }
     let offset_x = nodes
         .first()
         .map(|node| {
@@ -121,7 +127,7 @@ fn layout_nodes(
 ) {
     match graph.direction {
         GraphDirection::LeftRight => layout_left_right_grid_nodes(graph, options),
-        GraphDirection::TopDown => layout_top_down_linear_nodes(graph, options),
+        GraphDirection::TopDown => layout_top_down_grid_nodes(graph, options),
     }
 }
 
@@ -155,7 +161,11 @@ fn layout_left_right_grid_nodes(
         set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
         set_axis_size(&mut row_heights, coord.y + 2, 1);
         if coord.y > 0 {
-            set_axis_size(&mut row_heights, coord.y - 1, options.graph_padding_y);
+            set_axis_size(
+                &mut row_heights,
+                coord.y - 1,
+                node_padding_y(graph, &placements, index, options),
+            );
         }
     }
 
@@ -187,10 +197,6 @@ fn layout_left_right_grid_nodes(
         set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
     }
 
-    let has_groups = has_non_empty_group(graph);
-    let group_offset_x = usize::from(has_groups) * 2;
-    let group_offset_y = usize::from(has_groups) * 4;
-
     let layouts = placements
         .into_iter()
         .zip(graph.nodes.iter())
@@ -199,8 +205,8 @@ fn layout_left_right_grid_nodes(
             label: GraphLabel::new(&node.label),
             shape: node.shape,
             grid: coord,
-            x: group_offset_x + axis_position(&column_widths, coord.x),
-            y: group_offset_y + axis_position(&row_heights, coord.y),
+            x: axis_position(&column_widths, coord.x),
+            y: axis_position(&row_heights, coord.y),
             width: axis_span(&column_widths, coord.x, 3),
             height: axis_span(&row_heights, coord.y, 3),
         })
@@ -220,10 +226,28 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
     let mut occupied = HashSet::new();
     let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
 
-    for root_index in left_right_root_indices(graph) {
+    let root_indices = left_right_root_indices(graph);
+    let should_separate_roots =
+        should_separate_left_right_roots(graph, &root_indices, &index_by_id);
+    let (external_roots, subgraph_roots): (Vec<_>, Vec<_>) =
+        root_indices.into_iter().partition(|root_index| {
+            !should_separate_roots
+                || node_group_index(graph, &graph.nodes[*root_index].id).is_none()
+        });
+
+    for root_index in external_roots {
         place_left_right_node(
             root_index,
             0,
+            &mut placements,
+            &mut occupied,
+            &mut highest_position_per_level,
+        );
+    }
+    for root_index in subgraph_roots {
+        place_left_right_node(
+            root_index,
+            4,
             &mut placements,
             &mut occupied,
             &mut highest_position_per_level,
@@ -263,6 +287,22 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         .into_iter()
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
         .collect()
+}
+
+fn should_separate_left_right_roots(
+    graph: &AsciiGraph,
+    root_indices: &[usize],
+    index_by_id: &HashMap<&str, usize>,
+) -> bool {
+    let has_external_roots = root_indices
+        .iter()
+        .any(|index| node_group_index(graph, &graph.nodes[*index].id).is_none());
+    let has_subgraph_roots_with_edges = root_indices.iter().any(|index| {
+        node_group_index(graph, &graph.nodes[*index].id).is_some()
+            && !child_indices(graph, *index, index_by_id).is_empty()
+    });
+
+    has_external_roots && has_subgraph_roots_with_edges
 }
 
 fn left_right_root_indices(graph: &AsciiGraph) -> Vec<usize> {
@@ -313,6 +353,7 @@ fn place_left_right_node(
             x: level,
             y: requested_y,
         },
+        GraphDirection::LeftRight,
     );
     placements[node_index] = Some(coord);
     highest_position_per_level.insert(level, coord.y + 4);
@@ -321,10 +362,14 @@ fn place_left_right_node(
 fn reserve_grid_spot(
     occupied: &mut HashSet<(usize, usize)>,
     requested_coord: GridCoord,
+    direction: GraphDirection,
 ) -> GridCoord {
     let mut coord = requested_coord;
     while grid_spot_occupied(occupied, coord) {
-        coord.y += 4;
+        match direction {
+            GraphDirection::LeftRight => coord.y += 4,
+            GraphDirection::TopDown => coord.x += 4,
+        }
     }
 
     for x in coord.x..(coord.x + 3) {
@@ -340,7 +385,7 @@ fn grid_spot_occupied(occupied: &HashSet<(usize, usize)>, coord: GridCoord) -> b
     (coord.x..(coord.x + 3)).any(|x| (coord.y..(coord.y + 3)).any(|y| occupied.contains(&(x, y))))
 }
 
-fn layout_top_down_linear_nodes(
+fn layout_top_down_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
 ) -> (
@@ -348,26 +393,36 @@ fn layout_top_down_linear_nodes(
     BTreeMap<usize, usize>,
     BTreeMap<usize, usize>,
 ) {
-    let has_groups = has_non_empty_group(graph);
-    let group_offset_x = usize::from(has_groups) * 2;
-    let group_offset_y = usize::from(has_groups) * 4;
+    let placements = place_top_down_grid_nodes(graph);
     let mut column_widths = BTreeMap::new();
     let mut row_heights = BTreeMap::new();
-    let measured = graph
-        .nodes
-        .iter()
-        .map(|node| {
-            let width = node_width(node, options);
-            let height = node_height(node, options);
-            (node, width, height)
-        })
-        .collect::<Vec<_>>();
 
-    let mut canvas_width = measured
-        .iter()
-        .map(|(_, width, _)| *width)
-        .max()
-        .unwrap_or_default();
+    for (index, coord) in placements.iter().copied().enumerate() {
+        let node = &graph.nodes[index];
+        set_axis_size(&mut column_widths, coord.x, 1);
+        set_axis_size(
+            &mut column_widths,
+            coord.x + 1,
+            node_width(node, options).saturating_sub(2),
+        );
+        set_axis_size(&mut column_widths, coord.x + 2, 1);
+        if coord.x > 0 {
+            set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
+        }
+
+        let height = node_height(node, options);
+        set_axis_size(&mut row_heights, coord.y, 1);
+        set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
+        set_axis_size(&mut row_heights, coord.y + 2, 1);
+        if coord.y > 0 {
+            set_axis_size(
+                &mut row_heights,
+                coord.y - 1,
+                node_padding_y(graph, &placements, index, options),
+            );
+        }
+    }
+
     let index_by_id = graph
         .nodes
         .iter()
@@ -381,54 +436,111 @@ fn layout_top_down_linear_nodes(
         ) else {
             continue;
         };
-        if to_index <= from_index {
+        let from = placements[from_index];
+        let to = placements[to_index];
+        if to.y <= from.y || from.x != to.x {
             continue;
         }
         if let Some(label) = edge.label.as_deref() {
-            canvas_width = canvas_width.max(display_width(label) + 4);
-        }
-    }
-    let mut y = 0;
-    for (index, (_, width, height)) in measured.iter().enumerate() {
-        let grid_y = index * 4;
-        let node_width = canvas_width.max(*width);
-        set_axis_size(&mut column_widths, 0, 1);
-        set_axis_size(&mut column_widths, 1, node_width.saturating_sub(2));
-        set_axis_size(&mut column_widths, 2, 1);
-        set_axis_size(&mut row_heights, grid_y, 1);
-        set_axis_size(&mut row_heights, grid_y + 1, height.saturating_sub(2));
-        set_axis_size(&mut row_heights, grid_y + 2, 1);
-        if grid_y > 0 {
-            set_axis_size(&mut row_heights, grid_y - 1, options.graph_padding_y);
+            set_axis_size(&mut column_widths, from.x + 1, display_width(label) + 2);
         }
     }
 
-    let layouts = measured
+    let layouts = placements
         .into_iter()
-        .enumerate()
-        .map(|(index, (node, width, height))| {
-            let grid = GridCoord { x: 0, y: index * 4 };
-            let layout_width = canvas_width.max(width);
-            let layout = NodeLayout {
-                id: node.id.clone(),
-                label: GraphLabel::new(&node.label),
-                shape: node.shape,
-                grid,
-                x: group_offset_x + (canvas_width - layout_width) / 2,
-                y,
-                width: layout_width,
-                height,
-            };
-            y += height + options.graph_padding_y;
-            layout
-        })
-        .map(|mut layout| {
-            layout.y += group_offset_y;
-            layout
+        .zip(graph.nodes.iter())
+        .map(|(coord, node)| NodeLayout {
+            id: node.id.clone(),
+            label: GraphLabel::new(&node.label),
+            shape: node.shape,
+            grid: coord,
+            x: axis_position(&column_widths, coord.x),
+            y: axis_position(&row_heights, coord.y),
+            width: axis_span(&column_widths, coord.x, 3),
+            height: axis_span(&row_heights, coord.y, 3),
         })
         .collect();
 
     (layouts, column_widths, row_heights)
+}
+
+fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
+    let index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let mut placements = vec![None; graph.nodes.len()];
+    let mut occupied = HashSet::new();
+    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
+
+    for root_index in left_right_root_indices(graph) {
+        place_top_down_node(
+            root_index,
+            0,
+            &mut placements,
+            &mut occupied,
+            &mut highest_position_per_level,
+        );
+    }
+
+    for node_index in 0..graph.nodes.len() {
+        if placements[node_index].is_none() {
+            place_top_down_node(
+                node_index,
+                0,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+
+        let Some(parent_coord) = placements[node_index] else {
+            continue;
+        };
+        let child_level = parent_coord.y + 4;
+        for child_index in child_indices(graph, node_index, &index_by_id) {
+            if placements[child_index].is_some() {
+                continue;
+            }
+            place_top_down_node(
+                child_index,
+                child_level,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+    }
+
+    placements
+        .into_iter()
+        .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
+        .collect()
+}
+
+fn place_top_down_node(
+    node_index: usize,
+    level: usize,
+    placements: &mut [Option<GridCoord>],
+    occupied: &mut HashSet<(usize, usize)>,
+    highest_position_per_level: &mut BTreeMap<usize, usize>,
+) {
+    let requested_x = highest_position_per_level
+        .get(&level)
+        .copied()
+        .unwrap_or_default();
+    let coord = reserve_grid_spot(
+        occupied,
+        GridCoord {
+            x: requested_x,
+            y: level,
+        },
+        GraphDirection::TopDown,
+    );
+    placements[node_index] = Some(coord);
+    highest_position_per_level.insert(level, coord.x + 4);
 }
 
 fn set_axis_size(axis_sizes: &mut BTreeMap<usize, usize>, index: usize, size: usize) {
@@ -436,6 +548,66 @@ fn set_axis_size(axis_sizes: &mut BTreeMap<usize, usize>, index: usize, size: us
         .entry(index)
         .and_modify(|current| *current = (*current).max(size))
         .or_insert(size);
+}
+
+fn node_padding_y(
+    graph: &AsciiGraph,
+    placements: &[GridCoord],
+    node_index: usize,
+    options: &AsciiRenderOptions,
+) -> usize {
+    const SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD: usize = 4;
+
+    let Some(node) = graph.nodes.get(node_index) else {
+        return options.graph_padding_y;
+    };
+    let Some(group_index) = node_group_index(graph, &node.id) else {
+        return options.graph_padding_y;
+    };
+    if !has_incoming_edge_from_outside_group(graph, &node.id, group_index) {
+        return options.graph_padding_y;
+    }
+
+    let node_y = placements
+        .get(node_index)
+        .map(|coord| coord.y)
+        .unwrap_or_default();
+    let has_higher_external_entry = graph.groups[group_index].nodes.iter().any(|other_id| {
+        if other_id == &node.id
+            || !has_incoming_edge_from_outside_group(graph, other_id, group_index)
+        {
+            return false;
+        }
+        let Some(other_index) = graph.nodes.iter().position(|other| other.id == *other_id) else {
+            return false;
+        };
+        placements
+            .get(other_index)
+            .is_some_and(|coord| coord.y < node_y)
+    });
+    if has_higher_external_entry {
+        return options.graph_padding_y;
+    }
+
+    options.graph_padding_y + SUBGRAPH_EXTERNAL_INCOMING_OVERHEAD
+}
+
+fn has_incoming_edge_from_outside_group(
+    graph: &AsciiGraph,
+    node_id: &str,
+    group_index: usize,
+) -> bool {
+    graph
+        .edges
+        .iter()
+        .any(|edge| edge.to == node_id && node_group_index(graph, &edge.from) != Some(group_index))
+}
+
+fn node_group_index(graph: &AsciiGraph, node_id: &str) -> Option<usize> {
+    graph
+        .groups
+        .iter()
+        .position(|group| group.nodes.iter().any(|member| member == node_id))
 }
 
 fn axis_position(axis_sizes: &BTreeMap<usize, usize>, index: usize) -> usize {
@@ -456,57 +628,158 @@ fn node_height(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
     2 + GraphLabel::new(&node.label).content_height() + options.box_border_padding * 2
 }
 
-fn has_non_empty_group(graph: &AsciiGraph) -> bool {
-    graph.groups.iter().any(|group| {
-        group
-            .nodes
+fn subgraph_offsets(graph: &AsciiGraph, layouts: &[NodeLayout]) -> (usize, usize) {
+    let mut min_x = 0isize;
+    let mut min_y = 0isize;
+
+    for group_index in 0..graph.groups.len() {
+        let Some(bounds) = raw_group_bounds(graph, layouts, group_index) else {
+            continue;
+        };
+        min_x = min_x.min(bounds.x);
+        min_y = min_y.min(bounds.y);
+    }
+
+    (
+        min_x.checked_neg().unwrap_or_default() as usize,
+        min_y.checked_neg().unwrap_or_default() as usize,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RawBounds {
+    x: isize,
+    y: isize,
+    right: isize,
+    bottom: isize,
+}
+
+impl RawBounds {
+    fn include(&mut self, other: RawBounds) {
+        self.x = self.x.min(other.x);
+        self.y = self.y.min(other.y);
+        self.right = self.right.max(other.right);
+        self.bottom = self.bottom.max(other.bottom);
+    }
+}
+
+fn raw_group_bounds(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    group_index: usize,
+) -> Option<RawBounds> {
+    let group = graph.groups.get(group_index)?;
+    let mut member_bounds = None::<RawBounds>;
+
+    for member in &group.nodes {
+        let bounds = if let Some(layout) = layouts.iter().find(|layout| layout.id == *member) {
+            Some(RawBounds {
+                x: layout.x as isize,
+                y: layout.y as isize,
+                right: layout.right() as isize,
+                bottom: layout.bottom() as isize,
+            })
+        } else if let Some(child_index) = graph
+            .groups
             .iter()
-            .any(|group_node| graph.nodes.iter().any(|node| node.id == *group_node))
+            .position(|child| child.id == *member && child.id != group.id)
+        {
+            raw_group_bounds(graph, layouts, child_index)
+        } else {
+            None
+        };
+
+        let Some(bounds) = bounds else {
+            continue;
+        };
+        if let Some(current) = &mut member_bounds {
+            current.include(bounds);
+        } else {
+            member_bounds = Some(bounds);
+        }
+    }
+
+    let member_bounds = member_bounds?;
+    let title_space = GraphLabel::new(&group.title).content_height() + 3;
+    let x = member_bounds.x - 2;
+    let y = member_bounds.y - title_space as isize;
+    let right = member_bounds.right + 2;
+    let bottom = member_bounds.bottom + 2;
+    let min_width = display_width(&group.title) as isize + 2;
+    let width = right - x + 1;
+
+    Some(RawBounds {
+        x,
+        y,
+        right: if width < min_width {
+            x + min_width - 1
+        } else {
+            right
+        },
+        bottom,
     })
 }
 
 pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<GroupLayout> {
-    graph
-        .groups
-        .iter()
-        .filter_map(|group| {
-            let members = layouts
-                .iter()
-                .filter(|layout| group.nodes.iter().any(|node| node == &layout.id))
-                .collect::<Vec<_>>();
-            if members.is_empty() {
-                return None;
-            }
+    let mut groups = Vec::new();
 
-            let min_x = members.iter().map(|layout| layout.x).min().unwrap_or(0);
-            let min_y = members.iter().map(|layout| layout.y).min().unwrap_or(0);
-            let max_right = members
-                .iter()
-                .map(|layout| layout.right())
-                .max()
-                .unwrap_or(0);
-            let max_bottom = members
-                .iter()
-                .map(|layout| layout.bottom())
-                .max()
-                .unwrap_or(0);
-            let x = min_x.saturating_sub(2);
-            let y = min_y.saturating_sub(4);
-            let right = max_right + 2;
-            let bottom = max_bottom + 2;
-            let min_width = display_width(&group.title) + 4;
-            let width = (right - x + 1).max(min_width);
-            let height = bottom - y + 1;
+    for group in &graph.groups {
+        let node_members = layouts
+            .iter()
+            .filter(|layout| group.nodes.iter().any(|node| node == &layout.id))
+            .collect::<Vec<_>>();
+        let child_members = groups
+            .iter()
+            .filter(|layout: &&GroupLayout| group.nodes.iter().any(|node| node == &layout.id))
+            .collect::<Vec<_>>();
+        if node_members.is_empty() && child_members.is_empty() {
+            continue;
+        }
 
-            Some(GroupLayout {
-                title: group.title.clone(),
-                x,
-                y,
-                width,
-                height,
-            })
-        })
-        .collect()
+        let min_x = node_members
+            .iter()
+            .map(|layout| layout.x)
+            .chain(child_members.iter().map(|layout| layout.x))
+            .min()
+            .unwrap_or(0);
+        let min_y = node_members
+            .iter()
+            .map(|layout| layout.y)
+            .chain(child_members.iter().map(|layout| layout.y))
+            .min()
+            .unwrap_or(0);
+        let max_right = node_members
+            .iter()
+            .map(|layout| layout.right())
+            .chain(child_members.iter().map(|layout| layout.right()))
+            .max()
+            .unwrap_or(0);
+        let max_bottom = node_members
+            .iter()
+            .map(|layout| layout.bottom())
+            .chain(child_members.iter().map(|layout| layout.bottom()))
+            .max()
+            .unwrap_or(0);
+        let x = min_x.saturating_sub(2);
+        let title_space = GraphLabel::new(&group.title).content_height() + 3;
+        let y = min_y.saturating_sub(title_space);
+        let right = max_right + 2;
+        let bottom = max_bottom + 2;
+        let min_width = display_width(&group.title) + 2;
+        let width = (right - x + 1).max(min_width);
+        let height = bottom - y + 1;
+
+        groups.push(GroupLayout {
+            id: group.id.clone(),
+            title: group.title.clone(),
+            x,
+            y,
+            width,
+            height,
+        });
+    }
+
+    groups
 }
 
 fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {

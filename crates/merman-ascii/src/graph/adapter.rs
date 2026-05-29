@@ -45,7 +45,7 @@ pub(crate) fn from_flowchart_model(
     }
 
     for subgraph in &model.subgraphs {
-        graph.add_group(&subgraph.title, subgraph.nodes.clone());
+        graph.add_group(&subgraph.id, &subgraph.title, subgraph.nodes.clone());
     }
 
     Ok(graph)
@@ -138,11 +138,16 @@ fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
         });
     }
 
+    let subgraph_ids = model
+        .subgraphs
+        .iter()
+        .map(|subgraph| subgraph.id.as_str())
+        .collect::<HashSet<_>>();
     if model
         .subgraphs
         .iter()
         .flat_map(|subgraph| subgraph.nodes.iter())
-        .any(|node| !node_ids.contains(node.as_str()))
+        .any(|node| !node_ids.contains(node.as_str()) && !subgraph_ids.contains(node.as_str()))
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",

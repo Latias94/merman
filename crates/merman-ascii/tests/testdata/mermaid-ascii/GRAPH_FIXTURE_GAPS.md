@@ -31,12 +31,26 @@ ASCII:
 - `self_reference.txt`
 - `single_node_longer_name.txt`
 - `single_node.txt`
+- `subgraph_complex_mixed.txt`
+- `subgraph_complex_nested.txt`
 - `subgraph_empty.txt`
+- `subgraph_explicit_title.txt`
+- `subgraph_mixed_nodes_td.txt`
+- `subgraph_mixed_nodes.txt`
 - `subgraph_multiple_edges.txt`
 - `subgraph_multiple_nodes.txt`
+- `subgraph_nested_with_external.txt`
+- `subgraph_nested.txt`
+- `subgraph_node_outside_lr.txt`
 - `subgraph_single_node.txt`
+- `subgraph_standalone_labeled_node.txt`
 - `subgraph_td_direction.txt`
+- `subgraph_td_multiple_paddingy.txt`
+- `subgraph_td_multiple.txt`
+- `subgraph_three_levels_nested.txt`
+- `subgraph_three_separate.txt`
 - `subgraph_two_separate.txt`
+- `subgraph_with_labels.txt`
 - `three_nodes_single_line.txt`
 - `three_nodes.txt`
 - `two_layer_single_graph_longer_names.txt`
@@ -77,20 +91,7 @@ Unicode:
 
 ASCII:
 
-- `subgraph_complex_mixed.txt`
-- `subgraph_complex_nested.txt`
-- `subgraph_explicit_title.txt`
-- `subgraph_mixed_nodes_td.txt`
-- `subgraph_mixed_nodes.txt`
-- `subgraph_nested_with_external.txt`
-- `subgraph_nested.txt`
-- `subgraph_node_outside_lr.txt`
-- `subgraph_standalone_labeled_node.txt`
-- `subgraph_td_multiple_paddingy.txt`
-- `subgraph_td_multiple.txt`
-- `subgraph_three_levels_nested.txt`
-- `subgraph_three_separate.txt`
-- `subgraph_with_labels.txt`
+- None.
 
 Unicode:
 

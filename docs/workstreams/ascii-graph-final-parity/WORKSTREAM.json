@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-graph-final-parity",
   "title": "ASCII Graph Final Parity",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-29",
   "scope_kind": "execution",
   "problem": "Remaining ASCII graph parity requires multiline labels, subgraph-heavy layout work, and a deeper routing module boundary before adding more behavior.",
@@ -41,12 +41,22 @@
       "date": "2026-05-29",
       "task": "AGF-030",
       "result": "added multiline node labels and moved multiline_single_node into exact parity"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGF-040",
+      "result": "moved all remaining ASCII subgraph fixtures into exact parity"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGF-050",
+      "result": "passed broad gates and closed graph fixture parity lane"
     }
   ],
   "adr_refs": [],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "AGF-040",
-    "notes": "Work remaining subgraph-heavy fixture parity without fixture-name special cases."
+    "default_action": "close",
+    "next_task": null,
+    "notes": "Workstream complete; open a new lane for future copied fixtures or non-fixture product gaps."
   }
 }
