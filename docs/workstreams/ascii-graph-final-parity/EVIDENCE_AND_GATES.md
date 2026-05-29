@@ -1,0 +1,28 @@
+# ASCII Graph Final Parity - Evidence And Gates
+
+Status: Active
+Last updated: 2026-05-29
+
+## Focused Gates
+
+- `cargo fmt --all --check`
+- `cargo nextest run -p merman-ascii graph_fixture`
+- `cargo nextest run -p merman-ascii graph::`
+- `cargo nextest run -p merman-ascii flowchart`
+
+## Broad Gates
+
+- `cargo nextest run -p merman-ascii`
+- `cargo nextest run -p merman --features ascii`
+- `cargo nextest run -p merman-cli --features ascii`
+- `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+- `git diff --check`
+
+## Evidence Log
+
+- 2026-05-29 AGF-010: Workstream opened from the remaining graph gaps. Starting graph fixture
+  parity is 60 exact matches: 37 ASCII and 23 Unicode.
+- 2026-05-29 AGF-020: Split graph routing internals into route-cell and routed-label modules
+  without intentional behavior changes. Passed `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii graph_fixture`, `cargo nextest run -p merman-ascii graph::`,
+  and `git diff --check`.

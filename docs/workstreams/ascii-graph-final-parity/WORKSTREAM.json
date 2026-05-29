@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-graph-final-parity",
+  "title": "ASCII Graph Final Parity",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "Remaining ASCII graph parity requires multiline labels, subgraph-heavy layout work, and a deeper routing module boundary before adding more behavior.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-graph-final-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-graph-final-parity/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-graph-final-parity/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii graph::",
+    "cargo nextest run -p merman-ascii flowchart"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "AGF-010",
+      "result": "opened final graph parity lane"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGF-020",
+      "result": "split routing internals and passed focused graph gates"
+    }
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AGF-030",
+    "notes": "Implement multiline node label parity before subgraph-heavy fixtures."
+  }
+}
