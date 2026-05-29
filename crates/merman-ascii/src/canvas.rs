@@ -21,6 +21,13 @@ impl Canvas {
         self.cells[y * self.width + x] = ch;
     }
 
+    pub(crate) fn get(&self, x: usize, y: usize) -> Option<char> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        Some(self.cells[y * self.width + x])
+    }
+
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         for (offset, ch) in text.chars().enumerate() {
             self.set(x + offset, y, ch);

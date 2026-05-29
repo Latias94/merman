@@ -1,6 +1,6 @@
 # ASCII Graph Junction Routing - Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Focused Gates
@@ -30,3 +30,24 @@ Last updated: 2026-05-29
   - PASS `cargo fmt --all --check`
   - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
   - PASS `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
+- 2026-05-29 AGJ-030: Ported the high-value shape of `mermaid-ascii`'s Go routing core into the
+  Rust graph renderer: 3x3 grid ports, A* path search, path segment merging, route-cell-only
+  junction merging, Unicode box-start connectors, and corner/arrow drawing. Exact graph fixture
+  matches increased from 44 to 48:
+  - ASCII: 28 exact matches, 24 named gaps.
+  - Unicode: 20 exact matches, 3 named gaps.
+- 2026-05-29 AGJ-030 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
+- 2026-05-29 AGJ-040: Closeout complete. `FLOWCHART_SUPPORT.md`, `CHANGELOG.md`, the fixture
+  allowlist, and the gap inventory now reflect Go-style LR path routing and 48 exact graph fixture
+  matches.
+- 2026-05-29 AGJ-040 gates:
+  - PASS `cargo fmt --all --check`
+  - PASS `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS `cargo nextest run -p merman --features ascii` (3 passed)
+  - PASS `cargo nextest run -p merman-cli --features ascii` (10 passed)
+  - PASS `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - PASS `git diff --check`

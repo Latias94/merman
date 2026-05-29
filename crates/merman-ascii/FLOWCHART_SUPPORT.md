@@ -15,7 +15,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Node labels | Supported subset | Single-line text labels. Missing labels fall back to node ids. |
 | Edges | Supported subset | Directed point arrows, open edges, dotted edges, edge labels, and deterministic length spacing for simple LR/TD edges. |
 | Subgraphs | Supported subset | Simple titled group boxes render around supported member nodes with upstream-style title rows. |
-| Layout | Supported subset | LR roots, child levels, multi-root graphs, basic fan-out/fan-in, self-loops, same-row back edges, and simple subgraphs use a deterministic grid layout. TD remains a simpler vertical layout. |
+| Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, and simple subgraphs use a deterministic grid layout. TD remains a simpler vertical layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | Safety limit | Supported | `AsciiRenderOptions::max_grid_cells` prevents unexpectedly large character grids. |
 
@@ -54,10 +54,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 ## Known Limitations
 
-- The current layout is a growing grid-based parity implementation, not the full upstream routing
-  algorithm.
-- Crossing junction merging, duplicate/bidirectional label separation, and TD back-edge labels are
-  not product-supported yet.
+- LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, but duplicate
+  and bidirectional label lanes are not product-supported yet.
+- TD back-edge labels are not product-supported yet.
 - Complex nested subgraph routing and external-edge routing through subgraphs are not product-
   supported yet.
 - Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
@@ -74,4 +73,4 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii flowchart`
 
 Golden tests compare against copied `mermaid-ascii` fixtures for the supported subset. The current
-graph fixture allowlist covers 44 exact graph matches: 26 ASCII and 18 Unicode.
+graph fixture allowlist covers 48 exact graph matches: 28 ASCII and 20 Unicode.

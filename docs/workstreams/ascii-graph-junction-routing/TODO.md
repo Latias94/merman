@@ -1,6 +1,6 @@
 # ASCII Graph Junction Routing - TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze
@@ -26,26 +26,30 @@ Last updated: 2026-05-29
 
 ## M2 - Junction Merge Routing
 
-- [ ] AGJ-030 [owner=codex] [deps=AGJ-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
+- [x] AGJ-030 [owner=codex] [deps=AGJ-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
   Goal: Add junction-aware line merging for existing LR edge routes and move exact crossing fixtures into the allowlist.
   Validation:
-  - `cargo fmt --all --check`
-  - `cargo nextest run -p merman-ascii graph_fixture`
-  - `cargo nextest run -p merman-ascii flowchart`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph_fixture` (2 passed, 41 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii flowchart` (22 passed, 21 skipped)
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii graph::` (6 passed, 37 skipped)
   Review: Do not special-case fixture names; route merging must be glyph/segment based.
-  Evidence: Allowlist/gap delta and task journal.
+  Evidence: LR routing now uses a Go-style grid path search for non-self forward/crossing edges
+  and route-cell junction merging. Exact graph fixture matches increased from 44 to 48.
   Handoff: AGJ-040 is next.
 
 ## M3 - Closeout
 
-- [ ] AGJ-040 [owner=codex] [deps=AGJ-030] [scope=docs/workstreams/ascii-graph-junction-routing,CHANGELOG.md,crates/merman-ascii/FLOWCHART_SUPPORT.md]
+- [x] AGJ-040 [owner=codex] [deps=AGJ-030] [scope=docs/workstreams/ascii-graph-junction-routing,CHANGELOG.md,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Record final evidence, document shipped behavior and remaining gaps, verify, and commit.
   Validation:
-  - `cargo nextest run -p merman-ascii`
-  - `cargo nextest run -p merman --features ascii`
-  - `cargo nextest run -p merman-cli --features ascii`
-  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
-  - `git diff --check`
+  - PASS 2026-05-29: `cargo fmt --all --check`
+  - PASS 2026-05-29: `cargo nextest run -p merman-ascii` (43 passed)
+  - PASS 2026-05-29: `cargo nextest run -p merman --features ascii` (3 passed)
+  - PASS 2026-05-29: `cargo nextest run -p merman-cli --features ascii` (10 passed)
+  - PASS 2026-05-29: `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - PASS 2026-05-29: `git diff --check`
   Review: Remaining non-junction work is split or named as follow-up.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Lane closes or hands off with concrete next task.
+  Handoff: Lane closed. Follow-ons are label lanes, TD back-edge labels, padding fixture directives,
+  and complex subgraph routing.

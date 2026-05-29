@@ -1,11 +1,12 @@
 use super::charset::GraphCharset;
-use super::layout::{GroupLayout, NodeLayout, layout_groups, layout_nodes};
+use super::layout::{GroupLayout, NodeLayout, layout_graph};
 use super::model::{AsciiGraph, GraphNodeShape};
 use super::routing;
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
+use std::collections::HashSet;
 
 pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
@@ -14,21 +15,32 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     }
 
     let charset = GraphCharset::for_options(options);
-    let layouts = layout_nodes(graph, options);
-    let group_layouts = layout_groups(graph, &layouts);
+    let graph_layout = layout_graph(graph, options);
     let (edge_width, edge_height) =
-        routing::edge_canvas_extent(&layouts, &graph.edges, graph.direction);
-    let width = layouts
+        routing::edge_canvas_extent(&graph_layout.nodes, &graph.edges, graph.direction);
+    let width = graph_layout
+        .nodes
         .iter()
         .map(|layout| layout.x + layout.width)
-        .chain(group_layouts.iter().map(|layout| layout.x + layout.width))
+        .chain(
+            graph_layout
+                .groups
+                .iter()
+                .map(|layout| layout.x + layout.width),
+        )
         .chain(std::iter::once(edge_width))
         .max()
         .unwrap_or_default();
-    let height = layouts
+    let height = graph_layout
+        .nodes
         .iter()
         .map(|layout| layout.y + layout.height)
-        .chain(group_layouts.iter().map(|layout| layout.y + layout.height))
+        .chain(
+            graph_layout
+                .groups
+                .iter()
+                .map(|layout| layout.y + layout.height),
+        )
         .chain(std::iter::once(edge_height))
         .max()
         .unwrap_or_default();
@@ -41,17 +53,34 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
     }
 
     let mut canvas = Canvas::new(width, height);
-    for group in &group_layouts {
+    let mut route_cells = HashSet::new();
+    for group in &graph_layout.groups {
         draw_group(&mut canvas, group, &charset);
     }
-    for layout in &layouts {
+    for layout in &graph_layout.nodes {
         draw_node(&mut canvas, layout, &charset, options);
     }
     for edge in graph.edges.iter().filter(|edge| edge.from != edge.to) {
-        routing::draw_edge(&mut canvas, &layouts, edge, graph.direction, &charset);
+        routing::draw_edge(
+            &mut canvas,
+            &mut route_cells,
+            &graph_layout,
+            &graph.edges,
+            edge,
+            graph.direction,
+            &charset,
+        );
     }
     for edge in graph.edges.iter().filter(|edge| edge.from == edge.to) {
-        routing::draw_edge(&mut canvas, &layouts, edge, graph.direction, &charset);
+        routing::draw_edge(
+            &mut canvas,
+            &mut route_cells,
+            &graph_layout,
+            &graph.edges,
+            edge,
+            graph.direction,
+            &charset,
+        );
     }
 
     Ok(canvas.finish())

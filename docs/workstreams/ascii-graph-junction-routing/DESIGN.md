@@ -1,6 +1,6 @@
 # ASCII Graph Junction Routing
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## Why This Lane Exists
@@ -79,3 +79,5 @@ This lane can close when:
 - focused and broader Rust gates pass,
 - docs reflect the shipped behavior,
 - and changes are committed with only this lane's files staged.
+
+Closeout result: complete on 2026-05-29 with 48 exact graph fixture matches.

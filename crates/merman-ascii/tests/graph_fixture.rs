@@ -30,6 +30,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "ampersand_lhs_and_rhs.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "ampersand_rhs.txt",
     },
     GraphFixture {
@@ -43,6 +47,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "backlink_from_bottom.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "backlink_from_top.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -134,6 +142,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "ampersand_lhs_and_rhs.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "ampersand_rhs.txt",
     },
     GraphFixture {
@@ -147,6 +159,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "extended-chars",
         name: "backlink_from_bottom.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "backlink_from_top.txt",
     },
     GraphFixture {
         directory: "extended-chars",
@@ -205,15 +221,7 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
 const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
-        name: "ampersand_lhs_and_rhs.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "back_edges_two_labels_td.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "backlink_from_top.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -309,15 +317,7 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
-        name: "ampersand_lhs_and_rhs.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
         name: "back_edges_two_labels_td.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "backlink_from_top.txt",
     },
     GraphFixture {
         directory: "extended-chars",

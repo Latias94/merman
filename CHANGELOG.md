@@ -16,6 +16,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added grid-based ASCII/Unicode flowchart routing for multi-root graphs, fan-out/fan-in branches,
   self-loops, same-row back edges, and upstream-style simple subgraph boxes, with copied
   `mermaid-ascii` fixture parity tracking.
+- Added Go-style grid path routing and junction merging for ASCII/Unicode LR flowcharts, improving
+  copied `mermaid-ascii` graph fixture parity for crossing ampersand routes and top backlink routes.
 
 ## [0.6.0] - 2026-05-28
 

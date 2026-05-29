@@ -4,10 +4,30 @@ use crate::text::display_width;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GraphLayout {
+    pub(super) nodes: Vec<NodeLayout>,
+    pub(super) groups: Vec<GroupLayout>,
+    column_widths: BTreeMap<usize, usize>,
+    row_heights: BTreeMap<usize, usize>,
+    offset_x: usize,
+    offset_y: usize,
+}
+
+impl GraphLayout {
+    pub(super) fn grid_to_canvas(&self, coord: GridCoord) -> CanvasCoord {
+        CanvasCoord {
+            x: self.offset_x + axis_position(&self.column_widths, coord.x),
+            y: self.offset_y + axis_position(&self.row_heights, coord.y),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct NodeLayout {
     pub(super) id: String,
     pub(super) label: String,
     pub(super) shape: GraphNodeShape,
+    pub(super) grid: GridCoord,
     pub(super) x: usize,
     pub(super) y: usize,
     pub(super) width: usize,
@@ -32,10 +52,16 @@ impl NodeLayout {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct GridCoord {
+    pub(super) x: usize,
+    pub(super) y: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct GridCoord {
-    x: usize,
-    y: usize,
+pub(super) struct CanvasCoord {
+    pub(super) x: usize,
+    pub(super) y: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +83,41 @@ impl GroupLayout {
     }
 }
 
-pub(super) fn layout_nodes(graph: &AsciiGraph, options: &AsciiRenderOptions) -> Vec<NodeLayout> {
+pub(super) fn layout_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> GraphLayout {
+    let (nodes, column_widths, row_heights) = layout_nodes(graph, options);
+    let offset_x = nodes
+        .first()
+        .map(|node| {
+            node.x
+                .saturating_sub(axis_position(&column_widths, node.grid.x))
+        })
+        .unwrap_or_default();
+    let offset_y = nodes
+        .first()
+        .map(|node| {
+            node.y
+                .saturating_sub(axis_position(&row_heights, node.grid.y))
+        })
+        .unwrap_or_default();
+    let groups = layout_groups(graph, &nodes);
+    GraphLayout {
+        nodes,
+        groups,
+        column_widths,
+        row_heights,
+        offset_x,
+        offset_y,
+    }
+}
+
+fn layout_nodes(
+    graph: &AsciiGraph,
+    options: &AsciiRenderOptions,
+) -> (
+    Vec<NodeLayout>,
+    BTreeMap<usize, usize>,
+    BTreeMap<usize, usize>,
+) {
     match graph.direction {
         GraphDirection::LeftRight => layout_left_right_grid_nodes(graph, options),
         GraphDirection::TopDown => layout_top_down_linear_nodes(graph, options),
@@ -67,7 +127,11 @@ pub(super) fn layout_nodes(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 fn layout_left_right_grid_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-) -> Vec<NodeLayout> {
+) -> (
+    Vec<NodeLayout>,
+    BTreeMap<usize, usize>,
+    BTreeMap<usize, usize>,
+) {
     let placements = place_left_right_grid_nodes(graph);
     let mut column_widths = BTreeMap::new();
     let mut row_heights = BTreeMap::new();
@@ -123,19 +187,22 @@ fn layout_left_right_grid_nodes(
     let group_offset_y = usize::from(has_groups) * 4;
     let label_y_offset = usize::from(graph.edges.iter().any(|edge| edge.label.is_some()));
 
-    placements
+    let layouts = placements
         .into_iter()
         .zip(graph.nodes.iter())
         .map(|(coord, node)| NodeLayout {
             id: node.id.clone(),
             label: node.label.clone(),
             shape: node.shape,
+            grid: coord,
             x: group_offset_x + axis_position(&column_widths, coord.x),
             y: group_offset_y + label_y_offset + axis_position(&row_heights, coord.y),
             width: axis_span(&column_widths, coord.x, 3),
             height: axis_span(&row_heights, coord.y, 3),
         })
-        .collect()
+        .collect();
+
+    (layouts, column_widths, row_heights)
 }
 
 fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
@@ -272,10 +339,16 @@ fn grid_spot_occupied(occupied: &HashSet<(usize, usize)>, coord: GridCoord) -> b
 fn layout_top_down_linear_nodes(
     graph: &AsciiGraph,
     options: &AsciiRenderOptions,
-) -> Vec<NodeLayout> {
+) -> (
+    Vec<NodeLayout>,
+    BTreeMap<usize, usize>,
+    BTreeMap<usize, usize>,
+) {
     let has_groups = has_non_empty_group(graph);
     let group_offset_x = usize::from(has_groups) * 2;
     let group_offset_y = usize::from(has_groups) * 4;
+    let mut column_widths = BTreeMap::new();
+    let mut row_heights = BTreeMap::new();
     let measured = graph
         .nodes
         .iter()
@@ -292,13 +365,33 @@ fn layout_top_down_linear_nodes(
         .max()
         .unwrap_or_default();
     let mut y = 0;
-    measured
+    for (index, (_, width, height)) in measured.iter().enumerate() {
+        let grid_y = index * 4;
+        set_axis_size(&mut column_widths, 0, 1);
+        set_axis_size(
+            &mut column_widths,
+            1,
+            canvas_width.max(*width).saturating_sub(2),
+        );
+        set_axis_size(&mut column_widths, 2, 1);
+        set_axis_size(&mut row_heights, grid_y, 1);
+        set_axis_size(&mut row_heights, grid_y + 1, height.saturating_sub(2));
+        set_axis_size(&mut row_heights, grid_y + 2, 1);
+        if grid_y > 0 {
+            set_axis_size(&mut row_heights, grid_y - 1, options.graph_padding_y);
+        }
+    }
+
+    let layouts = measured
         .into_iter()
-        .map(|(node, width, height)| {
+        .enumerate()
+        .map(|(index, (node, width, height))| {
+            let grid = GridCoord { x: 0, y: index * 4 };
             let layout = NodeLayout {
                 id: node.id.clone(),
                 label: node.label.clone(),
                 shape: node.shape,
+                grid,
                 x: group_offset_x + (canvas_width - width) / 2,
                 y,
                 width,
@@ -311,7 +404,9 @@ fn layout_top_down_linear_nodes(
             layout.y += group_offset_y;
             layout
         })
-        .collect()
+        .collect();
+
+    (layouts, column_widths, row_heights)
 }
 
 fn set_axis_size(axis_sizes: &mut BTreeMap<usize, usize>, index: usize, size: usize) {

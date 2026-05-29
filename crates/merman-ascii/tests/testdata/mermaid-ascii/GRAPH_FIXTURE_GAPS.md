@@ -9,10 +9,12 @@ the current gap shape readable for planning.
 ASCII:
 
 - `ampersand_lhs.txt`
+- `ampersand_lhs_and_rhs.txt`
 - `ampersand_rhs.txt`
 - `ampersand_without_edge.txt`
 - `back_reference_from_child.txt`
 - `backlink_from_bottom.txt`
+- `backlink_from_top.txt`
 - `flowchart_tb_simple.txt`
 - `graph_tb_direction.txt`
 - `self_reference_with_edge.txt`
@@ -38,10 +40,12 @@ ASCII:
 Unicode:
 
 - `ampersand_lhs.txt`
+- `ampersand_lhs_and_rhs.txt`
 - `ampersand_rhs.txt`
 - `ampersand_without_edge.txt`
 - `back_reference_from_child.txt`
 - `backlink_from_bottom.txt`
+- `backlink_from_top.txt`
 - `self_reference_with_edge.txt`
 - `self_reference.txt`
 - `single_node_longer_name.txt`
@@ -60,9 +64,7 @@ Unicode:
 
 ASCII:
 
-- `ampersand_lhs_and_rhs.txt`
 - `back_edges_two_labels_td.txt`
-- `backlink_from_top.txt`
 - `backlink_with_short_y_padding.txt`
 - `bidirectional_edge_labels_lr.txt`
 - `bidirectional_edge_labels_td.txt`
@@ -89,8 +91,6 @@ ASCII:
 
 Unicode:
 
-- `ampersand_lhs_and_rhs.txt`
 - `back_edges_two_labels_td.txt`
-- `backlink_from_top.txt`
 - `comments.txt`
 - `preserve_order_of_definition.txt`

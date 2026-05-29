@@ -1,6 +1,6 @@
 # ASCII Graph Junction Routing - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze
@@ -33,3 +33,6 @@ Exit criteria:
 - Focused and broad Rust gates pass with fresh evidence.
 - Docs and gap inventory reflect the final exact count.
 - Lane is committed or explicitly handed off.
+
+Result: complete. The final exact graph fixture count is 48, with remaining gaps named in
+`crates/merman-ascii/tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md`.
