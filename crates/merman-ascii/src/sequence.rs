@@ -12,21 +12,32 @@ const BOX_BORDER_WIDTH: usize = 2;
 const LABEL_LEFT_MARGIN: usize = 2;
 const LABEL_BUFFER_SPACE: usize = 10;
 const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
+const NOTE_MESSAGE_TYPE: i32 = 2;
 const SOLID_FILLED_MESSAGE_TYPE: i32 = 0;
 const DOTTED_FILLED_MESSAGE_TYPE: i32 = 1;
 const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
 const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
+const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
+const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
+const NOTE_PLACEMENT_OVER: i32 = 2;
+const NOTE_SIDE_GAP: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
     participants: Vec<SequenceParticipant>,
-    messages: Vec<SequenceMessage>,
+    events: Vec<SequenceEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SequenceParticipant {
     id: String,
     label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SequenceEvent {
+    Message(SequenceMessage),
+    Note(SequenceNote),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +59,35 @@ enum SequenceLineStyle {
 enum SequenceArrowHead {
     Filled,
     Open,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SequenceNote {
+    from: usize,
+    to: usize,
+    label: String,
+    placement: SequenceNotePlacement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceNotePlacement {
+    LeftOf,
+    RightOf,
+    Over,
+}
+
+impl SequenceNotePlacement {
+    fn from_model(value: Option<i32>) -> Result<Self> {
+        match value.unwrap_or(NOTE_PLACEMENT_OVER) {
+            NOTE_PLACEMENT_LEFT_OF => Ok(Self::LeftOf),
+            NOTE_PLACEMENT_RIGHT_OF => Ok(Self::RightOf),
+            NOTE_PLACEMENT_OVER => Ok(Self::Over),
+            _ => Err(AsciiError::UnsupportedFeature {
+                diagram_type: "sequence",
+                feature: "note placement",
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +197,7 @@ pub(crate) fn from_sequence_model(
         .enumerate()
         .map(|(index, participant)| (participant.id.as_str(), index))
         .collect::<HashMap<_, _>>();
-    let mut messages = Vec::new();
+    let mut events = Vec::new();
     let mut autonumber = AutonumberState::default();
 
     for message in &model.messages {
@@ -193,6 +233,24 @@ pub(crate) fn from_sequence_model(
                 feature: "messages with unknown actors",
             })?;
 
+        if message.message_type == NOTE_MESSAGE_TYPE {
+            let placement = SequenceNotePlacement::from_model(message.placement)?;
+            let label = message.message_text();
+            if label.contains(['\r', '\n']) {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: "sequence",
+                    feature: "multiline notes",
+                });
+            }
+            events.push(SequenceEvent::Note(SequenceNote {
+                from,
+                to,
+                label: label.to_string(),
+                placement,
+            }));
+            continue;
+        }
+
         let (style, arrow) = match message.message_type {
             SOLID_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Filled),
             DOTTED_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Filled),
@@ -207,18 +265,18 @@ pub(crate) fn from_sequence_model(
         };
         let label = autonumber.label(message.message_text());
 
-        messages.push(SequenceMessage {
+        events.push(SequenceEvent::Message(SequenceMessage {
             from,
             to,
             label,
             style,
             arrow,
-        });
+        }));
     }
 
     Ok(AsciiSequenceDiagram {
         participants,
-        messages,
+        events,
     })
 }
 
@@ -259,10 +317,27 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         });
     }
 
-    if !model.notes.is_empty() {
+    if model.notes.iter().any(|note| note.wrap)
+        || model
+            .messages
+            .iter()
+            .any(|message| message.message_type == NOTE_MESSAGE_TYPE && message.wrap)
+    {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "notes",
+            feature: "wrapped notes",
+        });
+    }
+
+    let note_message_count = model
+        .messages
+        .iter()
+        .filter(|message| message.message_type == NOTE_MESSAGE_TYPE)
+        .count();
+    if !model.notes.is_empty() && note_message_count < model.notes.len() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "notes without drawable messages",
         });
     }
 
@@ -290,7 +365,7 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
     if model
         .messages
         .iter()
-        .any(|message| message.placement.is_some())
+        .any(|message| message.message_type != NOTE_MESSAGE_TYPE && message.placement.is_some())
     {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
@@ -425,15 +500,20 @@ pub(crate) fn render_sequence_diagram(
         )
     }));
 
-    for message in &diagram.messages {
+    for event in &diagram.events {
         for _ in 0..layout.message_spacing {
             lines.push(build_lifeline(&layout, &chars));
         }
 
-        if message.from == message.to {
-            lines.extend(render_self_message(message, &layout, &chars));
-        } else {
-            lines.extend(render_message(message, &layout, &chars));
+        match event {
+            SequenceEvent::Message(message) => {
+                if message.from == message.to {
+                    lines.extend(render_self_message(message, &layout, &chars));
+                } else {
+                    lines.extend(render_message(message, &layout, &chars));
+                }
+            }
+            SequenceEvent::Note(note) => lines.extend(render_note(note, &layout, &chars)),
         }
     }
 
@@ -590,6 +670,73 @@ fn render_self_message(
     lines.push(trim_right(bottom));
 
     lines
+}
+
+fn render_note(note: &SequenceNote, layout: &SequenceLayout, chars: &SequenceChars) -> Vec<String> {
+    let label_width = display_width(&note.label);
+    let mut inner_width = (label_width + BOX_PADDING_LEFT_RIGHT).max(MIN_BOX_WIDTH);
+    let from = layout.participant_centers[note.from];
+    let to = layout.participant_centers[note.to];
+
+    let left = match note.placement {
+        SequenceNotePlacement::LeftOf => {
+            let total_width = inner_width + BOX_BORDER_WIDTH;
+            from.saturating_sub(total_width + NOTE_SIDE_GAP)
+        }
+        SequenceNotePlacement::RightOf => from + NOTE_SIDE_GAP,
+        SequenceNotePlacement::Over => {
+            if from == to {
+                let total_width = inner_width + BOX_BORDER_WIDTH;
+                from.saturating_sub(total_width / 2)
+            } else {
+                let span_left = from.min(to).saturating_sub(1);
+                let span_inner_width = from.abs_diff(to) + 1;
+                inner_width = inner_width.max(span_inner_width);
+                span_left
+            }
+        }
+    };
+
+    let label_left_padding = (inner_width - label_width) / 2;
+    let label_right_padding = inner_width - label_left_padding - label_width;
+    let top = format!(
+        "{}{}{}",
+        chars.top_left,
+        chars.horizontal.to_string().repeat(inner_width),
+        chars.top_right
+    );
+    let middle = format!(
+        "{}{}{}{}{}",
+        chars.vertical,
+        " ".repeat(label_left_padding),
+        note.label,
+        " ".repeat(label_right_padding),
+        chars.vertical
+    );
+    let bottom = format!(
+        "{}{}{}",
+        chars.bottom_left,
+        chars.horizontal.to_string().repeat(inner_width),
+        chars.bottom_right
+    );
+
+    vec![
+        render_overlay_row(layout, chars, left, &top),
+        render_overlay_row(layout, chars, left, &middle),
+        render_overlay_row(layout, chars, left, &bottom),
+    ]
+}
+
+fn render_overlay_row(
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+    left: usize,
+    text: &str,
+) -> String {
+    let needed = left + text.chars().count();
+    let mut line = padded_line(build_lifeline(layout, chars), needed);
+    write_text(&mut line, left, text);
+    trim_right(line)
 }
 
 fn padded_line(line: String, width: usize) -> Vec<char> {

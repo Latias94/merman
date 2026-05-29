@@ -40,6 +40,21 @@
       "date": "2026-05-29",
       "task": "ASP-040",
       "result": "passed focused and broad gates for initial sequence parity slice"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-030",
+      "result": "split rich sequence constructs into notes, boxes, activations/create-destroy, and wrapping tasks"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-050",
+      "result": "added single-line typed sequence note rendering"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-090",
+      "result": "passed focused and broad gates for notes rendering slice"
     }
   ],
   "adr_refs": [
@@ -47,7 +62,7 @@
   ],
   "continue_policy": {
     "default_action": "execute_next_task",
-    "next_task": "ASP-030",
-    "notes": "Split rich sequence constructs into ordered follow-on tasks."
+    "next_task": "ASP-060",
+    "notes": "Decide and implement or split sequence boxes."
   }
 }

@@ -24,7 +24,22 @@ Exit criteria:
 - Notes, boxes, activations, create/destroy, and wrapping are split into follow-on tasks or a new
   lane.
 
-## M3 - Verification And Commit
+## M3 - Notes Rendering
+
+Exit criteria:
+
+- Single-line notes render for right-of, left-of, and over placements.
+- Wrapped notes remain explicitly unsupported.
+- Existing copied upstream sequence fixtures stay exact.
+
+## M4 - Remaining Rich Constructs
+
+Exit criteria:
+
+- Sequence boxes, activations, create/destroy, and wrapping each have an independent next task or
+  documented blocker.
+
+## M5 - Verification And Commit
 
 Exit criteria:
 

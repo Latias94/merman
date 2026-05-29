@@ -1,6 +1,6 @@
 # Sequence ASCII Support
 
-Status: initial tracer-bullet support
+Status: expanding support
 
 This document describes the current `merman-ascii` sequence support boundary. The renderer consumes
 `merman-core` `SequenceDiagramRenderModel` values; it does not parse Mermaid text itself.
@@ -19,6 +19,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Dotted open messages | Supported | `A-->B` and reverse direction messages. Unicode output uses open arrowheads. |
 | Self messages | Supported | Loop-style self calls with labels. |
 | Message labels | Supported | Empty labels, single-word labels, and multiword labels. |
+| Notes | Supported subset | Single-line `Note left of`, `Note right of`, and `Note over` notes render as boxes. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
@@ -32,12 +33,14 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Actor-shaped participants | `actor participant shapes` |
 | Wrapped actor labels | `wrapped actor labels` |
 | Actor links/properties | `actor links/properties` |
-| Notes | `notes` |
+| Wrapped notes | `wrapped notes` |
+| Multiline notes | `multiline notes` |
 | Sequence boxes | `boxes` |
 | Actor create/destroy | `actor create/destroy` |
 | Activations | `activations` |
 | Message placement controls | `message placement` |
 | Wrapped messages | `wrapped messages` |
+| Hand-built note models without ordered note messages | `notes without drawable messages` |
 | Control messages with no drawable endpoints | `control messages` |
 | Messages referencing unknown actors | `messages with unknown actors` |
 | Message types outside solid/dotted filled, solid/dotted open, and autonumber | `message types` |
@@ -46,8 +49,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - Output comparison for copied upstream sequence fixtures follows upstream's normalized-whitespace
   comparison; trailing spaces in golden files are not product-significant.
-- Rich Mermaid sequence constructs such as notes, boxes, activations, create/destroy, and wrapping
-  need follow-up implementation before they can be listed as supported.
+- Rich Mermaid sequence constructs such as boxes, activations, create/destroy, and wrapping need
+  follow-up implementation before they can be listed as supported.
+- Sequence notes render only as single-line text for now; wrapped notes remain unsupported.
 - Mermaid `actor` shapes and actor links/properties are intentionally rejected for now because the
   initial port renders only participant boxes and plain text.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated

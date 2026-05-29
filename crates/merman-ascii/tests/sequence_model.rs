@@ -2,7 +2,8 @@ use merman_ascii::{
     AsciiError, AsciiRenderOptions, render_model, render_sequence as render_sequence_model,
 };
 use merman_core::diagrams::sequence::{
-    SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage, SequenceMessagePayload,
+    SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
+    SequenceMessagePayload, SequenceNote,
 };
 use merman_core::{Engine, ParseOptions};
 use std::collections::BTreeMap;
@@ -141,20 +142,75 @@ fn sequence_golden_ascii_fixtures_match_upstream() {
 }
 
 #[test]
-fn sequence_notes_are_explicitly_unsupported() {
-    let err = render_sequence(
-        "sequenceDiagram\nparticipant A\nNote over A: remember",
+fn sequence_notes_render_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Start\nNote right of A: right\nNote left of B: left\nNote over A,B: over both\nB-->>A: Done",
         &AsciiRenderOptions::unicode(),
     )
-    .unwrap_err();
+    .expect("single-line sequence notes should render");
 
-    assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "notes",
-        }
+    assert!(
+        rendered.contains("│ right │"),
+        "right-of note should render as a note box:\n{rendered}"
     );
+    assert!(
+        rendered.contains("│ left │"),
+        "left-of note should render as a note box:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("│ over both │"),
+        "over note should render as a note box:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("├────────►│"),
+        "normal messages around notes should keep rendering:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_wrapped_notes_are_explicitly_unsupported() {
+    let mut model = basic_sequence_model();
+    model.notes.push(SequenceNote {
+        actor: "A".into(),
+        message: "remember".to_string(),
+        placement: 1,
+        wrap: true,
+    });
+    model.messages.push(SequenceMessage {
+        id: "n0".to_string(),
+        from: Some("A".to_string()),
+        to: Some("A".to_string()),
+        message_type: 2,
+        message: SequenceMessagePayload::Text("remember".to_string()),
+        wrap: true,
+        activate: false,
+        placement: Some(1),
+    });
+
+    assert_unsupported_sequence_model(model, "wrapped notes");
+}
+
+#[test]
+fn sequence_multiline_notes_are_explicitly_unsupported() {
+    let mut model = basic_sequence_model();
+    model.notes.push(SequenceNote {
+        actor: "A".into(),
+        message: "line 1\nline 2".to_string(),
+        placement: 1,
+        wrap: false,
+    });
+    model.messages.push(SequenceMessage {
+        id: "n0".to_string(),
+        from: Some("A".to_string()),
+        to: Some("A".to_string()),
+        message_type: 2,
+        message: SequenceMessagePayload::Text("line 1\nline 2".to_string()),
+        wrap: false,
+        activate: false,
+        placement: Some(1),
+    });
+
+    assert_unsupported_sequence_model(model, "multiline notes");
 }
 
 #[test]

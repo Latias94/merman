@@ -28,6 +28,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   exact matches with no named graph gaps.
 - Added sequence ASCII/Unicode rendering for open-arrow message types `A->B` and `A-->B` from typed
   sequence models.
+- Added sequence ASCII/Unicode rendering for single-line typed notes.
 
 ## [0.6.0] - 2026-05-28
 

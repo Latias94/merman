@@ -28,16 +28,53 @@ Last updated: 2026-05-29
 
 ## M2 - Rich Sequence Constructs Inventory
 
-- [ ] ASP-030 [owner=codex] [deps=ASP-020] [scope=crates/merman-ascii/SEQUENCE_SUPPORT.md,docs/workstreams/ascii-sequence-parity]
+- [x] ASP-030 [owner=codex] [deps=ASP-020] [scope=crates/merman-ascii/SEQUENCE_SUPPORT.md,docs/workstreams/ascii-sequence-parity]
   Goal: Split the next rich sequence construct lane with notes, boxes, activations, and
   create/destroy ordered by parser/model readiness and rendering risk.
   Validation:
   - Support matrix names exact unsupported features.
   - Follow-on tasks are independently executable.
   Evidence: `SEQUENCE_SUPPORT.md`, `HANDOFF.md`.
-  Handoff: Follow-on workstream or task.
+  Handoff: ASP-050 is next.
 
-## M3 - Verification And Commit
+## M3 - Notes Rendering
+
+- [x] ASP-050 [owner=codex] [deps=ASP-030] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Render single-line typed sequence notes for `Note right of`, `Note left of`, and `Note
+  over` without changing copied upstream fixture output.
+  Validation:
+  - `cargo fmt --all --check`
+  - `cargo nextest run -p merman-ascii sequence`
+  - `cargo nextest run -p merman-ascii sequence_golden`
+  Evidence: public behavior tests and support matrix updates.
+  Handoff: ASP-060 or closeout depending on remaining goal budget.
+
+## M4 - Remaining Rich Constructs
+
+- [ ] ASP-060 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Decide and implement the sequence boxes slice, or split it if group bounds require a larger
+  layout refactor.
+  Validation:
+  - Focused sequence tests prove boxes or document why they remain unsupported.
+  Evidence: Support matrix and tests.
+  Handoff: ASP-070 is next.
+
+- [ ] ASP-070 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Split activations plus create/destroy into a renderer-state task if simple drawing cannot
+  preserve message order and lifeline semantics.
+  Validation:
+  - Follow-on task names exact renderer state needed.
+  Evidence: `HANDOFF.md`.
+  Handoff: ASP-080 is next.
+
+- [ ] ASP-080 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+  Goal: Decide wrapping support for actors/messages/notes, including CJK/emoji width risks.
+  Validation:
+  - Support matrix distinguishes unsupported wrapping from supported single-line rendering.
+  Evidence: `SEQUENCE_SUPPORT.md`.
+  Handoff: Closeout or next implementation task.
+
+## M5 - Verification And Commit
 
 - [x] ASP-040 [owner=codex] [deps=ASP-020] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
   Goal: Run focused gates, update evidence, and commit the initial sequence parity slice.
@@ -49,3 +86,14 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: Lane remains active for ASP-030 or closes if follow-on is split.
+
+- [x] ASP-090 [owner=codex] [deps=ASP-050] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
+  Goal: Run focused and broad gates, update evidence, and commit the notes rendering slice.
+  Validation:
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `git diff --check`
+  Evidence: `EVIDENCE_AND_GATES.md`.
+  Handoff: ASP-060 remains next unless this lane closes.

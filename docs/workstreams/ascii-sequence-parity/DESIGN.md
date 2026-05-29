@@ -45,8 +45,9 @@ activation boxes or loop/alt/opt/par blocks.
 First target the gaps that are already represented in `SequenceDiagramRenderModel` and can be
 rendered without changing parser contracts:
 
-- Open sequence arrows: `->` and `-->`
-- Then notes, sequence boxes, and activation/create/destroy behavior as separate slices.
+- Open sequence arrows: `->` and `-->` (done).
+- Single-line notes: `Note left of`, `Note right of`, and `Note over` (done).
+- Then sequence boxes, activation/create/destroy behavior, and wrapping as separate slices.
 
 Keep unsupported constructs explicit. Do not silently drop typed model semantics.
 

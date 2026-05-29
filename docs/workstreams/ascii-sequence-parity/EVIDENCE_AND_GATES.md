@@ -32,3 +32,15 @@ Last updated: 2026-05-29
   `cargo nextest run -p merman-cli --features ascii`,
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
   `git diff --check` all passed.
+- 2026-05-29 ASP-030: Split rich sequence work into independently executable tasks: single-line
+  notes, sequence boxes, activations/create-destroy, and wrapping.
+- 2026-05-29 ASP-050: Added single-line typed note rendering for `Note right of`, `Note left of`,
+  and `Note over` while preserving copied upstream sequence fixtures. Wrapped and multiline notes
+  remain explicitly unsupported. Passed `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence`, and
+  `cargo nextest run -p merman-ascii sequence_golden`.
+- 2026-05-29 ASP-090: Broad verification passed before commit. `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check` all passed.
