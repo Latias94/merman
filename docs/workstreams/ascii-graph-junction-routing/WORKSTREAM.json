@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-graph-junction-routing",
+  "title": "ASCII Graph Junction Routing",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "The ASCII graph renderer needs explicit module boundaries and junction-aware edge writes before more mermaid-ascii routing parity can scale.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-graph-junction-routing/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-graph-junction-routing/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-graph-junction-routing/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii graph::",
+    "cargo nextest run -p merman-ascii flowchart"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "AGJ-010",
+      "result": "opened follow-up workstream"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGJ-020",
+      "result": "split graph renderer modules; focused gates passed"
+    }
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AGJ-030",
+    "notes": "Continue through AGJ-020 and AGJ-030 while fixture parity remains protected. Split label lanes or complex subgraphs if they expand scope."
+  }
+}

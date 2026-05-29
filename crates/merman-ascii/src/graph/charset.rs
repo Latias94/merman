@@ -1,0 +1,76 @@
+use crate::options::{AsciiCharset, AsciiRenderOptions};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GraphCharset {
+    pub(super) top_left: char,
+    pub(super) top_right: char,
+    pub(super) bottom_left: char,
+    pub(super) bottom_right: char,
+    pub(super) horizontal: char,
+    pub(super) vertical: char,
+    pub(super) right_connector: char,
+    pub(super) down_connector: char,
+    pub(super) down_junction: char,
+    pub(super) arrow_right: char,
+    pub(super) arrow_up: char,
+    pub(super) arrow_down: char,
+    pub(super) dotted_horizontal: char,
+    pub(super) dotted_vertical: char,
+    pub(super) corner_down_right: char,
+    pub(super) corner_right_up: char,
+    pub(super) rounded_top_left: char,
+    pub(super) rounded_top_right: char,
+    pub(super) rounded_bottom_left: char,
+    pub(super) rounded_bottom_right: char,
+}
+
+impl GraphCharset {
+    pub(super) fn for_options(options: &AsciiRenderOptions) -> Self {
+        match options.charset {
+            AsciiCharset::Ascii => Self {
+                top_left: '+',
+                top_right: '+',
+                bottom_left: '+',
+                bottom_right: '+',
+                horizontal: '-',
+                vertical: '|',
+                right_connector: '|',
+                down_connector: '-',
+                down_junction: '+',
+                arrow_right: '>',
+                arrow_up: '^',
+                arrow_down: 'v',
+                dotted_horizontal: '.',
+                dotted_vertical: ':',
+                corner_down_right: '+',
+                corner_right_up: '+',
+                rounded_top_left: '/',
+                rounded_top_right: '\\',
+                rounded_bottom_left: '\\',
+                rounded_bottom_right: '/',
+            },
+            AsciiCharset::Unicode => Self {
+                top_left: '┌',
+                top_right: '┐',
+                bottom_left: '└',
+                bottom_right: '┘',
+                horizontal: '─',
+                vertical: '│',
+                right_connector: '├',
+                down_connector: '┬',
+                down_junction: '┬',
+                arrow_right: '►',
+                arrow_up: '▲',
+                arrow_down: '▼',
+                dotted_horizontal: '┄',
+                dotted_vertical: '┆',
+                corner_down_right: '└',
+                corner_right_up: '┘',
+                rounded_top_left: '╭',
+                rounded_top_right: '╮',
+                rounded_bottom_left: '╰',
+                rounded_bottom_right: '╯',
+            },
+        }
+    }
+}
