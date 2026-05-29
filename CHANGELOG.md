@@ -29,6 +29,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added sequence ASCII/Unicode rendering for open-arrow message types `A->B` and `A-->B` from typed
   sequence models.
 - Added sequence ASCII/Unicode rendering for single-line typed notes.
+- Added sequence ASCII/Unicode rendering for typed sequence boxes around actor groups.
 
 ## [0.6.0] - 2026-05-28
 

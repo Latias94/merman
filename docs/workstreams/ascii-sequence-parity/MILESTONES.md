@@ -36,8 +36,9 @@ Exit criteria:
 
 Exit criteria:
 
-- Sequence boxes, activations, create/destroy, and wrapping each have an independent next task or
-  documented blocker.
+- Sequence boxes render or have a documented blocker.
+- Activations, create/destroy, and wrapping each have an independent next task or documented
+  blocker.
 
 ## M5 - Verification And Commit
 

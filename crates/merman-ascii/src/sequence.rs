@@ -21,10 +21,13 @@ const NOTE_PLACEMENT_LEFT_OF: i32 = 0;
 const NOTE_PLACEMENT_RIGHT_OF: i32 = 1;
 const NOTE_PLACEMENT_OVER: i32 = 2;
 const NOTE_SIDE_GAP: usize = 2;
+const SEQUENCE_BOX_CONTENT_OFFSET: usize = 1;
+const SEQUENCE_BOX_LABEL_MARGIN: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
     participants: Vec<SequenceParticipant>,
+    boxes: Vec<SequenceGroupBox>,
     events: Vec<SequenceEvent>,
 }
 
@@ -32,6 +35,12 @@ pub(crate) struct AsciiSequenceDiagram {
 struct SequenceParticipant {
     id: String,
     label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SequenceGroupBox {
+    actor_indices: Vec<usize>,
+    label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +206,7 @@ pub(crate) fn from_sequence_model(
         .enumerate()
         .map(|(index, participant)| (participant.id.as_str(), index))
         .collect::<HashMap<_, _>>();
+    let boxes = sequence_boxes(model, &participant_index)?;
     let mut events = Vec::new();
     let mut autonumber = AutonumberState::default();
 
@@ -276,6 +286,7 @@ pub(crate) fn from_sequence_model(
 
     Ok(AsciiSequenceDiagram {
         participants,
+        boxes,
         events,
     })
 }
@@ -341,10 +352,21 @@ fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Resu
         });
     }
 
-    if !model.boxes.is_empty() {
+    if model.boxes.iter().any(|sequence_box| sequence_box.wrap) {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "sequence",
-            feature: "boxes",
+            feature: "wrapped boxes",
+        });
+    }
+
+    if model
+        .boxes
+        .iter()
+        .any(|sequence_box| sequence_box.actor_keys.is_empty())
+    {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "sequence",
+            feature: "empty boxes",
         });
     }
 
@@ -403,6 +425,41 @@ fn sequence_participants(model: &SequenceDiagramRenderModel) -> Vec<SequencePart
                 actor.description.clone()
             };
             Some(SequenceParticipant { id, label })
+        })
+        .collect()
+}
+
+fn sequence_boxes(
+    model: &SequenceDiagramRenderModel,
+    participant_index: &HashMap<&str, usize>,
+) -> Result<Vec<SequenceGroupBox>> {
+    model
+        .boxes
+        .iter()
+        .map(|sequence_box| {
+            let actor_indices = sequence_box
+                .actor_keys
+                .iter()
+                .map(|actor_key| {
+                    participant_index.get(actor_key.as_str()).copied().ok_or(
+                        AsciiError::UnsupportedFeature {
+                            diagram_type: "sequence",
+                            feature: "boxes with unknown actors",
+                        },
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            let label = sequence_box
+                .name
+                .as_ref()
+                .filter(|name| !name.is_empty())
+                .cloned();
+
+            Ok(SequenceGroupBox {
+                actor_indices,
+                label,
+            })
         })
         .collect()
 }
@@ -518,6 +575,9 @@ pub(crate) fn render_sequence_diagram(
     }
 
     lines.push(build_lifeline(&layout, &chars));
+    if !diagram.boxes.is_empty() {
+        lines = render_sequence_boxes(lines, diagram, &layout, &chars);
+    }
     Ok(lines.join("\n") + "\n")
 }
 
@@ -725,6 +785,117 @@ fn render_note(note: &SequenceNote, layout: &SequenceLayout, chars: &SequenceCha
         render_overlay_row(layout, chars, left, &middle),
         render_overlay_row(layout, chars, left, &bottom),
     ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SequenceGroupBoxBounds {
+    left: usize,
+    right: usize,
+}
+
+fn render_sequence_boxes(
+    lines: Vec<String>,
+    diagram: &AsciiSequenceDiagram,
+    layout: &SequenceLayout,
+    chars: &SequenceChars,
+) -> Vec<String> {
+    let bounds = diagram
+        .boxes
+        .iter()
+        .map(|sequence_box| sequence_box_bounds(sequence_box, layout))
+        .collect::<Vec<_>>();
+    let content_width = lines
+        .iter()
+        .map(|line| line.chars().count() + SEQUENCE_BOX_CONTENT_OFFSET)
+        .max()
+        .unwrap_or(0);
+    let box_width = bounds
+        .iter()
+        .map(|bounds| bounds.right + 1)
+        .max()
+        .unwrap_or(0);
+    let width = content_width.max(box_width);
+
+    let mut canvas = Vec::with_capacity(lines.len() + 2);
+    canvas.push(vec![' '; width]);
+    for line in lines {
+        let mut row = Vec::with_capacity(width);
+        row.extend(std::iter::repeat_n(' ', SEQUENCE_BOX_CONTENT_OFFSET));
+        row.extend(line.chars());
+        if row.len() < width {
+            row.extend(std::iter::repeat_n(' ', width - row.len()));
+        }
+        canvas.push(row);
+    }
+    canvas.push(vec![' '; width]);
+
+    for (sequence_box, bounds) in diagram.boxes.iter().zip(bounds) {
+        draw_sequence_box(&mut canvas, sequence_box, bounds, chars);
+    }
+
+    canvas.into_iter().map(trim_right).collect()
+}
+
+fn sequence_box_bounds(
+    sequence_box: &SequenceGroupBox,
+    layout: &SequenceLayout,
+) -> SequenceGroupBoxBounds {
+    let mut left = usize::MAX;
+    let mut right = 0;
+
+    for actor_index in &sequence_box.actor_indices {
+        let box_width = layout.participant_widths[*actor_index] + BOX_BORDER_WIDTH;
+        let participant_left = layout.participant_centers[*actor_index] - box_width / 2;
+        let participant_right = participant_left + box_width - 1;
+        left = left.min((participant_left + SEQUENCE_BOX_CONTENT_OFFSET).saturating_sub(1));
+        right = right.max(participant_right + SEQUENCE_BOX_CONTENT_OFFSET + 1);
+    }
+
+    if let Some(label) = &sequence_box.label {
+        let label_right = left + display_width(label) + 2 * SEQUENCE_BOX_LABEL_MARGIN;
+        right = right.max(label_right);
+    }
+
+    SequenceGroupBoxBounds { left, right }
+}
+
+fn draw_sequence_box(
+    canvas: &mut [Vec<char>],
+    sequence_box: &SequenceGroupBox,
+    bounds: SequenceGroupBoxBounds,
+    chars: &SequenceChars,
+) {
+    if canvas.is_empty() || bounds.left >= bounds.right {
+        return;
+    }
+
+    let top = 0;
+    let bottom = canvas.len() - 1;
+
+    for x in bounds.left..=bounds.right {
+        canvas[top][x] = chars.horizontal;
+        canvas[bottom][x] = chars.horizontal;
+    }
+    canvas[top][bounds.left] = chars.top_left;
+    canvas[top][bounds.right] = chars.top_right;
+    canvas[bottom][bounds.left] = chars.bottom_left;
+    canvas[bottom][bounds.right] = chars.bottom_right;
+
+    for row in canvas.iter_mut().take(bottom).skip(top + 1) {
+        row[bounds.left] = chars.vertical;
+        row[bounds.right] = chars.vertical;
+    }
+
+    if let Some(label) = &sequence_box.label {
+        let label = format!(" {label} ");
+        let start = bounds.left + SEQUENCE_BOX_LABEL_MARGIN;
+        for (offset, ch) in label.chars().enumerate() {
+            let index = start + offset;
+            if index < bounds.right {
+                canvas[top][index] = ch;
+            }
+        }
+    }
 }
 
 fn render_overlay_row(

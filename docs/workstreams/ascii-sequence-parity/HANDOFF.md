@@ -5,21 +5,21 @@ Last updated: 2026-05-29
 
 ## Current State
 
-ASP-010, ASP-020, ASP-030, ASP-040, ASP-050, and ASP-090 are complete. Copied upstream
-`mermaid-ascii` sequence fixtures are exact under the existing normalized-whitespace comparison.
-The lane is now moving beyond copied fixtures into typed sequence semantics that users can already
-parse through `merman-core`.
+ASP-010, ASP-020, ASP-030, ASP-040, ASP-050, ASP-060, ASP-090, and ASP-100 are complete. Copied
+upstream `mermaid-ascii` sequence fixtures are exact under the existing normalized-whitespace
+comparison. The lane is now moving beyond copied fixtures into typed sequence semantics that users
+can already parse through `merman-core`.
 
 ## Active Task
 
-- Task ID: ASP-060
+- Task ID: ASP-070
 - Owner: codex
 - Files:
   - `crates/merman-ascii/src/sequence.rs`
   - `crates/merman-ascii/tests/sequence_model.rs`
   - `crates/merman-ascii/SEQUENCE_SUPPORT.md`
 - Validation:
-  - Focused sequence tests prove boxes or document why they remain unsupported.
+  - Follow-on task names exact renderer state needed.
 - Status: READY
 
 ## Decisions Since Open
@@ -33,6 +33,9 @@ parse through `merman-core`.
   activations/create-destroy third, wrapping last.
 - Single-line typed notes now render for left-of, right-of, and over placements. Wrapped and
   multiline notes remain unsupported.
+- Typed sequence boxes now render as enclosing text borders around actor groups. Fill colors are not
+  represented in plain text. Wrapped, empty, and unknown-actor boxes remain explicit unsupported
+  features.
 
 ## Blockers
 
@@ -40,5 +43,5 @@ parse through `merman-core`.
 
 ## Next Recommended Action
 
-Execute ASP-060 by deciding whether sequence boxes can fit the current line-oriented renderer or
-need a deeper layout boundary first.
+Execute ASP-070 by splitting or implementing activation plus create/destroy renderer-state
+semantics.

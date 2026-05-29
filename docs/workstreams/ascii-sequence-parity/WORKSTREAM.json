@@ -55,6 +55,16 @@
       "date": "2026-05-29",
       "task": "ASP-090",
       "result": "passed focused and broad gates for notes rendering slice"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-060",
+      "result": "added typed sequence box rendering"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-100",
+      "result": "passed focused and broad gates for sequence boxes slice"
     }
   ],
   "adr_refs": [
@@ -62,7 +72,7 @@
   ],
   "continue_policy": {
     "default_action": "execute_next_task",
-    "next_task": "ASP-060",
-    "notes": "Decide and implement or split sequence boxes."
+    "next_task": "ASP-070",
+    "notes": "Split or implement activation plus create/destroy renderer-state semantics."
   }
 }

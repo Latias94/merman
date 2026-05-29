@@ -214,6 +214,57 @@ fn sequence_multiline_notes_are_explicitly_unsupported() {
 }
 
 #[test]
+fn sequence_boxes_render_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox green Group 1\nparticipant A\nparticipant B\nend\nA->>B: Inside",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("sequence boxes should render");
+
+    assert!(
+        rendered
+            .lines()
+            .next()
+            .is_some_and(|line| line.contains("Group 1")),
+        "box title should render in the enclosing box border:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("│ A │") && rendered.contains("│ B │"),
+        "boxed participants should keep rendering:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("├────────►│"),
+        "messages inside boxes should keep rendering:\n{rendered}"
+    );
+}
+
+#[test]
+fn sequence_wrapped_boxes_are_explicitly_unsupported() {
+    let mut model = basic_sequence_model();
+    model.boxes.push(SequenceBox {
+        actor_keys: vec!["A".to_string()],
+        fill: "green".to_string(),
+        name: Some("Group".to_string()),
+        wrap: true,
+    });
+
+    assert_unsupported_sequence_model(model, "wrapped boxes");
+}
+
+#[test]
+fn sequence_boxes_with_unknown_actors_are_explicitly_unsupported() {
+    let mut model = basic_sequence_model();
+    model.boxes.push(SequenceBox {
+        actor_keys: vec!["B".to_string()],
+        fill: "green".to_string(),
+        name: Some("Group".to_string()),
+        wrap: false,
+    });
+
+    assert_unsupported_sequence_model(model, "boxes with unknown actors");
+}
+
+#[test]
 fn sequence_activations_are_explicitly_unsupported() {
     let err = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nA->>+B: Hello",
@@ -296,15 +347,6 @@ fn sequence_actor_links_are_explicitly_unsupported() {
 #[test]
 fn sequence_other_model_features_are_explicitly_unsupported() {
     let mut cases = Vec::new();
-
-    let mut model = basic_sequence_model();
-    model.boxes.push(SequenceBox {
-        actor_keys: vec!["A".to_string()],
-        fill: "transparent".to_string(),
-        name: None,
-        wrap: false,
-    });
-    cases.push((model, "boxes"));
 
     let mut model = basic_sequence_model();
     model.created_actors.insert("A".to_string(), 0);

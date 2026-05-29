@@ -47,7 +47,8 @@ rendered without changing parser contracts:
 
 - Open sequence arrows: `->` and `-->` (done).
 - Single-line notes: `Note left of`, `Note right of`, and `Note over` (done).
-- Then sequence boxes, activation/create/destroy behavior, and wrapping as separate slices.
+- Sequence boxes around actor groups (done).
+- Then activation/create/destroy behavior and wrapping as separate slices.
 
 Keep unsupported constructs explicit. Do not silently drop typed model semantics.
 

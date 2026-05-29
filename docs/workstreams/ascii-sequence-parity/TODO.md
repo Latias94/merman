@@ -51,7 +51,7 @@ Last updated: 2026-05-29
 
 ## M4 - Remaining Rich Constructs
 
-- [ ] ASP-060 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASP-060 [owner=codex] [deps=ASP-050] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Decide and implement the sequence boxes slice, or split it if group bounds require a larger
   layout refactor.
   Validation:
@@ -97,3 +97,14 @@ Last updated: 2026-05-29
   - `git diff --check`
   Evidence: `EVIDENCE_AND_GATES.md`.
   Handoff: ASP-060 remains next unless this lane closes.
+
+- [x] ASP-100 [owner=codex] [deps=ASP-060] [scope=docs/workstreams/ascii-sequence-parity,CHANGELOG.md]
+  Goal: Run focused and broad gates, update evidence, and commit the sequence boxes slice.
+  Validation:
+  - `cargo nextest run -p merman-ascii`
+  - `cargo nextest run -p merman --features ascii`
+  - `cargo nextest run -p merman-cli --features ascii`
+  - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+  - `git diff --check`
+  Evidence: `EVIDENCE_AND_GATES.md`.
+  Handoff: ASP-070 remains next unless this lane closes.

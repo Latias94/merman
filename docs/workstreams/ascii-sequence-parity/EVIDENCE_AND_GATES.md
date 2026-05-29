@@ -44,3 +44,13 @@ Last updated: 2026-05-29
   `cargo nextest run -p merman-cli --features ascii`,
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
   `git diff --check` all passed.
+- 2026-05-29 ASP-060: Added typed sequence box rendering as a final text overlay around actor
+  groups. Box labels render in the border; fill colors remain intentionally non-rendered in plain
+  text. Wrapped, empty, and unknown-actor boxes are explicit unsupported features. Passed
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`, and
+  `cargo nextest run -p merman-ascii sequence_golden`.
+- 2026-05-29 ASP-100: Broad verification passed before commit. `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check` all passed.

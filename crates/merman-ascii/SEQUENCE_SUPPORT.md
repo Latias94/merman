@@ -20,6 +20,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Self messages | Supported | Loop-style self calls with labels. |
 | Message labels | Supported | Empty labels, single-word labels, and multiword labels. |
 | Notes | Supported subset | Single-line `Note left of`, `Note right of`, and `Note over` notes render as boxes. |
+| Sequence boxes | Supported subset | Boxes render as enclosing text borders around typed actor groups. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 
@@ -35,7 +36,9 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Actor links/properties | `actor links/properties` |
 | Wrapped notes | `wrapped notes` |
 | Multiline notes | `multiline notes` |
-| Sequence boxes | `boxes` |
+| Wrapped boxes | `wrapped boxes` |
+| Empty boxes | `empty boxes` |
+| Boxes referencing unknown actors | `boxes with unknown actors` |
 | Actor create/destroy | `actor create/destroy` |
 | Activations | `activations` |
 | Message placement controls | `message placement` |
@@ -49,9 +52,11 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - Output comparison for copied upstream sequence fixtures follows upstream's normalized-whitespace
   comparison; trailing spaces in golden files are not product-significant.
-- Rich Mermaid sequence constructs such as boxes, activations, create/destroy, and wrapping need
-  follow-up implementation before they can be listed as supported.
+- Rich Mermaid sequence constructs such as activations, create/destroy, and wrapping need follow-up
+  implementation before they can be listed as supported.
 - Sequence notes render only as single-line text for now; wrapped notes remain unsupported.
+- Sequence box fill colors are intentionally not represented in plain text output. Box labels render
+  in the border when present.
 - Mermaid `actor` shapes and actor links/properties are intentionally rejected for now because the
   initial port renders only participant boxes and plain text.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
