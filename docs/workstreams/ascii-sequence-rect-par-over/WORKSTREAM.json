@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-sequence-rect-par-over",
   "title": "ASCII Sequence Rect And ParOver Blocks",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-29",
   "scope_kind": "execution",
   "problem": "The ASCII sequence renderer still rejects Mermaid rect and par_over control blocks even though merman-core parses them as endpoint-less control signals.",
@@ -52,14 +52,19 @@
       "date": "2026-05-29",
       "task": "ASRP-050",
       "result": "covered rect and par_over combinations, edge diagnostics, and the box-background overlap fix that preserves frame labels"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRP-060",
+      "result": "generated manual rect/par_over example outputs, passed final closeout gates, updated README and workstream docs, and closed the lane"
     }
   ],
   "adr_refs": [
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "run_next_task",
-    "next_task": "ASRP-060",
-    "notes": "Package manual examples, run final closeout gates, and close or split the lane."
+    "default_action": "open_follow_on_if_needed",
+    "next_task": "none",
+    "notes": "Lane closed. Any future parity work should start a new follow-on."
   }
 }

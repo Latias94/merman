@@ -1,12 +1,11 @@
 # ASCII Sequence Rect And ParOver Blocks - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Current State
 
-ASRP-010 through ASRP-050 are complete. The lane is open and scoped to the remaining closeout work
-for the `rect` / `par_over` follow-on.
+ASRP-010 through ASRP-060 are complete. The lane is closed.
 
 The renderer now supports `rect <style>` as a labeled single-section frame in ASCII and Unicode.
 The style/color expression is preserved as text; it is not interpreted as terminal color or
@@ -20,20 +19,20 @@ ASRP-050 covers the remaining edge policy. Notes, activations, create/destroy li
 participant boxes, nested blocks, empty sections, and malformed ordering are all covered or
 explicitly rejected for the `rect` / `par_over` subset.
 
-ASRP-020 freezes the source-of-truth line types:
+ASRP-060 packages the final manual examples, updates closeout docs, and confirms the lane is closed.
 
 - `rect` uses line types 22/23.
 - `par_over` uses line type 32 followed by line type 21.
 
 ## Active Task
 
-- Task ID: ASRP-060
+- Task ID: None
 - Owner: codex
 - Files: `crates/merman-ascii/src/sequence`, `crates/merman-ascii/tests/sequence_model.rs`, `crates/merman-ascii/SEQUENCE_SUPPORT.md`
 - Validation: `cargo fmt --all --check`; `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman --features ascii`; `cargo nextest run -p merman-cli --features ascii`; `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`; `git diff --check`
-- Status: Ready
-- Review: Required before accepting completion.
-- Evidence: Pending.
+- Status: Closed
+- Review: No blocking findings remained at closeout.
+- Evidence: Manual outputs and closeout gate results recorded in `EVIDENCE_AND_GATES.md`.
 
 ## Decisions Since Last Update
 
@@ -46,6 +45,7 @@ ASRP-020 freezes the source-of-truth line types:
   collapsing display text to `par`.
 - ASRP-050 adds broad sequence edge-policy coverage and a box-background fix so control-frame labels
   stay readable when group boxes overlap them.
+- ASRP-060 closes the lane with generated manual examples and final closeout gates.
 
 ## Blockers
 
@@ -53,5 +53,4 @@ ASRP-020 freezes the source-of-truth line types:
 
 ## Next Recommended Action
 
-Implement ASRP-060 by packaging manual examples, running final closeout gates, and closing or
-splitting the lane.
+Lane closed. Any future parity work should start a new follow-on.

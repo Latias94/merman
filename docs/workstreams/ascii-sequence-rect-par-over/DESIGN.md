@@ -1,6 +1,6 @@
 # ASCII Sequence Rect And ParOver Blocks
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Why This Lane Exists
@@ -117,3 +117,19 @@ This lane can close when:
 - package and closeout gates pass,
 - generated examples can be inspected manually,
 - and any remaining parity debt is split or explicitly deferred.
+
+## Closeout Decision
+
+Closed on 2026-05-29. The follow-on lane implemented the remaining Mermaid sequence control forms
+that were deferred from the primary control-block lane:
+
+- `rect` renders as a labeled single-section frame in ASCII and Unicode.
+- `par_over` renders as a labeled single-section frame and closes with the core `par` end signal.
+- Notes, activations, create/destroy lifecycle rows, participant boxes, nested blocks, empty
+  sections, and malformed ordering are covered or explicitly rejected for the `rect` / `par_over`
+  subset.
+- Participant box borders now behave like background overlays so they do not corrupt foreground
+  control-frame text.
+
+Manual example outputs were generated under `D:\Frankorz\Downloads`, and the final closeout gates
+passed for `merman-ascii`, the public `merman` ASCII feature, and the CLI ASCII feature.

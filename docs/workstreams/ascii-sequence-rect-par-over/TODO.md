@@ -1,6 +1,6 @@
 # ASCII Sequence Rect And ParOver Blocks - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze
@@ -96,7 +96,7 @@ Last updated: 2026-05-29
 
 ## M5 - Examples, Verification, And Closeout
 
-- [ ] ASRP-060 [owner=codex] [deps=ASRP-050] [scope=docs/workstreams/ascii-sequence-rect-par-over,README.md,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASRP-060 [owner=codex] [deps=ASRP-050] [scope=docs/workstreams/ascii-sequence-rect-par-over,README.md,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Generate manual example outputs, run final gates, update docs, and close or split remaining
   parity work.
   Validation:
@@ -107,5 +107,13 @@ Last updated: 2026-05-29
   - `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
   - `git diff --check`
   Review: Run `review-workstream` and `verify-rust-workstream` before closeout.
-  Evidence: Pending.
-  Handoff: Lane closes if `rect` and `par_over` are shipped; otherwise split the unfinished form.
+  Evidence: `D:\Frankorz\Downloads\merman-ascii-rect-par-over-input.mmd`,
+  `D:\Frankorz\Downloads\merman-ascii-rect-par-over-unicode.txt`, and
+  `D:\Frankorz\Downloads\merman-ascii-rect-par-over-ascii.txt` were generated for manual
+  inspection. Fresh closeout gates passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check`.
+  Handoff: Lane is closed. Any additional parity work should be split into a new follow-on.

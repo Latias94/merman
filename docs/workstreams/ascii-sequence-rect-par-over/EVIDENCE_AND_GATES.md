@@ -1,6 +1,6 @@
 # ASCII Sequence Rect And ParOver Blocks - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Smallest Current Repro
@@ -128,3 +128,17 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   findings. The supported combinations are rendered through public sequence APIs, the explicit
   unsupported diagnostics remain intact, and the box-over-background adjustment avoids corrupting
   control-frame labels.
+- 2026-05-29 ASRP-060: Generated manual inspection outputs for the final closeout:
+  `D:\Frankorz\Downloads\merman-ascii-rect-par-over-input.mmd`,
+  `D:\Frankorz\Downloads\merman-ascii-rect-par-over-unicode.txt`, and
+  `D:\Frankorz\Downloads\merman-ascii-rect-par-over-ascii.txt`. The examples cover the final
+  shipped `rect` and `par_over` boundary, including participant boxes, notes, activations, and the
+  box-background overlap fix that preserves foreground frame text. Fresh closeout gates passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman --features ascii`,
+  `cargo nextest run -p merman-cli --features ascii`,
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`, and
+  `git diff --check`.
+- 2026-05-29 ASRP-060 review: No blocking workstream-compliance, code-quality, or missing-gate
+  findings. The lane target is met, the manual examples are generated, and the remaining parity debt
+  has been closed rather than hidden.

@@ -237,7 +237,8 @@ cargo run -p merman --features render --example svg_pipeline < fixtures/flowchar
 Enable the `ascii` feature when you want terminal-friendly text instead of SVG:
 
 Sequence text output covers common messages, notes, lifecycle rows, participant boxes, and the
-primary Mermaid control-block subset: `loop`, `opt`, `break`, `alt`, `par`, and `critical`.
+primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`, `alt`, `par`,
+and `critical`.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

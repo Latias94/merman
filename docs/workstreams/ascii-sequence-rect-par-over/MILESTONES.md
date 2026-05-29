@@ -1,6 +1,6 @@
 # ASCII Sequence Rect And ParOver Blocks - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze
@@ -70,3 +70,11 @@ Exit criteria:
 - ASRP-060 complete.
 - Manual example outputs exist for `rect` and `par_over`.
 - Final gates pass and the workstream is closed or split cleanly.
+
+Result:
+
+- ASRP-060 complete on 2026-05-29.
+- Manual example outputs were generated under `D:\Frankorz\Downloads`.
+- Final closeout gates passed for `merman-ascii`, `merman --features ascii`, and
+  `merman-cli --features ascii`.
+- The lane is closed with no remaining deferred `rect` / `par_over` parity debt inside it.
