@@ -1,6 +1,6 @@
 # ASCII Sequence Renderer Modularization
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Why This Lane Exists
@@ -105,6 +105,12 @@ sequence/text.rs             sequence-local text placement and trimming helpers
 
 This lane intentionally does not implement `loop`, `alt`, `opt`, `par`, `critical`, or `break`.
 Those constructs need their own block-aware render-plan workstream.
+
+## Closeout Decision
+
+Closed on 2026-05-29. The target state is met: `sequence.rs` is a facade, sequence renderer
+responsibilities have owner modules, public API/output behavior stayed stable under focused and
+package gates, and sequence control blocks remain split as follow-on scope.
 
 ## Closeout Condition
 

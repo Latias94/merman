@@ -1,6 +1,6 @@
 # ASCII Sequence Renderer Modularization - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze

@@ -1,12 +1,12 @@
 # ASCII Sequence Renderer Modularization - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Current State
 
-ASRM-020, ASRM-030, ASRM-040, and ASRM-050 are implemented. The internal ASCII sequence render model,
-typed-model adapter, autonumber handling, lifecycle model validation helpers, and
+ASRM-020, ASRM-030, ASRM-040, ASRM-050, and ASRM-060 are complete. The internal ASCII sequence
+render model, typed-model adapter, autonumber handling, lifecycle model validation helpers, and
 unsupported-feature validation now live in `sequence/model.rs` and `sequence/validate.rs`.
 Participant layout, lifecycle visibility planning, lifecycle edge lookup, and participant-left
 geometry now live in `sequence/layout.rs`. Render orchestration, event rows, notes, group-box
@@ -18,16 +18,8 @@ follow-on lane.
 
 ## Active Task
 
-- Task ID: ASRM-060
-- Owner: planner
-- Files:
-  - `docs/workstreams/ascii-sequence-renderer-modularization`
-- Validation:
-  - `verify-rust-workstream` records fresh final gate evidence.
-  - `review-workstream` has no blocking findings.
-- Status: READY
-- Review: ASRM-020, ASRM-030, and ASRM-040 had no blocking findings; ASRM-060 closeout review remains required
-- Evidence: update `EVIDENCE_AND_GATES.md` after fresh verification
+- Task ID: none
+- Status: CLOSED
 
 ## Decisions Since Open
 
@@ -49,4 +41,5 @@ follow-on lane.
 
 ## Next Recommended Action
 
-Run ASRM-060 closeout.
+Open `ascii-sequence-control-blocks` if Mermaid sequence control-block rendering is the next
+priority.

@@ -1,6 +1,6 @@
 # ASCII Sequence Renderer Modularization - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze
@@ -70,12 +70,12 @@ Last updated: 2026-05-29
 
 ## M4 - Closeout
 
-- [ ] ASRM-060 [owner=planner] [deps=ASRM-050] [scope=docs/workstreams/ascii-sequence-renderer-modularization]
+- [x] ASRM-060 [owner=codex] [deps=ASRM-050] [scope=docs/workstreams/ascii-sequence-renderer-modularization]
   Goal: Close the modularization lane or split any remaining extraction debt into a smaller
   follow-on.
   Validation:
   - `verify-rust-workstream` records fresh final gate evidence.
   - `review-workstream` has no blocking findings.
   Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, `HANDOFF.md`.
-  Handoff: Next lane should be `ascii-sequence-control-blocks`, not more opportunistic edits inside
-  this workstream.
+  Handoff: Lane is closed. Next lane should be `ascii-sequence-control-blocks`, not more
+  opportunistic edits inside this workstream.

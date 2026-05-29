@@ -1,6 +1,6 @@
 # ASCII Sequence Renderer Modularization - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-29
 
 ## Smallest Current Repro
@@ -88,3 +88,7 @@ is behavior-preserving and that control-block behavior was not silently folded i
 - 2026-05-29 ASRM-050: Documented the final module boundary in `DESIGN.md` and confirmed that
   Mermaid sequence control blocks remain a separate follow-on lane. Passed
   `cargo nextest run -p merman-ascii` and `git diff --check`.
+- 2026-05-29 ASRM-060: Closeout review closed the modularization lane. Target state is met,
+  review findings are non-blocking, and remaining control-block work is split into
+  `sequence-control-blocks` follow-on scope. Fresh closeout verification passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii`, and `git diff --check`.

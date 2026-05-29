@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-sequence-renderer-modularization",
   "title": "ASCII Sequence Renderer Modularization",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-29",
   "scope_kind": "execution",
   "problem": "The ASCII sequence renderer is a monolithic module, which makes future sequence control-block rendering riskier than necessary.",
@@ -51,14 +51,19 @@
       "date": "2026-05-29",
       "task": "ASRM-050",
       "result": "documented final module boundary and confirmed sequence control blocks remain follow-on scope"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-060",
+      "result": "closed modularization lane and split sequence control blocks into follow-on scope"
     }
   ],
   "adr_refs": [
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "closeout_review",
-    "next_task": "ASRM-060",
-    "notes": "Close this modularization lane, then open sequence-control-blocks if control-block rendering is the next priority."
+    "default_action": "open_new_workstream",
+    "next_task": "sequence-control-blocks",
+    "notes": "ascii-sequence-renderer-modularization is closed. Open sequence-control-blocks if control-block rendering is the next priority."
   }
 }
