@@ -68,14 +68,20 @@ Last updated: 2026-05-29
 
 ## M4 — Flow/State Delta Triage
 
-- [ ] ARI-060 [owner=unassigned] [deps=ARI-010] [scope=crates/merman-ascii/src/graph,docs]
+- [x] ARI-060 [owner=codex] [deps=ARI-010] [scope=crates/merman-ascii/src/graph,docs]
   Goal: Compare current graph renderer against `beautiful-mermaid` deltas and decide which
   behavior should be ported, rejected, or deferred.
   Validation: Documented gap matrix plus focused tests for any shipped behavior.
-  Review: Reject parser-only features that cannot be expressed through `merman-core` typed models.
-  Evidence: Updated `FLOWCHART_SUPPORT.md` and test references.
-  Handoff: Candidate deltas include BT/RL approximations, thick edges, multiline subgraph labels,
-  and ANSI/HTML color roles.
+  Review: Self-review found no blocking findings. Parser-only features were rejected or deferred
+  unless `merman-core` typed models preserve enough semantics; the current `RL` approximation in
+  `beautiful-mermaid` is explicitly not ported because it would misrepresent Mermaid direction.
+  Evidence: `crates/merman-ascii/FLOWCHART_SUPPORT.md`,
+  `crates/merman-ascii/tests/flowchart_model.rs`, and graph stroke mapping in
+  `crates/merman-ascii/src/graph/`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. Thick edges were ported with ASCII/Unicode snapshots. BT true support, RL true
+  support, subgraph direction overrides, multiline subgraph labels, ANSI/HTML color roles,
+  class/style rendering, state diagram graph rendering, and additional uncommon shapes are
+  documented as follow-on decisions.
 
 ## M5 — Integration And Closeout
 

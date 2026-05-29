@@ -54,7 +54,7 @@ fn is_arrow(ch: char) -> bool {
 }
 
 fn is_ascii_route_char(ch: char) -> bool {
-    matches!(ch, '-' | '|' | '+')
+    matches!(ch, '-' | '|' | '+' | '=' | '#')
 }
 
 fn merge_ascii_route_chars(existing: char, incoming: char) -> char {
@@ -62,7 +62,7 @@ fn merge_ascii_route_chars(existing: char, incoming: char) -> char {
         (' ', ch) | (ch, ' ') => ch,
         ('-', '-') => '-',
         ('|', '|') => '|',
-        ('+' | '-' | '|', '+' | '-' | '|') => '+',
+        ('+' | '-' | '|' | '=' | '#', '+' | '-' | '|' | '=' | '#') => '+',
         (_, ch) => ch,
     }
 }
@@ -74,8 +74,8 @@ const DIR_LEFT: u8 = 8;
 
 fn unicode_route_dirs(ch: char) -> u8 {
     match ch {
-        '─' | '┄' => DIR_LEFT | DIR_RIGHT,
-        '│' | '┆' => DIR_UP | DIR_DOWN,
+        '─' | '┄' | '━' => DIR_LEFT | DIR_RIGHT,
+        '│' | '┆' | '┃' => DIR_UP | DIR_DOWN,
         '┌' | '╭' => DIR_RIGHT | DIR_DOWN,
         '┐' | '╮' => DIR_LEFT | DIR_DOWN,
         '└' | '╰' => DIR_UP | DIR_RIGHT,
@@ -116,5 +116,7 @@ pub(super) fn edge_line_char(
         (GraphEdgeStroke::Normal, GraphDirection::TopDown) => charset.vertical,
         (GraphEdgeStroke::Dotted, GraphDirection::LeftRight) => charset.dotted_horizontal,
         (GraphEdgeStroke::Dotted, GraphDirection::TopDown) => charset.dotted_vertical,
+        (GraphEdgeStroke::Thick, GraphDirection::LeftRight) => charset.thick_horizontal,
+        (GraphEdgeStroke::Thick, GraphDirection::TopDown) => charset.thick_vertical,
     }
 }

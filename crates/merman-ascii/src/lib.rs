@@ -255,15 +255,15 @@ mod tests {
 
     #[test]
     fn render_flowchart_rejects_unsupported_edge_variants() {
-        let mut thick = empty_flowchart();
-        thick.nodes = vec![node("A"), node("B")];
-        thick.edges = vec![FlowEdge {
-            stroke: Some("thick".to_string()),
+        let mut invisible = empty_flowchart();
+        invisible.nodes = vec![node("A"), node("B")];
+        invisible.edges = vec![FlowEdge {
+            stroke: Some("invisible".to_string()),
             ..edge("A", "B")
         }];
 
         assert_eq!(
-            render_flowchart(&thick, &AsciiRenderOptions::ascii()),
+            render_flowchart(&invisible, &AsciiRenderOptions::ascii()),
             Err(AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
                 feature: "non-normal edge strokes",

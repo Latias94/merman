@@ -13,8 +13,8 @@ parse Mermaid syntax itself.
 This crate contains the public API foundation, options, errors, third-party provenance, copied
 upstream golden fixtures, flowchart rendering, and expanding sequence rendering. Flowcharts with
 boxed nodes, multiline node labels, common terminal shape approximations, edge labels, open/dotted
-edges, length spacing, and titled/nested subgraphs can render through `render_flowchart`. Basic
-sequence diagrams with participants, filled/open solid and dotted messages, self messages,
+and thick edges, length spacing, and titled/nested subgraphs can render through `render_flowchart`.
+Basic sequence diagrams with participants, filled/open solid and dotted messages, self messages,
 wrapped message labels, wrapped notes, sequence boxes, activations, actor create/destroy lifecycle
 markers, visible autonumber, and sequence control blocks can render through `render_sequence` or
 `render_model`. The classDiagram slice can render class boxes, members, methods, relationship

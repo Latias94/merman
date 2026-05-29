@@ -70,6 +70,11 @@
       "date": "2026-05-29",
       "task": "ARI-050",
       "result": "implemented first XYChart ASCII/Unicode slice from RenderSemanticModel::XyChart with compact vertical bars, stair-step lines, mixed overlays, horizontal bars, title and axis text, inferred numeric labels, focused tests, and verification evidence"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ARI-060",
+      "result": "triaged beautiful-mermaid graph deltas in FLOWCHART_SUPPORT.md and ported typed thick-edge rendering with ASCII/Unicode snapshots"
     }
   ],
   "adr_refs": [
@@ -78,7 +83,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ARI-060",
-    "notes": "Continue with flow/state delta triage against beautiful-mermaid. Class and ER multi-relationship graph layout and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
+    "next_task": "ARI-070",
+    "notes": "Continue with public API/docs integration and broader ASCII feature gates. True BT/RL graph direction transforms, subgraph direction overrides, color/style roles, state graph rendering, class/ER multi-relationship graph layout, and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
   }
 }

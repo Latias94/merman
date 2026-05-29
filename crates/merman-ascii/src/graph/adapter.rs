@@ -66,6 +66,7 @@ fn parse_edge_stroke(stroke: &str) -> Result<GraphEdgeStroke> {
     match stroke {
         "normal" => Ok(GraphEdgeStroke::Normal),
         "dotted" => Ok(GraphEdgeStroke::Dotted),
+        "thick" => Ok(GraphEdgeStroke::Thick),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
             feature: "non-normal edge strokes",

@@ -13,7 +13,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, and Mermaid's `TB` alias. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, edge labels, deterministic length spacing, and `mermaid-ascii` padding directives for simple LR/TD edges. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels, deterministic length spacing, and `mermaid-ascii` padding directives for simple LR/TD edges. |
 | Subgraphs | Supported subset | Titled group boxes, nested groups, external nodes, and subgraph edge crossings covered by copied `mermaid-ascii` graph fixtures. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -29,6 +29,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Edge labels | Supported subset. | Labels render on routed edge paths for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
+| Thick edges | Supported subset. | ASCII uses `=`/`#` for horizontal/vertical thick lines; Unicode uses heavy box-drawing line characters. |
 | Edge length modifiers | Supported subset. | Preserve direction and add deterministic spacing; exact Mermaid rank spacing is not required. |
 | Rounded rectangles | Supported approximation. | ASCII uses slash corners; Unicode uses rounded box corners. |
 | Circle/double-circle/stadium-like shapes | Supported approximation. | Rendered with the rounded terminal outline; this is not SVG geometry parity. |
@@ -47,9 +48,27 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Multiline edge labels | `multiline edge labels` |
 | `BT`, `RL`, or other non-LR/TD directions | `non-LR/TD graph directions` |
 | Hexagon, lean, document, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
-| Thick, invisible, or otherwise non-normal/non-dotted strokes | `non-normal edge strokes` |
+| Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
 | Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
+
+## `beautiful-mermaid` Delta Triage
+
+ARI-060 compared the current graph renderer with `repo-ref/beautiful-mermaid/src/ascii/` and
+classified the model-expressible deltas below. Mermaid upstream remains the product spec; the
+reference implementation is only an implementation aid.
+
+| Delta | Decision | Rationale | Follow-up |
+| --- | --- | --- | --- |
+| Thick edges | Ported | `merman-core` preserves `edge.stroke = "thick"`, and the existing routing can use alternate line glyphs without changing layout semantics. | Covered by `flowchart_parser_thick_edges_render_with_heavy_ascii_line`, `flowchart_parser_thick_edges_render_with_heavy_unicode_line`, and `flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line`. |
+| `BT` root direction | Defer | The typed root direction is available, but honest output needs a post-layout vertical flip plus arrow/corner remapping. | Split into a focused direction-transform task with TD fixture parity and arrow orientation tests. |
+| `RL` root direction | Reject current reference approximation; defer true support | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics. | Implement only with true horizontal inversion and left-pointing arrow tests. |
+| Subgraph direction overrides | Defer | `FlowSubgraph.dir` is typed, but current graph layout is global; local subgraph layout needs a deeper layout pass. | Split with nested subgraph and cross-boundary edge fixtures. |
+| Multiline subgraph labels | Defer | The title text can be represented, but group layout reserves a single title row. | Expand group header height and route edges around taller headers. |
+| ANSI/HTML color roles | Defer | The current public options intentionally produce plain ASCII/Unicode text and have no role canvas or color mode. | Design an opt-in color API before emitting escape sequences or HTML spans. |
+| `classDef`, `class`, and inline node styles | Defer | Style data exists in the typed model, but rendering it depends on the color-role API decision. | Revisit together with ANSI/HTML color roles. |
+| State diagram graph rendering | Defer/split | `stateDiagram` uses a different typed model, not `FlowchartV2Model`; adapting it through graph rendering needs a state-to-graph semantic adapter. | Open a state ASCII workstream if prioritized. |
+| Additional uncommon flowchart shapes | Defer | `beautiful-mermaid` has more shape renderers; current `merman-ascii` intentionally supports the high-frequency terminal approximations first. | Add one shape family at a time with public `render_model` snapshots. |
 
 ## Known Limitations
 

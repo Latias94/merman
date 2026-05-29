@@ -49,6 +49,7 @@ pub(super) struct AsciiGraphGroup {
 pub(super) enum GraphEdgeStroke {
     Normal,
     Dotted,
+    Thick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

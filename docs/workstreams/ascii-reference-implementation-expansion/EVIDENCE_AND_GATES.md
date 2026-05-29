@@ -6,8 +6,9 @@ Last updated: 2026-05-29
 ## Smallest Current Repro
 
 `merman-ascii` now has bounded class, ER, and xychart renderers in addition to the existing
-flowchart and sequence renderers. The remaining lane work is graph delta triage plus broader public
-integration and closeout verification.
+flowchart and sequence renderers. The graph delta triage against `beautiful-mermaid` is recorded in
+`FLOWCHART_SUPPORT.md`; the remaining lane work is broader public integration and closeout
+verification.
 
 Relevant interface:
 
@@ -88,6 +89,7 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-030 | Expanded the class relation layout mapper in `crates/merman-ascii/src/class/render.rs` and relationship snapshots in `crates/merman-ascii/tests/class_model.rs`. | Single-relationship class layouts now cover extension labels, reverse extension orientation, aggregation, composition, dependency dotted arrows, and Unicode composition markers from typed `RelationShape` constants. |
 | 2026-05-29 | ARI-040 | Added `RenderSemanticModel::Er` dispatch, `render_er`, `crates/merman-ascii/src/er/`, and `crates/merman-ascii/tests/er_model.rs`. | First ER ASCII/Unicode slice implemented: entity boxes, attributes, relationship labels, identifying/non-identifying lines, common cardinality markers, and explicit diagnostics for multiple-relationship layouts. |
 | 2026-05-29 | ARI-050 | Added `RenderSemanticModel::XyChart` dispatch, `render_xychart`, `crates/merman-ascii/src/xychart/`, `crates/merman-ascii/tests/xychart_model.rs`, and the README scaling contract. | XYChart ASCII/Unicode slice implemented: compact vertical bars, stair-step lines, mixed overlays, horizontal bars, title/axis text, inferred numeric x labels, and empty-chart handling. |
+| 2026-05-29 | ARI-060 | Compared `crates/merman-ascii` graph support with `repo-ref/beautiful-mermaid/src/ascii/` and updated `crates/merman-ascii/FLOWCHART_SUPPORT.md`. | Delta matrix recorded: thick edges ported; `BT`, true `RL`, subgraph direction overrides, multiline subgraph labels, color/style roles, state graph rendering, and uncommon shapes deferred or rejected with rationale. |
 
 ## Verification Log
 
@@ -111,6 +113,14 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-050 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after XYChart implementation and workstream doc updates. |
 | 2026-05-29 | ARI-050 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | New XYChart renderer and tests compile cleanly under deny-warnings clippy for this package. |
 | 2026-05-29 | ARI-050 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in implementation, tests, or workstream docs. |
+| 2026-05-29 | ARI-060 | `cargo nextest run -p merman-ascii --test flowchart_model flowchart_parser_thick_edges_render_with_heavy_ascii_line` | Focused thick-edge tracer test | PASS, 1 test | The shipped `beautiful-mermaid` graph delta is proven through the public `render_model` flowchart path for ASCII. |
+| 2026-05-29 | ARI-060 | `cargo nextest run -p merman-ascii --test flowchart_model flowchart_parser_thick_edges_render_with_heavy_unicode_line` | Focused thick-edge Unicode test | PASS, 1 test | Thick edge rendering also maps to Unicode heavy line glyphs. |
+| 2026-05-29 | ARI-060 | `cargo nextest run -p merman-ascii --test flowchart_model flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line` | Focused thick-edge TD test | PASS, 1 test | Thick edge rendering maps vertical ASCII routes to a visually distinct heavy line approximation. |
+| 2026-05-29 | ARI-060 | `cargo nextest run -p merman-ascii flowchart` | Flowchart focused gate | PASS, 25 tests | Thick edge support and the updated unsupported-stroke diagnostic do not regress existing flowchart behavior. |
+| 2026-05-29 | ARI-060 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 107 tests | The graph delta triage implementation does not regress sequence, class, ER, XYChart, fixture, or graph behavior. |
+| 2026-05-29 | ARI-060 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after graph delta implementation and docs. |
+| 2026-05-29 | ARI-060 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | Thick edge stroke mapping and tests compile cleanly under deny-warnings clippy for this package. |
+| 2026-05-29 | ARI-060 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in implementation, tests, or workstream docs. |
 
 Broader public feature gates (`cargo nextest run -p merman --features ascii`,
 `cargo nextest run -p merman-cli --features ascii`) were not run for ARI-020 because the existing
