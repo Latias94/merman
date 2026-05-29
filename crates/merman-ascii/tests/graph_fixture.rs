@@ -54,6 +54,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "backlink_with_short_y_padding.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "back_edges_two_labels_td.txt",
     },
     GraphFixture {
@@ -66,7 +70,19 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "comments.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "custom_padding.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "duplicate_edge_labels.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "explicit_label_after_bare_reference.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -75,6 +91,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "graph_tb_direction.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "preserve_order_of_definition.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -186,6 +206,14 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "comments.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
+        name: "preserve_order_of_definition.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "self_reference.txt",
     },
     GraphFixture {
@@ -241,27 +269,7 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
 const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
-        name: "backlink_with_short_y_padding.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "comments.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "custom_padding.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "explicit_label_after_bare_reference.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "multiline_single_node.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "preserve_order_of_definition.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -319,14 +327,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
         directory: "ascii",
         name: "subgraph_with_labels.txt",
     },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "comments.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
-        name: "preserve_order_of_definition.txt",
-    },
 ];
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -380,7 +380,8 @@ fn graph_fixture_allowlist_matches_upstream() {
     for fixture in GRAPH_FIXTURE_ALLOWLIST {
         let path = fixture_path(*fixture);
         let (input, expected) = split_fixture(&path);
-        let rendered = render_flowchart(&input, &fixture.options())
+        let (options, input) = fixture.options().apply_mermaid_ascii_directives(&input);
+        let rendered = render_flowchart(input.as_ref(), &options)
             .unwrap_or_else(|err| panic!("{} failed: {err}", path.display()));
 
         assert_eq!(rendered, expected, "{}", path.display());

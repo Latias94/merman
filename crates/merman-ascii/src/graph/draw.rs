@@ -68,7 +68,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
             .edges
             .iter()
             .enumerate()
-            .filter(|(_, edge)| edge.from != edge.to)
+            .filter(|(_, edge)| edge.from == edge.to)
         {
             routing::draw_edge(
                 &mut route_drawing,
@@ -84,7 +84,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
             .edges
             .iter()
             .enumerate()
-            .filter(|(_, edge)| edge.from == edge.to)
+            .filter(|(_, edge)| edge.from != edge.to)
         {
             routing::draw_edge(
                 &mut route_drawing,

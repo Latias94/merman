@@ -1,6 +1,6 @@
 # Flowchart ASCII Support
 
-Status: ASCII graph routing parity expansion in progress
+Status: Active supported subset
 
 This document describes the current `merman-ascii` flowchart support boundary. The renderer consumes
 `merman-core` `FlowchartV2Model` values; it does not parse Mermaid text itself.
@@ -13,7 +13,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, and Mermaid's `TB` alias. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Single-line text labels. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, edge labels, and deterministic length spacing for simple LR/TD edges. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, edge labels, deterministic length spacing, and `mermaid-ascii` padding directives for simple LR/TD edges. |
 | Subgraphs | Supported subset | Simple titled group boxes render around supported member nodes with upstream-style title rows. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, and simple subgraphs use a deterministic grid layout. TD remains a simpler vertical layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -58,6 +58,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains and right-side back-edge label lanes, but remains less general
   than the LR grid router.
+- Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
+  directives by ASCII render entry points; they are not Mermaid flowchart syntax.
 - Complex nested subgraph routing and external-edge routing through subgraphs are not product-
   supported yet.
 - Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
@@ -74,4 +76,4 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii flowchart`
 
 Golden tests compare against copied `mermaid-ascii` fixtures for the supported subset. The current
-graph fixture allowlist covers 53 exact graph matches: 32 ASCII and 21 Unicode.
+graph fixture allowlist covers 60 exact graph matches: 37 ASCII and 23 Unicode.

@@ -64,7 +64,7 @@ pub(super) fn edge_canvas_extent(
             continue;
         };
         width = width.max(self_loop_right_x(layouts, layout) + 1);
-        height = height.max(self_loop_bottom_y(layout) + 1);
+        height = height.max(self_loop_bottom_y_for_edges(layouts, edges, layout) + 1);
     }
     for (edge_index, edge) in edges
         .iter()
@@ -151,6 +151,7 @@ fn draw_left_right_edge(
             drawing.canvas,
             drawing.route_cells,
             &graph_layout.nodes,
+            edges,
             from,
             edge,
             charset,
@@ -164,7 +165,18 @@ fn draw_left_right_edge(
     }
 
     if from.center_y() == to.center_y() && from.x > to.x {
-        draw_left_right_bottom_lane_edge(drawing, from, to, edge, charset);
+        if has_self_loop(edges, &to.id) {
+            draw_left_right_reverse_over_self_loop(
+                drawing,
+                &graph_layout.nodes,
+                from,
+                to,
+                edge,
+                charset,
+            );
+        } else {
+            draw_left_right_bottom_lane_edge(drawing, from, to, edge, charset);
+        }
         return;
     }
 
@@ -525,6 +537,56 @@ fn draw_left_right_bottom_lane_edge(
     );
 }
 
+fn draw_left_right_reverse_over_self_loop(
+    drawing: &mut RouteDrawing<'_>,
+    layouts: &[NodeLayout],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) {
+    let lane_x = self_loop_right_x(layouts, to);
+    if lane_x <= to.right() || from.x <= lane_x {
+        return;
+    }
+
+    let y = to.center_y();
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    drawing.canvas.set(from.x, y, charset.left_connector);
+    set_route_cell(
+        drawing.canvas,
+        drawing.route_cells,
+        lane_x,
+        y,
+        charset.down_junction,
+    );
+    for x in (lane_x + 1)..from.x {
+        set_route_cell(drawing.canvas, drawing.route_cells, x, y, horizontal);
+    }
+    match edge.arrow {
+        GraphEdgeArrow::Open => {
+            set_route_cell(
+                drawing.canvas,
+                drawing.route_cells,
+                to.right() + 1,
+                y,
+                horizontal,
+            );
+        }
+        GraphEdgeArrow::Point => drawing.canvas.set(to.right() + 1, y, charset.arrow_left),
+    }
+    for x in (to.right() + 2)..lane_x {
+        set_route_cell(drawing.canvas, drawing.route_cells, x, y, horizontal);
+    }
+    push_label_on_horizontal_line(
+        drawing.labels,
+        to.right() + 1,
+        from.x.saturating_sub(1),
+        y,
+        edge.label.as_deref(),
+    );
+}
+
 fn left_right_back_edge_bottom_y(from: &NodeLayout) -> usize {
     from.bottom() + 2
 }
@@ -533,13 +595,14 @@ fn draw_left_right_self_edge(
     canvas: &mut Canvas,
     route_cells: &mut RouteCells,
     layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
     from: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) {
     let y = from.center_y();
     let loop_x = self_loop_right_x(layouts, from);
-    let bottom_y = self_loop_bottom_y(from);
+    let bottom_y = self_loop_bottom_y_for_edges(layouts, edges, from);
     if loop_x <= from.right() || bottom_y <= y + 1 {
         return;
     }
@@ -575,7 +638,10 @@ fn draw_left_right_self_edge(
         charset.corner_down_right,
     );
 
-    let arrow_y = bottom_y - 1;
+    let arrow_y = from.bottom() + 1;
+    for line_y in (arrow_y + 1)..bottom_y {
+        set_route_cell(canvas, route_cells, from.center_x(), line_y, vertical);
+    }
     match edge.arrow {
         GraphEdgeArrow::Open => canvas.set(from.center_x(), arrow_y, vertical),
         GraphEdgeArrow::Point => canvas.set(from.center_x(), arrow_y, charset.arrow_up),
@@ -602,6 +668,34 @@ fn self_loop_right_x(layouts: &[NodeLayout], from: &NodeLayout) -> usize {
 
 fn self_loop_bottom_y(from: &NodeLayout) -> usize {
     from.bottom() + 2
+}
+
+fn self_loop_bottom_y_for_edges(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    from: &NodeLayout,
+) -> usize {
+    if has_same_row_reverse_edge_into(layouts, edges, from) {
+        from.bottom() + 3
+    } else {
+        self_loop_bottom_y(from)
+    }
+}
+
+fn has_same_row_reverse_edge_into(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    target: &NodeLayout,
+) -> bool {
+    edges.iter().any(|edge| {
+        if edge.to != target.id || edge.from == target.id {
+            return false;
+        }
+        let Some(from) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            return false;
+        };
+        from.center_y() == target.center_y() && from.x > target.x
+    })
 }
 
 fn draw_left_right_down_edge(
@@ -976,6 +1070,12 @@ fn edge_context(edges: &[AsciiGraphEdge], edge_index: usize) -> EdgeContext {
 fn same_edge_pair(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> bool {
     (left.from == right.from && left.to == right.to)
         || (left.from == right.to && left.to == right.from)
+}
+
+fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {
+    edges
+        .iter()
+        .any(|edge| edge.from == node_id && edge.to == node_id)
 }
 
 fn set_route_cell(canvas: &mut Canvas, route_cells: &mut RouteCells, x: usize, y: usize, ch: char) {

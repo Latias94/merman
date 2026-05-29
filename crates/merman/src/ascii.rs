@@ -23,13 +23,15 @@ pub fn render_ascii_sync(
     parse_options: merman_core::ParseOptions,
     ascii_options: &AsciiRenderOptions,
 ) -> Result<Option<String>> {
-    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
+    let (ascii_options, text) = ascii_options.apply_mermaid_ascii_directives(text);
+    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text.as_ref(), parse_options)?
+    else {
         return Ok(None);
     };
 
     Ok(Some(merman_ascii::render_model(
         &parsed.model,
-        ascii_options,
+        &ascii_options,
     )?))
 }
 

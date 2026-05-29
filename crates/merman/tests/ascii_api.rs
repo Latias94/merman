@@ -21,6 +21,24 @@ fn render_ascii_sync_renders_flowchart_from_mermaid_text() {
 }
 
 #[test]
+fn render_ascii_sync_applies_mermaid_ascii_padding_directives() {
+    let engine = merman::Engine::new();
+    let rendered = render_ascii_sync(
+        &engine,
+        "paddingX=2\npaddingY=1\ngraph LR\nA --> B",
+        merman::ParseOptions::strict(),
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+        rendered,
+        "+---+  +---+\n|   |  |   |\n| A |->| B |\n|   |  |   |\n+---+  +---+\n"
+    );
+}
+
+#[test]
 fn headless_ascii_renderer_renders_sequence_with_unicode_defaults() {
     let renderer = HeadlessAsciiRenderer::new().with_strict_parsing();
     let rendered = renderer

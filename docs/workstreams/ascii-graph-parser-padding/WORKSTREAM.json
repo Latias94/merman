@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-graph-parser-padding",
+  "title": "ASCII Graph Parser Padding",
+  "status": "complete",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "Non-subgraph graph fixture gaps remain because comments, declaration order, explicit labels, and padding directives are not yet aligned with mermaid-ascii behavior.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-graph-parser-padding/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-graph-parser-padding/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-graph-parser-padding/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii flowchart"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "AGP-010",
+      "result": "opened parser/order/padding lane"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGP-020",
+      "result": "comments, explicit labels, and preserve-order routing reached exact fixture parity"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGP-030",
+      "result": "padding directives and short-Y backlink spacing reached exact fixture parity"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGP-040",
+      "result": "broad gates passed; lane complete"
+    }
+  ],
+  "adr_refs": [],
+  "continue_policy": {
+    "default_action": "close",
+    "next_task": null,
+    "notes": "Open a dedicated follow-on for multiline labels or subgraph-heavy graph parity."
+  }
+}
