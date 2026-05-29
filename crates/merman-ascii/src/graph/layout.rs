@@ -178,14 +178,17 @@ fn layout_left_right_grid_nodes(
         let length_gap = options
             .graph_padding_x
             .saturating_add(edge.length.saturating_sub(1) * 2);
-        let label_gap = edge.label.as_deref().map(display_width).unwrap_or_default();
+        let label_gap = edge
+            .label
+            .as_deref()
+            .map(|label| display_width(label) + 2)
+            .unwrap_or_default();
         set_axis_size(&mut column_widths, to.x - 1, length_gap.max(label_gap));
     }
 
     let has_groups = has_non_empty_group(graph);
     let group_offset_x = usize::from(has_groups) * 2;
     let group_offset_y = usize::from(has_groups) * 4;
-    let label_y_offset = usize::from(graph.edges.iter().any(|edge| edge.label.is_some()));
 
     let layouts = placements
         .into_iter()
@@ -196,7 +199,7 @@ fn layout_left_right_grid_nodes(
             shape: node.shape,
             grid: coord,
             x: group_offset_x + axis_position(&column_widths, coord.x),
-            y: group_offset_y + label_y_offset + axis_position(&row_heights, coord.y),
+            y: group_offset_y + axis_position(&row_heights, coord.y),
             width: axis_span(&column_widths, coord.x, 3),
             height: axis_span(&row_heights, coord.y, 3),
         })
@@ -359,20 +362,37 @@ fn layout_top_down_linear_nodes(
         })
         .collect::<Vec<_>>();
 
-    let canvas_width = measured
+    let mut canvas_width = measured
         .iter()
         .map(|(_, width, _)| *width)
         .max()
         .unwrap_or_default();
+    let index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    for edge in &graph.edges {
+        let (Some(from_index), Some(to_index)) = (
+            index_by_id.get(edge.from.as_str()).copied(),
+            index_by_id.get(edge.to.as_str()).copied(),
+        ) else {
+            continue;
+        };
+        if to_index <= from_index {
+            continue;
+        }
+        if let Some(label) = edge.label.as_deref() {
+            canvas_width = canvas_width.max(display_width(label) + 4);
+        }
+    }
     let mut y = 0;
     for (index, (_, width, height)) in measured.iter().enumerate() {
         let grid_y = index * 4;
+        let node_width = canvas_width.max(*width);
         set_axis_size(&mut column_widths, 0, 1);
-        set_axis_size(
-            &mut column_widths,
-            1,
-            canvas_width.max(*width).saturating_sub(2),
-        );
+        set_axis_size(&mut column_widths, 1, node_width.saturating_sub(2));
         set_axis_size(&mut column_widths, 2, 1);
         set_axis_size(&mut row_heights, grid_y, 1);
         set_axis_size(&mut row_heights, grid_y + 1, height.saturating_sub(2));
@@ -387,14 +407,15 @@ fn layout_top_down_linear_nodes(
         .enumerate()
         .map(|(index, (node, width, height))| {
             let grid = GridCoord { x: 0, y: index * 4 };
+            let layout_width = canvas_width.max(width);
             let layout = NodeLayout {
                 id: node.id.clone(),
                 label: node.label.clone(),
                 shape: node.shape,
                 grid,
-                x: group_offset_x + (canvas_width - width) / 2,
+                x: group_offset_x + (canvas_width - layout_width) / 2,
                 y,
-                width,
+                width: layout_width,
                 height,
             };
             y += height + options.graph_padding_y;

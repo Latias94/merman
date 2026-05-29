@@ -54,33 +54,51 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
 
     let mut canvas = Canvas::new(width, height);
     let mut route_cells = HashSet::new();
+    let mut edge_labels = Vec::new();
     for group in &graph_layout.groups {
         draw_group(&mut canvas, group, &charset);
     }
     for layout in &graph_layout.nodes {
         draw_node(&mut canvas, layout, &charset, options);
     }
-    for edge in graph.edges.iter().filter(|edge| edge.from != edge.to) {
-        routing::draw_edge(
-            &mut canvas,
-            &mut route_cells,
-            &graph_layout,
-            &graph.edges,
-            edge,
-            graph.direction,
-            &charset,
-        );
+    {
+        let mut route_drawing =
+            routing::RouteDrawing::new(&mut canvas, &mut route_cells, &mut edge_labels);
+        for (edge_index, edge) in graph
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| edge.from != edge.to)
+        {
+            routing::draw_edge(
+                &mut route_drawing,
+                &graph_layout,
+                &graph.edges,
+                edge_index,
+                edge,
+                graph.direction,
+                &charset,
+            );
+        }
+        for (edge_index, edge) in graph
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, edge)| edge.from == edge.to)
+        {
+            routing::draw_edge(
+                &mut route_drawing,
+                &graph_layout,
+                &graph.edges,
+                edge_index,
+                edge,
+                graph.direction,
+                &charset,
+            );
+        }
     }
-    for edge in graph.edges.iter().filter(|edge| edge.from == edge.to) {
-        routing::draw_edge(
-            &mut canvas,
-            &mut route_cells,
-            &graph_layout,
-            &graph.edges,
-            edge,
-            graph.direction,
-            &charset,
-        );
+    for label in &edge_labels {
+        routing::draw_routed_label(&mut canvas, label);
     }
 
     Ok(canvas.finish())

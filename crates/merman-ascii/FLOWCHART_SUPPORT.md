@@ -26,7 +26,7 @@ approximations. These mappings are product behavior once shipped and should be s
 
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
-| Edge labels | Supported subset. | Labels render near the edge path for simple LR/TD edges. Placement may differ from SVG. |
+| Edge labels | Supported subset. | Labels render on routed edge paths for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
 | Edge length modifiers | Supported subset. | Preserve direction and add deterministic spacing; exact Mermaid rank spacing is not required. |
@@ -54,9 +54,10 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 ## Known Limitations
 
-- LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, but duplicate
-  and bidirectional label lanes are not product-supported yet.
-- TD back-edge labels are not product-supported yet.
+- LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
+  duplicate and bidirectional label lanes for the supported graph subset.
+- TD routing supports vertical chains and right-side back-edge label lanes, but remains less general
+  than the LR grid router.
 - Complex nested subgraph routing and external-edge routing through subgraphs are not product-
   supported yet.
 - Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
@@ -73,4 +74,4 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii flowchart`
 
 Golden tests compare against copied `mermaid-ascii` fixtures for the supported subset. The current
-graph fixture allowlist covers 48 exact graph matches: 28 ASCII and 20 Unicode.
+graph fixture allowlist covers 53 exact graph matches: 32 ASCII and 21 Unicode.

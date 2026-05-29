@@ -211,7 +211,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "     label     \n+---+     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n+---+     +---+\n"
+            "+---+       +---+\n|   |       |   |\n| A |-label>| B |\n|   |       |   |\n+---+       +---+\n"
         );
     }
 

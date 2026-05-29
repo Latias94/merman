@@ -1,6 +1,6 @@
 # ASCII Graph Label Lanes - Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-29
 
 ## M0 - Scope And Evidence Freeze

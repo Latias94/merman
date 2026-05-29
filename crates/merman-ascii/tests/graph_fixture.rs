@@ -54,6 +54,22 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "back_edges_two_labels_td.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "bidirectional_edge_labels_lr.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "bidirectional_edge_labels_td.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
+        name: "duplicate_edge_labels.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "flowchart_tb_simple.txt",
     },
     GraphFixture {
@@ -166,6 +182,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
+        name: "back_edges_two_labels_td.txt",
+    },
+    GraphFixture {
+        directory: "extended-chars",
         name: "self_reference.txt",
     },
     GraphFixture {
@@ -221,19 +241,7 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
 const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
-        name: "back_edges_two_labels_td.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
         name: "backlink_with_short_y_padding.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "bidirectional_edge_labels_lr.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "bidirectional_edge_labels_td.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -242,10 +250,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     GraphFixture {
         directory: "ascii",
         name: "custom_padding.txt",
-    },
-    GraphFixture {
-        directory: "ascii",
-        name: "duplicate_edge_labels.txt",
     },
     GraphFixture {
         directory: "ascii",
@@ -317,10 +321,6 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "extended-chars",
-        name: "back_edges_two_labels_td.txt",
-    },
-    GraphFixture {
-        directory: "extended-chars",
         name: "comments.txt",
     },
     GraphFixture {
@@ -364,7 +364,11 @@ fn split_fixture(path: &Path) -> (String, String) {
     let (input, expected) = content
         .split_once("\n---\n")
         .unwrap_or_else(|| panic!("fixture missing separator: {}", path.display()));
-    (input.to_string(), expected.to_string())
+    let mut expected = expected.to_string();
+    if !expected.ends_with('\n') {
+        expected.push('\n');
+    }
+    (input.to_string(), expected)
 }
 
 fn graph_fixture_keys(fixtures: &[GraphFixture]) -> BTreeSet<String> {

@@ -65,7 +65,7 @@ fn flowchart_parser_tb_chain_matches_upstream_ascii_golden() {
 }
 
 #[test]
-fn flowchart_parser_lr_edge_label_renders_above_edge() {
+fn flowchart_parser_lr_edge_label_renders_on_edge_line() {
     let rendered = render_flowchart(
         "flowchart LR\nA -- hello --> B",
         &AsciiRenderOptions::ascii(),
@@ -75,12 +75,11 @@ fn flowchart_parser_lr_edge_label_renders_above_edge() {
     assert_eq!(
         rendered,
         concat!(
-            "     hello     \n",
-            "+---+     +---+\n",
-            "|   |     |   |\n",
-            "| A |---->| B |\n",
-            "|   |     |   |\n",
-            "+---+     +---+\n",
+            "+---+       +---+\n",
+            "|   |       |   |\n",
+            "| A |-hello>| B |\n",
+            "|   |       |   |\n",
+            "+---+       +---+\n",
         )
     );
 }
@@ -93,8 +92,21 @@ fn flowchart_parser_tb_edge_label_renders_between_nodes() {
     assert_eq!(
         rendered,
         concat!(
-            "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n", "  |  \n", "  |  \n", " yes \n",
-            "  |  \n", "  v  \n", "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n",
+            "+-----+\n",
+            "|     |\n",
+            "|  A  |\n",
+            "|     |\n",
+            "+-----+\n",
+            "   |   \n",
+            "   |   \n",
+            "  yes  \n",
+            "   |   \n",
+            "   v   \n",
+            "+-----+\n",
+            "|     |\n",
+            "|  B  |\n",
+            "|     |\n",
+            "+-----+\n",
         )
     );
 }

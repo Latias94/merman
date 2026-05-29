@@ -18,6 +18,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   `mermaid-ascii` fixture parity tracking.
 - Added Go-style grid path routing and junction merging for ASCII/Unicode LR flowcharts, improving
   copied `mermaid-ascii` graph fixture parity for crossing ampersand routes and top backlink routes.
+- Added routed ASCII/Unicode edge-label lanes for duplicate LR edges, LR bidirectional labels, and
+  TD back-edge labels, raising copied graph fixture parity to 53 exact matches.
 
 ## [0.6.0] - 2026-05-28
 

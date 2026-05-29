@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-graph-label-lanes",
   "title": "ASCII Graph Label Lanes",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-29",
   "scope_kind": "execution",
   "problem": "Duplicate and bidirectional graph edge labels still collide because label placement is not tied to routed edge lanes.",
@@ -36,12 +36,22 @@
       "date": "2026-05-29",
       "task": "AGL-020",
       "result": "split grid path planning into graph/routing/path.rs; focused gates passed"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGL-030",
+      "result": "added routed label lanes and moved 5 graph fixtures to exact allowlist; focused gates passed"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGL-040",
+      "result": "broad gates passed; lane complete"
     }
   ],
   "adr_refs": [],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "AGL-030",
-    "notes": "Continue through routing module deepening first, then label-lane parity."
+    "default_action": "close",
+    "next_task": null,
+    "notes": "Open a new lane for parser/comment/order gaps or subgraph-heavy graph parity."
   }
 }
