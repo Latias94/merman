@@ -53,13 +53,18 @@ Last updated: 2026-05-29
 
 ## M3 — XYChart ASCII
 
-- [ ] ARI-050 [owner=unassigned] [deps=ARI-010] [scope=crates/merman-ascii/src,xychart tests]
+- [x] ARI-050 [owner=codex] [deps=ARI-010] [scope=crates/merman-ascii/src,xychart tests]
   Goal: Render xychart bar/line/mixed ASCII output from `RenderSemanticModel::XyChart`.
   Validation: `cargo nextest run -p merman-ascii xychart`
-  Review: Keep chart scaling deterministic and documented; do not depend on SVG layout.
-  Evidence: XYChart ASCII snapshots for vertical bars, lines, mixed plots, horizontal orientation,
-  titles, axes, and edge cases.
-  Handoff: Split ANSI/color legends if they obscure the plain-text proof.
+  Review: Self-review found no blocking findings. Chart scaling is deterministic and documented in
+  `crates/merman-ascii/README.md`; the renderer consumes `XyChartDiagramRenderModel` and does not
+  depend on SVG layout.
+  Evidence: `crates/merman-ascii/src/xychart/`, `crates/merman-ascii/tests/xychart_model.rs`,
+  `crates/merman-ascii/README.md`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. Supports compact vertical bars, stair-step lines, mixed overlays, horizontal bars,
+  title/axis text, inferred numeric x labels, empty charts, and ASCII/Unicode character sets.
+  Legends, ANSI/color, multi-series spacing, and full-size terminal plot layout remain follow-on
+  work.
 
 ## M4 — Flow/State Delta Triage
 

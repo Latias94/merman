@@ -5,8 +5,9 @@ Last updated: 2026-05-29
 
 ## Smallest Current Repro
 
-`merman-ascii` currently routes only flowchart and sequence typed models. Class, ER, and xychart
-typed models exist in `merman-core`, but `render_model` returns `UnsupportedDiagram` for them.
+`merman-ascii` now has bounded class, ER, and xychart renderers in addition to the existing
+flowchart and sequence renderers. The remaining lane work is graph delta triage plus broader public
+integration and closeout verification.
 
 Relevant interface:
 
@@ -86,6 +87,7 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-020 | Added `RenderSemanticModel::Class` dispatch, `render_class`, `crates/merman-ascii/src/class/`, and `crates/merman-ascii/tests/class_model.rs`. | First classDiagram ASCII/Unicode slice implemented: class boxes, members, methods, one solid extension relationship, and explicit diagnostics for unsupported relationship labels and unrelated-class relationship layouts. |
 | 2026-05-29 | ARI-030 | Expanded the class relation layout mapper in `crates/merman-ascii/src/class/render.rs` and relationship snapshots in `crates/merman-ascii/tests/class_model.rs`. | Single-relationship class layouts now cover extension labels, reverse extension orientation, aggregation, composition, dependency dotted arrows, and Unicode composition markers from typed `RelationShape` constants. |
 | 2026-05-29 | ARI-040 | Added `RenderSemanticModel::Er` dispatch, `render_er`, `crates/merman-ascii/src/er/`, and `crates/merman-ascii/tests/er_model.rs`. | First ER ASCII/Unicode slice implemented: entity boxes, attributes, relationship labels, identifying/non-identifying lines, common cardinality markers, and explicit diagnostics for multiple-relationship layouts. |
+| 2026-05-29 | ARI-050 | Added `RenderSemanticModel::XyChart` dispatch, `render_xychart`, `crates/merman-ascii/src/xychart/`, `crates/merman-ascii/tests/xychart_model.rs`, and the README scaling contract. | XYChart ASCII/Unicode slice implemented: compact vertical bars, stair-step lines, mixed overlays, horizontal bars, title/axis text, inferred numeric x labels, and empty-chart handling. |
 
 ## Verification Log
 
@@ -104,6 +106,11 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-040 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 97 tests | The ER slice does not regress existing flowchart, fixture, sequence, or class behavior. |
 | 2026-05-29 | ARI-040 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after ER implementation. |
 | 2026-05-29 | ARI-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | New ER renderer and tests compile cleanly under deny-warnings clippy for this package. |
+| 2026-05-29 | ARI-050 | `cargo nextest run -p merman-ascii xychart` | Focused XYChart renderer tests | PASS, 7 tests | `render_model` accepts `RenderSemanticModel::XyChart` for the supported subset and covers vertical bars, lines, mixed plots, horizontal orientation, titles, axes, Unicode output, inferred numeric labels, and empty charts. |
+| 2026-05-29 | ARI-050 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 104 tests | The XYChart slice does not regress existing flowchart, fixture, sequence, class, or ER behavior. |
+| 2026-05-29 | ARI-050 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after XYChart implementation and workstream doc updates. |
+| 2026-05-29 | ARI-050 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | New XYChart renderer and tests compile cleanly under deny-warnings clippy for this package. |
+| 2026-05-29 | ARI-050 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in implementation, tests, or workstream docs. |
 
 Broader public feature gates (`cargo nextest run -p merman --features ascii`,
 `cargo nextest run -p merman-cli --features ascii`) were not run for ARI-020 because the existing
@@ -113,6 +120,8 @@ changed in this task.
 The same broader public feature gates were not rerun for ARI-030 because the task only changes
 `merman-ascii` class relationship behavior and docs; no `merman` or CLI integration files changed.
 They were also not rerun for ARI-040 because the task only changes `merman-ascii` ER behavior and
-docs; no `merman` or CLI integration files changed.
+docs; no `merman` or CLI integration files changed. They were not rerun for ARI-050 for the same
+reason: the task only changes `merman-ascii` XYChart behavior and docs; no `merman` or CLI
+integration files changed.
 
 Fresh verification is required before marking implementation tasks complete.

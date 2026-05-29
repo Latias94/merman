@@ -22,13 +22,28 @@ labels, and single relationship layouts for extension, dependency, aggregation, 
 through `render_class` or `render_model`; broader multi-relationship graph layout is tracked as
 follow-on work. The ER slice can render entity boxes, attributes, relationship labels, identifying
 and non-identifying lines, and common cardinality markers through `render_er` or `render_model`;
-broader multi-relationship ER graph layout is tracked as follow-on work.
+broader multi-relationship ER graph layout is tracked as follow-on work. The XYChart slice can
+render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays, horizontal
+bars, inferred numeric x labels, and ASCII/Unicode chart characters through `render_xychart` or
+`render_model`; richer legends, color, and full terminal graph layout remain follow-on work.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
 `docs/workstreams/ascii-sequence-parity/`, and follow-on workstreams.
 
 See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices.
+
+## XYChart ASCII Contract
+
+The XYChart renderer uses a terminal-native scale instead of SVG coordinates. Vertical charts use a
+fixed five-row value area, three-character category bands, and evenly divided y ticks from the typed
+y-axis range. Bar heights are rounded into that five-row area. Line plots use the same scale and are
+drawn as compact stair-step lines, then overlaid after bars so mixed plots remain visible.
+
+Horizontal charts use a ten-character value axis and the same typed y-axis range for bar width and
+line marker placement. Category labels come from the typed band x-axis when present; otherwise the
+renderer infers numeric labels from the typed linear x-axis. Output is trimmed per line and remains
+stable for snapshot tests.
 
 ## Intended Use
 
@@ -68,8 +83,8 @@ The ASCII renderer work is based on and informed by MIT-licensed reference imple
     `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`
   - Upstream license: MIT
   - License copy: `LICENSES/beautiful-mermaid-MIT.txt`
-  - Intended use: reference algorithms, output ideas, and tests for future class, ER, xychart,
-    color, and multiline ASCII work.
+  - Intended use: reference algorithms, output ideas, and tests for class, ER, xychart, color, and
+    multiline ASCII work.
 
 The local `repo-ref/` directory is gitignored and is only a research reference. Any derived source,
 fixtures, or notices required for builds and releases must live in tracked paths in this crate.
