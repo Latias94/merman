@@ -9,7 +9,7 @@ Last updated: 2026-05-29
 cargo nextest run -p merman-ascii sequence_rect_par_over
 ```
 
-This gate will cover the focused `rect` / `par_over` tests once ASRP-020 lands.
+This gate covers the focused `rect` / `par_over` inventory and rendering tests.
 
 ## Gate Set
 
@@ -81,3 +81,13 @@ Run `review-workstream` before accepting task or lane completion. Review should 
   endpoint-less line types 22/23, and `par_over` as line type 32 followed by normal `par` end line
   type 21. ASCII currently rejects both as `control messages`. First executable task is ASRP-020
   boundary/inventory tests.
+- 2026-05-29 ASRP-020: Added focused boundary coverage for the two deferred block forms.
+  `sequence_rect_par_over_blocks_are_core_control_signals_and_currently_unsupported` proves `rect`
+  line types 22/23 with the style expression label and `par_over` line types 32/21 with the source
+  label, and proves both still return the explicit `control messages` diagnostic. Updated
+  `SEQUENCE_SUPPORT.md` to state that these parser-recognized forms remain deferred. Fresh gates
+  passed: `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii sequence_rect_par_over` (1 passed), and `git diff --check`.
+- 2026-05-29 ASRP-020 review: No blocking workstream-compliance, code-quality, or missing-gate
+  findings. The test uses public parse/render APIs, stays inside ASRP-020 scope, and freezes the
+  unsupported boundary before renderer behavior changes.

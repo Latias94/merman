@@ -16,7 +16,7 @@ Last updated: 2026-05-29
 
 ## M1 - Executable Boundary Tests
 
-- [ ] ASRP-020 [owner=codex] [deps=ASRP-010] [scope=crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
+- [x] ASRP-020 [owner=codex] [deps=ASRP-010] [scope=crates/merman-ascii/tests/sequence_model.rs,crates/merman-ascii/SEQUENCE_SUPPORT.md]
   Goal: Add tests proving `rect` and `par_over` core control-signal line types, labels, and current
   ASCII unsupported diagnostics.
   Validation:
@@ -25,7 +25,11 @@ Last updated: 2026-05-29
   - `git diff --check`
   Review: Confirm the tests freeze behavior through public parser/render APIs and do not assume
   implementation internals.
-  Evidence: Pending.
+  Evidence: `sequence_rect_par_over_blocks_are_core_control_signals_and_currently_unsupported`
+  proves `rect` emits 22/23 and `par_over` emits 32/21, while both still return
+  `UnsupportedFeature { feature: "control messages" }`. Fresh gates passed:
+  `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence_rect_par_over`, and
+  `git diff --check`.
   Handoff: ASRP-030 should implement `rect` frame rendering.
 
 ## M2 - Rect Region Frames

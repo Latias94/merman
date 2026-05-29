@@ -32,6 +32,11 @@
       "date": "2026-05-29",
       "task": "ASRP-010",
       "result": "opened the ASCII sequence rect/par_over follow-on lane and selected boundary/inventory tests as the first executable task"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRP-020",
+      "result": "added boundary tests proving rect line types 22/23 and par_over line types 32/21 while both remain explicit control messages diagnostics"
     }
   ],
   "adr_refs": [
@@ -39,7 +44,7 @@
   ],
   "continue_policy": {
     "default_action": "run_next_task",
-    "next_task": "ASRP-020",
-    "notes": "Freeze rect and par_over parser/render boundaries before implementing frame rendering."
+    "next_task": "ASRP-030",
+    "notes": "Implement rect region frame rendering while preserving the style expression as text."
   }
 }

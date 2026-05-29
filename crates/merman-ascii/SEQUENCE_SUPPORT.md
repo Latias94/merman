@@ -70,6 +70,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   text rendering approximation rather than Mermaid's browser font measurement path.
 - Sequence box fill colors are intentionally not represented in plain text output. Box labels render
   in the border when present.
+- Mermaid `rect` and `par_over` sequence blocks are parser-recognized but remain deferred for now;
+  they return `control messages` instead of silently dropping the region or parallel-over boundary.
 - Mermaid `actor` shapes and actor links/properties are intentionally rejected for now because the
   current text renderer draws lifecycle-aware participant boxes, not Mermaid's richer actor shapes.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
