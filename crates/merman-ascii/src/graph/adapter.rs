@@ -111,17 +111,6 @@ fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
         });
     }
 
-    if model.nodes.iter().any(|node| {
-        node.label
-            .as_deref()
-            .is_some_and(|label| label.contains('\n'))
-    }) {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "multiline node labels",
-        });
-    }
-
     if model.edges.iter().any(|edge| {
         edge.label
             .as_deref()

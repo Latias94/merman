@@ -1,4 +1,5 @@
 use super::charset::GraphCharset;
+use super::label::GRAPH_LABEL_LINE_GAP;
 use super::layout::{GroupLayout, NodeLayout, layout_graph};
 use super::model::{AsciiGraph, GraphNodeShape};
 use super::routing;
@@ -233,7 +234,7 @@ fn draw_diamond_node(
     canvas: &mut Canvas,
     layout: &NodeLayout,
     charset: &GraphCharset,
-    _options: &AsciiRenderOptions,
+    options: &AsciiRenderOptions,
 ) {
     let right = layout.right();
     let bottom = layout.bottom();
@@ -255,9 +256,7 @@ fn draw_diamond_node(
         canvas.set(x, bottom, charset.horizontal);
     }
 
-    let text_width = display_width(&layout.label);
-    let text_x = layout.x + centered_label_offset(layout.width, text_width);
-    canvas.write_text(text_x, center_y, &layout.label);
+    write_centered_label(canvas, layout, options);
 }
 
 fn draw_subroutine_node(
@@ -301,11 +300,17 @@ fn draw_cylinder_node(
     write_centered_label(canvas, layout, options);
 }
 
-fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, options: &AsciiRenderOptions) {
-    let text_width = display_width(&layout.label);
-    let text_x = layout.x + centered_label_offset(layout.width, text_width);
-    let text_y = layout.y + 1 + options.box_border_padding;
-    canvas.write_text(text_x, text_y, &layout.label);
+fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &AsciiRenderOptions) {
+    let inner_height = layout.height.saturating_sub(2);
+    let content_height = layout.label.content_height();
+    let content_y = layout.y + 1 + inner_height.saturating_sub(content_height) / 2;
+
+    for (line_index, line) in layout.label.lines().iter().enumerate() {
+        let text_width = display_width(line);
+        let text_x = layout.x + centered_label_offset(layout.width, text_width);
+        let text_y = content_y + line_index * (GRAPH_LABEL_LINE_GAP + 1);
+        canvas.write_text(text_x, text_y, line);
+    }
 }
 
 fn centered_label_offset(width: usize, text_width: usize) -> usize {

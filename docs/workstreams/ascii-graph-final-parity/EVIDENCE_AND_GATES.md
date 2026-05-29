@@ -26,3 +26,9 @@ Last updated: 2026-05-29
   without intentional behavior changes. Passed `cargo fmt --all --check`,
   `cargo nextest run -p merman-ascii graph_fixture`, `cargo nextest run -p merman-ascii graph::`,
   and `git diff --check`.
+- 2026-05-29 AGF-030: Added line-aware graph node labels with `<br>` and escaped newline
+  normalization. Moved `ascii/multiline_single_node.txt` into exact parity. Current graph fixture
+  parity is 61 exact matches: 38 ASCII and 23 Unicode. Passed `cargo fmt --all --check`,
+  `cargo nextest run -p merman-ascii graph::label`,
+  `cargo nextest run -p merman-ascii graph_fixture`, `cargo nextest run -p merman-ascii flowchart`,
+  and `git diff --check`.

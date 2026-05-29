@@ -1,3 +1,4 @@
+use super::label::GraphLabel;
 use super::model::{AsciiGraph, AsciiGraphNode, GraphDirection, GraphNodeShape};
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
@@ -25,7 +26,7 @@ impl GraphLayout {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct NodeLayout {
     pub(super) id: String,
-    pub(super) label: String,
+    pub(super) label: GraphLabel,
     pub(super) shape: GraphNodeShape,
     pub(super) grid: GridCoord,
     pub(super) x: usize,
@@ -149,7 +150,7 @@ fn layout_left_right_grid_nodes(
             set_axis_size(&mut column_widths, coord.x - 1, options.graph_padding_x);
         }
 
-        let height = node_height(options);
+        let height = node_height(node, options);
         set_axis_size(&mut row_heights, coord.y, 1);
         set_axis_size(&mut row_heights, coord.y + 1, height.saturating_sub(2));
         set_axis_size(&mut row_heights, coord.y + 2, 1);
@@ -195,7 +196,7 @@ fn layout_left_right_grid_nodes(
         .zip(graph.nodes.iter())
         .map(|(coord, node)| NodeLayout {
             id: node.id.clone(),
-            label: node.label.clone(),
+            label: GraphLabel::new(&node.label),
             shape: node.shape,
             grid: coord,
             x: group_offset_x + axis_position(&column_widths, coord.x),
@@ -357,7 +358,7 @@ fn layout_top_down_linear_nodes(
         .iter()
         .map(|node| {
             let width = node_width(node, options);
-            let height = node_height(options);
+            let height = node_height(node, options);
             (node, width, height)
         })
         .collect::<Vec<_>>();
@@ -410,7 +411,7 @@ fn layout_top_down_linear_nodes(
             let layout_width = canvas_width.max(width);
             let layout = NodeLayout {
                 id: node.id.clone(),
-                label: node.label.clone(),
+                label: GraphLabel::new(&node.label),
                 shape: node.shape,
                 grid,
                 x: group_offset_x + (canvas_width - layout_width) / 2,
@@ -451,8 +452,8 @@ fn axis_span(axis_sizes: &BTreeMap<usize, usize>, start: usize, len: usize) -> u
         .sum()
 }
 
-fn node_height(options: &AsciiRenderOptions) -> usize {
-    1 + options.box_border_padding * 2 + 2
+fn node_height(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
+    2 + GraphLabel::new(&node.label).content_height() + options.box_border_padding * 2
 }
 
 fn has_non_empty_group(graph: &AsciiGraph) -> bool {
@@ -509,7 +510,7 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
 }
 
 fn node_width(node: &AsciiGraphNode, options: &AsciiRenderOptions) -> usize {
-    let base = display_width(&node.label) + options.box_border_padding * 2 + 2;
+    let base = GraphLabel::new(&node.label).width() + options.box_border_padding * 2 + 2;
     match node.shape {
         GraphNodeShape::Subroutine => base + 2,
         GraphNodeShape::Cylinder => base + 2,

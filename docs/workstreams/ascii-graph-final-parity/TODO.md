@@ -25,7 +25,7 @@ Last updated: 2026-05-29
 
 ## M2 - Multiline Labels
 
-- [ ] AGF-030 [owner=codex] [deps=AGF-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
+- [x] AGF-030 [owner=codex] [deps=AGF-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests]
   Goal: Support multiline node labels sufficiently to move `multiline_single_node` into exact
   parity.
   Validation:

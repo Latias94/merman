@@ -94,6 +94,10 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
     },
     GraphFixture {
         directory: "ascii",
+        name: "multiline_single_node.txt",
+    },
+    GraphFixture {
+        directory: "ascii",
         name: "preserve_order_of_definition.txt",
     },
     GraphFixture {
@@ -267,10 +271,6 @@ const GRAPH_FIXTURE_ALLOWLIST: &[GraphFixture] = &[
 ];
 
 const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
-    GraphFixture {
-        directory: "ascii",
-        name: "multiline_single_node.txt",
-    },
     GraphFixture {
         directory: "ascii",
         name: "subgraph_complex_mixed.txt",

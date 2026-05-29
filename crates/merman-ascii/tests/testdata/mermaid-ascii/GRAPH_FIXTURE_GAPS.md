@@ -25,6 +25,7 @@ ASCII:
 - `explicit_label_after_bare_reference.txt`
 - `flowchart_tb_simple.txt`
 - `graph_tb_direction.txt`
+- `multiline_single_node.txt`
 - `preserve_order_of_definition.txt`
 - `self_reference_with_edge.txt`
 - `self_reference.txt`
@@ -76,7 +77,6 @@ Unicode:
 
 ASCII:
 
-- `multiline_single_node.txt`
 - `subgraph_complex_mixed.txt`
 - `subgraph_complex_nested.txt`
 - `subgraph_explicit_title.txt`

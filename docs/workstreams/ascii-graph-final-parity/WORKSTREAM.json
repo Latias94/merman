@@ -36,12 +36,17 @@
       "date": "2026-05-29",
       "task": "AGF-020",
       "result": "split routing internals and passed focused graph gates"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "AGF-030",
+      "result": "added multiline node labels and moved multiline_single_node into exact parity"
     }
   ],
   "adr_refs": [],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "AGF-030",
-    "notes": "Implement multiline node label parity before subgraph-heavy fixtures."
+    "next_task": "AGF-040",
+    "notes": "Work remaining subgraph-heavy fixture parity without fixture-name special cases."
   }
 }
