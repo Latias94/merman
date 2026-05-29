@@ -31,6 +31,11 @@
       "date": "2026-05-29",
       "task": "ASRM-010",
       "result": "opened modularization lane and selected no-behavior model/validation extraction as the first task"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-020",
+      "result": "extracted internal sequence model and unsupported-feature validation into dedicated modules with focused gates passing"
     }
   ],
   "adr_refs": [
@@ -38,7 +43,7 @@
   ],
   "continue_policy": {
     "default_action": "run_task",
-    "next_task": "ASRM-020",
+    "next_task": "ASRM-030",
     "notes": "Run one bounded no-behavior extraction task at a time. Do not implement sequence control blocks in this lane."
   }
 }

@@ -58,3 +58,12 @@ is behavior-preserving and that control-block behavior was not silently folded i
 - 2026-05-29 ASRM-010: Opened the sequence renderer modularization lane after
   `ascii-sequence-parity` closeout. First executable task is a no-behavior extraction of internal
   sequence model and validation responsibilities from `sequence.rs`.
+- 2026-05-29 ASRM-020: Extracted the internal ASCII sequence render model, typed-model adapter,
+  autonumber handling, lifecycle model validation helpers, and unsupported-feature validation into
+  `sequence/model.rs` and `sequence/validate.rs`. No public API or output behavior change is
+  intended. Passed `cargo fmt --all --check`, `cargo nextest run -p merman-ascii sequence`, and
+  `cargo nextest run -p merman-ascii sequence_golden`. Follow-up package verification also passed:
+  `cargo nextest run -p merman-ascii` and `git diff --check`.
+- 2026-05-29 ASRM-020 review: No blocking workstream-compliance or code-quality findings. The
+  diff stays inside the task boundary, keeps `sequence.rs` as the facade, moves typed-model
+  semantics and validation out of the facade, and does not introduce control-block behavior.

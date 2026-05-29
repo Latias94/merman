@@ -16,7 +16,7 @@ Last updated: 2026-05-29
 
 ## M1 - Model And Validation Boundary
 
-- [ ] ASRM-020 [owner=unassigned] [deps=ASRM-010] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/model.rs,crates/merman-ascii/src/sequence/validate.rs]
+- [x] ASRM-020 [owner=codex] [deps=ASRM-010] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/model.rs,crates/merman-ascii/src/sequence/validate.rs]
   Goal: Extract the internal sequence render model, typed-model adapter, and unsupported-feature
   validation from `sequence.rs` with no behavior or public API change.
   Validation:
@@ -24,8 +24,9 @@ Last updated: 2026-05-29
   - `cargo nextest run -p merman-ascii sequence`
   - `cargo nextest run -p merman-ascii sequence_golden`
   Review: `review-workstream` before accepting completion.
-  Evidence: module diff plus existing sequence behavior tests.
-  Handoff: ASRM-030 should not start until output and unsupported-feature diagnostics remain stable.
+  Evidence: `sequence/model.rs`, `sequence/validate.rs`, and focused sequence gates.
+  Handoff: ASRM-030 is next; output and unsupported-feature diagnostics remained stable under the
+  focused gates.
 
 ## M2 - Layout And Rendering Boundaries
 
