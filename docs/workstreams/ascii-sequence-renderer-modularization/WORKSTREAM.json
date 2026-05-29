@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-sequence-renderer-modularization",
+  "title": "ASCII Sequence Renderer Modularization",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "The ASCII sequence renderer is a monolithic module, which makes future sequence control-block rendering riskier than necessary.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-sequence-renderer-modularization/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-sequence-renderer-modularization/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-sequence-renderer-modularization/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii sequence",
+    "cargo nextest run -p merman-ascii sequence_golden",
+    "cargo nextest run -p merman-ascii"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "ASRM-010",
+      "result": "opened modularization lane and selected no-behavior model/validation extraction as the first task"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "run_task",
+    "next_task": "ASRM-020",
+    "notes": "Run one bounded no-behavior extraction task at a time. Do not implement sequence control blocks in this lane."
+  }
+}
