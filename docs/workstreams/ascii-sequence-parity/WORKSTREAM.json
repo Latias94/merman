@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-sequence-parity",
+  "title": "ASCII Sequence Parity",
+  "status": "active",
+  "updated": "2026-05-29",
+  "scope_kind": "execution",
+  "problem": "Copied mermaid-ascii sequence fixtures pass, but merman-ascii still rejects common typed sequence semantics that merman-core can parse.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-sequence-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-sequence-parity/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-sequence-parity/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "gates": [
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii sequence",
+    "cargo nextest run -p merman-ascii sequence_golden"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-29",
+      "task": "ASP-010",
+      "result": "opened sequence parity lane and recorded copied upstream fixture status"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-020",
+      "result": "added open-arrow sequence message rendering"
+    },
+    {
+      "date": "2026-05-29",
+      "task": "ASP-040",
+      "result": "passed focused and broad gates for initial sequence parity slice"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md"
+  ],
+  "continue_policy": {
+    "default_action": "execute_next_task",
+    "next_task": "ASP-030",
+    "notes": "Split rich sequence constructs into ordered follow-on tasks."
+  }
+}

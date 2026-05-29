@@ -175,6 +175,32 @@ fn sequence_activations_are_explicitly_unsupported() {
 }
 
 #[test]
+fn sequence_open_arrows_render_from_typed_model() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->B: Open\nA-->B: Dotted\nB->A: Back",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("open arrow sequence messages should render");
+
+    assert!(
+        rendered.contains("├────────>│"),
+        "solid open arrow should use an open Unicode arrow head:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("├┈┈┈┈┈┈┈┈>│"),
+        "dotted open arrow should use dotted line with an open Unicode arrow head:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("│<────────┤"),
+        "reverse open arrow should use an open Unicode arrow head:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Open   │\n  ├────────►│"),
+        "open arrows must stay visually distinct from filled arrows:\n{rendered}"
+    );
+}
+
+#[test]
 fn sequence_titles_are_explicitly_unsupported() {
     let mut model = basic_sequence_model();
     model.title = Some("Setup".to_string());

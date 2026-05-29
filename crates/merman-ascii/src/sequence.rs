@@ -12,8 +12,10 @@ const BOX_BORDER_WIDTH: usize = 2;
 const LABEL_LEFT_MARGIN: usize = 2;
 const LABEL_BUFFER_SPACE: usize = 10;
 const AUTONUMBER_MESSAGE_TYPE: i32 = 26;
-const SOLID_MESSAGE_TYPE: i32 = 0;
-const DOTTED_MESSAGE_TYPE: i32 = 1;
+const SOLID_FILLED_MESSAGE_TYPE: i32 = 0;
+const DOTTED_FILLED_MESSAGE_TYPE: i32 = 1;
+const SOLID_OPEN_MESSAGE_TYPE: i32 = 5;
+const DOTTED_OPEN_MESSAGE_TYPE: i32 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
@@ -33,12 +35,19 @@ struct SequenceMessage {
     to: usize,
     label: String,
     style: SequenceLineStyle,
+    arrow: SequenceArrowHead,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SequenceLineStyle {
     Solid,
     Dotted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceArrowHead {
+    Filled,
+    Open,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,8 +61,10 @@ struct SequenceChars {
     tee_down: char,
     tee_right: char,
     tee_left: char,
-    arrow_right: char,
-    arrow_left: char,
+    filled_arrow_right: char,
+    filled_arrow_left: char,
+    open_arrow_right: char,
+    open_arrow_left: char,
     solid_line: char,
     dotted_line: char,
     self_top_right: char,
@@ -73,8 +84,10 @@ impl SequenceChars {
                 tee_down: '+',
                 tee_right: '+',
                 tee_left: '+',
-                arrow_right: '>',
-                arrow_left: '<',
+                filled_arrow_right: '>',
+                filled_arrow_left: '<',
+                open_arrow_right: '>',
+                open_arrow_left: '<',
                 solid_line: '-',
                 dotted_line: '.',
                 self_top_right: '+',
@@ -90,13 +103,29 @@ impl SequenceChars {
                 tee_down: '┬',
                 tee_right: '├',
                 tee_left: '┤',
-                arrow_right: '►',
-                arrow_left: '◄',
+                filled_arrow_right: '►',
+                filled_arrow_left: '◄',
+                open_arrow_right: '>',
+                open_arrow_left: '<',
                 solid_line: '─',
                 dotted_line: '┈',
                 self_top_right: '┐',
                 self_bottom: '┘',
             },
+        }
+    }
+
+    fn arrow_right(self, arrow: SequenceArrowHead) -> char {
+        match arrow {
+            SequenceArrowHead::Filled => self.filled_arrow_right,
+            SequenceArrowHead::Open => self.open_arrow_right,
+        }
+    }
+
+    fn arrow_left(self, arrow: SequenceArrowHead) -> char {
+        match arrow {
+            SequenceArrowHead::Filled => self.filled_arrow_left,
+            SequenceArrowHead::Open => self.open_arrow_left,
         }
     }
 }
@@ -164,9 +193,11 @@ pub(crate) fn from_sequence_model(
                 feature: "messages with unknown actors",
             })?;
 
-        let style = match message.message_type {
-            SOLID_MESSAGE_TYPE => SequenceLineStyle::Solid,
-            DOTTED_MESSAGE_TYPE => SequenceLineStyle::Dotted,
+        let (style, arrow) = match message.message_type {
+            SOLID_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Filled),
+            DOTTED_FILLED_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Filled),
+            SOLID_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Solid, SequenceArrowHead::Open),
+            DOTTED_OPEN_MESSAGE_TYPE => (SequenceLineStyle::Dotted, SequenceArrowHead::Open),
             _ => {
                 return Err(AsciiError::UnsupportedFeature {
                     diagram_type: "sequence",
@@ -181,6 +212,7 @@ pub(crate) fn from_sequence_model(
             to,
             label,
             style,
+            arrow,
         });
     }
 
@@ -505,11 +537,11 @@ fn render_message(
         for cell in line.iter_mut().take(to).skip(from + 1) {
             *cell = style;
         }
-        line[to - 1] = chars.arrow_right;
+        line[to - 1] = chars.arrow_right(message.arrow);
         line[to] = chars.vertical;
     } else {
         line[to] = chars.vertical;
-        line[to + 1] = chars.arrow_left;
+        line[to + 1] = chars.arrow_left(message.arrow);
         for cell in line.iter_mut().take(from).skip(to + 2) {
             *cell = style;
         }
@@ -550,7 +582,7 @@ fn render_self_message(
 
     let mut bottom = ensure_self_width(build_lifeline(layout, chars), layout, 0);
     bottom[center] = chars.vertical;
-    bottom[center + 1] = chars.arrow_left;
+    bottom[center + 1] = chars.arrow_left(message.arrow);
     for offset in 2..(width - 1) {
         bottom[center + offset] = chars.horizontal;
     }

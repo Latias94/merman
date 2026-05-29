@@ -11,15 +11,15 @@ parse Mermaid syntax itself.
 ## Current Status
 
 This crate contains the public API foundation, options, errors, third-party provenance, copied
-upstream golden fixtures, flowchart rendering, and initial sequence rendering. Flowcharts with
+upstream golden fixtures, flowchart rendering, and expanding sequence rendering. Flowcharts with
 boxed nodes, multiline node labels, common terminal shape approximations, edge labels, open/dotted
 edges, length spacing, and titled/nested subgraphs can render through `render_flowchart`. Basic
-sequence diagrams with
-participants, solid/dotted messages, self messages, and visible autonumber can render through
-`render_sequence` or `render_model`.
+sequence diagrams with participants, filled/open solid and dotted messages, self messages, and
+visible autonumber can render through `render_sequence` or `render_model`.
 
 Broader flowchart and sequence compatibility is tracked under
-`docs/workstreams/ascii-renderer-compatibility-expansion/` and follow-on workstreams.
+`docs/workstreams/ascii-renderer-compatibility-expansion/`,
+`docs/workstreams/ascii-sequence-parity/`, and follow-on workstreams.
 
 See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices.
 

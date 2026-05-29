@@ -13,8 +13,10 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Participants | Supported | Participant order follows `actorOrder`; labels use actor descriptions. |
 | Participant boxes | Supported | ASCII and Unicode box drawing with centered labels. |
 | Lifelines | Supported | One lifeline row before each message and one trailing lifeline row. |
-| Solid messages | Supported | `A->>B` and reverse direction messages. |
-| Dotted messages | Supported | `A-->>B` and reverse direction messages. |
+| Solid filled messages | Supported | `A->>B` and reverse direction messages. |
+| Dotted filled messages | Supported | `A-->>B` and reverse direction messages. |
+| Solid open messages | Supported | `A->B` and reverse direction messages. Unicode output uses open arrowheads. |
+| Dotted open messages | Supported | `A-->B` and reverse direction messages. Unicode output uses open arrowheads. |
 | Self messages | Supported | Loop-style self calls with labels. |
 | Message labels | Supported | Empty labels, single-word labels, and multiword labels. |
 | Autonumber | Supported subset | Visible autonumber commands with optional start/step from the typed model. |
@@ -38,7 +40,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Wrapped messages | `wrapped messages` |
 | Control messages with no drawable endpoints | `control messages` |
 | Messages referencing unknown actors | `messages with unknown actors` |
-| Message types outside solid, dotted, and autonumber | `message types` |
+| Message types outside solid/dotted filled, solid/dotted open, and autonumber | `message types` |
 
 ## Known Limitations
 
