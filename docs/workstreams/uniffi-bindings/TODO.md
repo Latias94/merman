@@ -1,6 +1,6 @@
 # UniFFI Bindings — TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Scope And Evidence Freeze
@@ -51,9 +51,10 @@ Last updated: 2026-05-30
 
 ## M4 — Closeout
 
-- [ ] UBI-050 [owner=planner] [deps=UBI-040] [scope=docs/workstreams/uniffi-bindings]
+- [x] UBI-050 [owner=planner] [deps=UBI-040] [scope=docs/workstreams/uniffi-bindings]
   Goal: Verify the lane and close or split platform/package follow-ons.
   Validation: verify-rust-workstream records fresh final gate evidence.
   Review: No blocking workstream or code-quality findings remain for the minimal UniFFI surface.
   Evidence: EVIDENCE_AND_GATES.md, WORKSTREAM.json, HANDOFF.md
-  Handoff: Platform packaging lanes are follow-ons.
+  Handoff: DONE. Lane is closed. Platform packaging, raster output, and workspace
+  release-versioning/publish-order are explicit follow-ons.

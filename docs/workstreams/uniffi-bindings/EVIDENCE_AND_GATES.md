@@ -1,13 +1,13 @@
 # UniFFI Bindings — Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
 
 ```bash
-cargo check -p merman-bindings-core
-cargo nextest run -p merman-ffi
+cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi
+cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 ## Gate Set
@@ -74,8 +74,8 @@ Use a narrower closeout gate if the workspace is too large, and explain why.
 - `docs/workstreams/uniffi-bindings/MILESTONES.md`
 - `docs/adr/0066-ffi-binding-strategy.md`
 - `docs/bindings/FFI_PROTOCOL.md`
-- future `crates/merman-bindings-core`
-- future `crates/merman-uniffi`
+- `crates/merman-bindings-core`
+- `crates/merman-uniffi`
 
 ## Evidence Log
 
@@ -127,3 +127,21 @@ Use a narrower closeout gate if the workspace is too large, and explain why.
   warnings` passed.
 - 2026-05-30: `cargo fmt -p merman-uniffi -- --check` passed after `UBI-040`.
 - 2026-05-30: `git diff --check` passed after `UBI-040`.
+- 2026-05-30: `UBI-050` closeout verification passed:
+  `cargo fmt -p merman-bindings-core -p merman-ffi -p merman-uniffi -- --check`.
+- 2026-05-30: `cargo check -p merman-bindings-core` passed for closeout.
+- 2026-05-30: `cargo nextest run -p merman-bindings-core -p merman-ffi -p merman-uniffi`
+  passed for closeout (`29` tests).
+- 2026-05-30: `cargo test -p merman-uniffi` passed for closeout (`5` unit tests plus doc-tests).
+- 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed for closeout (`14`
+  tests).
+- 2026-05-30: `cargo check -p merman-uniffi --features ratex-math` passed for closeout.
+- 2026-05-30: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
+  passed for closeout (`1` test).
+- 2026-05-30: `cargo clippy -p merman-bindings-core -p merman-ffi -p merman-uniffi --all-targets
+  -- -D warnings` passed for closeout.
+- 2026-05-30: `cargo clippy -p merman-uniffi --features bindgen-smoke --all-targets -- -D
+  warnings` passed for closeout.
+- 2026-05-30: `cargo nextest run --workspace` was not run for closeout because the working tree
+  contains unrelated uncommitted ASCII/README changes outside this lane; running the workspace gate
+  would mix another worker's state into the UniFFI closeout evidence.

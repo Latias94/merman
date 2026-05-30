@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "uniffi-bindings",
   "title": "UniFFI Bindings",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "Swift, Kotlin, Python, and Ruby consumers need idiomatic generated bindings without duplicating C ABI logic or weakening the canonical C boundary.",
@@ -44,6 +44,8 @@
     "cargo test -p merman-uniffi",
     "cargo nextest run -p merman-ffi --features ratex-math",
     "cargo check -p merman-uniffi --features ratex-math",
+    "cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke",
+    "cargo clippy -p merman-bindings-core -p merman-ffi -p merman-uniffi --all-targets -- -D warnings",
     "cargo fmt --check",
     "git diff --check"
   ],
@@ -67,8 +69,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "UBI-050",
-    "notes": "Generated Python binding smoke is in place. Continue with lane closeout and platform/package follow-on split."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed. Continue in separate follow-on lanes for platform packaging, raster outputs, or workspace release-versioning/publish-order."
   }
 }

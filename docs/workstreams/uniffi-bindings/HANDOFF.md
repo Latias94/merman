@@ -1,13 +1,14 @@
 # UniFFI Bindings — Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
 
-`UBI-020`, `UBI-030`, and `UBI-040` are complete. `crates/merman-bindings-core` is now the shared
-safe facade, `crates/merman-uniffi` exposes the minimal UniFFI object surface, and a generated
-Python binding smoke test proves the cdylib metadata path.
+This lane is closed. `crates/merman-bindings-core` is now the shared safe facade, `merman-ffi`
+delegates to it without moving unsafe code into core crates, `crates/merman-uniffi` exposes the
+minimal UniFFI object surface, and a generated Python binding smoke test proves the cdylib metadata
+path.
 
 Confirmed dependency context:
 
@@ -39,9 +40,10 @@ Completed bindgen smoke:
   checks for `MermanEngine`, `render_svg`, and `MermanError`
 - `docs/bindings/UNIFFI.md` documents the command and generated-artifact policy
 
-## Next Task
+## Remaining Work
 
-`UBI-050`: verify the lane and close or split platform/package follow-ons.
+No remaining task belongs to this lane. Start new follow-on lanes for platform packages, raster
+outputs, or workspace release-versioning.
 
 ## Guardrails
 
@@ -57,5 +59,6 @@ Completed bindgen smoke:
 - `android-kotlin-jni`
 - `python-uniffi-package`
 - `flutter-dart-ffi`
+- `node-uniffi-package`
 - `ffi-raster-output`
 - workspace release-versioning/publish-order lane before a real crate release

@@ -1,6 +1,6 @@
 # UniFFI Bindings — Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Scope Frozen
@@ -51,3 +51,7 @@ Exit criteria:
 - Focused checks pass.
 - Package/release ordering concerns are split from this lane.
 - Follow-ons are explicit: iOS, Android, Python, Flutter, Node, or raster as separate lanes.
+
+Status: complete. Focused facade, FFI, UniFFI, feature, bindgen, format, and lint gates passed.
+Full workspace nextest was skipped because the working tree contains unrelated uncommitted
+ASCII/README changes outside this lane.

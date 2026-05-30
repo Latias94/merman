@@ -1,6 +1,6 @@
 # UniFFI Bindings
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -95,3 +95,9 @@ This lane can close when:
 - `merman-uniffi` builds and exposes the minimal SVG/parse/layout surface,
 - generated binding smoke evidence is recorded,
 - and platform packaging is split into follow-on lanes.
+
+## Closeout Result
+
+Closed on 2026-05-30. The safe facade, C ABI delegation, minimal UniFFI surface, and Python bindgen
+smoke are implemented and verified. Platform packages and release-versioning remain follow-on
+lanes; generated platform source is not committed by this lane.
