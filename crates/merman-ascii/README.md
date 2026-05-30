@@ -33,6 +33,19 @@ Broader flowchart and sequence compatibility is tracked under
 
 See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices.
 
+## Shipped Diagram Matrix
+
+| Diagram family | Public entry points | Shipped text subset |
+| --- | --- | --- |
+| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, LR/TD layouts, and titled/nested subgraphs. |
+| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, and core control blocks. |
+| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, and single relationship layouts for extension, dependency, aggregation, and composition. |
+| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, and common cardinality markers. |
+| xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, and inferred numeric labels. |
+
+Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the
+typed `render_model` path.
+
 ## XYChart ASCII Contract
 
 The XYChart renderer uses a terminal-native scale instead of SVG coordinates. Vertical charts use a

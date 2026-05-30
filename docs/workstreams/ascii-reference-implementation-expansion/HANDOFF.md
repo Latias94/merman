@@ -1,7 +1,7 @@
 # ASCII Reference Implementation Expansion — Handoff
 
 Status: Active
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## Current State
 
@@ -12,24 +12,32 @@ tracked. classDiagram ASCII now renders boxes plus an expanded single-relationsh
 subset from `RenderSemanticModel::Er`. XYChart ASCII now renders compact bars, lines, mixed plots,
 horizontal bars, and Unicode/ASCII chart characters from `RenderSemanticModel::XyChart`. Flowchart
 delta triage against `beautiful-mermaid` is recorded, and thick edges now render from the typed
-flowchart stroke model.
+flowchart stroke model. Public integration is also wired: `merman::ascii` re-exports the shipped
+typed helpers, `HeadlessAsciiRenderer`/`render_ascii_sync` render class, ER, and XYChart through the
+typed `render_model` path, and CLI ASCII smoke coverage exercises those shipped families.
 
 ## Active Task
 
-- Task ID: ARI-060
+- Task ID: ARI-070
 - Owner: codex
 - Files:
-  - `crates/merman-ascii/src/graph/*`
-  - `crates/merman-ascii/tests/flowchart_model.rs`
-  - `crates/merman-ascii/FLOWCHART_SUPPORT.md`
+  - `crates/merman/src/ascii.rs`
+  - `crates/merman/tests/ascii_api.rs`
+  - `crates/merman-cli/tests/ascii_smoke.rs`
+  - `crates/merman-cli/README.md`
   - `crates/merman-ascii/README.md`
+  - `README.md`
   - `docs/workstreams/ascii-reference-implementation-expansion/*`
-- Validation: `cargo nextest run -p merman-ascii flowchart`;
-  `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`;
-  `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
+- Validation: `cargo nextest run -p merman-ascii`;
+  `cargo nextest run -p merman --features ascii`;
+  `cargo nextest run -p merman-cli --features ascii`;
+  `cargo fmt -p merman-ascii -p merman -p merman-cli --check`;
+  `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`;
+  `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`;
+  `git diff --check`
 - Status: DONE
-- Review: self-review found no blocking findings; broader planner review can still inspect whether
-  the deferred `beautiful-mermaid` graph deltas should become separate workstreams.
+- Review: self-review found no blocking findings. Full `cargo fmt --all --check` was attempted but
+  failed only on unrelated dirty `merman-render` worktree changes that were not staged for ARI-070.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -61,6 +69,12 @@ flowchart stroke model.
   would misrepresent Mermaid direction. True `BT`/`RL`, subgraph direction overrides, multiline
   subgraph labels, color/style roles, state graph rendering, and uncommon shapes are deferred in the
   gap matrix.
+- ARI-070 keeps the public boundary model-driven: new top-level API exposure is a re-export of
+  existing `merman-ascii` typed helpers, and CLI behavior still routes Mermaid source through
+  `merman-core` typed render models before text rendering.
+- The shipped terminal-text support matrix is now flowchart/graph, sequenceDiagram, classDiagram,
+  erDiagram, and xychart. Other diagram families should continue to fail explicitly with
+  unsupported-diagram diagnostics until a typed renderer exists.
 
 ## Blockers
 
@@ -68,6 +82,7 @@ flowchart stroke model.
 
 ## Next Recommended Action
 
-Continue with ARI-070 for public API/docs integration and broader ASCII feature gates. Split true
-BT/RL graph direction transforms or color/style roles into follow-on lanes if they become the next
-priority.
+Continue with ARI-080 for lane closeout or follow-on splitting. Likely follow-ons are class/ER
+multi-relationship graph layout, true BT/RL graph transforms, subgraph direction overrides,
+color/style roles, state graph text rendering, uncommon flowchart shapes, and richer XYChart
+terminal layout.

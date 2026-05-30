@@ -1,7 +1,7 @@
 # ASCII Reference Implementation Expansion — Milestones
 
 Status: Active
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## M0 — Reference Intake And Provenance
 
@@ -75,6 +75,13 @@ Exit criteria:
 - Public dispatch and documentation reflect shipped diagram support.
 - Fresh focused and broad gates are recorded.
 - Remaining work is closed or split into follow-ons.
+
+Current state:
+
+- ARI-070 completed public dispatch/docs integration for flowchart/graph, sequenceDiagram,
+  classDiagram, erDiagram, and xychart.
+- ARI-080 remains responsible for deciding whether to close the lane or split deferred diagram
+  families and richer terminal layouts into follow-on workstreams.
 
 Primary gates:
 

@@ -3,7 +3,7 @@
   "slug": "ascii-reference-implementation-expansion",
   "title": "ASCII Reference Implementation Expansion",
   "status": "active",
-  "updated": "2026-05-29",
+  "updated": "2026-05-30",
   "scope_kind": "execution",
   "problem": "merman-ascii needs a tracked plan for learning from mermaid-ascii and beautiful-mermaid while preserving its model-driven Rust boundary.",
   "authoritative_docs": [
@@ -75,6 +75,11 @@
       "date": "2026-05-29",
       "task": "ARI-060",
       "result": "triaged beautiful-mermaid graph deltas in FLOWCHART_SUPPORT.md and ported typed thick-edge rendering with ASCII/Unicode snapshots"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ARI-070",
+      "result": "wired shipped ASCII diagram families through merman public re-exports and CLI/library public-path tests, and documented the flowchart, sequence, class, ER, and XYChart support matrix"
     }
   ],
   "adr_refs": [
@@ -83,7 +88,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ARI-070",
-    "notes": "Continue with public API/docs integration and broader ASCII feature gates. True BT/RL graph direction transforms, subgraph direction overrides, color/style roles, state graph rendering, class/ER multi-relationship graph layout, and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
+    "next_task": "ARI-080",
+    "notes": "Continue with lane closeout or follow-on splitting. True BT/RL graph direction transforms, subgraph direction overrides, color/style roles, state graph rendering, class/ER multi-relationship graph layout, and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
   }
 }

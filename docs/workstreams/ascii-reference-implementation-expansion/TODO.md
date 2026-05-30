@@ -1,7 +1,7 @@
 # ASCII Reference Implementation Expansion — TODO
 
 Status: Active
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## M0 — Reference Intake And Provenance
 
@@ -85,14 +85,19 @@ Last updated: 2026-05-29
 
 ## M5 — Integration And Closeout
 
-- [ ] ARI-070 [owner=unassigned] [deps=ARI-020,ARI-040,ARI-050] [scope=crates/merman-ascii,crates/merman,crates/merman-cli,README.md]
+- [x] ARI-070 [owner=codex] [deps=ARI-020,ARI-040,ARI-050] [scope=crates/merman-ascii,crates/merman,crates/merman-cli,README.md]
   Goal: Wire shipped diagram renderers through public APIs and docs without weakening existing
   feature gates.
   Validation: `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman --features ascii`;
   `cargo nextest run -p merman-cli --features ascii`
-  Review: Public API and docs review before closeout.
-  Evidence: Support matrices and examples for shipped diagram types.
-  Handoff: Split any remaining diagram family into a follow-on lane.
+  Review: Self-review found no blocking findings. `merman::ascii` now re-exports the shipped typed
+  helpers and public-path tests cover class, ER, and XYChart through `merman` and `merman-cli`.
+  Evidence: `crates/merman/src/ascii.rs`, `crates/merman/tests/ascii_api.rs`,
+  `crates/merman-cli/tests/ascii_smoke.rs`, README support text, and
+  `crates/merman-ascii/README.md`; gates recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. Remaining unsupported diagram families, class/ER multi-relationship graph
+  placement, true BT/RL flowchart transforms, style/color roles, and richer XYChart terminal layout
+  should be split as follow-on lanes during ARI-080 closeout.
 
 - [ ] ARI-080 [owner=planner] [deps=ARI-070] [scope=docs/workstreams/ascii-reference-implementation-expansion]
   Goal: Close the lane or split remaining work into narrower follow-ons.

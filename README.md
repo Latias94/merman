@@ -236,9 +236,19 @@ cargo run -p merman --features render --example svg_pipeline < fixtures/flowchar
 
 Enable the `ascii` feature when you want terminal-friendly text instead of SVG:
 
+Current public text support covers flowchart/graph, sequenceDiagram, classDiagram, erDiagram, and
+xychart through `merman::ascii::render_ascii_sync`, typed `merman::ascii::render_model`, the direct
+typed helpers (`render_flowchart`, `render_sequence`, `render_class`, `render_er`,
+`render_xychart`), and `merman-cli render --format ascii|unicode`.
+
 Sequence text output covers common messages, notes, lifecycle rows, participant boxes, and the
 primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`, `alt`, `par`,
 and `critical`.
+
+Class, ER, and XYChart text output intentionally ship bounded terminal-native subsets: class and ER
+support single-relationship layouts with clear diagnostics for broader graph placement, while
+XYChart renders deterministic compact bars, lines, mixed plots, titles, and axes instead of SVG
+coordinates.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

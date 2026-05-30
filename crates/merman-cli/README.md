@@ -52,7 +52,13 @@ ASCII/Unicode output is feature-gated in the Rust package:
 
 ```sh
 printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
+printf "classDiagram\nclass Animal\n" | cargo run -p merman-cli --features ascii -- render --format unicode -
 ```
+
+With `--features ascii`, terminal text rendering currently supports flowchart/graph,
+sequenceDiagram, classDiagram, erDiagram, and xychart. Other diagram families remain available for
+SVG/raster rendering but return an unsupported-diagram error for `--format ascii|unicode` until a
+typed text renderer is added.
 
 ## SVG Input Rasterization
 

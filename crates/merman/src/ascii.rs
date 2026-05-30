@@ -1,6 +1,6 @@
 pub use merman_ascii::{
-    AsciiCharset, AsciiError, AsciiRenderOptions, AsciiRenderer, render_flowchart, render_model,
-    render_sequence,
+    AsciiCharset, AsciiError, AsciiRenderOptions, AsciiRenderer, render_class, render_er,
+    render_flowchart, render_model, render_sequence, render_xychart,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -16,7 +16,8 @@ pub type Result<T> = std::result::Result<T, HeadlessAsciiError>;
 /// Synchronous ASCII/Unicode render helper (executor-free).
 ///
 /// The Mermaid source is parsed by `merman-core`; the typed render model is then rendered by
-/// `merman-ascii`.
+/// `merman-ascii`. Supported diagram families currently include flowchart, sequenceDiagram,
+/// classDiagram, erDiagram, and xychart.
 pub fn render_ascii_sync(
     engine: &merman_core::Engine,
     text: &str,

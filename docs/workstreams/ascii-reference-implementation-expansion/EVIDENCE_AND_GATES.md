@@ -1,19 +1,21 @@
 # ASCII Reference Implementation Expansion — Evidence And Gates
 
 Status: Active
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## Smallest Current Repro
 
 `merman-ascii` now has bounded class, ER, and xychart renderers in addition to the existing
 flowchart and sequence renderers. The graph delta triage against `beautiful-mermaid` is recorded in
-`FLOWCHART_SUPPORT.md`; the remaining lane work is broader public integration and closeout
-verification.
+`FLOWCHART_SUPPORT.md`; shipped renderer public integration is wired through `merman::ascii` and
+`merman-cli`, with final lane closeout remaining.
 
 Relevant interface:
 
 ```text
 crates/merman-ascii/src/lib.rs
+crates/merman/src/ascii.rs
+crates/merman-cli/src/main.rs
 ```
 
 ## Gate Set
@@ -90,6 +92,7 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-040 | Added `RenderSemanticModel::Er` dispatch, `render_er`, `crates/merman-ascii/src/er/`, and `crates/merman-ascii/tests/er_model.rs`. | First ER ASCII/Unicode slice implemented: entity boxes, attributes, relationship labels, identifying/non-identifying lines, common cardinality markers, and explicit diagnostics for multiple-relationship layouts. |
 | 2026-05-29 | ARI-050 | Added `RenderSemanticModel::XyChart` dispatch, `render_xychart`, `crates/merman-ascii/src/xychart/`, `crates/merman-ascii/tests/xychart_model.rs`, and the README scaling contract. | XYChart ASCII/Unicode slice implemented: compact vertical bars, stair-step lines, mixed overlays, horizontal bars, title/axis text, inferred numeric x labels, and empty-chart handling. |
 | 2026-05-29 | ARI-060 | Compared `crates/merman-ascii` graph support with `repo-ref/beautiful-mermaid/src/ascii/` and updated `crates/merman-ascii/FLOWCHART_SUPPORT.md`. | Delta matrix recorded: thick edges ported; `BT`, true `RL`, subgraph direction overrides, multiline subgraph labels, color/style roles, state graph rendering, and uncommon shapes deferred or rejected with rationale. |
+| 2026-05-30 | ARI-070 | Re-exported `render_class`, `render_er`, and `render_xychart` from `merman::ascii`; added `merman` and CLI public-path tests for classDiagram, erDiagram, and xychart; updated README support text and the `merman-ascii` shipped diagram matrix. | Public APIs and CLI text output now advertise and test the shipped flowchart, sequence, class, ER, and XYChart ASCII/Unicode families without changing feature gates. |
 
 ## Verification Log
 
@@ -121,6 +124,16 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-060 | `cargo fmt --all --check` | Workspace formatting | PASS | Rust formatting is stable after graph delta implementation and docs. |
 | 2026-05-29 | ARI-060 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | `merman-ascii` lint gate | PASS | Thick edge stroke mapping and tests compile cleanly under deny-warnings clippy for this package. |
 | 2026-05-29 | ARI-060 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in implementation, tests, or workstream docs. |
+| 2026-05-30 | ARI-070 | `cargo nextest run -p merman --features ascii --test ascii_api` | Focused public `merman::ascii` API tests | PASS, 6 tests | The top-level ASCII wrapper renders flowchart, sequence, class, ER, and XYChart text and re-exports direct typed helpers for shipped model families. |
+| 2026-05-30 | ARI-070 | `cargo nextest run -p merman-cli --features ascii --test ascii_smoke` | Focused CLI ASCII smoke tests | PASS, 3 tests | CLI `render --format ascii|unicode` covers existing sequence/flowchart paths plus classDiagram, erDiagram, and xychart through stdin/stdout or file output. |
+| 2026-05-30 | ARI-070 | `cargo nextest run -p merman-ascii` | Full `merman-ascii` package | PASS, 107 tests | Public integration did not regress the underlying flowchart, sequence, class, ER, XYChart, fixture, or graph behavior. |
+| 2026-05-30 | ARI-070 | `cargo nextest run -p merman --features ascii` | Public library ASCII feature gate | PASS, 6 tests | The top-level `merman` ASCII feature exposes shipped renderer families through text and typed public paths. |
+| 2026-05-30 | ARI-070 | `cargo nextest run -p merman-cli --features ascii` | CLI ASCII feature gate | PASS, 11 tests | The CLI ASCII feature coexists with existing SVG/raster smoke tests and renders the shipped terminal-text families. |
+| 2026-05-30 | ARI-070 | `cargo fmt --all --check` | Workspace formatting | FAIL, unrelated dirty files | The command only reported rustfmt diffs in unrelated `crates/merman-render` worktree changes outside ARI-070 scope; those files were not reverted or staged. |
+| 2026-05-30 | ARI-070 | `cargo fmt -p merman-ascii -p merman -p merman-cli --check` | Scoped formatting for ARI-070 packages | PASS | The packages touched by ARI-070 are rustfmt-clean. |
+| 2026-05-30 | ARI-070 | `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` | ASCII library lint gate | PASS | `merman-ascii` and the top-level `merman` ASCII API compile cleanly under deny-warnings clippy. |
+| 2026-05-30 | ARI-070 | `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` | CLI ASCII lint gate | PASS | CLI ASCII integration compiles cleanly under deny-warnings clippy with its existing raster dependency stack. |
+| 2026-05-30 | ARI-070 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in current dirty worktree diffs. |
 
 Broader public feature gates (`cargo nextest run -p merman --features ascii`,
 `cargo nextest run -p merman-cli --features ascii`) were not run for ARI-020 because the existing
@@ -134,4 +147,7 @@ docs; no `merman` or CLI integration files changed. They were not rerun for ARI-
 reason: the task only changes `merman-ascii` XYChart behavior and docs; no `merman` or CLI
 integration files changed.
 
-Fresh verification is required before marking implementation tasks complete.
+ARI-070 reran the broader public feature gates after updating `merman::ascii` re-exports, public API
+tests, CLI smoke coverage, and support documentation.
+
+Fresh final verification is required before ARI-080 lane closeout.
