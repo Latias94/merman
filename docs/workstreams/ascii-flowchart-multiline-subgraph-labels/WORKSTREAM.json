@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-flowchart-multiline-subgraph-labels",
+  "title": "ASCII Flowchart Multiline Subgraph Labels",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "The ASCII flowchart renderer does not yet render multiline subgraph titles as multiple centered title rows.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ascii-flowchart-multiline-subgraph-labels/CONTEXT.jsonl",
+  "gates": [
+    "git diff --check",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii graph_fixture",
+    "cargo nextest run -p merman-ascii"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "AFMS-010",
+      "result": "opened the multiline subgraph-label lane from the flowchart support matrix gap"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "flowchart",
+    "subgraph",
+    "multiline-labels"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AFMS-020",
+    "notes": "Add failing parser-backed and direct-model multiline subgraph title tests before implementation. Keep subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of scope."
+  }
+}
