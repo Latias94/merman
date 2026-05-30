@@ -89,3 +89,8 @@ and residual risks in this file or a journal note.
 
 - 2026-05-30 — AAD-010 started. Workstream opened for the five ASCII architecture deepening targets.
 - 2026-05-30 — AAD-010 passed `git diff --check -- docs/workstreams/ascii-architecture-deepening`.
+- 2026-05-30 — AAD-020 introduced shared `StyledCell`/`StyledLine` substrate and migrated sequence
+  and XYChart line buffers. Passed `cargo nextest run -p merman-ascii canvas color`,
+  `cargo nextest run -p merman-ascii text`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii xychart`, `cargo nextest run -p merman-ascii`,
+  `cargo fmt --all --check`, and `cargo clippy -p merman-ascii --all-targets -- -D warnings`.

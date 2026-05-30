@@ -15,14 +15,15 @@ Last updated: 2026-05-30
 
 ## M1 — Shared Styled Text/Cell Module
 
-- [ ] AAD-020 [owner=unassigned] [deps=AAD-010] [scope=crates/merman-ascii/src/canvas.rs,crates/merman-ascii/src/text or equivalent internal module]
+- [x] AAD-020 [owner=codex] [deps=AAD-010] [scope=crates/merman-ascii/src/text.rs,crates/merman-ascii/src/sequence/text.rs,crates/merman-ascii/src/xychart/render.rs]
   Goal: Introduce one internal styled text/cell module and migrate at least two existing line
   buffers to it without changing rendered plain output.
   Validation: `cargo nextest run -p merman-ascii canvas color`
   Review: Ensure the new module has depth and is not a pass-through wrapper.
   Evidence: focused tests for trim, padding, role preservation, and ANSI/HTML finalization.
   Context: `docs/adr/0067-ascii-color-role-api.md`, this workstream context manifest.
-  Handoff: Record remaining family migrations if not all line buffers are migrated in this task.
+  Handoff: DONE on 2026-05-30. `StyledCell` and `StyledLine` now back sequence and XYChart line
+  buffers. Relation graph line migration remains available for AAD-040.
 
 ## M2 — Graph Route Planning And Painting Seam
 

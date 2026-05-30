@@ -13,17 +13,17 @@ The lane has been opened to execute five architecture deepening targets for `mer
 - sequence event plan seam,
 - ASCII gap registry.
 
-Implementation has not started yet. AAD-010 is complete and the next task is AAD-020.
+AAD-010 and AAD-020 are complete. The next task is AAD-030.
 
 ## Active Task
 
-- Task ID: AAD-020
+- Task ID: AAD-030
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/canvas.rs`, `crates/merman-ascii/src/text` or equivalent internal module
-- Validation: `cargo nextest run -p merman-ascii canvas color`
+- Files: `crates/merman-ascii/src/graph/routing.rs`, `crates/merman-ascii/src/graph`
+- Validation: `cargo nextest run -p merman-ascii flowchart`
 - Status: NEEDS_CONTEXT
 - Review: Pending implementation.
-- Evidence: focused tests for trim, padding, role preservation, and ANSI/HTML finalization
+- Evidence: graph routing tests and unchanged or intentionally updated flowchart snapshots
 
 ## Decisions Since Last Update
 
@@ -32,6 +32,11 @@ Implementation has not started yet. AAD-010 is complete and the next task is AAD
 - Keep fill/background rendering out of this lane unless it becomes a small proof of the styled cell
   substrate.
 - AAD-010 passed `git diff --check -- docs/workstreams/ascii-architecture-deepening`.
+- AAD-020 introduced `StyledCell` and `StyledLine` in `crates/merman-ascii/src/text.rs`.
+- AAD-020 migrated `SequenceLine` and XYChart `ChartLine`/`ChartCell` to the shared styled
+  substrate without changing plain output.
+- Relation graph line migration is intentionally left for AAD-040, where relation graph adapters
+  will be deepened.
 
 ## Blockers
 
@@ -39,5 +44,5 @@ Implementation has not started yet. AAD-010 is complete and the next task is AAD
 
 ## Next Recommended Action
 
-- Commit the workstream docs, then start AAD-020 with a focused migration of existing role-aware
-  line buffers.
+- Commit AAD-020, then start AAD-030 by finding the smallest graph route family that can be planned
+  before painting.
