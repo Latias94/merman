@@ -11,16 +11,15 @@ layered planning into `relation_graph` without changing public behavior.
 
 ## Active Task
 
-- Task ID: ACELP-030
+- Task ID: ACELP-040
 - Owner: unassigned
 - Files:
   - `crates/merman-ascii/src/relation_graph.rs`
-  - `crates/merman-ascii/src/er/render.rs`
-- Validation: `cargo nextest run -p merman-ascii er`; `cargo nextest run -p merman-ascii class`;
-  `cargo clippy -p merman-ascii --all-targets -- -D warnings`
+  - `docs/workstreams/ascii-class-er-layered-planner/*`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
 - Status: READY
-- Review: ER cardinality, line style, labels, and diagnostics stay in the ER adapter while the
-  shared planner owns only terminal-level placement.
+- Review: Confirm both class and ER consume the shared planner and no dense/crossing topology scope
+  leaked into this lane.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Constraints

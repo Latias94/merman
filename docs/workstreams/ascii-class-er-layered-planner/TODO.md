@@ -28,15 +28,17 @@ Last updated: 2026-05-30
 
 ## M2 - ER Adapter Extraction
 
-- [ ] ACELP-030 [owner=unassigned] [deps=ACELP-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/er/render.rs]
+- [x] ACELP-030 [owner=codex] [deps=ACELP-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/er/render.rs]
   Goal: Route erDiagram layered relationship placement through the same planner without changing
   cardinality, label, or line-style behavior.
   Validation: `cargo nextest run -p merman-ascii er`; `cargo nextest run -p merman-ascii class`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: ER cardinality direction and identifying/non-identifying line style remain typed-model
   owned.
-  Evidence: Existing ER chain/star/crossing parser-backed tests stay green.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Evidence: ER layered rendering now consumes `relation_graph::plan_layered_relation_boxes` while
+  preserving ER-owned cardinality, label, line-style, and diagnostic semantics. ER and class
+  parser-backed tests stayed green.
+  Handoff: DONE. ACELP-040 can run final package gates and close the lane.
 
 ## M3 - Closeout
 

@@ -54,6 +54,11 @@
       "date": "2026-05-30",
       "task": "ACELP-020",
       "result": "added a shared terminal-layout-only layered planner and routed classDiagram layered layout through it without public output drift"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACELP-030",
+      "result": "routed erDiagram layered layout through the shared planner while preserving ER-owned relationship semantics"
     }
   ],
   "adr_refs": [
@@ -70,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACELP-030",
-    "notes": "Continue with ER adapter extraction next. Keep dense/crossing topology support, color/style, flowchart direction work, and unrelated changes outside this lane."
+    "next_task": "ACELP-040",
+    "notes": "Run final merman-ascii package gates, update closeout evidence, and close the lane if no residual planner duplication remains. Keep dense/crossing topology support, color/style, flowchart direction work, and unrelated changes outside this lane."
   }
 }
