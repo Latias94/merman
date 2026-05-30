@@ -47,17 +47,16 @@ Sequence samples use Mermaid's `width: fit-content` math shell:
 - RaTeX can render the current Flowchart docs math fixture formulas, including fractions,
   radicals, `\text`, cases, matrices, and `\overbrace`. The fixture now has feature-gated SVG
   coverage.
-- Sequence can render pure math participant and note labels through RaTeX. Mixed prose/math
-  messages such as `Solve: $$\sqrt{2+2}$$` still intentionally fall back to text because the
-  current `MathRenderer` trait does not provide enough text-measurement context for safe inline
-  mixed-label sizing.
+- Sequence can render pure math participant and note labels through RaTeX. It now also renders
+  single-formula prose/math messages such as `Solve: $$\sqrt{2+2}$$` by using a Sequence-specific
+  render hook plus layout-side text/math metric composition.
 
 ## Decision
 
-Do not add ad hoc RaTeX calibration constants yet. The next correct step is a model-based mixed
-text/math measurement path or a generated, reviewed calibration table with clear provenance. Until
-then, `ratex-math` should stay documented as a deterministic pure-Rust renderer for math-only
-labels rather than a full KaTeX DOM metrics clone.
+Do not add ad hoc RaTeX calibration constants yet. Sequence mixed prose/math support should stay
+model-based: prose fragments are measured with the existing Sequence text measurer, while pure math
+fragments are measured by the selected math backend. Flowchart mixed prose/math remains out of scope
+until its HTML-label DOM metrics are modeled or calibrated with clear provenance.
 
 ## Verification
 
@@ -66,15 +65,16 @@ Fresh validation on 2026-05-30:
 - `cargo fmt --check`
 - `cargo nextest run -p merman-render --features ratex-math --test flowchart_svg_test --test sequence_svg_test ratex`
 - `cargo nextest run -p merman-render --features ratex-math --lib ratex_math_renderer`
+- `cargo check -p merman-cli --features ratex-math`
 
-Broader CLI gates were not rerun for this audit-only change because the previous CLI opt-in commit
-already covered them and this change only adds render fixture coverage plus documentation.
+The no-feature CLI gate was not rerun because this change only affects the feature-gated RaTeX
+renderer path plus documentation.
 
 ## Follow-ups
 
 - Add a small audit helper that emits the RaTeX/KaTeX dimension table from local probes instead of
   relying on manually captured command output.
-- Extend `MathRenderer` or add a Sequence-specific measurement bridge if mixed prose/math labels
-  become a release target.
-- Revisit calibration only after deciding whether the target is visual ink parity, DOM bbox parity,
-  or stable pure-Rust deterministic output.
+- Extend Flowchart math measurement only after deciding whether mixed prose/math HTML labels should
+  target visual ink parity, DOM bbox parity, or stable pure-Rust deterministic output.
+- Revisit multiple formulas on one line separately; Mermaid's current greedy `$$...$$` replacement
+  treats that case differently from a non-greedy fragment parser.

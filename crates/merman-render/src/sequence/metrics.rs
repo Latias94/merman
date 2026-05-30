@@ -1,6 +1,8 @@
 use super::constants::{sequence_text_dimensions_height_px, sequence_text_line_step_px};
 use crate::math::MathRenderer;
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode, split_html_br_lines};
+use crate::text::{
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, round_to_1_64_px, split_html_br_lines,
+};
 use merman_core::MermaidConfig;
 
 pub(super) fn measure_svg_like_with_html_br(
@@ -76,6 +78,94 @@ fn sequence_math_chunks(text: &str) -> Vec<&str> {
     chunks
 }
 
+fn measure_plain_sequence_fragment(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+) -> TextMetrics {
+    measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun)
+}
+
+fn measure_sequence_mixed_math_line(
+    measurer: &dyn TextMeasurer,
+    line: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<(f64, f64)> {
+    let start = line.find("$$")?;
+    let content_start = start + 2;
+    let end_start = line[content_start..].rfind("$$")? + content_start;
+    if end_start < content_start {
+        return None;
+    }
+    let formula = &line[content_start..end_start];
+    if formula.contains("$$") {
+        return None;
+    }
+
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+
+    for text in [&line[..start], &line[end_start + 2..]] {
+        if text.is_empty() {
+            continue;
+        }
+        let metrics = measure_plain_sequence_fragment(measurer, text, style);
+        width += metrics.width.max(0.0);
+        height = height.max(metrics.height.max(0.0));
+    }
+
+    let chunk = &line[start..end_start + 2];
+    let math_metrics = math_renderer
+        .measure_sequence_html_label(chunk, config)
+        .or_else(|| {
+            math_renderer.measure_html_label(
+                chunk,
+                config,
+                style,
+                Some(10_000.0),
+                WrapMode::HtmlLike,
+            )
+        })?;
+    width += math_metrics.width.max(0.0);
+    height = height.max(math_metrics.height.max(0.0));
+
+    Some((width, height.max(1.0)))
+}
+
+fn measure_sequence_mixed_math_label(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<TextMetrics> {
+    let mut saw_math = false;
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    let mut line_count = 0usize;
+
+    for line in split_html_br_lines(text) {
+        line_count += 1;
+        let (line_width, line_height) = if line.contains("$$") {
+            saw_math = true;
+            measure_sequence_mixed_math_line(measurer, line, style, config, math_renderer)?
+        } else {
+            let (w, h) = measure_svg_like_with_html_br(measurer, line, style);
+            (w.max(0.0), h.max(0.0))
+        };
+        width = width.max(line_width);
+        height += line_height;
+    }
+
+    saw_math.then_some(TextMetrics {
+        width: round_to_1_64_px(width),
+        height: round_to_1_64_px(height.max(1.0)),
+        line_count: line_count.max(1),
+    })
+}
+
 fn sequence_math_height_px(
     text: &str,
     style: &TextStyle,
@@ -106,6 +196,7 @@ fn sequence_math_height_px(
 }
 
 pub(crate) fn measure_sequence_math_label(
+    measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
     config: &MermaidConfig,
@@ -118,6 +209,7 @@ pub(crate) fn measure_sequence_math_label(
     let renderer = math_renderer?;
     let full_metrics = renderer
         .measure_sequence_html_label(text, config)
+        .or_else(|| measure_sequence_mixed_math_label(measurer, text, style, config, renderer))
         .or_else(|| {
             renderer.measure_html_label(text, config, style, Some(10_000.0), WrapMode::HtmlLike)
         })?;
@@ -133,7 +225,7 @@ pub(super) fn measure_sequence_label_for_layout(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     mode: SequenceMathHeightMode,
 ) -> (f64, f64) {
-    measure_sequence_math_label(text, style, config, math_renderer, mode)
+    measure_sequence_math_label(measurer, text, style, config, math_renderer, mode)
         .unwrap_or_else(|| measure_svg_like_with_html_br(measurer, text, style))
 }
 

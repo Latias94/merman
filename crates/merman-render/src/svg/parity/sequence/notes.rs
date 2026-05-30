@@ -48,6 +48,7 @@ pub(super) fn render_sequence_note(
     );
     if let Some(katex) = sequence_katex_label(
         raw,
+        ctx.measurer,
         ctx.note_text_style,
         ctx.sanitize_config,
         ctx.math_renderer,

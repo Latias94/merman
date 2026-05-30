@@ -9,6 +9,7 @@ pub(super) struct SequenceKatexLabel {
 
 pub(super) fn sequence_katex_label(
     text: &str,
+    measurer: &dyn TextMeasurer,
     style: &TextStyle,
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
@@ -19,8 +20,8 @@ pub(super) fn sequence_katex_label(
     }
     let renderer = math_renderer?;
     let (width, height) =
-        measure_sequence_math_label(text, style, config, Some(renderer), height_mode)?;
-    let html = renderer.render_html_label(text, config)?;
+        measure_sequence_math_label(measurer, text, style, config, Some(renderer), height_mode)?;
+    let html = renderer.render_sequence_html_label(text, config)?;
     let html = xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
     Some(SequenceKatexLabel {
         html,

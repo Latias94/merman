@@ -268,6 +268,7 @@ fn write_actor_label(
     if !wrap {
         if let Some(katex) = sequence_katex_label(
             label,
+            ctx.measurer,
             ctx.style,
             ctx.config,
             ctx.math_renderer,

@@ -5,10 +5,9 @@
 //! optional, pluggable backend.
 //!
 //! The default implementation is a no-op. For parity work, a Node.js-backed KaTeX renderer is
-//! provided, and the `ratex-math` feature enables a pure-Rust RaTeX renderer for supported math-only
-//! labels.
+//! provided, and the `ratex-math` feature enables a pure-Rust RaTeX renderer for supported labels.
 
-use crate::text::{TextMetrics, TextStyle, WrapMode};
+use crate::text::{TextMetrics, TextStyle, WrapMode, split_html_br_lines};
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -32,6 +31,14 @@ pub trait MathRenderer: std::fmt::Debug {
     /// The returned string is treated as raw HTML and will still be sanitized by merman before
     /// emitting into an SVG `<foreignObject>`.
     fn render_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String>;
+
+    /// Attempts to render a Sequence `drawKatex(...)` label.
+    ///
+    /// Sequence uses a bare `foreignObject` with `width: fit-content` rather than Flowchart's
+    /// HTML-label shell, so math backends may support a slightly different surface here.
+    fn render_sequence_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String> {
+        self.render_html_label(text, config)
+    }
 
     /// Optionally measures the rendered HTML label in pixels.
     ///
@@ -74,9 +81,9 @@ impl MathRenderer for NoopMathRenderer {
 
 /// Pure-Rust math renderer backed by RaTeX.
 ///
-/// The first supported surface is intentionally narrow: labels where each non-empty line is a
-/// single `$$...$$` formula. Mixed prose/math labels are declined so callers can fall back to the
-/// existing text path or another math backend.
+/// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a
+/// single `$$...$$` formula. Sequence additionally supports one formula embedded in surrounding
+/// prose per line, matching Mermaid's `drawKatex(...)` shell.
 #[cfg(feature = "ratex-math")]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RatexMathRenderer;
@@ -187,6 +194,52 @@ impl RatexMathRenderer {
         })
     }
 
+    fn render_sequence_line_html(line: &str) -> Option<String> {
+        if !line.contains("$$") {
+            return Some(line.to_string());
+        }
+        let start = line.find("$$")?;
+        let content_start = start + 2;
+        let end_start = line[content_start..].rfind("$$")? + content_start;
+        if end_start < content_start {
+            return None;
+        }
+        let formula = &line[content_start..end_start];
+        if formula.contains("$$") {
+            return None;
+        }
+        let (svg, _width_em, _height_em) = Self::render_formula_svg_em(formula)?;
+        let mut html = String::with_capacity(line.len() + svg.len());
+        html.push_str(&line[..start]);
+        html.push_str(&svg);
+        html.push_str(&line[end_start + 2..]);
+        Some(html)
+    }
+
+    fn render_sequence_label(text: &str) -> Option<String> {
+        let normalized = Self::normalized_text(text);
+        if !normalized.contains("$$") {
+            return None;
+        }
+
+        let mut html = String::new();
+        let mut saw_math = false;
+        for line in split_html_br_lines(&normalized) {
+            if line.contains("$$") {
+                saw_math = true;
+                let rendered_line = Self::render_sequence_line_html(line)?;
+                let _ = write!(
+                    &mut html,
+                    r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{rendered_line}</div>"#
+                );
+            } else {
+                let _ = write!(&mut html, "<div>{line}</div>");
+            }
+        }
+
+        saw_math.then_some(html)
+    }
+
     fn metrics_from_em(rendered: &RatexRenderedMath, font_size: f64) -> TextMetrics {
         let font_size = font_size.max(1.0);
         TextMetrics {
@@ -214,6 +267,10 @@ impl MathRenderer for RatexMathRenderer {
             return None;
         }
         Some(Self::render_math_only_label(text)?.html)
+    }
+
+    fn render_sequence_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+        Self::render_sequence_label(text)
     }
 
     fn measure_html_label(
@@ -647,7 +704,19 @@ mod tests {
             renderer
                 .render_html_label("value: $$x^2$$", &config)
                 .is_none(),
-            "mixed prose/math labels should fall back for the first RaTeX slice"
+            "Flowchart RaTeX labels stay math-only until their DOM metrics are modeled"
+        );
+
+        let mixed_sequence = renderer
+            .render_sequence_html_label("value: $$x^2$$", &config)
+            .expect("Sequence RaTeX labels should support prose plus math");
+        assert!(
+            mixed_sequence.contains("value: ") && mixed_sequence.contains("<svg"),
+            "unexpected Sequence mixed math HTML: {mixed_sequence}"
+        );
+        assert!(
+            !mixed_sequence.contains("$$"),
+            "Sequence mixed math HTML should replace source delimiters: {mixed_sequence}"
         );
     }
 

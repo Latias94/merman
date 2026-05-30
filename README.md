@@ -234,8 +234,9 @@ cargo run -p merman --features render --example svg_pipeline < fixtures/flowchar
 
 ### Math Labels
 
-Math rendering is optional. Enable `ratex-math` to render math-only `$$...$$` labels through the
-pure-Rust RaTeX backend:
+Math rendering is optional. Enable `ratex-math` to render supported `$$...$$` labels through the
+pure-Rust RaTeX backend. Flowchart currently supports math-only labels; Sequence also supports
+single-formula prose/math message labels such as `Solve: $$x^2$$`:
 
 ```bash
 printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" |

@@ -373,7 +373,7 @@ Note right of B: $$x^2$$
 
 #[cfg(feature = "ratex-math")]
 #[test]
-fn sequence_docs_math_fixture_documents_ratex_supported_and_mixed_label_boundary() {
+fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
@@ -409,11 +409,11 @@ fn sequence_docs_math_fixture_documents_ratex_supported_and_mixed_label_boundary
         .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
         .count();
     assert!(
-        inline_formula_count >= 5,
-        "expected participant and note math labels to render through RaTeX: {svg}"
+        inline_formula_count >= 7,
+        "expected participant, message, and note math labels to render through RaTeX: {svg}"
     );
     assert!(
-        svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && svg.contains(r#"Answer: $$2$$"#),
-        "mixed prose/math sequence messages are an explicit follow-up boundary: {svg}"
+        !svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && !svg.contains(r#"Answer: $$2$$"#),
+        "expected mixed sequence message formulas to replace source delimiters: {svg}"
     );
 }

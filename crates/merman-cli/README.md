@@ -41,7 +41,7 @@ printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli render --out out.svg
 Useful flags:
 
 - `--text-measurer deterministic|vendored` controls text measurement. `vendored` is better for visual output; `deterministic` is useful for stable fixture-style output.
-- `--math-renderer none|ratex` enables optional `$$...$$` math rendering. `ratex` requires the `ratex-math` Cargo feature and currently handles math-only labels.
+- `--math-renderer none|ratex` enables optional `$$...$$` math rendering. `ratex` requires the `ratex-math` Cargo feature; Flowchart currently supports math-only labels, while Sequence also supports single-formula prose/math message labels.
 - `--id <diagram-id>` sets the root SVG id and internal marker id prefix.
 - `--scale <n>` controls PNG/JPG raster scale.
 - `--background <css-color>` sets raster background.

@@ -933,7 +933,7 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
 - [x] Add a feature-gated CLI opt-in for the pure-Rust RaTeX math renderer.
   Evidence: `merman-cli --math-renderer none|ratex` now wires the selected math renderer through
   both layout measurement and SVG emission; the default build rejects `ratex` with a feature-gate
-  usage error, and `--features ratex-math` renders math-only `$$...$$` labels as inline RaTeX SVG.
+  usage error, and `--features ratex-math` renders supported `$$...$$` labels as inline RaTeX SVG.
   Validation: `cargo nextest run -p merman-render --features ratex-math --test flowchart_svg_test
   --test sequence_svg_test ratex`, `cargo nextest run -p merman-cli --test ratex_math`,
   `cargo nextest run -p merman-cli --features ratex-math --test ratex_math`, `cargo nextest run -p
@@ -945,7 +945,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `RATEX_MATH_AUDIT.md` records local Node/KaTeX probe facts versus RaTeX layout metrics
   for representative Flowchart and Sequence formulas, and explains why a single global scale would
   be incorrect. Added feature-gated fixture coverage for Flowchart docs math labels and the current
-  Sequence mixed-label boundary.
+  Sequence docs math labels.
+- [x] Render Sequence single-formula prose/math labels through RaTeX.
+  Evidence: Sequence now has a dedicated math render hook and a layout-side mixed-label metric
+  path that composes text fragments with measured math fragments. The docs fixture verifies
+  participant, message, and note formulas render without leaving raw message delimiters.
 
 ## P3: Documentation Cleanup
 

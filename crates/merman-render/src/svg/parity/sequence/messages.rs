@@ -73,6 +73,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             };
             if let Some(katex) = sequence_katex_label(
                 text,
+                ctx.measurer,
                 ctx.loop_text_style,
                 ctx.sanitize_config,
                 ctx.math_renderer,
