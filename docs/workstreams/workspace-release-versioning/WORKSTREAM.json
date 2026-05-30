@@ -61,7 +61,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "WRV-020",
-    "notes": "Package graph is frozen. Continue by documenting publish order and selecting the next workspace version."
+    "next_task": "WRV-030",
+    "notes": "Publish order is documented and 0.7.0 is selected. Continue by aligning workspace and internal dependency versions."
   }
 }

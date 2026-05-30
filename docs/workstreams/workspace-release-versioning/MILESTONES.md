@@ -21,6 +21,9 @@ Exit criteria:
 - Publish order is documented in dependency order.
 - The doc distinguishes publish preparation from actual `cargo publish`.
 
+Status: complete. `docs/release/PUBLISH_ORDER.md` selects `0.7.0`, documents full workspace and
+binding-specific publish order, and keeps `cargo publish` out of the lane.
+
 ## M2 — Version Alignment
 
 Exit criteria:

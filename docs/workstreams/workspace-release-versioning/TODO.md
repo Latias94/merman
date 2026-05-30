@@ -17,13 +17,15 @@ Last updated: 2026-05-30
 
 ## M1 — Publish Order And Version Decision
 
-- [ ] WRV-020 [owner=codex] [deps=WRV-010] [scope=docs/release,Cargo.toml]
+- [x] WRV-020 [owner=codex] [deps=WRV-010] [scope=docs/release,Cargo.toml]
   Goal: Document the publish order and choose the next workspace release version.
   Validation: publish-order doc exists and references the package evidence.
   Review: Version choice must account for immutable crates.io `0.6.0` packages.
   Evidence: docs/release publish-order doc.
   Context: docs/workstreams/workspace-release-versioning/CONTEXT.jsonl
-  Handoff: Prefer a patch bump unless public API compatibility requires a minor bump.
+  Handoff: DONE. Added `docs/release/PUBLISH_ORDER.md` and selected `0.7.0` as the next release
+  target because the workspace added public binding crates/features and `0.6.0` is immutable on
+  crates.io.
 
 ## M2 — Version Alignment
 
